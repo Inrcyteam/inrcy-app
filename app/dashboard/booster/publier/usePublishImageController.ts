@@ -18,6 +18,7 @@ import {
   getBoosterImageSequenceTargetRatio,
 } from "@/lib/boosterImageDecision";
 import {
+  BOOSTER_IMAGE_FORMATS_LABEL,
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_IMAGE_MB_LABEL,
@@ -386,7 +387,7 @@ export default function usePublishImageController({
       setImgError(
         getClientUserFacingErrorMessage(
           error,
-          "Impossible de convertir cette image HEIC. Utilisez une image JPG, PNG ou WebP.",
+          `Impossible de convertir cette image HEIC. Utilisez un format compatible : ${BOOSTER_IMAGE_FORMATS_LABEL}.`,
         ),
       );
       return;
@@ -451,7 +452,7 @@ export default function usePublishImageController({
         ),
       );
     } catch {
-      setImgError("Une image n'est pas lisible. Utilisez une image JPG, PNG ou WebP.");
+      setImgError(`Une image n'est pas lisible. Formats compatibles : ${BOOSTER_IMAGE_FORMATS_LABEL}.`);
       return;
     }
     const nextPreviews = [

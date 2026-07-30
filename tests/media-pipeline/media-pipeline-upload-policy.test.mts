@@ -7,6 +7,8 @@ import {
   buildDirectStorageResumableEndpoint,
   detectUniversalUploadMediaType,
   getUniversalMediaContentType,
+  getUniversalMediaProductMaxBytes,
+  getUniversalMediaProductMaxLabel,
   selectUniversalMediaUploadProtocol,
   targetAcceptsUniversalMediaType,
 } from "../../lib/mediaUploadPolicy.ts";
@@ -49,6 +51,14 @@ test("les formats courants sont reconnus même lorsque le navigateur fournit peu
   );
 });
 
+
+test("les plafonds produit sont alignés sur Booster", () => {
+  assert.equal(getUniversalMediaProductMaxBytes("image"), 50 * 1024 * 1024);
+  assert.equal(getUniversalMediaProductMaxLabel("image"), "50 Mo");
+  assert.equal(getUniversalMediaProductMaxBytes("video"), 300 * 1024 * 1024);
+  assert.equal(getUniversalMediaProductMaxLabel("video"), "300 Mo");
+});
+
 test("les destinations n'acceptent jamais un type incohérent", () => {
   assert.equal(
     targetAcceptsUniversalMediaType("booster_prepared_image", "image"),
@@ -73,6 +83,6 @@ test("les destinations n'acceptent jamais un type incohérent", () => {
 test("l'endpoint TUS utilise le hostname Storage direct du projet", () => {
   assert.equal(
     buildDirectStorageResumableEndpoint("https://abcxyz.supabase.co"),
-    "https://abcxyz.storage.supabase.co/storage/v1/upload/resumable",
+    "https://abcxyz.storage.supabase.co/storage/v1/upload/resumable/sign",
   );
 });

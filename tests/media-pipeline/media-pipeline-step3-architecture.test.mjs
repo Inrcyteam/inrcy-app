@@ -35,8 +35,19 @@ test("le client TUS possède reprise locale, chunks de 6 Mo, progression et annu
   assert.match(client, /Upload-Offset/);
   assert.match(client, /x-signature/);
   assert.match(client, /x-upsert/);
+  assert.match(client, /apikey/);
+  assert.match(client, /SIGNED_TUS_STORAGE_VERSION/);
   assert.match(client, /AbortSignal/);
   assert.match(client, /onProgress/);
+});
+
+
+
+test("le transport TUS signé utilise l’endpoint Supabase /sign", () => {
+  assert.match(intentRoute, /buildDirectStorageResumableEndpoint/);
+  assert.match(client, /resumableEndpoint/);
+  assert.match(client, /buildSignedTusHeaders/);
+  assert.match(client, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
 });
 
 test("les images, vidéos et la médiathèque utilisent le moteur commun avec secours historique", () => {
@@ -47,6 +58,12 @@ test("les images, vidéos et la médiathèque utilisent le moteur commun avec se
   assert.match(mediaLibrary, /uploadFileToPreparedUniversalIntent/);
   assert.match(mediaLibrary, /media library signed fallback/);
   assert.match(client, /NEXT_PUBLIC_MEDIA_PIPELINE_UPLOADS_V1/);
+});
+
+
+test("les plafonds produit sont contrôlés avant l’upload direct", () => {
+  assert.match(intentRoute, /getUniversalMediaProductMaxBytes/);
+  assert.match(intentRoute, /media_product_limit_exceeded/);
 });
 
 test("les uploads de source persistants mettent à jour le registre étape 2", () => {

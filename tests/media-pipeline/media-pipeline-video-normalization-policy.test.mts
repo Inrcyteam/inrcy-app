@@ -4,6 +4,8 @@ import {
   VIDEO_AI_PREVIEW_MAX_SIDE,
   VIDEO_CANONICAL_MAX_SIDE,
   VIDEO_FRAME_MAX_SIDE,
+  VIDEO_NORMALIZATION_MAX_SOURCE_BYTES,
+  VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL,
   VIDEO_THUMBNAIL_MAX_SIDE,
   buildVideoFrameCaptureTimes,
   buildVideoNormalizationStoragePath,
@@ -13,6 +15,12 @@ import {
   getVideoNormalizationSignature,
   getVideoTargetBitrateKbps,
 } from "../../lib/mediaVideoNormalizationPolicy.ts";
+
+
+test("le worker accepte les sources vidéo jusqu’à 300 Mo", () => {
+  assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_BYTES, 300 * 1024 * 1024);
+  assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL, "300 Mo");
+});
 
 test("les formats vidéo restent hiérarchisés sans agrandissement", () => {
   assert.equal(VIDEO_CANONICAL_MAX_SIDE, 1920);

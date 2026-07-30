@@ -57,6 +57,7 @@ export default function usePersistentMediaWorkspace({
   const operationVersionRef = useRef(0);
   const operationAbortRef = useRef<AbortController | null>(null);
   const activeTaskRef = useRef<Promise<void>>(Promise.resolve());
+  const lastFailureRef = useRef("");
 
   if (!clientWorkspaceKeyRef.current && typeof window !== "undefined") {
     clientWorkspaceKeyRef.current = getOrCreateBoosterWorkspaceClientKey(draftId);
@@ -120,6 +121,7 @@ export default function usePersistentMediaWorkspace({
 
       const operationVersion = operationVersionRef.current + 1;
       operationVersionRef.current = operationVersion;
+      lastFailureRef.current = "";
       operationAbortRef.current?.abort();
       const controller = new AbortController();
       operationAbortRef.current = controller;
@@ -223,6 +225,7 @@ export default function usePersistentMediaWorkspace({
               error instanceof Error
                 ? error.message
                 : "L’envoi immédiat du média a échoué.";
+            lastFailureRef.current = message;
             setMediaStates((current) => ({
               ...current,
               [localKey]: {
@@ -239,7 +242,7 @@ export default function usePersistentMediaWorkspace({
               },
             }));
             onError?.(
-              "L’envoi immédiat du média a été interrompu. Le pipeline historique reste disponible au moment de publier.",
+              `L’envoi direct du média a été interrompu. ${message}`,
             );
             return;
           }
@@ -349,6 +352,10 @@ export default function usePersistentMediaWorkspace({
       }
 
       await activeTaskRef.current.catch(() => undefined);
+      const failure = lastFailureRef.current.trim();
+      if (failure) {
+        throw new Error(failure);
+      }
     },
     [],
   );

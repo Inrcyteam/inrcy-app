@@ -72,11 +72,23 @@ test("l'upload terminé met la vidéo en file et répare les reprises", () => {
   assert.match(intent, /enqueueVideoNormalization\(/);
 });
 
+
+test("le cutover évite l’extraction locale lourde à l’insertion d’une vidéo", () => {
+  const publishModal = read(
+    "app/dashboard/booster/publier/PublishModal.tsx",
+  );
+  assert.match(
+    publishModal,
+    /if \(!mediaPipelineCutoverEnabled\) \{[\s\S]*?getOrPrepareVideoFramesForAI\(normalizedFile\)[\s\S]*?getOrPrepareVideoAudioFileForAI\(normalizedFile\)/,
+  );
+});
+
 test("le worker télécharge la source privée et conserve l'original", () => {
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
   const cron = read("app/api/cron/media-video-normalization/route.ts");
   assert.match(worker, /createSignedUrl\(media\.storage_path, 600\)/);
   assert.match(worker, /Readable\.fromWeb/);
+  assert.match(worker, /VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL/);
   assert.match(worker, /content_hash_sha256/);
   assert.match(worker, /canonical_bucket_name/);
   assert.match(worker, /failed_retryable/);

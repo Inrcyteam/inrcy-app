@@ -9,7 +9,10 @@ import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
-import { INR_MEDIA_IMAGE_MAX_BYTES } from "@/lib/mediaRules";
+import {
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_IMAGE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -315,7 +318,9 @@ export async function POST(req: Request) {
 
     if (file.size > MAX_SOURCE_BYTES) {
       return NextResponse.json(
-        { error: "Image HEIC trop lourde. Taille maximale : 40 Mo." },
+        {
+          error: `Image HEIC trop lourde. Taille maximale : ${INR_MEDIA_IMAGE_MAX_MB_LABEL}.`,
+        },
         { status: 413 },
       );
     }

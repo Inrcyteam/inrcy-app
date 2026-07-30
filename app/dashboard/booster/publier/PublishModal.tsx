@@ -48,6 +48,7 @@ import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
+  BOOSTER_VIDEO_FORMATS_LABEL,
   BOOSTER_CHANNEL_ORDER,
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
@@ -2952,13 +2953,17 @@ export default function PublishModal({
         );
       }
       didGenerate = true;
-    } catch {
+    } catch (error) {
+      const fallbackMessage = shouldUseImagesForAI
+        ? "Impossible de préparer ou d’analyser les images pour le moment. Merci de réessayer."
+        : hasVideoForGeneration
+          ? "Impossible de préparer l’analyse vidéo pour le moment. Merci de réessayer."
+          : "Connexion impossible pour le moment. Merci de réessayer.";
       setGenError(
-        shouldUseImagesForAI
-          ? "Impossible de préparer ou d’analyser les images pour le moment. Merci de réessayer."
-          : hasVideoForGeneration
-            ? "Impossible de préparer l’analyse vidéo pour le moment. Merci de réessayer."
-            : "Connexion impossible pour le moment. Merci de réessayer.",
+        getSimpleFrenchErrorMessage(
+          error instanceof Error ? error.message : "",
+          fallbackMessage,
+        ),
       );
     } finally {
       clearGenerationTimers();
@@ -3065,7 +3070,7 @@ export default function PublishModal({
     setVideoTransformedVariants([]);
 
     if (!isBoosterVideoFile(file)) {
-      setImgError("Ajoutez une vidéo valide : MP4/M4V, MOV ou WebM.");
+      setImgError(`Ajoutez une vidéo valide : ${BOOSTER_VIDEO_FORMATS_LABEL}.`);
       return;
     }
 
@@ -3081,10 +3086,12 @@ export default function PublishModal({
       type: file.type || "video/mp4",
       lastModified: file.lastModified || Date.now(),
     });
-    void getOrPrepareVideoFramesForAI(normalizedFile).catch(() => {
-      // Le useEffect et la génération conserveront le fallback existant.
-    });
-    void getOrPrepareVideoAudioFileForAI(normalizedFile);
+    if (!mediaPipelineCutoverEnabled) {
+      void getOrPrepareVideoFramesForAI(normalizedFile).catch(() => {
+        // Le parcours historique conserve son fallback en cas d’échec local.
+      });
+      void getOrPrepareVideoAudioFileForAI(normalizedFile);
+    }
 
     let sourceMetadata: BoosterVideoSourceMetadata | null = null;
     try {

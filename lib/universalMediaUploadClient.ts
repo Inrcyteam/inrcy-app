@@ -68,6 +68,27 @@ type PreparedIntentOptions = Pick<
 // 3 s garde une progression fluide tout en restant sous le rate limit même
 // lorsque 5 images sont envoyées en parallèle à l'étape suivante.
 const PROGRESS_PERSIST_INTERVAL_MS = 3_000;
+const SIGNED_TUS_STORAGE_VERSION = "signed-tus-v1";
+
+function getSupabasePublicApiKey() {
+  const apiKey = String(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
+  if (!apiKey) {
+    throw new Error("Clé publique Supabase absente pour l’envoi résumable.");
+  }
+  return apiKey;
+}
+
+function buildSignedTusHeaders(
+  intent: UniversalMediaUploadIntent,
+  extra: Record<string, string> = {},
+) {
+  return {
+    apikey: getSupabasePublicApiKey(),
+    "x-signature": intent.token,
+    "x-upsert": "true",
+    ...extra,
+  };
+}
 
 function makeAbortError() {
   try {
@@ -305,30 +326,45 @@ function tusStorageKey(intent: UniversalMediaUploadIntent, file: File) {
   ].join(":")}`;
 }
 
-function readStoredTusUrl(key: string): string | null {
+function readStoredTusUrl(key: string, endpoint: string): string | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { url?: unknown; expiresAt?: unknown };
+    const parsed = JSON.parse(raw) as {
+      url?: unknown;
+      endpoint?: unknown;
+      version?: unknown;
+      expiresAt?: unknown;
+    };
     const expiresAt = Number(parsed.expiresAt || 0);
-    if (!parsed.url || !expiresAt || expiresAt <= Date.now()) {
+    const valid =
+      Boolean(parsed.url) &&
+      expiresAt > Date.now() &&
+      parsed.version === SIGNED_TUS_STORAGE_VERSION &&
+      String(parsed.endpoint || "") === endpoint;
+    if (!valid) {
       window.localStorage.removeItem(key);
       return null;
     }
     return String(parsed.url);
   } catch {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
     return null;
   }
 }
 
-function storeTusUrl(key: string, url: string) {
+function storeTusUrl(key: string, url: string, endpoint: string) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
       key,
       JSON.stringify({
         url,
+        endpoint,
+        version: SIGNED_TUS_STORAGE_VERSION,
         // Supabase conserve une URL TUS jusqu'à 24 h. On garde une marge pour
         // éviter de reprendre une URL arrivée à expiration.
         expiresAt: Date.now() + 23 * 60 * 60 * 1_000,
@@ -358,11 +394,9 @@ async function readTusOffset(
 ): Promise<number | null> {
   const response = await fetch(uploadUrl, {
     method: "HEAD",
-    headers: {
+    headers: buildSignedTusHeaders(intent, {
       "Tus-Resumable": "1.0.0",
-      "x-signature": intent.token,
-      "x-upsert": "true",
-    },
+    }),
     signal,
     cache: "no-store",
   });
@@ -381,13 +415,11 @@ async function createTusUploadUrl(
 ) {
   const response = await fetch(intent.resumableEndpoint, {
     method: "POST",
-    headers: {
+    headers: buildSignedTusHeaders(intent, {
       "Tus-Resumable": "1.0.0",
       "Upload-Length": String(file.size),
       "Upload-Metadata": buildTusMetadata(intent),
-      "x-signature": intent.token,
-      "x-upsert": "true",
-    },
+    }),
     signal,
     cache: "no-store",
   });
@@ -429,11 +461,14 @@ function patchTusChunk(params: {
     };
 
     xhr.open("PATCH", params.uploadUrl, true);
-    xhr.setRequestHeader("Tus-Resumable", "1.0.0");
-    xhr.setRequestHeader("Upload-Offset", String(params.offset));
-    xhr.setRequestHeader("Content-Type", "application/offset+octet-stream");
-    xhr.setRequestHeader("x-signature", params.intent.token);
-    xhr.setRequestHeader("x-upsert", "true");
+    const headers = buildSignedTusHeaders(params.intent, {
+      "Tus-Resumable": "1.0.0",
+      "Upload-Offset": String(params.offset),
+      "Content-Type": "application/offset+octet-stream",
+    });
+    Object.entries(headers).forEach(([name, value]) => {
+      xhr.setRequestHeader(name, value);
+    });
     xhr.upload.onprogress = (event) => {
       const loaded = Math.min(params.chunk.size, Number(event.loaded || 0));
       params.onProgress?.(
@@ -489,7 +524,7 @@ async function uploadWithTus(
   }
 
   const storageKey = tusStorageKey(intent, file);
-  let uploadUrl = readStoredTusUrl(storageKey);
+  let uploadUrl = readStoredTusUrl(storageKey, intent.resumableEndpoint);
   let offset = 0;
 
   if (uploadUrl) {
@@ -510,7 +545,7 @@ async function uploadWithTus(
 
   if (!uploadUrl) {
     uploadUrl = await createTusUploadUrl(file, intent, options.signal);
-    storeTusUrl(storageKey, uploadUrl);
+    storeTusUrl(storageKey, uploadUrl, intent.resumableEndpoint);
   }
 
   const report = (bytesUploaded: number) => {
@@ -578,7 +613,7 @@ async function uploadWithTus(
           if (serverOffset === null) {
             clearStoredTusUrl(storageKey);
             uploadUrl = await createTusUploadUrl(file, intent, options.signal);
-            storeTusUrl(storageKey, uploadUrl);
+            storeTusUrl(storageKey, uploadUrl, intent.resumableEndpoint);
             offset = 0;
           } else {
             offset = Math.min(file.size, serverOffset);

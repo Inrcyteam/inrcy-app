@@ -97,6 +97,8 @@ test("le clic immédiat absorbe l'upload dans Générer, Publier et Programmer",
 
   assert.match(workspaceHook, /const waitForIdle = useCallback/);
   assert.match(workspaceHook, /Upload du média/);
+  assert.match(workspaceHook, /lastFailureRef/);
+  assert.match(workspaceHook, /throw new Error\(failure\)/);
   assert.match(
     modal,
     /readyMediaWorkspaceId\s*=\s*await waitForPersistentWorkspaceReadiness\("generate"/,
