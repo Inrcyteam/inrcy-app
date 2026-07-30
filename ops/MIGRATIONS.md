@@ -147,3 +147,26 @@ npm run smoke:media-pipeline
 
 Aucun rollback SQL n'est prévu. Le retour arrière s'effectue par désactivation
 des flags de cutover, puis de consommation unifiée si nécessaire.
+
+## 2026-07-30 — Pipeline média universel Étape 10
+
+Après les migrations et vérifications des Étapes 2 à 9, exécuter :
+
+```text
+ops/sql/2026-07-30_media_pipeline_step10_performance_hardening.sql
+```
+
+Puis contrôler le résultat avec la requête strictement en lecture seule :
+
+```text
+ops/sql/2026-07-30_media_pipeline_step10_verify.sql
+```
+
+Cette entrée documente des fichiers SQL déjà présents dans le dépôt. Elle ne
+modifie aucune migration et n'exécute aucune opération sur Supabase. Les détails
+de déploiement sont décrits dans :
+
+```text
+docs/MEDIA_PIPELINE_STEP10_FINAL_HARDENING_2026-07-30.md
+```
+

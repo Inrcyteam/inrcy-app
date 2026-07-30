@@ -11,6 +11,8 @@ import EstablishmentMenu from "./EstablishmentMenu";
 import RequiredSetupLock from "./RequiredSetupLock";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import type { NotificationItem } from "../dashboard.types";
+import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import { ACTIVE_INRCY_ACCOUNT_EVENT } from "@/lib/multicompte/constants";
 
 type DashboardPanelName =
   | "contact"
@@ -43,6 +45,7 @@ type DashboardPanelName =
 
 
 const INR_AGENT_ROUTE = "/dashboard/agent";
+const INR_AGENT_PENDING_COUNT_CACHE_KEY = "inrcy_inr_agent_pending_count_v1";
 const INR_AGENT_PRELOAD_ASSETS = [
   "/agent/inr-agent-robot-cutout.webp",
   "/icons/inr-agent-header.png",
@@ -58,6 +61,27 @@ const INR_AGENT_PRELOAD_ASSETS = [
 ];
 
 const preloadedInrAgentAssets = new Set<string>();
+
+function readCachedPendingInrAgentCount() {
+  try {
+    const raw = readAccountCacheValue(INR_AGENT_PENDING_COUNT_CACHE_KEY);
+    const count = Number(raw);
+    return Number.isFinite(count) && count > 0 ? Math.round(count) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeCachedPendingInrAgentCount(count: number) {
+  try {
+    writeAccountCacheValue(
+      INR_AGENT_PENDING_COUNT_CACHE_KEY,
+      String(Number.isFinite(count) && count > 0 ? Math.round(count) : 0),
+    );
+  } catch {
+    // Le cache visuel du badge ne doit jamais bloquer le dashboard.
+  }
+}
 
 function GearIcon() {
   return (
@@ -175,12 +199,13 @@ export default function DashboardTopbar({
 }: DashboardTopbarProps) {
   const router = useRouter();
   const t = useDashboardI18n();
-  const [pendingInrAgentCount, setPendingInrAgentCount] = useState(0);
+  const [pendingInrAgentCount, setPendingInrAgentCount] = useState(
+    () => readCachedPendingInrAgentCount(),
+  );
   const inrAgentSetupLocked = inrAgentEnabled && requiredSetupLockVisible;
 
   const refreshPendingInrAgentCount = useCallback(async () => {
     if (!inrAgentEnabled) {
-      setPendingInrAgentCount(0);
       return;
     }
 
@@ -193,9 +218,9 @@ export default function DashboardTopbar({
 
       const payload = await response.json().catch(() => null) as { count?: unknown } | null;
       const nextCount = Number(payload?.count ?? 0);
-      setPendingInrAgentCount(
-        Number.isFinite(nextCount) && nextCount > 0 ? Math.round(nextCount) : 0,
-      );
+      const safeCount = Number.isFinite(nextCount) && nextCount > 0 ? Math.round(nextCount) : 0;
+      setPendingInrAgentCount(safeCount);
+      writeCachedPendingInrAgentCount(safeCount);
     } catch {
       // Le badge ne doit jamais bloquer le dashboard.
     }
@@ -216,9 +241,21 @@ export default function DashboardTopbar({
   }, [inrAgentEnabled, router]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleActiveAccountChange = () => {
+      setPendingInrAgentCount(readCachedPendingInrAgentCount());
+      void refreshPendingInrAgentCount();
+    };
+    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
+
     refreshPendingInrAgentCount();
 
-    if (!inrAgentEnabled || typeof window === "undefined") return;
+    if (!inrAgentEnabled) {
+      return () => {
+        window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
+      };
+    }
 
     const handleVisible = () => {
       if (document.visibilityState === "visible") {
@@ -233,12 +270,14 @@ export default function DashboardTopbar({
 
     window.addEventListener("focus", handleFocus);
     window.addEventListener("inrcy:agent-actions-changed", handleAgentActionsChanged);
+    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
     document.addEventListener("visibilitychange", handleVisible);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("inrcy:agent-actions-changed", handleAgentActionsChanged);
+      window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
       document.removeEventListener("visibilitychange", handleVisible);
     };
   }, [inrAgentEnabled, refreshPendingInrAgentCount]);
@@ -348,7 +387,7 @@ export default function DashboardTopbar({
               compact
             />
           ) : null}
-          {pendingInrAgentCount > 0 && (
+          {inrAgentEnabled && pendingInrAgentCount > 0 && (
             <span className={styles.agentTopbarBadge} aria-hidden="true">
               {pendingInrAgentLabel}
             </span>

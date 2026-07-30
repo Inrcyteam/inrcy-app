@@ -599,7 +599,6 @@ export type ChannelPublicationRequirementInput = {
   videoFileName?: string | null;
   hasImage: boolean;
   imageCount: number;
-  rawImageCount?: number;
   hasText: boolean;
   hasTitle: boolean;
   hasContent: boolean;
@@ -626,7 +625,6 @@ export function getChannelPublicationRequirements({
   videoFileName,
   hasImage,
   imageCount,
-  rawImageCount = imageCount,
   hasText,
   hasTitle,
   hasContent,
@@ -667,12 +665,6 @@ export function getChannelPublicationRequirements({
       );
     }
 
-    if (channel === "gmb") {
-      warnings.push(
-        "Google peut refuser certaines vidéos. Si c’est le cas, iNrCy publiera le texte sans vidéo.",
-      );
-    }
-
     if (channel === "linkedin") {
       if (hasVideo && !isMp4VideoFile(videoFileType, videoFileName)) {
         blockers.push("LinkedIn nécessite une vidéo MP4.");
@@ -690,11 +682,9 @@ export function getChannelPublicationRequirements({
         blockers.push("TikTok nécessite au moins 1 photo ou 1 vidéo.");
       } else if (channel === "youtube_shorts") {
         blockers.push("YouTube nécessite une vidéo.");
-      } else if (channel === "gmb") {
-        warnings.push("Google Business sera publié sans photo.");
       } else if (channel === "pinterest") {
         blockers.push("Pinterest nécessite au moins 1 image.");
-      } else {
+      } else if (channel !== "gmb") {
         warnings.push("Aucune image sélectionnée.");
       }
     }
@@ -736,10 +726,6 @@ export function getChannelPublicationRequirements({
         : false;
   if (!hasText && !hasMedia) {
     blockers.push("Ajoutez au moins du texte ou un média.");
-  }
-
-  if (mediaMode === "images" && channel === "gmb" && rawImageCount > 1) {
-    warnings.push("Google Business publiera uniquement la première photo.");
   }
 
   return {

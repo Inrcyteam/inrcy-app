@@ -509,10 +509,10 @@ export default function usePublishImageController({
         };
         next[targetChannel] = {
           ...current,
-          imageKeys:
-            targetChannel === "gmb"
-              ? [newKeys[0]].filter(Boolean)
-              : Array.from(new Set([...current.imageKeys, ...newKeys])),
+          imageKeys: Array.from(new Set([...current.imageKeys, ...newKeys])).slice(
+            0,
+            BOOSTER_MAX_IMAGE_COUNT,
+          ),
           transforms: current.transforms,
           customizedImageKeys: current.customizedImageKeys || [],
         };
@@ -613,9 +613,7 @@ export default function usePublishImageController({
         acc[channel] = {
           imageKeys: !channelSupportsImages(channel)
             ? []
-            : channel === "gmb"
-              ? imageKeysForChannel.slice(0, 1)
-              : imageKeysForChannel,
+            : imageKeysForChannel.slice(0, BOOSTER_MAX_IMAGE_COUNT),
           transforms: Object.fromEntries(
             Object.entries(editor.transforms || {})
               .filter(([key]) => imageKeysForChannel.includes(key))
@@ -897,14 +895,9 @@ export default function usePublishImageController({
         transforms: {},
       };
       const exists = current.imageKeys.includes(imageKey);
-      const nextKeys =
-        channel === "gmb"
-          ? exists
-            ? []
-            : [imageKey]
-          : exists
-            ? current.imageKeys.filter((key) => key !== imageKey)
-            : [...current.imageKeys, imageKey];
+      const nextKeys = exists
+        ? current.imageKeys.filter((key) => key !== imageKey)
+        : [...current.imageKeys, imageKey].slice(0, BOOSTER_MAX_IMAGE_COUNT);
       const next = { ...prev };
       for (const targetChannel of impactedChannels) {
         const currentTarget = next[targetChannel] || {
@@ -927,9 +920,6 @@ export default function usePublishImageController({
     setActiveImageKeyByChannel((prev) => {
       const currentKeys = channelImageEditors[channel]?.imageKeys || [];
       const exists = currentKeys.includes(imageKey);
-      if (channel === "gmb") {
-        return { ...prev, [channel]: exists ? "" : imageKey };
-      }
       if (prev[channel] !== imageKey) return prev;
       const nextKeys = currentKeys.filter((key) => key !== imageKey);
       return {
@@ -1097,12 +1087,12 @@ export default function usePublishImageController({
         }
         next[channel] = {
           ...current,
-          imageKeys:
-            channel === "gmb"
-              ? [activeEditorImageKey]
-              : current.imageKeys.includes(activeEditorImageKey)
-                ? current.imageKeys
-                : [...current.imageKeys, activeEditorImageKey],
+          imageKeys: current.imageKeys.includes(activeEditorImageKey)
+            ? current.imageKeys
+            : [...current.imageKeys, activeEditorImageKey].slice(
+                0,
+                BOOSTER_MAX_IMAGE_COUNT,
+              ),
           transforms: {
             ...current.transforms,
             [activeEditorImageKey]: { ...activeEditorTransform },
@@ -1178,8 +1168,7 @@ export default function usePublishImageController({
       }
 
       const editor = getEditorForPublish(channel);
-      const imageKeysToRender =
-        channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
+      const imageKeysToRender = editor.imageKeys.slice(0, BOOSTER_MAX_IMAGE_COUNT);
       const firstImageKey = imageKeysToRender[0] || "";
       const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({
         channel,
@@ -1254,8 +1243,7 @@ export default function usePublishImageController({
     const totalRenders = selectedChannels.reduce((sum, channel) => {
       if (!channelSupportsImages(channel)) return sum;
       const editor = getEditorForPublish(channel);
-      const keys =
-        channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
+      const keys = editor.imageKeys.slice(0, BOOSTER_MAX_IMAGE_COUNT);
       return sum + keys.length;
     }, 0);
     let doneRenders = 0;
@@ -1275,8 +1263,7 @@ export default function usePublishImageController({
       const renderList: ImagePayload[] = [];
       const actualTransforms: Record<string, ImageTransform> = {};
       const actualCustomizedImageKeys: string[] = [];
-      const imageKeysToRender =
-        channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
+      const imageKeysToRender = editor.imageKeys.slice(0, BOOSTER_MAX_IMAGE_COUNT);
       const firstImageKey = imageKeysToRender[0] || "";
       const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({
         channel,
@@ -1385,7 +1372,7 @@ export default function usePublishImageController({
   const getPublishImageKeysForChannel = (channel: ChannelKey) => {
     if (!channelSupportsImages(channel)) return [];
     const keys = channelImageEditors[channel]?.imageKeys || [];
-    return channel === "gmb" ? keys.slice(0, 1) : keys;
+    return keys.slice(0, BOOSTER_MAX_IMAGE_COUNT);
   };
 
   return {

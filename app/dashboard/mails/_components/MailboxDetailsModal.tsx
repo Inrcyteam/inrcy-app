@@ -1989,7 +1989,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   items={activePublicationEditAssets.map((asset, index) => {
                                     const selectedAssets = activePublicationEditAssets.filter((candidate) => candidate.selected);
                                     const selectedIndex = selectedAssets.findIndex((candidate) => candidate.key === asset.key);
-                                    const isSingleImageChannel = activePublicationEditChannelKey === "gmb" || activePublicationEditChannelKey === "pinterest";
+                                    const isSingleImageChannel = activePublicationEditChannelKey === "pinterest";
                                     const disabledBySingleImageLimit = isSingleImageChannel && selectedAssets.length >= 1 && !asset.selected;
                                     return {
                                       key: asset.key,
@@ -1998,9 +1998,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       disabled: disabledBySingleImageLimit,
                                       title: `Image ${index + 1}`,
                                       subtitle: disabledBySingleImageLimit
-                                        ? activePublicationEditChannelKey === "pinterest"
-                                          ? "Une seule image par épingle Pinterest"
-                                          : "Une seule photo par publication Google Business"
+                                        ? "Une seule image par épingle Pinterest"
                                         : asset.selected
                                           ? "Publiée sur ce canal"
                                           : "Non publiée sur ce canal",

@@ -1,4 +1,3 @@
-import type { MutableRefObject } from "react";
 import {
   getBoosterImageDisplayPlan,
   getBoosterImageRenderDimensions,
@@ -112,12 +111,6 @@ type PublishImagesPanelProps = {
   onPickImagesClick: () => void;
   onPickVideoClick: () => void;
   onTakePhotoClick: (preferredChannel?: ChannelKey) => void;
-  onImagesChange: (
-    files: FileList | null,
-    preferredChannel?: ChannelKey,
-  ) => void;
-  gmbFileInputRef: MutableRefObject<HTMLInputElement | null>;
-  setImgError: (message: string) => void;
   toggleChannelImage: (channel: ChannelKey, imageKey: string) => void;
   openImageEditor: (channel: ChannelKey, imageKey: string) => void;
   resetChannelImage: (channel: ChannelKey, imageKey: string) => void;
@@ -163,9 +156,6 @@ export default function PublishImagesPanel({
   onPickImagesClick,
   onPickVideoClick,
   onTakePhotoClick,
-  onImagesChange,
-  gmbFileInputRef,
-  setImgError,
   toggleChannelImage,
   openImageEditor,
   resetChannelImage,
@@ -335,17 +325,6 @@ export default function PublishImagesPanel({
         conserve la source, puis prépare et compresse automatiquement une version
         adaptée à chaque canal.
       </div>
-      <input
-        ref={gmbFileInputRef}
-        type="file"
-        accept={BOOSTER_IMAGE_ACCEPT}
-        multiple
-        style={{ display: "none" }}
-        onChange={(e) => {
-          onImagesChange(e.target.files, "gmb");
-          e.currentTarget.value = "";
-        }}
-      />
       <div
         style={{
           display: "flex",
@@ -633,102 +612,6 @@ export default function PublishImagesPanel({
             </div>
           ) : (
             <>
-              {activeImageChannel === "gmb" ? (
-                <div
-                  style={{
-                    marginBottom: 12,
-                    borderRadius: 14,
-                    padding: "12px 14px",
-                    border: "1px solid rgba(251,191,36,0.26)",
-                    background: "rgba(251,191,36,0.10)",
-                    display: "grid",
-                    gap: 10,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                      color: "#fde68a",
-                    }}
-                  >
-                    <strong>Google Business : 1 seule photo par publication.</strong>{" "}
-                    Les autres images restent disponibles sur les autres canaux.
-                  </div>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className={styles.secondaryBtn}
-                      onClick={() => {
-                        setImgError("");
-                        if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
-                        gmbFileInputRef.current?.click();
-                      }}
-                      disabled={images.length >= BOOSTER_MAX_IMAGE_COUNT}
-                      title={
-                        images.length >= BOOSTER_MAX_IMAGE_COUNT
-                          ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-                          : undefined
-                      }
-                      style={{
-                        opacity: images.length >= BOOSTER_MAX_IMAGE_COUNT ? 0.48 : 1,
-                        filter:
-                          images.length >= BOOSTER_MAX_IMAGE_COUNT
-                            ? "grayscale(1)"
-                            : undefined,
-                        cursor:
-                          images.length >= BOOSTER_MAX_IMAGE_COUNT
-                            ? "not-allowed"
-                            : "pointer",
-                      }}
-                    >
-                      + Ajouter une image spécifique Google Business
-                    </button>
-                    <span
-                      title={
-                        isMobile
-                          ? images.length >= BOOSTER_MAX_IMAGE_COUNT
-                            ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-                            : "Ouvrir l’Appareil iNrCy pour Google Business"
-                          : "Utilisable en version mobile"
-                      }
-                      style={{ display: "inline-flex" }}
-                    >
-                      <button
-                        type="button"
-                        className={styles.secondaryBtn}
-                        onClick={
-                          isMobile
-                            ? () => {
-                                setImgError("");
-                                if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
-                                onTakePhotoClick("gmb");
-                              }
-                            : undefined
-                        }
-                        disabled={!isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT}
-                        aria-disabled={!isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT}
-                        style={{
-                          opacity:
-                            !isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT
-                              ? 0.48
-                              : 1,
-                          filter:
-                            !isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT
-                              ? "grayscale(1)"
-                              : undefined,
-                          cursor:
-                            !isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT
-                              ? "not-allowed"
-                              : "pointer",
-                        }}
-                      >
-                        📷 Appareil iNrCy Google Business
-                      </button>
-                    </span>
-                  </div>
-                </div>
-              ) : null}
               <ChannelImageAdapterCardsPanel
                 tabs={imageAdapterTabs}
                 activeChannel={activeImageChannel}
@@ -745,10 +628,6 @@ export default function PublishImagesPanel({
                   const usedChannelCount = selectedChannels.filter((channel) =>
                     (channelImageEditors[channel]?.imageKeys || []).includes(key),
                   ).length;
-                  const disabledByGoogleBusinessLimit =
-                    activeImageChannel === "gmb" &&
-                    selectedKeysForActiveChannel.length >= 1 &&
-                    !included;
                   const automaticTransform = getOptimizedTransform(
                     activeImageChannel,
                     imageMetaByKey[key],
@@ -828,13 +707,11 @@ export default function PublishImagesPanel({
                     key,
                     previewUrl: previewByKey[key],
                     included,
-                    disabled: disabledByGoogleBusinessLimit,
+                    disabled: false,
                     title: `Image ${index + 1}`,
-                    subtitle: disabledByGoogleBusinessLimit
-                      ? "Une seule photo par publication Google Business"
-                      : included
-                        ? `Publiée sur ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`
-                        : `Retirée de ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`,
+                    subtitle: included
+                      ? `Publiée sur ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`
+                      : `Retirée de ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`,
                     fitLabel: decision.label,
                     previewAspectRatio,
                     backgroundMode: bgMode,

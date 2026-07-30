@@ -76,6 +76,7 @@ const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 const CHANNEL_REFRESH_DEDUP_MS = 30_000;
 const GENERATOR_POWER_SETTLE_MS = 700;
 const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
+const GENERATOR_POWER_SNAPSHOT_CACHE_KEY = "inrcy_generator_power_snapshot_v1";
 const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
 const SITE_BUBBLE_PROGRESS_CACHE_KEY = "inrcy_site_bubble_progress_v1";
 const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
@@ -91,6 +92,12 @@ function getRuntimeInrSearchOrigin() {
 
 type SiteBubbleProgress = { status: ModuleStatus; text: string };
 type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
+type GeneratorPowerSnapshot = {
+  power: number;
+  completedStepKeys: string[];
+  nextStepKey: string | null;
+  remainingSteps: number;
+};
 type ChannelRefreshOptions = { force?: boolean; dedupeMs?: number };
 type ChannelStatsRefreshResult = { preferredBlock: InrstatsChannelBlock | null; syncAt: number };
 type GeneratorChannelRefreshResult = { block: unknown | null; syncAt: number };
@@ -233,6 +240,44 @@ function readCachedGeneratorPowerPercent(): number | null {
     return Math.max(0, Math.min(100, Math.round(value)));
   } catch {
     return null;
+  }
+}
+
+function sanitizeGeneratorPowerSnapshot(value: unknown): GeneratorPowerSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const power = Number(source.power);
+  const remainingSteps = Number(source.remainingSteps);
+  if (!Number.isFinite(power) || !Number.isFinite(remainingSteps)) return null;
+
+  return {
+    power: Math.max(0, Math.min(100, Math.round(power))),
+    completedStepKeys: Array.isArray(source.completedStepKeys)
+      ? source.completedStepKeys.map((key) => String(key || "").trim()).filter(Boolean)
+      : [],
+    nextStepKey:
+      typeof source.nextStepKey === "string" && source.nextStepKey.trim()
+        ? source.nextStepKey.trim()
+        : null,
+    remainingSteps: Math.max(0, Math.round(remainingSteps)),
+  };
+}
+
+function readCachedGeneratorPowerSnapshot(): GeneratorPowerSnapshot | null {
+  try {
+    const raw = readUiCacheValue(GENERATOR_POWER_SNAPSHOT_CACHE_KEY);
+    if (!raw) return null;
+    return sanitizeGeneratorPowerSnapshot(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedGeneratorPowerSnapshot(snapshot: GeneratorPowerSnapshot) {
+  try {
+    writeUiCacheValue(GENERATOR_POWER_SNAPSHOT_CACHE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // ignore browser storage failures
   }
 }
 
@@ -415,7 +460,12 @@ export default function DashboardClient({
     () => readCachedDashboardOptionalBoolean("inrBadgeProfileReady"),
   );
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
-  const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
+  const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(
+    () => readCachedGeneratorPowerPercent() ?? readCachedGeneratorPowerSnapshot()?.power ?? null,
+  );
+  const [displayedGeneratorPowerSnapshot, setDisplayedGeneratorPowerSnapshot] = useState<GeneratorPowerSnapshot | null>(
+    () => readCachedGeneratorPowerSnapshot(),
+  );
   const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
   const [displayedSiteBubbleProgress, setDisplayedSiteBubbleProgress] = useState<SiteBubbleProgressCache>(() => readCachedSiteBubbleProgress());
   const router = useRouter();
@@ -1618,6 +1668,11 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       applyDashboardChannelState(readCachedDashboardChannelState());
       const cachedPower = readCachedGeneratorPowerPercent();
       if (cachedPower !== null) setDisplayedGeneratorPower(cachedPower);
+      const cachedPowerSnapshot = readCachedGeneratorPowerSnapshot();
+      setDisplayedGeneratorPowerSnapshot(cachedPowerSnapshot);
+      if (cachedPower === null && cachedPowerSnapshot) {
+        setDisplayedGeneratorPower(cachedPowerSnapshot.power);
+      }
       const cachedGeneratorActive = readCachedGeneratorIsActive();
       if (cachedGeneratorActive !== null) setDisplayedGeneratorIsActive(cachedGeneratorActive);
       setDisplayedSiteBubbleProgress(readCachedSiteBubbleProgress());
@@ -2119,8 +2174,43 @@ const generatorPower = displayedGeneratorPower ?? 0;
 const generatorPowerIsSettling = generatorPowerReady && generatorPower !== computedGeneratorPower;
 const computedNextGeneratorPowerStep = generatorPowerSteps.find((step) => !step.completed) ?? null;
 const computedRemainingGeneratorPowerSteps = generatorPowerSteps.filter((step) => !step.completed).length;
-const nextGeneratorPowerStep = generatorPowerIsSettling && generatorPower >= 100 ? null : computedNextGeneratorPowerStep;
-const remainingGeneratorPowerSteps = generatorPowerIsSettling && generatorPower >= 100 ? 0 : computedRemainingGeneratorPowerSteps;
+const computedGeneratorPowerSnapshot: GeneratorPowerSnapshot = {
+  power: computedGeneratorPower,
+  completedStepKeys: generatorPowerSteps.filter((step) => step.completed).map((step) => step.key),
+  nextStepKey: computedNextGeneratorPowerStep?.key ?? null,
+  remainingSteps: computedRemainingGeneratorPowerSteps,
+};
+const computedGeneratorPowerSnapshotSignature = JSON.stringify(computedGeneratorPowerSnapshot);
+const displayedGeneratorPowerSnapshotSignature = displayedGeneratorPowerSnapshot
+  ? JSON.stringify(displayedGeneratorPowerSnapshot)
+  : "";
+const confirmedGeneratorPowerSnapshot = displayedGeneratorPowerSnapshot?.power === generatorPower
+  ? displayedGeneratorPowerSnapshot
+  : null;
+const shouldUseConfirmedGeneratorPowerDetails = !generatorPowerReady || generatorPowerIsSettling;
+const displayedGeneratorPowerSteps = shouldUseConfirmedGeneratorPowerDetails
+  ? generatorPowerSteps.map((step) => ({
+      ...step,
+      completed: generatorPower >= 100
+        ? true
+        : confirmedGeneratorPowerSnapshot
+          ? confirmedGeneratorPowerSnapshot.completedStepKeys.includes(step.key)
+          : step.completed,
+    }))
+  : generatorPowerSteps;
+const confirmedNextGeneratorPowerStep = confirmedGeneratorPowerSnapshot?.nextStepKey
+  ? generatorPowerSteps.find((step) => step.key === confirmedGeneratorPowerSnapshot.nextStepKey) ?? null
+  : null;
+const nextGeneratorPowerStep = shouldUseConfirmedGeneratorPowerDetails
+  ? generatorPower >= 100
+    ? null
+    : confirmedNextGeneratorPowerStep ?? computedNextGeneratorPowerStep
+  : computedNextGeneratorPowerStep;
+const remainingGeneratorPowerSteps = shouldUseConfirmedGeneratorPowerDetails
+  ? generatorPower >= 100
+    ? 0
+    : confirmedGeneratorPowerSnapshot?.remainingSteps ?? computedRemainingGeneratorPowerSteps
+  : computedRemainingGeneratorPowerSteps;
 
 useEffect(() => {
   if (!generatorPowerReady || displayedGeneratorPower === computedGeneratorPower) return;
@@ -2136,6 +2226,23 @@ useEffect(() => {
 
   return () => window.clearTimeout(settleTimer);
 }, [computedGeneratorPower, displayedGeneratorPower, generatorPowerReady]);
+
+useEffect(() => {
+  if (!generatorPowerReady || generatorPowerIsSettling) return;
+  if (displayedGeneratorPowerSnapshotSignature === computedGeneratorPowerSnapshotSignature) return;
+
+  const nextSnapshot = sanitizeGeneratorPowerSnapshot(
+    JSON.parse(computedGeneratorPowerSnapshotSignature),
+  );
+  if (!nextSnapshot) return;
+  setDisplayedGeneratorPowerSnapshot(nextSnapshot);
+  writeCachedGeneratorPowerSnapshot(nextSnapshot);
+}, [
+  computedGeneratorPowerSnapshotSignature,
+  displayedGeneratorPowerSnapshotSignature,
+  generatorPowerIsSettling,
+  generatorPowerReady,
+]);
 
 const applyGeneratorCacheToState = useCallback(() => {
     const mergedPayload = readGeneratorCache()?.payload;
@@ -3809,7 +3916,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       <DashboardHero
         generatorPower={generatorPower}
-        generatorPowerSteps={generatorPowerSteps}
+        generatorPowerSteps={displayedGeneratorPowerSteps}
         remainingGeneratorPowerSteps={remainingGeneratorPowerSteps}
         nextGeneratorPowerStep={nextGeneratorPowerStep}
         onOpenGeneratorHelp={() => setHelpGeneratorOpen(true)}
@@ -3842,8 +3949,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       <DashboardBoosterModalLayer
         mode={requiredSetupAccessAllowed ? dashboardBoosterModal : null}
         initialConnectedChannels={{
-          inrcy_site: Boolean(canAccessSiteInrcy && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
-          site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl) && (siteWebGa4Connected || siteWebGscConnected)),
+          inrcy_site: Boolean(canAccessSiteInrcy && normalizeSiteUrl(siteInrcySavedUrl)),
+          site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl)),
           inr_search: Boolean(canAccessInrSearch && inrSearchConnected),
           gmb: Boolean(gmbAccountConnected && gmbConfigured && gmbConnectionStatus !== "needs_update"),
           facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),

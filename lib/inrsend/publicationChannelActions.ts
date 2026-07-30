@@ -1084,7 +1084,7 @@ async function replaceChannelDelivery(params: {
   const siteCardImageUrls = resolvedImageSet.siteCardPublishableUrls.length ? resolvedImageSet.siteCardPublishableUrls : socialFeedImageUrls;
   const gmbImageUrls = (resolvedImageSet.gmbPublishableUrls.length ? resolvedImageSet.gmbPublishableUrls : socialFeedImageUrls)
     .filter(Boolean)
-    .slice(0, 1);
+    .slice(0, 5);
 
   const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
     supabaseAdmin.from("profiles").select("phone").eq("user_id", userId).maybeSingle(),

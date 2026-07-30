@@ -1910,8 +1910,7 @@ async function publishNowHandler(req: Request) {
       const rawChannelImages = Array.isArray(imagesByChannel?.[channel])
         ? (imagesByChannel[channel] as ImagePayload[])
         : [];
-      const channelImagesToUpload =
-        channel === "gmb" ? rawChannelImages.slice(0, 1) : rawChannelImages;
+      const channelImagesToUpload = rawChannelImages.slice(0, 5);
       if (!channelImagesToUpload.length) continue;
       const { imageSet, uploadErrors: channelErrors } = await uploadImageSet(
         userId,
@@ -2178,7 +2177,7 @@ async function publishNowHandler(req: Request) {
       const raw = Array.isArray(imagesByChannel?.[channel])
         ? (imagesByChannel[channel] as ImagePayload[])
         : [];
-      const limited = channel === "gmb" ? raw.slice(0, 1) : raw.slice(0, 5);
+      const limited = raw.slice(0, 5);
       return limited.length;
     };
 
@@ -3665,7 +3664,7 @@ async function publishNowHandler(req: Request) {
                     "images",
                   ],
                   legacyFallback: gmbImageUrls,
-                  limit: 1,
+                  limit: 5,
                 })
               : [];
           if (

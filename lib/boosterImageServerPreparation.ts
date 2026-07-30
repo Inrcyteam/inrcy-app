@@ -665,7 +665,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
       ? requestedSettings.imageKeys.map((key) => byKey.get(key)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
       : valid;
     const completeOrder = ordered.length === valid.length ? ordered : valid;
-    const channelSources = channel === "gmb" ? completeOrder.slice(0, 1) : completeOrder;
+    const channelSources = channel === "gmb" ? completeOrder.slice(0, 5) : completeOrder;
     const firstImageKey = channelSources[0]?.imageKey || "";
     const firstCustomized = requestedSettings.customizedImageKeys.includes(firstImageKey);
     const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({

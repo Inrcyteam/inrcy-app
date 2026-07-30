@@ -123,7 +123,7 @@ function blockedAccountApiResponse(subscription?: SubscriptionGateRow | null): N
       code: "ACCOUNT_BLOCKED",
       status: getEffectiveSubscriptionStatus(subscription),
       redirectTo: "/compte-bloque",
-      message: "Compte bloquÃ© : contactez iNrCy pour rÃ©activer votre gÃ©nÃ©rateur.",
+      message: "Compte bloqué : contactez iNrCy pour réactiver votre générateur.",
     },
     { status: 403 }
   );
@@ -475,7 +475,7 @@ export async function proxy(req: NextRequest) {
       res.headers.set("cache-control", "no-store");
       res.headers.set("x-robots-tag", "noindex, nofollow");
     } else if (isDocumentRequest && isInrSearchCompanyDocument) {
-      // A newly provisioned iNrâ€™Search page must never inherit a cached 404.
+      // A newly provisioned iNr’Search page must never inherit a cached 404.
       res.headers.set("cache-control", "no-store, max-age=0");
       res.headers.delete("pragma");
       res.headers.delete("expires");
@@ -506,8 +506,8 @@ export async function proxy(req: NextRequest) {
     return applyResponseHeaders(NextResponse.redirect(loginUrl));
   }
 
-  // Lâ€™annuaire public est hÃ©bergÃ© sur inrcy.com. Les routes de classement
-  // de lâ€™application restent internes et ne doivent pas devenir une seconde
+  // L’annuaire public est hébergé sur inrcy.com. Les routes de classement
+  // de l’application restent internes et ne doivent pas devenir une seconde
   // interface publique concurrente.
   if (
     pathname === "/entreprises"

@@ -6,11 +6,8 @@ type PublishModalStyles = Readonly<Record<string, string>>;
 type PublishWarningModalsProps = {
   styles: PublishModalStyles;
   emptyContentChannel: ChannelKey | null;
-  gmbNoImageWarningOpen: boolean;
   onCloseEmptyContentWarnings: () => void;
   onValidateEmptyContentWarning: () => void;
-  onChooseGmbImage: () => void;
-  onContinueWithoutGmbImage: () => void;
 };
 
 function WarningShell({
@@ -58,11 +55,8 @@ function WarningShell({
 export default function PublishWarningModals({
   styles,
   emptyContentChannel,
-  gmbNoImageWarningOpen,
   onCloseEmptyContentWarnings,
   onValidateEmptyContentWarning,
-  onChooseGmbImage,
-  onContinueWithoutGmbImage,
 }: PublishWarningModalsProps) {
   if (emptyContentChannel) {
     return (
@@ -113,50 +107,5 @@ export default function PublishWarningModals({
     );
   }
 
-  if (!gmbNoImageWarningOpen) return null;
-
-  return (
-    <WarningShell styles={styles}>
-      <div style={{ fontSize: 22 }}>📷</div>
-      <div style={{ display: "grid", gap: 8 }}>
-        <div className={styles.blockTitle} style={{ marginBottom: 0 }}>
-          Aucune photo Google Business
-        </div>
-        <div
-          style={{
-            fontSize: 14,
-            lineHeight: 1.6,
-            color: "rgba(255,255,255,0.82)",
-          }}
-        >
-          Aucune photo n’est sélectionnée pour{" "}
-          <strong>Google Business</strong>. Le post sera publié en texte
-          seul. Souhaitez-vous continuer ?
-        </div>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          type="button"
-          className={styles.secondaryBtn}
-          onClick={onChooseGmbImage}
-        >
-          Retour / choisir une photo
-        </button>
-        <button
-          type="button"
-          className={styles.primaryBtn}
-          onClick={onContinueWithoutGmbImage}
-        >
-          Continuer sans photo
-        </button>
-      </div>
-    </WarningShell>
-  );
+  return null;
 }

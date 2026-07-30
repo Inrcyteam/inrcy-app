@@ -787,7 +787,6 @@ export default function PublishModal({
   const [emptyContentWarningChannels, setEmptyContentWarningChannels] =
     useState<ChannelKey[]>([]);
   const [emptyContentWarningIndex, setEmptyContentWarningIndex] = useState(0);
-  const [gmbNoImageWarningOpen, setGmbNoImageWarningOpen] = useState(false);
   const [finalReviewOpen, setFinalReviewOpen] = useState(false);
   const [finalReviewPosts, setFinalReviewPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
@@ -848,7 +847,6 @@ export default function PublishModal({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
-  const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [cameraCaptureTargetChannel, setCameraCaptureTargetChannel] =
     useState<ChannelKey | null>(null);
@@ -960,18 +958,42 @@ export default function PublishModal({
   const [channelInfoOpen, setChannelInfoOpen] = useState<ChannelKey | null>(
     null,
   );
-  const [didInitChannels, setDidInitChannels] = useState(
-    () => !!initialConnectedChannels,
-  );
   const lastInitialConnectedChannelsRef = useRef<Record<ChannelKey, boolean> | null>(
     null,
   );
+  const manuallyControlledChannelsRef = useRef<Set<ChannelKey>>(new Set());
+  const draftChannelsRestoredRef = useRef(false);
   const [ctaDefaults, setCtaDefaults] = useState<BoosterCtaDefaults | null>(
     null,
   );
   const preferredCtaDefaultsAppliedRef = useRef(false);
-  const didAutoSelectConnectedTikTokRef = useRef(false);
-  const didAutoSelectConnectedYoutubeShortsRef = useRef(false);
+
+  const applyConnectedChannels = useCallback(
+    (nextConnected: Record<ChannelKey, boolean>) => {
+      setConnected(nextConnected);
+      setChannels((previousSelection) =>
+        CHANNEL_KEYS.reduce(
+          (nextSelection, key) => {
+            if (!nextConnected[key]) {
+              nextSelection[key] = false;
+            } else if (
+              !draftChannelsRestoredRef.current &&
+              !manuallyControlledChannelsRef.current.has(key)
+            ) {
+              // À l'ouverture, tout canal connecté est sélectionné par défaut.
+              // Une action explicite du pro ou un brouillon restauré reste prioritaire.
+              nextSelection[key] = true;
+            } else {
+              nextSelection[key] = Boolean(previousSelection[key]);
+            }
+            return nextSelection;
+          },
+          {} as Record<ChannelKey, boolean>,
+        ),
+      );
+    },
+    [],
+  );
 
   const clearGenerationTimers = () => {
     generationTimersRef.current.forEach((timerId) =>
@@ -1028,31 +1050,17 @@ export default function PublishModal({
         const json = await res.json();
         if (!alive) return;
         if (json?.channels) {
-          const nextConnected = { ...connected, ...json.channels } as Record<
-            ChannelKey,
-            boolean
-          >;
-          setConnected(nextConnected);
+          const nextConnected = CHANNEL_KEYS.reduce(
+            (result, key) => {
+              result[key] = Boolean(json.channels[key]);
+              return result;
+            },
+            {} as Record<ChannelKey, boolean>,
+          );
+          applyConnectedChannels(nextConnected);
           if (json?.channelDetails) {
             setChannelDetails((prev) => ({ ...prev, ...json.channelDetails }));
           }
-          setChannels((prev) =>
-            didInitChannels
-              ? prev
-              : ({
-                  inrcy_site: !!nextConnected.inrcy_site,
-                  site_web: !!nextConnected.site_web,
-                  gmb: !!nextConnected.gmb,
-                  inr_search: !!nextConnected.inr_search,
-                  facebook: !!nextConnected.facebook,
-                  instagram: !!nextConnected.instagram,
-                  linkedin: !!nextConnected.linkedin,
-                  tiktok: !!nextConnected.tiktok,
-                  youtube_shorts: !!nextConnected.youtube_shorts,
-                  pinterest: !!nextConnected.pinterest,
-                } as Record<ChannelKey, boolean>),
-          );
-          if (!didInitChannels) setDidInitChannels(true);
         }
       } catch {
         // ignore
@@ -1061,7 +1069,7 @@ export default function PublishModal({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [applyConnectedChannels]);
 
   useEffect(() => {
     if (!initialConnectedChannels) return;
@@ -1084,6 +1092,20 @@ export default function PublishModal({
         next[key] = nextConnected[key];
       });
       return next;
+    });
+    setChannels((previousSelection) => {
+      const nextSelection = { ...previousSelection };
+      changedKeys.forEach((key) => {
+        if (!nextConnected[key]) {
+          nextSelection[key] = false;
+        } else if (
+          !draftChannelsRestoredRef.current &&
+          !manuallyControlledChannelsRef.current.has(key)
+        ) {
+          nextSelection[key] = true;
+        }
+      });
+      return nextSelection;
     });
   }, [initialConnectedChannels]);
 
@@ -1174,34 +1196,6 @@ export default function PublishModal({
     },
     [pinterestBoards],
   );
-
-  useEffect(() => {
-    if (!connected.tiktok) {
-      didAutoSelectConnectedTikTokRef.current = false;
-      return;
-    }
-    if (didAutoSelectConnectedTikTokRef.current) return;
-    didAutoSelectConnectedTikTokRef.current = true;
-    setChannels((prev) =>
-      prev.tiktok
-        ? prev
-        : ({ ...prev, tiktok: true } as Record<ChannelKey, boolean>),
-    );
-  }, [connected.tiktok]);
-
-  useEffect(() => {
-    if (!connected.youtube_shorts) {
-      didAutoSelectConnectedYoutubeShortsRef.current = false;
-      return;
-    }
-    if (didAutoSelectConnectedYoutubeShortsRef.current) return;
-    didAutoSelectConnectedYoutubeShortsRef.current = true;
-    setChannels((prev) =>
-      prev.youtube_shorts
-        ? prev
-        : ({ ...prev, youtube_shorts: true } as Record<ChannelKey, boolean>),
-    );
-  }, [connected.youtube_shorts]);
 
   useEffect(() => {
     if (!channelInfoOpen) return;
@@ -2761,6 +2755,7 @@ export default function PublishModal({
         setPublicationInstruction(nextPublicationInstruction);
         setTheme(nextTheme);
         setContentStyle(nextContentStyle);
+        draftChannelsRestoredRef.current = true;
         setChannels(nextChannels);
         setPostsByChannel(nextPostsByChannel);
         setInstagramHashtagsInput(nextInstagramHashtags);
@@ -2908,10 +2903,12 @@ export default function PublishModal({
 
   const toggle = (key: ChannelKey) => {
     if (!connected[key]) return;
+    manuallyControlledChannelsRef.current.add(key);
     setChannels((s) => ({ ...s, [key]: !s[key] }));
   };
 
   const setAllChannelsSelected = (selected: boolean) => {
+    CHANNEL_KEYS.forEach((key) => manuallyControlledChannelsRef.current.add(key));
     setChannels((prev) =>
       CHANNEL_KEYS.reduce(
         (acc, key) => ({
@@ -3930,10 +3927,6 @@ export default function PublishModal({
     setEmptyContentWarningIndex(0);
   };
 
-  const closeGmbNoImageWarning = () => {
-    setGmbNoImageWarningOpen(false);
-  };
-
   const applyPreferredCtaPrefill = (
     displayKey: DisplayKey,
     choice: BoosterPreferredCta,
@@ -3970,7 +3963,6 @@ export default function PublishModal({
 
   const runPublish = async (options?: {
     skipEmptyContentWarnings?: boolean;
-    skipGmbNoImageWarning?: boolean;
     preparedPostsByChannel?: Partial<Record<ChannelKey, ChannelPost>>;
     tiktokPublicationSettings?: TiktokPublicationSettings | null;
     channels?: ChannelKey[];
@@ -4050,22 +4042,7 @@ export default function PublishModal({
       return;
     }
 
-    const gmbImages = channelImageEditors.gmb?.imageKeys || [];
-    if (
-      publishMediaModeByChannel.gmb === "images" &&
-      publishableChannels.includes("gmb") &&
-      !gmbImages.length &&
-      !options?.skipGmbNoImageWarning
-    ) {
-      closeEmptyContentWarnings();
-      setPostsByChannel(preparedPostsByChannel);
-      setPendingPublishPosts(preparedPostsByChannel);
-      setGmbNoImageWarningOpen(true);
-      return;
-    }
-
     closeEmptyContentWarnings();
-    setGmbNoImageWarningOpen(false);
     setPendingPublishPosts(null);
     setPostsByChannel(preparedPostsByChannel);
 
@@ -5002,7 +4979,6 @@ export default function PublishModal({
     if (!request.immediateChannels.length) return;
     void runPublish({
       skipEmptyContentWarnings: true,
-      skipGmbNoImageWarning: true,
       preparedPostsByChannel: request.preparedPostsByChannel,
       tiktokPublicationSettings: request.tiktokSettingsForSchedule,
       channels: request.immediateChannels,
@@ -5062,7 +5038,6 @@ export default function PublishModal({
     }
 
     closeEmptyContentWarnings();
-    closeGmbNoImageWarning();
     setPostsByChannel(preparedPostsByChannel);
     setPendingPublishPosts(preparedPostsByChannel);
     setFinalReviewPosts(preparedPostsByChannel);
@@ -5101,24 +5076,6 @@ export default function PublishModal({
     });
   };
 
-  const onContinueWithoutGmbImage = async () => {
-    const preparedPostsByChannel =
-      pendingPublishPosts || buildPreparedPostsByChannel();
-    closeGmbNoImageWarning();
-    await runPublish({
-      skipEmptyContentWarnings: true,
-      skipGmbNoImageWarning: true,
-      preparedPostsByChannel,
-    });
-  };
-
-  const onChooseGmbImage = () => {
-    closeGmbNoImageWarning();
-    setActiveCard("gmb");
-    setActiveImageChannel("gmb");
-    setPendingPublishPosts(null);
-  };
-
   const getReviewPostForChannel = (
     channel: ChannelKey,
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>,
@@ -5132,7 +5089,6 @@ export default function PublishModal({
   ) => {
     return channelsToReview.map((channel) => {
       const post = getReviewPostForChannel(channel, preparedPostsByChannel);
-      const rawImageKeys = channelImageEditors[channel]?.imageKeys || [];
       const imageKeysToPublish = getPublishImageKeysForChannel(channel);
       const hasTitle = !!String(post?.title || "").trim();
       const hasContent = !!String(post?.content || "").trim();
@@ -5151,7 +5107,6 @@ export default function PublishModal({
         videoFileName: videoFile?.name || null,
         hasImage,
         imageCount: imageKeysToPublish.length,
-        rawImageCount: rawImageKeys.length,
         hasText,
         hasTitle,
         hasContent,
@@ -5360,7 +5315,6 @@ export default function PublishModal({
     setTiktokPublicationSettings(null);
     await runPublish({
       skipEmptyContentWarnings: true,
-      skipGmbNoImageWarning: true,
       preparedPostsByChannel,
       tiktokPublicationSettings: validatedTiktokSettings,
     });
@@ -5481,11 +5435,8 @@ export default function PublishModal({
       <PublishWarningModals
         styles={styles}
         emptyContentChannel={currentEmptyContentWarningChannel}
-        gmbNoImageWarningOpen={gmbNoImageWarningOpen}
         onCloseEmptyContentWarnings={closeEmptyContentWarnings}
         onValidateEmptyContentWarning={onValidateEmptyContentWarning}
-        onChooseGmbImage={onChooseGmbImage}
-        onContinueWithoutGmbImage={onContinueWithoutGmbImage}
       />
 
       <InrcyCameraCaptureModal
@@ -5634,9 +5585,6 @@ export default function PublishModal({
               onPickImagesClick={onPickImagesClick}
               onPickVideoClick={onPickVideoClick}
               onTakePhotoClick={onTakePhotoClick}
-              onImagesChange={onImagesChange}
-              gmbFileInputRef={gmbFileInputRef}
-              setImgError={setImgError}
               toggleChannelImage={toggleChannelImage}
               openImageEditor={openImageEditor}
               resetChannelImage={resetChannelImage}
