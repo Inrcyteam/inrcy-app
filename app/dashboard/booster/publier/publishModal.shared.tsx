@@ -2,19 +2,11 @@ import type { CSSProperties } from "react";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import { getBoosterImageDisplayPlan } from "@/lib/boosterImageDecision";
 import {
-  INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS,
-  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
-  INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS,
-  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
-  INR_MEDIA_IMAGE_FORMATS_LABEL,
-  INR_MEDIA_IMAGE_LIMITS_LABEL,
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_IMAGE_MAX_MB_LABEL,
   INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES,
   INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL,
   INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
-  INR_MEDIA_VIDEO_FORMATS_LABEL,
-  INR_MEDIA_VIDEO_LIMITS_LABEL,
   INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
@@ -543,16 +535,7 @@ export function getUnavailableMediaModeMessage(
 }
 
 export const BOOSTER_MAX_IMAGE_COUNT = INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT;
-export const BOOSTER_IMAGE_ACCEPT = [
-  ...INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
-  ...INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS.map((extension) => `.${extension}`),
-].join(",");
-export const BOOSTER_VIDEO_ACCEPT = [
-  ...INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
-  ...INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.map((extension) => `.${extension}`),
-].join(",");
-export const BOOSTER_IMAGE_FORMATS_LABEL = INR_MEDIA_IMAGE_FORMATS_LABEL;
-export const BOOSTER_VIDEO_FORMATS_LABEL = INR_MEDIA_VIDEO_FORMATS_LABEL;
+export const BOOSTER_IMAGE_ACCEPT = "image/*,image/heic,image/heif,.heic,.heif";
 export const BOOSTER_MAX_MEDIA_BYTES =
   INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES;
 export const BOOSTER_MAX_MEDIA_MB_LABEL =
@@ -567,28 +550,6 @@ export const BOOSTER_MAX_VIDEO_PUBLISH_BYTES =
 export const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL =
   INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL;
 export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
-export const BOOSTER_IMAGE_LIMITS_LABEL = INR_MEDIA_IMAGE_LIMITS_LABEL;
-export const BOOSTER_VIDEO_LIMITS_LABEL = INR_MEDIA_VIDEO_LIMITS_LABEL;
-
-export function getBoosterSelectedMediaSummary(params: {
-  imageCount: number;
-  hasVideo: boolean;
-}) {
-  const parts: string[] = [];
-  if (params.imageCount > 0) {
-    parts.push(
-      `${params.imageCount}/${BOOSTER_MAX_IMAGE_COUNT} image${params.imageCount > 1 ? "s" : ""} · ${BOOSTER_MAX_IMAGE_MB_LABEL} par image · ${BOOSTER_MAX_MEDIA_MB_LABEL} au total`,
-    );
-  }
-  if (params.hasVideo) {
-    parts.push(
-      `1 vidéo ajoutée · ${BOOSTER_MAX_VIDEO_MB_LABEL} maximum · compression et adaptation automatiques`,
-    );
-  }
-  return parts.length
-    ? parts.join(" · ")
-    : `Aucun média ajouté · jusqu’à ${BOOSTER_MAX_IMAGE_COUNT} images (${BOOSTER_MAX_IMAGE_MB_LABEL} chacune, ${BOOSTER_MAX_MEDIA_MB_LABEL} au total) ou 1 vidéo source (${BOOSTER_MAX_VIDEO_MB_LABEL} maximum)`;
-}
 export type ChannelPublicationRequirementInput = {
   channel: ChannelKey;
   connected?: boolean;
@@ -748,7 +709,12 @@ export function getChannelPublicationRequirements({
   };
 }
 
-export const BOOSTER_ALLOWED_VIDEO_MIME_TYPES = INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES;
+export const BOOSTER_ALLOWED_VIDEO_MIME_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-m4v",
+] as const;
 
 export function normalizePublicationMediaType(
   value: unknown,
@@ -772,15 +738,8 @@ export function isHeicOrHeifImageFile(file: Pick<File, "name" | "type">) {
 }
 
 export function isBoosterImageFile(file: Pick<File, "name" | "type">) {
-  const type =
-    String(file?.type || "")
-      .toLowerCase()
-      .split(";")[0]
-      ?.trim() || "";
-  const extension = getUploadFileExtension(file);
   return (
-    INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES.includes(type as any) ||
-    INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS.includes(extension as any)
+    String(file?.type || "").startsWith("image/") || isHeicOrHeifImageFile(file)
   );
 }
 
@@ -805,7 +764,7 @@ export function unsupportedBrowserImageMessage(
   const prefix = name
     ? `L'image ${name} n'est pas lisible par le navigateur.`
     : "Cette image n'est pas lisible par le navigateur.";
-  return `${prefix} Utilisez un format compatible : ${BOOSTER_IMAGE_FORMATS_LABEL}.`;
+  return `${prefix} Utilisez une image JPG, PNG ou WebP.`;
 }
 
 export async function convertHeicOrHeifImageFile(file: File): Promise<File> {
@@ -824,7 +783,7 @@ export async function convertHeicOrHeifImageFile(file: File): Promise<File> {
     throw new Error(
       String(
         json?.error ||
-          `Impossible de convertir cette image HEIC. Utilisez un format compatible : ${BOOSTER_IMAGE_FORMATS_LABEL}.`,
+          "Impossible de convertir cette image HEIC. Utilisez une image JPG, PNG ou WebP.",
       ),
     );
   }
@@ -852,10 +811,9 @@ export function isBoosterVideoFile(file: Pick<File, "type" | "name">) {
       ?.trim() || "";
   const name = String(file?.name || "").toLowerCase();
   return (
-    BOOSTER_ALLOWED_VIDEO_MIME_TYPES.includes(type as any) ||
-    INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.some((extension) =>
-      name.endsWith(`.${extension}`),
-    )
+    BOOSTER_ALLOWED_VIDEO_MIME_TYPES.includes(
+      type as (typeof BOOSTER_ALLOWED_VIDEO_MIME_TYPES)[number],
+    ) || /\.(mp4|mov|webm|m4v)$/i.test(name)
   );
 }
 
@@ -1861,7 +1819,7 @@ export function loadHtmlImage(src: string): Promise<HTMLImageElement> {
     img.onload = () => resolve(img);
     img.onerror = () =>
       reject(
-        new Error(`Image illisible. Formats compatibles : ${BOOSTER_IMAGE_FORMATS_LABEL}.`),
+        new Error("Image illisible. Utilisez une image JPG, PNG ou WebP."),
       );
     img.src = src;
   });
@@ -2338,9 +2296,9 @@ export async function uploadPreparedImages(
       uploadBlob.type === "image/jpeg"
         ? withJpegExtension(image.name)
         : sanitizeUploadName(image.name);
-    if (uploadBlob.size > BOOSTER_MAX_IMAGE_BYTES) {
+    if (uploadBlob.size > BOOSTER_MAX_MEDIA_BYTES) {
       throw new Error(
-        `Image préparée trop lourde. Taille maximale : ${BOOSTER_MAX_IMAGE_MB_LABEL}.`,
+        `Image préparée trop lourde. Taille maximale : ${BOOSTER_MAX_MEDIA_MB_LABEL}.`,
       );
     }
     const file = new File([uploadBlob], uploadName, {

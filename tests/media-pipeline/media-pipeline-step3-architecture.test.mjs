@@ -49,12 +49,6 @@ test("les images, vidéos et la médiathèque utilisent le moteur commun avec se
   assert.match(client, /NEXT_PUBLIC_MEDIA_PIPELINE_UPLOADS_V1/);
 });
 
-
-test("les plafonds produit sont contrôlés avant l’upload direct", () => {
-  assert.match(intentRoute, /getUniversalMediaProductMaxBytes/);
-  assert.match(intentRoute, /media_product_limit_exceeded/);
-});
-
 test("les uploads de source persistants mettent à jour le registre étape 2", () => {
   assert.match(intentRoute, /workspace_source/);
   assert.match(intentRoute, /client_media_key/);

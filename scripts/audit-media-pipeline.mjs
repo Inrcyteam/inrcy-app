@@ -51,8 +51,8 @@ requirePattern(
 );
 requirePattern(
   "lib/mediaRules.ts",
-  /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES\s*=\s*300\s*\*\s*1024\s*\*\s*1024/,
-  "Limite vidéo source 300 Mo",
+  /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES\s*=\s*100\s*\*\s*1024\s*\*\s*1024/,
+  "Limite vidéo source historique 100 Mo",
 );
 requirePattern(
   "app/dashboard/booster/publier/usePublishImageController.ts",

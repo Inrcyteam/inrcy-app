@@ -124,21 +124,6 @@ function readCachedBubbleAccessMap(): AppBubbleAccessMap {
   }
 }
 
-function readCachedSiteInrcyDisplayAccess(): boolean {
-  try {
-    const raw = readUiCacheValue(BUBBLE_ACCESS_CACHE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
-
-    // Display-only continuity: this value may keep the last confirmed visual
-    // state while Supabase is being checked, but it never unlocks an action.
-    return parsed.site_inrcy === true;
-  } catch {
-    return false;
-  }
-}
-
 function writeCachedBubbleAccessMap(accessMap: AppBubbleAccessMap) {
   try {
     writeUiCacheValue(BUBBLE_ACCESS_CACHE_KEY, JSON.stringify(accessMap));
@@ -185,38 +170,16 @@ function isModuleStatus(value: unknown): value is ModuleStatus {
 function readCachedSiteBubbleProgress(): SiteBubbleProgressCache {
   try {
     const raw = readUiCacheValue(SITE_BUBBLE_PROGRESS_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
     const cache: SiteBubbleProgressCache = {};
-    if (raw) {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        for (const key of ["site_inrcy", "site_web"] as const) {
-          const entry = parsed[key] as Record<string, unknown> | undefined;
-          if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-          if (!isModuleStatus(entry.status) || typeof entry.text !== "string") continue;
-          cache[key] = { status: entry.status, text: entry.text };
-        }
-      }
-    }
-
-    // Compatibility with accounts whose detailed channel cache predates the
-    // dedicated bubble-progress snapshot. This remains account-scoped.
-    const channelState = readCachedDashboardChannelState();
-    const addFallback = (key: "site_inrcy" | "site_web", urlKey: string, ga4Key: string, gscKey: string) => {
-      if (cache[key]) return;
-      const hasUrl = typeof channelState?.[urlKey] === "string" && channelState[urlKey].trim().length > 0;
-      const progress = (hasUrl ? 1 : 0) +
-        (hasUrl && channelState?.[ga4Key] === true ? 1 : 0) +
-        (hasUrl && channelState?.[gscKey] === true ? 1 : 0);
-      cache[key] = {
-        status: hasUrl ? "connected" : "available",
-        text: `${hasUrl ? "Connecté" : "À configurer"} ${progress}/3`,
-      };
-    };
-    addFallback("site_inrcy", "siteInrcySavedUrl", "siteInrcyGa4Connected", "siteInrcyGscConnected");
-    addFallback("site_web", "siteWebSavedUrl", "siteWebGa4Connected", "siteWebGscConnected");
-
-    if (!readCachedSiteInrcyDisplayAccess()) {
-      delete cache.site_inrcy;
+    for (const key of ["site_inrcy", "site_web"] as const) {
+      const entry = parsed[key] as Record<string, unknown> | undefined;
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      if (!isModuleStatus(entry.status) || typeof entry.text !== "string") continue;
+      cache[key] = { status: entry.status, text: entry.text };
     }
     return cache;
   } catch {
@@ -400,8 +363,6 @@ export default function DashboardClient({
   const [helpFacebookOpen, setHelpFacebookOpen] = useState(false);
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
-  const [bubbleAccessReady, setBubbleAccessReady] = useState(false);
-  const [displayedSiteInrcyAccess, setDisplayedSiteInrcyAccess] = useState(() => readCachedSiteInrcyDisplayAccess());
   const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(() => readCachedMailAccountsConnectedCount() ?? 0);
   const [youtubeShortsConnected, setYoutubeShortsConnected] = useState(() => readCachedDashboardBoolean("youtubeShortsConnected"));
   const [youtubeShortsUrl, setYoutubeShortsUrl] = useState(() => readCachedDashboardString("youtubeShortsUrl"));
@@ -1494,9 +1455,7 @@ useEffect(() => {
 
 useBrowserLayoutEffect(() => {
   const cached = readCachedDashboardChannelState();
-  // Cached channel values are visual continuity only. The dashboard must not
-  // consider the server connections authoritative until loadSiteInrcy ends.
-  applyDashboardChannelState(cached);
+  applyDashboardChannelState(cached, { markReady: true });
 }, [applyDashboardChannelState]);
 
 const setPanelSuccess = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", message: string, timeout = 2200) => {
@@ -1618,10 +1577,6 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       applyDashboardChannelState(readCachedDashboardChannelState());
       const cachedPower = readCachedGeneratorPowerPercent();
       if (cachedPower !== null) setDisplayedGeneratorPower(cachedPower);
-      const cachedGeneratorActive = readCachedGeneratorIsActive();
-      if (cachedGeneratorActive !== null) setDisplayedGeneratorIsActive(cachedGeneratorActive);
-      setDisplayedSiteBubbleProgress(readCachedSiteBubbleProgress());
-      setDisplayedSiteInrcyAccess(readCachedSiteInrcyDisplayAccess());
     };
 
     const syncActiveAccountFromServer = async (authUserId: string) => {
@@ -1764,7 +1719,6 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
 const loadSiteInrcy = useCallback(async () => {
   const requestSeq = ++siteConfigRequestSeqRef.current;
   setSiteConnectionsReady(false);
-  setBubbleAccessReady(false);
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
@@ -1802,27 +1756,16 @@ const loadSiteInrcy = useCallback(async () => {
     });
   }
 
-  const bubbleAccessMapPayload =
-    bubbleAccessEnsureRes?.bubbleAccessMap &&
-    typeof bubbleAccessEnsureRes.bubbleAccessMap === "object" &&
-    !Array.isArray(bubbleAccessEnsureRes.bubbleAccessMap)
-      ? bubbleAccessEnsureRes.bubbleAccessMap as Record<string, unknown>
-      : null;
-  const hasAuthoritativeBubbleAccess = bubbleAccessMapPayload !== null;
   const nextBubbleAccessMap =
-    bubbleAccessMapPayload
-      ? buildBubbleAccessMap(Object.entries(bubbleAccessMapPayload).map(([bubble_key, enabled]) => ({
+    bubbleAccessEnsureRes?.bubbleAccessMap && typeof bubbleAccessEnsureRes.bubbleAccessMap === "object"
+      ? buildBubbleAccessMap(Object.entries(bubbleAccessEnsureRes.bubbleAccessMap).map(([bubble_key, enabled]) => ({
           bubble_key,
           enabled: Boolean(enabled),
         })))
-      : createUnverifiedBubbleAccessMap();
+      : createDefaultBubbleAccessMap();
 
   setBubbleAccessMap(nextBubbleAccessMap);
-  if (hasAuthoritativeBubbleAccess) {
-    setBubbleAccessReady(true);
-    setDisplayedSiteInrcyAccess(Boolean(nextBubbleAccessMap.site_inrcy));
-    writeCachedBubbleAccessMap(nextBubbleAccessMap);
-  }
+  writeCachedBubbleAccessMap(nextBubbleAccessMap);
 
   const profile = profileRes.data as any | null;
   const ownership = (profile?.inrcy_site_ownership ?? "none") as Ownership;
@@ -3402,24 +3345,21 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   }), [computeSiteBubbleProgress]);
 
   useEffect(() => {
-    if (!siteConnectionsReady || !bubbleAccessReady) return;
+    if (!siteConnectionsReady) return;
     setDisplayedSiteBubbleProgress(siteBubbleProgressSnapshot);
     try {
       writeUiCacheValue(SITE_BUBBLE_PROGRESS_CACHE_KEY, JSON.stringify(siteBubbleProgressSnapshot));
     } catch {
       // ignore browser storage failures
     }
-  }, [bubbleAccessReady, siteBubbleProgressSnapshot, siteConnectionsReady]);
+  }, [siteBubbleProgressSnapshot, siteConnectionsReady]);
 
   const getSiteBubbleProgress = useCallback((kind: "site_inrcy" | "site_web") => {
-    if (
-      (!siteConnectionsReady || (kind === "site_inrcy" && !bubbleAccessReady)) &&
-      displayedSiteBubbleProgress[kind]
-    ) {
+    if (!siteConnectionsReady && displayedSiteBubbleProgress[kind]) {
       return displayedSiteBubbleProgress[kind] as SiteBubbleProgress;
     }
     return siteBubbleProgressSnapshot[kind] ?? computeSiteBubbleProgress(kind);
-  }, [bubbleAccessReady, computeSiteBubbleProgress, displayedSiteBubbleProgress, siteBubbleProgressSnapshot, siteConnectionsReady]);
+  }, [computeSiteBubbleProgress, displayedSiteBubbleProgress, siteBubbleProgressSnapshot, siteConnectionsReady]);
 
   useEffect(() => {
     if (!siteConnectionsReady) return;
@@ -3529,8 +3469,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   const fluxBubbleItems = useMemo(() => buildFluxBubbleItems({
     bubbleAccessMap,
-    siteInrcyAccessReady: bubbleAccessReady,
-    siteInrcyDisplayAccess: canAccessSiteInrcy || (!bubbleAccessReady && displayedSiteInrcyAccess),
     canConfigureSite,
     canViewSite,
     channelBlocks,
@@ -3567,7 +3505,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     language: dashboardLanguage,
   }), [
     bubbleAccessMap,
-    bubbleAccessReady,
     canAccessPinterest,
     canAccessInrSearch,
     canConfigureSite,
@@ -3600,7 +3537,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     openPanel,
     savedSiteWebUrlMeta,
     siteInrcySavedUrl,
-    displayedSiteInrcyAccess,
     siteWebSavedUrl,
   ]);
 

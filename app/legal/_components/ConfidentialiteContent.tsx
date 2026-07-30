@@ -189,7 +189,7 @@ historiques de publication ;
 statuts de publication ;
 erreurs ou retours techniques des plateformes connectées.
 
-Sauf évolution de l’offre, l’application peut permettre l’ajout de 5 images maximum, dans une limite de 50 Mo par image et de 150 Mo au total pour une publication, ou 1 vidéo source jusqu’à 300 Mo, avec préparation et compression automatiques vers une version compatible avec les contraintes du canal, notamment jusqu’à 40 Mo lorsque cela est requis.
+Sauf évolution de l’offre, l’application peut permettre l’ajout de 5 images maximum, dans une limite totale de 40 Mo pour une publication, ou 1 vidéo source jusqu’à 100 Mo, avec une version de publication pouvant être optimisée jusqu’à 40 Mo selon le canal.
 
 Le professionnel reste responsable des contenus, images, vidéos, marques, textes, sons, musiques, logos, documents et éléments qu’il importe, génère, valide ou publie.
 

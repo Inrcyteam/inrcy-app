@@ -15,7 +15,3 @@ La bulle `site_inrcy` n'est accessible que si la ligne `app_bubble_access` du co
 ## Effet UI
 
 Sans activation Supabase, la bulle affiche `Désactivé` et le bouton `Configurer` reste indisponible. Une ligne explicite `enabled = true` réactive immédiatement la bulle après rechargement.
-
-## Continuité visuelle au chargement — 30 juillet 2026
-
-Le dernier état confirmé peut désormais être réaffiché pendant la vérification Supabase afin d'éviter un flash « Désactivé » et une baisse temporaire de la puissance du Générateur. Cette restauration est strictement visuelle : les actions, liens et panneaux restent verrouillés jusqu'à la réponse autoritative de `/api/bubble-access/ensure`.

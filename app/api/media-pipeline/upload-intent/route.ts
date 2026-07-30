@@ -12,8 +12,6 @@ import {
   detectUniversalUploadMediaType,
   getUniversalMediaContentType,
   getUniversalMediaHardMaxBytes,
-  getUniversalMediaProductMaxBytes,
-  getUniversalMediaProductMaxLabel,
   isUniversalMediaUploadTarget,
   sanitizeUniversalMediaFileName,
   sanitizeUniversalMediaSegment,
@@ -456,17 +454,6 @@ export async function POST(request: Request) {
     }
     if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
       return jsonError("La taille du média est invalide.", 400, "invalid_size");
-    }
-
-    const productMax = getUniversalMediaProductMaxBytes(mediaType);
-    if (sizeBytes > productMax) {
-      return jsonError(
-        mediaType === "video"
-          ? `Vidéo trop lourde. Taille maximale : ${getUniversalMediaProductMaxLabel(mediaType)}.`
-          : `Image trop lourde. Taille maximale : ${getUniversalMediaProductMaxLabel(mediaType)}.`,
-        413,
-        "media_product_limit_exceeded",
-      );
     }
 
     const hardMax = getUniversalMediaHardMaxBytes(mediaType);

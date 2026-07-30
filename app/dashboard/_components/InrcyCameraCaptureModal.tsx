@@ -1,6 +1,5 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "@/lib/mediaRules";
 
 function buildPhotoFileName() {
   const stamp = new Date()
@@ -11,7 +10,7 @@ function buildPhotoFileName() {
   return `photo-inrcy-${stamp}.jpg`;
 }
 
-const DEFAULT_MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+const DEFAULT_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
 
 function formatMegabytes(bytes: number) {
   const mb = Math.max(1, Math.round(Number(bytes || 0) / (1024 * 1024)));

@@ -14,17 +14,10 @@ import {
 import AiEngineInfoModal from "../../../_components/AiEngineInfoModal";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
-  BOOSTER_MAX_IMAGE_MB_LABEL,
-  BOOSTER_MAX_MEDIA_MB_LABEL,
-  BOOSTER_MAX_VIDEO_MB_LABEL,
   BOOSTER_IMAGE_ACCEPT,
-  BOOSTER_IMAGE_FORMATS_LABEL,
-  BOOSTER_IMAGE_LIMITS_LABEL,
+  BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
-  BOOSTER_VIDEO_ACCEPT,
-  BOOSTER_VIDEO_FORMATS_LABEL,
-  BOOSTER_VIDEO_LIMITS_LABEL,
-  getBoosterSelectedMediaSummary,
+  BOOSTER_MAX_VIDEO_MB_LABEL,
   THEME_PLACEHOLDERS,
   type ChannelKey,
   type ChannelMediaMode,
@@ -1015,13 +1008,8 @@ export default function PublishIntentPanel({
       >
         Décrivez le sujet de cette publication et ajoutez, si nécessaire, une
         consigne ponctuelle prioritaire. {" "}
-        <strong>
-          Ajoutez jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
-          {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
-          total) ou 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}.
-        </strong>{" "}
-        iNrCy prépare, compresse et adapte automatiquement les médias aux canaux
-        sélectionnés.
+        <strong>Ajoutez jusqu’à 5 images ou 1 vidéo</strong> pour préparer votre
+        publication.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
         <div
@@ -1119,7 +1107,7 @@ export default function PublishIntentPanel({
         <input
           ref={videoInputRef}
           type="file"
-          accept={BOOSTER_VIDEO_ACCEPT}
+          accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
           style={{ display: "none" }}
           onChange={(e) => {
             onVideoChange(e.target.files);
@@ -1154,7 +1142,7 @@ export default function PublishIntentPanel({
               title={
                 imagesLimitReached
                   ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-                  : `${BOOSTER_IMAGE_LIMITS_LABEL} · ${BOOSTER_IMAGE_FORMATS_LABEL}`
+                  : undefined
               }
               style={{
                 flex: "0 0 auto",
@@ -1177,7 +1165,7 @@ export default function PublishIntentPanel({
               title={
                 pickVideoDisabled
                   ? "1 vidéo maximum. Supprimez la vidéo actuelle pour la remplacer."
-                  : `${BOOSTER_VIDEO_LIMITS_LABEL} · ${BOOSTER_VIDEO_FORMATS_LABEL} · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
+                  : `1 vidéo maximum · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
               }
               style={{
                 flex: "0 0 auto",
@@ -1261,16 +1249,9 @@ export default function PublishIntentPanel({
                 overflowWrap: "anywhere",
               }}
             >
-              {getBoosterSelectedMediaSummary({
-                imageCount: images.length,
-                hasVideo: hasVideoMedia,
-              })}
-              <span style={{ opacity: 0.74 }}>
-                {hasImages ? ` · ${BOOSTER_IMAGE_FORMATS_LABEL}` : ""}
-                {hasVideoMedia
-                  ? ` · ${BOOSTER_VIDEO_FORMATS_LABEL} · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
-                  : ""}
-              </span>
+              {hasImages || hasVideoMedia
+                ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""} · ${BOOSTER_MAX_MEDIA_MB_LABEL} max au total${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}` : ""}`
+                : `Aucun média ajouté · ${BOOSTER_MAX_IMAGE_COUNT} images max (${BOOSTER_MAX_MEDIA_MB_LABEL} total) ou 1 vidéo (${BOOSTER_MAX_VIDEO_MB_LABEL} max)`}
             </div>
             <label
               title={

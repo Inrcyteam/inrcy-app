@@ -11,16 +11,10 @@ import PublishVideoAdapterPanel, {
 } from "./PublishVideoAdapterPanel";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
-  BOOSTER_MAX_IMAGE_MB_LABEL,
-  BOOSTER_MAX_MEDIA_MB_LABEL,
-  BOOSTER_MAX_VIDEO_MB_LABEL,
   BOOSTER_IMAGE_ACCEPT,
-  BOOSTER_IMAGE_FORMATS_LABEL,
-  BOOSTER_IMAGE_LIMITS_LABEL,
+  BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
-  BOOSTER_VIDEO_FORMATS_LABEL,
-  BOOSTER_VIDEO_LIMITS_LABEL,
-  getBoosterSelectedMediaSummary,
+  BOOSTER_MAX_VIDEO_MB_LABEL,
   CHANNEL_PRESETS,
   channelSupportsImages,
   channelSupportsTextOnly,
@@ -329,11 +323,8 @@ export default function PublishImagesPanel({
         className={styles.subtitle}
         style={{ marginBottom: 12, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Ajoutez jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
-        {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
-        total) ou 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}. iNrCy
-        conserve la source, puis prépare et compresse automatiquement une version
-        adaptée à chaque canal.
+        Choisissez vos images ou une vidéo. Les images restent ajustables par
+        canal. En vidéo, l’IA peut utiliser les captures et l’audio détecté.
       </div>
       <input
         ref={gmbFileInputRef}
@@ -363,7 +354,7 @@ export default function PublishImagesPanel({
           title={
             imagesLimitReached
               ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-              : `${BOOSTER_IMAGE_LIMITS_LABEL} · ${BOOSTER_IMAGE_FORMATS_LABEL}`
+              : undefined
           }
           style={{
             opacity: pickImagesDisabled ? 0.48 : 1,
@@ -381,7 +372,7 @@ export default function PublishImagesPanel({
           title={
             pickVideoDisabled
               ? "1 vidéo maximum par publication."
-              : `${BOOSTER_VIDEO_LIMITS_LABEL} · ${BOOSTER_VIDEO_FORMATS_LABEL} · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
+              : `1 vidéo maximum · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
           }
           style={{
             opacity: pickVideoDisabled ? 0.48 : 1,
@@ -425,16 +416,9 @@ export default function PublishImagesPanel({
             overflowWrap: "anywhere",
           }}
         >
-          {getBoosterSelectedMediaSummary({
-            imageCount: images.length,
-            hasVideo: hasVideoMedia,
-          })}
-          <span style={{ opacity: 0.74 }}>
-            {hasImages ? ` · ${BOOSTER_IMAGE_FORMATS_LABEL}` : ""}
-            {hasVideoMedia
-              ? ` · ${BOOSTER_VIDEO_FORMATS_LABEL} · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
-              : ""}
-          </span>
+          {hasImages || hasVideoMedia
+            ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""} · ${BOOSTER_MAX_MEDIA_MB_LABEL} max au total${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}` : ""}`
+            : `Aucun média ajouté · ${BOOSTER_MAX_IMAGE_COUNT} images max (${BOOSTER_MAX_MEDIA_MB_LABEL} total) ou 1 vidéo (${BOOSTER_MAX_VIDEO_MB_LABEL} max)`}
         </div>
       </div>
       {imgError ? (

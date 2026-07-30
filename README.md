@@ -226,9 +226,9 @@ Ne jamais lancer une migration non testée directement en production.
 
 ## Règles média actuelles
 
-- Images : jusqu’à 5 images, 50 Mo par image et 150 Mo au total.
-- Vidéo source : 1 vidéo, jusqu’à 300 Mo.
-- Publication optimisée : compression automatique, avec variante jusqu’à 40 Mo lorsque le canal l’exige.
+- Images : jusqu'à 5 images, 40 Mo total.
+- Vidéo source : 1 vidéo, jusqu'à 100 Mo.
+- Publication optimisée : jusqu'à 40 Mo.
 
 Ces règles doivent rester alignées entre :
 

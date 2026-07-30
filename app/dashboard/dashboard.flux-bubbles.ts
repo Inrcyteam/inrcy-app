@@ -11,8 +11,6 @@ import { getDashboardModuleCopy, getDashboardTranslations, translateDashboardSta
 
 type BuildFluxBubbleItemsArgs = {
   bubbleAccessMap: AppBubbleAccessMap;
-  siteInrcyAccessReady: boolean;
-  siteInrcyDisplayAccess: boolean;
   canAccessPinterest: boolean;
   canConfigureSite: boolean;
   canViewSite: boolean;
@@ -52,8 +50,6 @@ type BuildFluxBubbleItemsArgs = {
 export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardFluxBubbleData[] {
   const {
     bubbleAccessMap,
-    siteInrcyAccessReady,
-    siteInrcyDisplayAccess,
     canAccessPinterest,
     canConfigureSite,
     canViewSite,
@@ -95,9 +91,6 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
   return fluxModules.flatMap((m) => {
     const bubbleKey = normalizeAppBubbleKey(m.key);
     const accessEnabled = bubbleKey ? isBubbleEnabled(bubbleAccessMap, bubbleKey) : true;
-    const displayAccessEnabled = m.key === "site_inrcy" && !siteInrcyAccessReady
-      ? siteInrcyDisplayAccess
-      : accessEnabled;
     const channelKey = m.key as DashboardChannelKey;
     const channelBlock = channelBlocks?.[channelKey] ?? null;
     const blockDrivenStatus = getBubbleStatusFromBlock(channelKey, channelBlock as InrstatsChannelBlock);
@@ -173,7 +166,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       text: translateDashboardStatusText(resolvedBubbleProgressRaw.text, language),
     };
 
-    const { status: bubbleStatus, text: bubbleStatusText } = displayAccessEnabled
+    const { status: bubbleStatus, text: bubbleStatusText } = accessEnabled
       ? resolvedBubbleProgress
       : { status: "coming" as ModuleStatus, text: copy.status.disabled };
 

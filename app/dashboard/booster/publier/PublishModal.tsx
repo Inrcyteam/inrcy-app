@@ -48,7 +48,6 @@ import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
-  BOOSTER_VIDEO_FORMATS_LABEL,
   BOOSTER_CHANNEL_ORDER,
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
@@ -3066,7 +3065,7 @@ export default function PublishModal({
     setVideoTransformedVariants([]);
 
     if (!isBoosterVideoFile(file)) {
-      setImgError(`Ajoutez une vidéo valide : ${BOOSTER_VIDEO_FORMATS_LABEL}.`);
+      setImgError("Ajoutez une vidéo valide : MP4/M4V, MOV ou WebM.");
       return;
     }
 
@@ -3082,12 +3081,10 @@ export default function PublishModal({
       type: file.type || "video/mp4",
       lastModified: file.lastModified || Date.now(),
     });
-    if (!mediaPipelineCutoverEnabled) {
-      void getOrPrepareVideoFramesForAI(normalizedFile).catch(() => {
-        // Le parcours historique conserve son fallback en cas d’échec local.
-      });
-      void getOrPrepareVideoAudioFileForAI(normalizedFile);
-    }
+    void getOrPrepareVideoFramesForAI(normalizedFile).catch(() => {
+      // Le useEffect et la génération conserveront le fallback existant.
+    });
+    void getOrPrepareVideoAudioFileForAI(normalizedFile);
 
     let sourceMetadata: BoosterVideoSourceMetadata | null = null;
     try {

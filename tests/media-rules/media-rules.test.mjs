@@ -20,37 +20,29 @@ function expectExport(source, name, expectedPattern) {
 
 test("règles médias iNrCy centralisées", () => {
   const source = mediaRulesSource();
-  expectExport(source, "INR_MEDIA_IMAGE_MAX_BYTES", "50\\s*\\*\\s*1024\\s*\\*\\s*1024");
-  expectExport(source, "INR_MEDIA_IMAGE_MAX_MB_LABEL", '"50 Mo"');
-  expectExport(source, "INR_MEDIA_VIDEO_SOURCE_MAX_BYTES", "300\\s*\\*\\s*1024\\s*\\*\\s*1024");
-  expectExport(source, "INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL", '"300 Mo"');
+  expectExport(source, "INR_MEDIA_IMAGE_MAX_BYTES", "40\\s*\\*\\s*1024\\s*\\*\\s*1024");
+  expectExport(source, "INR_MEDIA_IMAGE_MAX_MB_LABEL", '"40 Mo"');
+  expectExport(source, "INR_MEDIA_VIDEO_SOURCE_MAX_BYTES", "100\\s*\\*\\s*1024\\s*\\*\\s*1024");
+  expectExport(source, "INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL", '"100 Mo"');
   expectExport(source, "INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES", "40\\s*\\*\\s*1024\\s*\\*\\s*1024");
   expectExport(source, "INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL", '"40 Mo"');
   expectExport(source, "INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT", "5");
   expectExport(source, "INR_MEDIA_PUBLICATION_IMAGE_COUNT_LABEL", '"5 images"');
-  expectExport(source, "INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES", "150\\s*\\*\\s*1024\\s*\\*\\s*1024");
-  expectExport(source, "INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL", '"150 Mo"');
+  expectExport(source, "INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES", "40\\s*\\*\\s*1024\\s*\\*\\s*1024");
+  expectExport(source, "INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL", '"40 Mo"');
   expectExport(source, "INR_MEDIA_AGENT_MAX_MEDIA_COUNT", "1");
   expectExport(source, "INR_MEDIA_UPLOAD_BATCH_SIZE", "10");
 });
 
 test("types MIME image / vidéo autorisés", () => {
   const source = mediaRulesSource();
-  for (const expected of [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "image/gif",
-    "image/avif",
-    "image/heic",
-    "image/heif",
-  ]) {
+  for (const expected of ["image/jpeg", "image/png", "image/webp"]) {
     assert.match(source, new RegExp(`"${expected}"`));
   }
   for (const expected of ["video/mp4", "video/webm", "video/quicktime", "video/x-m4v"]) {
     assert.match(source, new RegExp(`"${expected}"`));
   }
-  assert.doesNotMatch(source, /video\/avi/);
+  assert.doesNotMatch(source, /image\/gif|video\/avi/);
 });
 
 test("les points d’entrée média utilisent les règles partagées", () => {

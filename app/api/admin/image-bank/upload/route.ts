@@ -7,7 +7,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createSignedUploadUrlWithRetry } from "@/lib/supabaseStorageUpload";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
-  INR_MEDIA_IMAGE_FORMATS_LABEL,
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_IMAGE_MAX_MB_LABEL,
   INR_MEDIA_UPLOAD_BATCH_SIZE,
@@ -112,7 +111,7 @@ function safeFileStem(name: string) {
 function assertAllowedFile(name: string, mime: string, size: number) {
   if (!ALLOWED_TYPES.has(mime)) {
     throw new Error(
-      `${name || "Image"} : format non autorisé. Formats acceptés : ${INR_MEDIA_IMAGE_FORMATS_LABEL}.`,
+      `${name || "Image"} : format non autorisé. Utilise JPG, PNG ou WebP.`,
     );
   }
   if (!Number.isFinite(size) || size <= 0) {
