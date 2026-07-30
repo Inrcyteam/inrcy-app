@@ -33,17 +33,34 @@ test("Step 6 uses a signed TikTok photo_locked variant for the new Booster pipel
   );
 });
 
+test("Step 6 serves a compliant geometry-locked TikTok photo without re-encoding it", async () => {
+  const route = await read("app/api/media/tiktok/route.ts");
+  const functionStart = route.indexOf("async function toTikTokPhotoBuffer");
+  const functionEnd = route.indexOf("async function loadMedia", functionStart);
+  const functionBlock = route.slice(functionStart, functionEnd);
+  const directCheck = functionBlock.indexOf("sourceIsDirectlyPublishable");
+  const jpegRender = functionBlock.indexOf("renderTikTokRatioPreservingJpeg");
+
+  assert.ok(functionStart >= 0);
+  assert.ok(directCheck >= 0);
+  assert.ok(jpegRender >= 0);
+  assert.ok(directCheck < jpegRender);
+  assert.match(functionBlock, /return \{ buffer: input, mime: normalizedMime \}/);
+  assert.match(route, /isDirectTikTokPhotoPublishable/);
+});
+
 test("Step 6 never applies the legacy 9:16 safety canvas to geometry-locked TikTok photos", async () => {
   const route = await read("app/api/media/tiktok/route.ts");
-  const lockedStart = route.indexOf("if (geometryLocked)");
-  const legacyStart = route.indexOf("// Legacy safety curtain", lockedStart);
-  const lockedBlock = route.slice(lockedStart, legacyStart);
+  const functionStart = route.indexOf("async function toTikTokPhotoBuffer");
+  const functionEnd = route.indexOf("async function loadMedia", functionStart);
+  const functionBlock = route.slice(functionStart, functionEnd);
+  const lockedFailure = functionBlock.indexOf("locked_geometry_photo_prepare_failed");
+  const legacyStart = functionBlock.indexOf("// Legacy safety curtain");
+  const lockedFailureBlock = functionBlock.slice(lockedFailure, legacyStart);
 
-  assert.ok(lockedStart >= 0);
-  assert.match(lockedBlock, /sourceIsDirectlyPublishable/);
-  assert.match(route, /isDirectTikTokPhotoPublishable/);
-  assert.match(lockedBlock, /locked_geometry_photo_prepare_failed/);
-  assert.doesNotMatch(lockedBlock, /renderTikTokSafetyFrame/);
+  assert.ok(lockedFailure >= 0);
+  assert.match(lockedFailureBlock, /locked_geometry_photo_prepare_failed/);
+  assert.doesNotMatch(lockedFailureBlock, /renderTikTokSafetyFrame/);
 
   // The old curtain remains available for legacy payloads only.
   assert.match(route, /renderTikTokSafetyFrame/);

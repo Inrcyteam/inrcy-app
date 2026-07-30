@@ -110,8 +110,21 @@ async function isDirectTikTokPhotoPublishable(input: Buffer, mime: string) {
 async function toTikTokPhotoBuffer(blob: Blob, geometryLocked = false) {
   const input = Buffer.from(await blob.arrayBuffer());
 
-  // Normal path: preserve the source composition and ratio, only rotate,
-  // bound to TikTok's photo resolution ceiling and re-encode as JPEG.
+  if (geometryLocked) {
+    // The new Booster pipeline already produced the definitive TikTok image.
+    // Serve the exact stored bytes when they satisfy TikTok's photo limits so
+    // the media is not put through a second lossy Sharp/JPEG encoding pass.
+    const sourceMime = String(blob.type || "").toLowerCase();
+    const normalizedMime = sourceMime === "image/jpg" ? "image/jpeg" : sourceMime;
+    const sourceIsDirectlyPublishable =
+      await isDirectTikTokPhotoPublishable(input, normalizedMime);
+    if (sourceIsDirectlyPublishable) {
+      return { buffer: input, mime: normalizedMime };
+    }
+  }
+
+  // Legacy or non-compliant input: preserve the source composition and ratio,
+  // bound it to TikTok's photo ceiling and encode a compatible JPEG once here.
   try {
     return {
       buffer: await renderTikTokRatioPreservingJpeg(input),
@@ -119,15 +132,8 @@ async function toTikTokPhotoBuffer(blob: Blob, geometryLocked = false) {
     };
   } catch {
     if (geometryLocked) {
-      // New Booster pipeline: never replace a prepared composition by a 9:16
-      // safety canvas. A publishable JPEG/WebP can still be served as-is.
-      const sourceMime = String(blob.type || "").toLowerCase();
-      const normalizedMime = sourceMime === "image/jpg" ? "image/jpeg" : sourceMime;
-      const sourceIsDirectlyPublishable =
-        await isDirectTikTokPhotoPublishable(input, normalizedMime);
-      if (sourceIsDirectlyPublishable) {
-        return { buffer: input, mime: normalizedMime };
-      }
+      // A geometry-locked image must never be replaced by the legacy 9:16
+      // safety canvas because that would alter the user's prepared composition.
       throw new Error("locked_geometry_photo_prepare_failed");
     }
 
