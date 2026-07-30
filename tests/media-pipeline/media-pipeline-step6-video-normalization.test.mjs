@@ -49,9 +49,15 @@ test("le normaliseur produit le canonique et tous les dérivés sans recadrage",
   assert.match(source, /key:\s*"frame_02"/);
   assert.match(source, /key:\s*"frame_03"/);
   assert.match(source, /key:\s*"audio_track"/);
+  assert.match(source, /canFastPrepareCanonical/);
+  assert.match(source, /mode:\s*copyAudio \? "stream_copy" : "video_copy_audio_transcode"/);
+  assert.match(source, /runFfmpegWithProgress/);
+  assert.match(source, /video_ffmpeg_stalled/);
+  assert.match(source, /"-nostdin"/);
+  assert.match(source, /reason:\s*"ai_uses_server_frames_and_audio"/);
   assert.match(
     source,
-    /const thumbnailSize = await extractFrame\(\{[\s\S]*inputPath:\s*previewPath[\s\S]*timestampSeconds:\s*captureTimes\[0\]/,
+    /thumbnailSize = await extractFrame\(\{[\s\S]*inputPath:\s*params\.inputPath[\s\S]*timestampSeconds:\s*captureTimes\[0\]/,
   );
 });
 

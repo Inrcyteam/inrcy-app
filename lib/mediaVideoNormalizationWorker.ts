@@ -117,6 +117,10 @@ function classifyWorkerError(error: unknown) {
     message.includes("could not find codec parameters") ||
     message.includes("unsupported codec") ||
     message.includes("video_probe_failed") ||
+    message.includes("video_ffmpeg_stalled") ||
+    message.includes("video_ffmpeg_timeout") ||
+    message.includes("video_ffmpeg_spawn_failed") ||
+    message.includes("video_frames_unavailable") ||
     message.includes("corrupt") ||
     message.includes("decode");
 
@@ -547,13 +551,52 @@ async function processClaimedVideoJob(
     workDir = downloaded.workDir;
     await updateJobProgress(job, 20);
 
+    let lastQueuedProgress = 20;
+    let lastQueuedAt = 0;
+    let progressWriteChain: Promise<void> = Promise.resolve();
+    const queueNormalizationProgress = (normalizerProgress: number, stage: string) => {
+      const mapped = Math.max(
+        21,
+        Math.min(72, 20 + Math.round((Math.max(0, Math.min(100, normalizerProgress)) / 100) * 52)),
+      );
+      const now = Date.now();
+      if (mapped <= lastQueuedProgress) return;
+      if (mapped < 72 && mapped - lastQueuedProgress < 3 && now - lastQueuedAt < 1_800) return;
+      lastQueuedProgress = mapped;
+      lastQueuedAt = now;
+      progressWriteChain = progressWriteChain
+        .catch(() => undefined)
+        .then(async () => {
+          await updateJobProgress(job, mapped);
+          if (mapped === 72 || mapped % 10 <= 2) {
+            console.info("[media-pipeline] video normalization progress", {
+              mediaId: job.media_id,
+              progress: mapped,
+              stage,
+            });
+          }
+        })
+        .catch((error) => {
+          console.warn("[media-pipeline] video progress persistence skipped", {
+            mediaId: job.media_id,
+            progress: mapped,
+            stage,
+            message: compactMessage(error),
+          });
+        });
+    };
+
     const normalized = await normalizeVideoSource({
       inputPath: downloaded.inputPath,
       outputDirectory: path.join(workDir, "outputs"),
       fallbackWidth: media.width,
       fallbackHeight: media.height,
       fallbackDurationSeconds: media.duration_seconds,
+      onProgress: ({ progress, stage }) => {
+        queueNormalizationProgress(progress, stage);
+      },
     });
+    await progressWriteChain;
     await updateJobProgress(job, 72);
 
     const byKey = new Map(variants.map((variant) => [variant.key, variant]));

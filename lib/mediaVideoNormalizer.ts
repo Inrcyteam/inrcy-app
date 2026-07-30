@@ -1,11 +1,10 @@
-import { execFile } from "node:child_process";
-import { access, chmod, mkdir, stat } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { access, chmod, copyFile, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpegStaticPath from "ffmpeg-static";
 import {
   VIDEO_AI_PREVIEW_FPS,
-  VIDEO_AI_PREVIEW_MAX_BYTES,
   VIDEO_AI_PREVIEW_MAX_SIDE,
   VIDEO_AUDIO_TRACK_MAX_BYTES,
   VIDEO_CANONICAL_MAX_BYTES,
@@ -24,9 +23,9 @@ import {
 
 const execFileAsync = promisify(execFile);
 const FFMPEG_PROBE_TIMEOUT_MS = 30_000;
-const FFMPEG_CANONICAL_TIMEOUT_MS = 220_000;
-const FFMPEG_PREVIEW_TIMEOUT_MS = 150_000;
-const FFMPEG_DERIVATIVE_TIMEOUT_MS = 90_000;
+const FFMPEG_CANONICAL_TIMEOUT_MS = 240_000;
+const FFMPEG_DERIVATIVE_TIMEOUT_MS = 75_000;
+const FFMPEG_STALL_TIMEOUT_MS = 55_000;
 
 export type VideoSourceProbe = {
   width: number;
@@ -37,6 +36,14 @@ export type VideoSourceProbe = {
   rotationDegrees: number;
   hasAudio: boolean;
   videoCodec: string;
+  audioCodec: string;
+  pixelFormat: string;
+  containerFormats: string[];
+};
+
+export type VideoNormalizationProgress = {
+  progress: number;
+  stage: string;
 };
 
 export type NormalizedVideoVariant = {
@@ -60,6 +67,13 @@ export type NormalizedVideoBundle = {
   variants: Record<VideoNormalizationVariantKey, NormalizedVideoVariant>;
 };
 
+type CanonicalPreparation = {
+  sizeBytes: number;
+  bitrateKbps: number | null;
+  attempts: number;
+  mode: "stream_copy" | "video_copy_audio_transcode" | "full_transcode";
+};
+
 function compactError(error: unknown) {
   const record = error as { stderr?: unknown; message?: unknown } | null;
   return String(record?.stderr || record?.message || error || "Erreur FFmpeg")
@@ -76,12 +90,7 @@ function getBundledFfmpegCandidate() {
 function getFfmpegCandidates() {
   return Array.from(
     new Set(
-      [
-        process.env.FFMPEG_PATH,
-        ffmpegStaticPath,
-        getBundledFfmpegCandidate(),
-        "ffmpeg",
-      ]
+      [process.env.FFMPEG_PATH, ffmpegStaticPath, getBundledFfmpegCandidate(), "ffmpeg"]
         .map((candidate) => String(candidate || "").trim())
         .filter(Boolean),
     ),
@@ -89,14 +98,12 @@ function getFfmpegCandidates() {
 }
 
 async function makeExecutableIfNeeded(candidate: string) {
-  if (!candidate || candidate === "ffmpeg" || process.platform === "win32") {
-    return;
-  }
+  if (!candidate || candidate === "ffmpeg" || process.platform === "win32") return;
   try {
     await access(candidate);
     await chmod(candidate, 0o755);
   } catch {
-    // Le contrôle -version ci-dessous retournera l'erreur exploitable.
+    // Le contrôle -version ci-dessous retournera une erreur exploitable.
   }
 }
 
@@ -130,18 +137,31 @@ function parseRotationDegrees(stderr: string) {
   return metadata ? Math.round(Number(metadata[1]) || 0) : 0;
 }
 
+function parseContainerFormats(stderr: string) {
+  const match = stderr.match(/Input #0,\s*([^,\n]+(?:,[^,\n]+)*?),\s*from\s/i);
+  return String(match?.[1] || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function parseVideoStream(stderr: string) {
-  const line = stderr
-    .split(/\r?\n/)
-    .find((entry) => /Stream .*Video:/i.test(entry));
-  if (!line) return { width: 0, height: 0, codec: "unknown" };
+  const line = stderr.split(/\r?\n/).find((entry) => /Stream .*Video:/i.test(entry));
+  if (!line) return { width: 0, height: 0, codec: "unknown", pixelFormat: "unknown" };
   const dimensions = line.match(/(?:^|\D)(\d{2,5})x(\d{2,5})(?:\D|$)/);
   const codec = line.match(/Video:\s*([^,\s]+)/i)?.[1] || "unknown";
+  const pixelFormat = line.match(/Video:[^\n]*?,\s*([a-z0-9_]+)(?:\([^)]*\))?,\s*\d{2,5}x\d{2,5}/i)?.[1] || "unknown";
   return {
     width: Number(dimensions?.[1] || 0),
     height: Number(dimensions?.[2] || 0),
-    codec,
+    codec: codec.toLowerCase(),
+    pixelFormat: pixelFormat.toLowerCase(),
   };
+}
+
+function parseAudioCodec(stderr: string) {
+  const line = stderr.split(/\r?\n/).find((entry) => /Stream .*Audio:/i.test(entry));
+  return String(line?.match(/Audio:\s*([^,\s]+)/i)?.[1] || "unknown").toLowerCase();
 }
 
 export async function probeVideoSource(params: {
@@ -157,6 +177,7 @@ export async function probeVideoSource(params: {
       params.ffmpegPath,
       [
         "-hide_banner",
+        "-nostdin",
         "-i",
         params.inputPath,
         "-map",
@@ -184,19 +205,13 @@ export async function probeVideoSource(params: {
   if (!width || !height) throw new Error("video_dimensions_unavailable");
 
   const rotationDegrees = parseRotationDegrees(stderr);
-  const oriented = getOrientedVideoDimensions({
-    width,
-    height,
-    rotationDegrees,
-  });
+  const oriented = getOrientedVideoDimensions({ width, height, rotationDegrees });
   const probedDuration = parseDurationSeconds(stderr);
-  const fallbackDuration = Math.max(
-    0,
-    Number(params.fallbackDurationSeconds || 0),
-  );
+  const fallbackDuration = Math.max(0, Number(params.fallbackDurationSeconds || 0));
   const durationSeconds = probedDuration || fallbackDuration;
   if (!durationSeconds) throw new Error("video_duration_unavailable");
 
+  const hasAudio = /Stream .*Audio:/i.test(stderr);
   return {
     width,
     height,
@@ -204,8 +219,11 @@ export async function probeVideoSource(params: {
     orientedHeight: oriented.height,
     durationSeconds,
     rotationDegrees,
-    hasAudio: /Stream .*Audio:/i.test(stderr),
+    hasAudio,
     videoCodec: stream.codec,
+    audioCodec: hasAudio ? parseAudioCodec(stderr) : "none",
+    pixelFormat: stream.pixelFormat,
+    containerFormats: parseContainerFormats(stderr),
   };
 }
 
@@ -222,6 +240,113 @@ async function outputSize(filePath: string) {
   return Number((await stat(filePath)).size || 0);
 }
 
+function normalizeProgressValue(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function runFfmpegWithProgress(params: {
+  ffmpegPath: string;
+  args: string[];
+  durationSeconds: number;
+  timeoutMs: number;
+  stallTimeoutMs?: number;
+  onProgress?: (ratio: number) => void;
+}) {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(params.ffmpegPath, params.args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let settled = false;
+    let stdoutBuffer = "";
+    let stderr = "";
+    let lastActivityAt = Date.now();
+    let lastRatio = 0;
+
+    const cleanup = () => {
+      clearInterval(stallTimer);
+      clearTimeout(overallTimer);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Processus déjà terminé.
+      }
+      reject(error);
+    };
+    const emitRatio = (ratio: number) => {
+      const safe = normalizeProgressValue(ratio);
+      if (safe <= lastRatio && safe < 1) return;
+      lastRatio = safe;
+      params.onProgress?.(safe);
+    };
+
+    const overallTimer = setTimeout(() => {
+      fail(
+        new Error(
+          `video_ffmpeg_timeout:${Math.round(params.timeoutMs / 1000)}s:${stderr.slice(-1_200)}`,
+        ),
+      );
+    }, params.timeoutMs);
+    const stallTimer = setInterval(() => {
+      const stallTimeoutMs = params.stallTimeoutMs || FFMPEG_STALL_TIMEOUT_MS;
+      if (Date.now() - lastActivityAt > stallTimeoutMs) {
+        fail(
+          new Error(
+            `video_ffmpeg_stalled:${Math.round(stallTimeoutMs / 1000)}s:${stderr.slice(-1_200)}`,
+          ),
+        );
+      }
+    }, 2_000);
+
+    child.stdout?.on("data", (chunk: unknown) => {
+      lastActivityAt = Date.now();
+      stdoutBuffer += String(chunk || "");
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || "";
+      for (const line of lines) {
+        const separator = line.indexOf("=");
+        if (separator <= 0) continue;
+        const key = line.slice(0, separator).trim();
+        const value = line.slice(separator + 1).trim();
+        if (key === "out_time_us" || key === "out_time_ms") {
+          const microseconds = Number(value || 0);
+          if (params.durationSeconds > 0 && Number.isFinite(microseconds)) {
+            emitRatio(microseconds / 1_000_000 / params.durationSeconds);
+          }
+        } else if (key === "progress" && value === "end") {
+          emitRatio(1);
+        }
+      }
+    });
+    child.stderr?.on("data", (chunk: unknown) => {
+      lastActivityAt = Date.now();
+      stderr = `${stderr}${String(chunk || "")}`.slice(-8_000);
+    });
+    child.once("error", (error: unknown) => fail(new Error(`video_ffmpeg_spawn_failed:${compactError(error)}`)));
+    child.once("close", (code: number | null, signal: string | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (code === 0) {
+        emitRatio(1);
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `video_ffmpeg_failed:${code ?? "null"}:${signal || "none"}:${stderr.slice(-1_500)}`,
+        ),
+      );
+    });
+  });
+}
+
 async function encodeMp4(params: {
   ffmpegPath: string;
   inputPath: string;
@@ -235,6 +360,7 @@ async function encodeMp4(params: {
   includeAudio: boolean;
   fps?: number;
   timeoutMs: number;
+  onProgress?: (ratio: number) => void;
 }) {
   const initialBitrate = getVideoTargetBitrateKbps({
     durationSeconds: params.durationSeconds,
@@ -251,6 +377,7 @@ async function encodeMp4(params: {
       "-hide_banner",
       "-loglevel",
       "error",
+      "-nostdin",
       "-i",
       params.inputPath,
       "-map",
@@ -263,7 +390,7 @@ async function encodeMp4(params: {
       "-c:v",
       "libx264",
       "-preset",
-      "veryfast",
+      "superfast",
       "-b:v",
       `${bitrate}k`,
       "-maxrate",
@@ -280,39 +407,161 @@ async function encodeMp4(params: {
       "-1",
       "-metadata:s:v:0",
       "rotate=0",
-      "-threads",
-      "2",
+      "-max_muxing_queue_size",
+      "2048",
     );
     if (params.includeAudio) {
-      args.push(
-        "-c:a",
-        "aac",
-        "-b:a",
-        `${params.audioBitrateKbps}k`,
-        "-ac",
-        "2",
-      );
+      args.push("-c:a", "aac", "-b:a", `${params.audioBitrateKbps}k`, "-ac", "2");
     } else {
       args.push("-an");
     }
-    args.push(params.outputPath);
+    args.push("-progress", "pipe:1", "-nostats", params.outputPath);
 
-    await execFileAsync(params.ffmpegPath, args, {
-      timeout: params.timeoutMs,
-      maxBuffer: 16 * 1024 * 1024,
+    await runFfmpegWithProgress({
+      ffmpegPath: params.ffmpegPath,
+      args,
+      durationSeconds: params.durationSeconds,
+      timeoutMs: params.timeoutMs,
+      onProgress: (ratio) => {
+        const attemptBase = (attempt - 1) / 2;
+        params.onProgress?.(attemptBase + ratio / 2);
+      },
     });
     const sizeBytes = await outputSize(params.outputPath);
     if (sizeBytes > 0 && sizeBytes <= params.maxBytes) {
-      return { sizeBytes, bitrateKbps: bitrate, attempts: attempt };
+      params.onProgress?.(1);
+      return {
+        sizeBytes,
+        bitrateKbps: bitrate,
+        attempts: attempt,
+        mode: "full_transcode" as const,
+      };
     }
     if (attempt === 2) {
-      throw new Error(
-        `video_output_too_large:${path.basename(params.outputPath)}:${sizeBytes}`,
-      );
+      throw new Error(`video_output_too_large:${path.basename(params.outputPath)}:${sizeBytes}`);
     }
     bitrate = Math.max(120, Math.floor(bitrate * 0.68));
   }
   throw new Error("video_encoding_failed");
+}
+
+function normalizedRotation(value: number) {
+  return ((Math.round(Number(value || 0)) % 360) + 360) % 360;
+}
+
+function canFastPrepareCanonical(params: {
+  source: VideoSourceProbe;
+  sourceSizeBytes: number;
+}) {
+  const codec = params.source.videoCodec.toLowerCase();
+  const pixelFormat = params.source.pixelFormat.toLowerCase();
+  return (
+    (codec === "h264" || codec === "avc1") &&
+    (!pixelFormat || pixelFormat === "unknown" || pixelFormat.startsWith("yuv420")) &&
+    normalizedRotation(params.source.rotationDegrees) === 0 &&
+    Math.max(params.source.orientedWidth, params.source.orientedHeight) <= VIDEO_CANONICAL_MAX_SIDE &&
+    params.sourceSizeBytes > 0 &&
+    params.sourceSizeBytes <= VIDEO_CANONICAL_MAX_BYTES
+  );
+}
+
+async function remuxCanonical(params: {
+  ffmpegPath: string;
+  inputPath: string;
+  outputPath: string;
+  source: VideoSourceProbe;
+  onProgress?: (ratio: number) => void;
+}): Promise<CanonicalPreparation> {
+  const copyAudio = !params.source.hasAudio || params.source.audioCodec === "aac";
+  const args = [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-i",
+    params.inputPath,
+    "-map",
+    "0:v:0",
+  ];
+  if (params.source.hasAudio) args.push("-map", "0:a:0?");
+  args.push("-c:v", "copy");
+  if (params.source.hasAudio) {
+    if (copyAudio) args.push("-c:a", "copy");
+    else args.push("-c:a", "aac", "-b:a", "128k", "-ac", "2");
+  } else {
+    args.push("-an");
+  }
+  args.push(
+    "-movflags",
+    "+faststart",
+    "-map_metadata",
+    "-1",
+    "-map_chapters",
+    "-1",
+    "-metadata:s:v:0",
+    "rotate=0",
+    "-avoid_negative_ts",
+    "make_zero",
+    "-progress",
+    "pipe:1",
+    "-nostats",
+    params.outputPath,
+  );
+
+  await runFfmpegWithProgress({
+    ffmpegPath: params.ffmpegPath,
+    args,
+    durationSeconds: params.source.durationSeconds,
+    timeoutMs: Math.min(90_000, FFMPEG_CANONICAL_TIMEOUT_MS),
+    stallTimeoutMs: 35_000,
+    onProgress: params.onProgress,
+  });
+  const sizeBytes = await outputSize(params.outputPath);
+  if (!sizeBytes) throw new Error("video_canonical_empty");
+  if (sizeBytes > VIDEO_CANONICAL_MAX_BYTES) {
+    throw new Error(`video_output_too_large:${path.basename(params.outputPath)}:${sizeBytes}`);
+  }
+  return {
+    sizeBytes,
+    bitrateKbps: null,
+    attempts: 1,
+    mode: copyAudio ? "stream_copy" : "video_copy_audio_transcode",
+  };
+}
+
+async function prepareCanonical(params: {
+  ffmpegPath: string;
+  inputPath: string;
+  outputPath: string;
+  source: VideoSourceProbe;
+  sourceSizeBytes: number;
+  warnings: string[];
+  onProgress?: (ratio: number) => void;
+}) {
+  if (canFastPrepareCanonical(params)) {
+    try {
+      return await remuxCanonical(params);
+    } catch (error) {
+      params.warnings.push(`canonical_fast_path_failed:${compactError(error)}`);
+      params.onProgress?.(0);
+    }
+  }
+
+  return await encodeMp4({
+    ffmpegPath: params.ffmpegPath,
+    inputPath: params.inputPath,
+    outputPath: params.outputPath,
+    maxSide: VIDEO_CANONICAL_MAX_SIDE,
+    durationSeconds: params.source.durationSeconds,
+    maxBytes: VIDEO_CANONICAL_MAX_BYTES,
+    maxVideoKbps: 5_000,
+    minVideoKbps: 250,
+    audioBitrateKbps: 128,
+    includeAudio: params.source.hasAudio,
+    timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
+    onProgress: params.onProgress,
+  });
 }
 
 async function extractFrame(params: {
@@ -330,6 +579,7 @@ async function extractFrame(params: {
       "-hide_banner",
       "-loglevel",
       "error",
+      "-nostdin",
       "-ss",
       String(Math.max(0, params.timestampSeconds)),
       "-i",
@@ -349,9 +599,7 @@ async function extractFrame(params: {
   );
   const sizeBytes = await outputSize(params.outputPath);
   if (!sizeBytes) throw new Error("video_frame_empty");
-  if (sizeBytes > VIDEO_FRAME_MAX_BYTES) {
-    throw new Error(`video_frame_too_large:${sizeBytes}`);
-  }
+  if (sizeBytes > VIDEO_FRAME_MAX_BYTES) throw new Error(`video_frame_too_large:${sizeBytes}`);
   return sizeBytes;
 }
 
@@ -367,6 +615,7 @@ async function extractAudioTrack(params: {
       "-hide_banner",
       "-loglevel",
       "error",
+      "-nostdin",
       "-i",
       params.inputPath,
       "-map",
@@ -386,9 +635,7 @@ async function extractAudioTrack(params: {
   );
   const sizeBytes = await outputSize(params.outputPath);
   if (!sizeBytes) throw new Error("video_audio_empty");
-  if (sizeBytes > VIDEO_AUDIO_TRACK_MAX_BYTES) {
-    throw new Error(`video_audio_too_large:${sizeBytes}`);
-  }
+  if (sizeBytes > VIDEO_AUDIO_TRACK_MAX_BYTES) throw new Error(`video_audio_too_large:${sizeBytes}`);
   return sizeBytes;
 }
 
@@ -427,9 +674,20 @@ export async function normalizeVideoSource(params: {
   fallbackWidth?: number | null;
   fallbackHeight?: number | null;
   fallbackDurationSeconds?: number | null;
+  onProgress?: (update: VideoNormalizationProgress) => void;
 }): Promise<NormalizedVideoBundle> {
   await mkdir(params.outputDirectory, { recursive: true });
+  let lastProgress = 0;
+  const emitProgress = (progress: number, stage: string) => {
+    const safe = Math.max(lastProgress, Math.min(100, Math.round(progress)));
+    if (safe === lastProgress && safe !== 100) return;
+    lastProgress = safe;
+    params.onProgress?.({ progress: safe, stage });
+  };
+
+  emitProgress(1, "Initialisation de FFmpeg");
   const ffmpegPath = await resolveVideoNormalizationFfmpegPath();
+  const sourceSizeBytes = await outputSize(params.inputPath);
   const source = await probeVideoSource({
     ffmpegPath,
     inputPath: params.inputPath,
@@ -437,98 +695,144 @@ export async function normalizeVideoSource(params: {
     fallbackHeight: params.fallbackHeight,
     fallbackDurationSeconds: params.fallbackDurationSeconds,
   });
+  emitProgress(8, "Analyse du format vidéo");
+
   const warnings: string[] = [];
   const canonicalPath = path.join(params.outputDirectory, "canonical.mp4");
-  const previewPath = path.join(params.outputDirectory, "ai-preview.mp4");
   const audioPath = path.join(params.outputDirectory, "audio-track.mp3");
   const framePaths = [1, 2, 3].map((index) =>
     path.join(params.outputDirectory, `frame-${String(index).padStart(2, "0")}.jpg`),
   );
   const thumbnailPath = path.join(params.outputDirectory, "thumbnail.jpg");
+  const captureTimes = buildVideoFrameCaptureTimes(source.durationSeconds);
 
-  const canonicalEncoding = await encodeMp4({
+  let canonicalRatio = 0;
+  let derivativeCompleted = 0;
+  const derivativeTotal = source.hasAudio ? 5 : 4;
+  const recalculateProgress = (stage: string) => {
+    const combined = 8 + canonicalRatio * 58 + (derivativeCompleted / derivativeTotal) * 26;
+    emitProgress(Math.min(92, combined), stage);
+  };
+
+  const canonicalPromise = prepareCanonical({
     ffmpegPath,
     inputPath: params.inputPath,
     outputPath: canonicalPath,
-    maxSide: VIDEO_CANONICAL_MAX_SIDE,
-    durationSeconds: source.durationSeconds,
-    maxBytes: VIDEO_CANONICAL_MAX_BYTES,
-    maxVideoKbps: 5_000,
-    minVideoKbps: 250,
-    audioBitrateKbps: 128,
-    includeAudio: source.hasAudio,
-    timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
+    source,
+    sourceSizeBytes,
+    warnings,
+    onProgress: (ratio) => {
+      canonicalRatio = Math.max(canonicalRatio, normalizeProgressValue(ratio));
+      recalculateProgress(canonicalRatio >= 1 ? "Vidéo principale prête" : "Préparation de la vidéo principale");
+    },
   });
 
-  const previewPromise = encodeMp4({
-    ffmpegPath,
-    inputPath: canonicalPath,
-    outputPath: previewPath,
-    maxSide: VIDEO_AI_PREVIEW_MAX_SIDE,
-    durationSeconds: source.durationSeconds,
-    maxBytes: VIDEO_AI_PREVIEW_MAX_BYTES,
-    maxVideoKbps: 1_800,
-    minVideoKbps: 160,
-    audioBitrateKbps: 0,
-    includeAudio: false,
-    fps: VIDEO_AI_PREVIEW_FPS,
-    timeoutMs: FFMPEG_PREVIEW_TIMEOUT_MS,
-  });
-  const audioPromise = source.hasAudio
-    ? extractAudioTrack({ ffmpegPath, inputPath: canonicalPath, outputPath: audioPath })
-    : Promise.resolve(0);
-  const [previewResult, audioResult] = await Promise.allSettled([
-    previewPromise,
-    audioPromise,
-  ]);
-  if (previewResult.status === "rejected") throw previewResult.reason;
+  const frameSizes = [0, 0, 0];
+  const frameAvailable = [false, false, false];
+  let thumbnailSize = 0;
+  let thumbnailAvailable = false;
+  let thumbnailFallbackFromFrame = false;
   let audioSizeBytes = 0;
   let audioAvailable = source.hasAudio;
-  if (audioResult.status === "fulfilled") {
-    audioSizeBytes = audioResult.value;
-  } else {
-    audioAvailable = false;
-    warnings.push(`audio_track_unavailable:${compactError(audioResult.reason)}`);
-  }
 
-  const captureTimes = buildVideoFrameCaptureTimes(source.durationSeconds);
-  const frameSizes: number[] = [];
-  for (let index = 0; index < framePaths.length; index += 1) {
-    frameSizes.push(
-      await extractFrame({
+  const audioPromise = source.hasAudio
+    ? extractAudioTrack({ ffmpegPath, inputPath: params.inputPath, outputPath: audioPath })
+        .then((size) => {
+          audioSizeBytes = size;
+          derivativeCompleted += 1;
+          recalculateProgress("Piste audio extraite");
+        })
+        .catch((error) => {
+          audioAvailable = false;
+          warnings.push(`audio_track_unavailable:${compactError(error)}`);
+          derivativeCompleted += 1;
+          recalculateProgress("Piste audio indisponible, traitement poursuivi");
+        })
+    : Promise.resolve();
+
+  const visualPromise = (async () => {
+    for (let index = 0; index < framePaths.length; index += 1) {
+      try {
+        frameSizes[index] = await extractFrame({
+          ffmpegPath,
+          inputPath: params.inputPath,
+          outputPath: framePaths[index],
+          timestampSeconds: captureTimes[index],
+          maxSide: VIDEO_FRAME_MAX_SIDE,
+          quality: 4,
+        });
+        frameAvailable[index] = true;
+      } catch (error) {
+        if (index === 0 && captureTimes[index] > 0) {
+          try {
+            frameSizes[index] = await extractFrame({
+              ffmpegPath,
+              inputPath: params.inputPath,
+              outputPath: framePaths[index],
+              timestampSeconds: 0,
+              maxSide: VIDEO_FRAME_MAX_SIDE,
+              quality: 4,
+            });
+            frameAvailable[index] = true;
+          } catch (fallbackError) {
+            warnings.push(`frame_${index + 1}_unavailable:${compactError(fallbackError)}`);
+          }
+        } else {
+          warnings.push(`frame_${index + 1}_unavailable:${compactError(error)}`);
+        }
+      }
+      derivativeCompleted += 1;
+      recalculateProgress(`Capture vidéo ${index + 1}/3`);
+    }
+
+    try {
+      thumbnailSize = await extractFrame({
         ffmpegPath,
-        inputPath: previewPath,
-        outputPath: framePaths[index],
-        timestampSeconds: captureTimes[index],
-        maxSide: VIDEO_FRAME_MAX_SIDE,
-        quality: 4,
-      }),
-    );
+        inputPath: params.inputPath,
+        outputPath: thumbnailPath,
+        timestampSeconds: captureTimes[0],
+        maxSide: VIDEO_THUMBNAIL_MAX_SIDE,
+        quality: 5,
+      });
+      thumbnailAvailable = true;
+    } catch (error) {
+      const firstAvailableIndex = frameAvailable.findIndex(Boolean);
+      if (firstAvailableIndex >= 0) {
+        await copyFile(framePaths[firstAvailableIndex], thumbnailPath);
+        thumbnailSize = await outputSize(thumbnailPath);
+        thumbnailAvailable = thumbnailSize > 0;
+        thumbnailFallbackFromFrame = thumbnailAvailable;
+      }
+      if (!thumbnailAvailable) warnings.push(`thumbnail_unavailable:${compactError(error)}`);
+    }
+    derivativeCompleted += 1;
+    recalculateProgress("Miniature vidéo prête");
+  })();
+
+  const [canonicalEncoding] = await Promise.all([canonicalPromise, visualPromise, audioPromise]);
+  if (!frameAvailable.some(Boolean)) {
+    throw new Error("video_frames_unavailable:aucune capture exploitable n'a pu être produite");
   }
-  const thumbnailSize = await extractFrame({
-    ffmpegPath,
-    inputPath: previewPath,
-    outputPath: thumbnailPath,
-    timestampSeconds: captureTimes[0],
-    maxSide: VIDEO_THUMBNAIL_MAX_SIDE,
-    quality: 5,
-  });
+  canonicalRatio = 1;
+  emitProgress(94, "Finalisation des fichiers vidéo");
 
   const canonicalDimensions = fitVideoWithinMaxSide({
     width: source.orientedWidth,
     height: source.orientedHeight,
     maxSide: VIDEO_CANONICAL_MAX_SIDE,
   });
-  const previewDimensions = fitVideoWithinMaxSide({
+  const frameDimensions = fitVideoWithinMaxSide({
     width: source.orientedWidth,
     height: source.orientedHeight,
-    maxSide: VIDEO_AI_PREVIEW_MAX_SIDE,
+    maxSide: VIDEO_FRAME_MAX_SIDE,
   });
-  const thumbnailDimensions = fitVideoWithinMaxSide({
-    width: source.orientedWidth,
-    height: source.orientedHeight,
-    maxSide: VIDEO_THUMBNAIL_MAX_SIDE,
-  });
+  const thumbnailDimensions = thumbnailFallbackFromFrame
+    ? frameDimensions
+    : fitVideoWithinMaxSide({
+        width: source.orientedWidth,
+        height: source.orientedHeight,
+        maxSide: VIDEO_THUMBNAIL_MAX_SIDE,
+      });
   const sourceMetadata = {
     source_width: source.width,
     source_height: source.height,
@@ -537,10 +841,15 @@ export async function normalizeVideoSource(params: {
     rotation_degrees: source.rotationDegrees,
     duration_seconds: source.durationSeconds,
     source_video_codec: source.videoCodec,
+    source_audio_codec: source.audioCodec,
+    source_pixel_format: source.pixelFormat,
+    source_container_formats: source.containerFormats,
     source_has_audio: source.hasAudio,
+    canonical_mode: canonicalEncoding.mode,
     metadata_stripped: true,
   };
 
+  emitProgress(100, "Préparation vidéo terminée");
   return {
     source,
     warnings,
@@ -564,44 +873,47 @@ export async function normalizeVideoSource(params: {
           preserve_ratio: true,
           without_enlargement: true,
           auto_orient: true,
-          pixel_format: "yuv420p",
+          pixel_format: canonicalEncoding.mode === "full_transcode" ? "yuv420p" : source.pixelFormat,
           faststart: true,
           bitrate_kbps: canonicalEncoding.bitrateKbps,
+          mode: canonicalEncoding.mode,
+          attempts: canonicalEncoding.attempts,
         },
         metadata: sourceMetadata,
       }),
       ai_preview: buildVariant({
         key: "ai_preview",
-        filePath: previewPath,
+        available: false,
+        filePath: null,
         mimeType: "video/mp4",
         extension: "mp4",
-        width: previewDimensions.width,
-        height: previewDimensions.height,
+        width: null,
+        height: null,
         durationSeconds: source.durationSeconds,
-        sizeBytes: previewResult.value.sizeBytes,
+        sizeBytes: 0,
         transformSpec: {
           operation: "video_ai_preview",
-          output: "mp4",
-          video_codec: "h264",
-          audio_removed: true,
-          max_side: VIDEO_AI_PREVIEW_MAX_SIDE,
-          fps: VIDEO_AI_PREVIEW_FPS,
-          crop: false,
-          preserve_ratio: true,
-          without_enlargement: true,
-          pixel_format: "yuv420p",
-          faststart: true,
-          bitrate_kbps: previewResult.value.bitrateKbps,
+          skipped: true,
+          reason: "ai_uses_server_frames_and_audio",
+          fallback_variant: "canonical",
+          requested_max_side: VIDEO_AI_PREVIEW_MAX_SIDE,
+          requested_fps: VIDEO_AI_PREVIEW_FPS,
         },
-        metadata: sourceMetadata,
+        metadata: {
+          ...sourceMetadata,
+          available: false,
+          fallback_variant: "canonical",
+          reason: "frames_and_audio_are_the_primary_ai_context",
+        },
       }),
       thumbnail: buildVariant({
         key: "thumbnail",
-        filePath: thumbnailPath,
+        available: thumbnailAvailable,
+        filePath: thumbnailAvailable ? thumbnailPath : null,
         mimeType: "image/jpeg",
         extension: "jpg",
-        width: thumbnailDimensions.width,
-        height: thumbnailDimensions.height,
+        width: thumbnailAvailable ? thumbnailDimensions.width : null,
+        height: thumbnailAvailable ? thumbnailDimensions.height : null,
         durationSeconds: source.durationSeconds,
         sizeBytes: thumbnailSize,
         transformSpec: {
@@ -610,16 +922,22 @@ export async function normalizeVideoSource(params: {
           max_side: VIDEO_THUMBNAIL_MAX_SIDE,
           crop: false,
           capture_seconds: captureTimes[0],
+          fallback_from_frame: thumbnailFallbackFromFrame,
         },
-        metadata: { ...sourceMetadata, capture_seconds: captureTimes[0] },
+        metadata: {
+          ...sourceMetadata,
+          capture_seconds: captureTimes[0],
+          fallback_from_frame: thumbnailFallbackFromFrame,
+        },
       }),
       frame_01: buildVariant({
         key: "frame_01",
-        filePath: framePaths[0],
+        available: frameAvailable[0],
+        filePath: frameAvailable[0] ? framePaths[0] : null,
         mimeType: "image/jpeg",
         extension: "jpg",
-        width: previewDimensions.width,
-        height: previewDimensions.height,
+        width: frameAvailable[0] ? frameDimensions.width : null,
+        height: frameAvailable[0] ? frameDimensions.height : null,
         durationSeconds: source.durationSeconds,
         sizeBytes: frameSizes[0],
         transformSpec: {
@@ -633,11 +951,12 @@ export async function normalizeVideoSource(params: {
       }),
       frame_02: buildVariant({
         key: "frame_02",
-        filePath: framePaths[1],
+        available: frameAvailable[1],
+        filePath: frameAvailable[1] ? framePaths[1] : null,
         mimeType: "image/jpeg",
         extension: "jpg",
-        width: previewDimensions.width,
-        height: previewDimensions.height,
+        width: frameAvailable[1] ? frameDimensions.width : null,
+        height: frameAvailable[1] ? frameDimensions.height : null,
         durationSeconds: source.durationSeconds,
         sizeBytes: frameSizes[1],
         transformSpec: {
@@ -651,11 +970,12 @@ export async function normalizeVideoSource(params: {
       }),
       frame_03: buildVariant({
         key: "frame_03",
-        filePath: framePaths[2],
+        available: frameAvailable[2],
+        filePath: frameAvailable[2] ? framePaths[2] : null,
         mimeType: "image/jpeg",
         extension: "jpg",
-        width: previewDimensions.width,
-        height: previewDimensions.height,
+        width: frameAvailable[2] ? frameDimensions.width : null,
+        height: frameAvailable[2] ? frameDimensions.height : null,
         durationSeconds: source.durationSeconds,
         sizeBytes: frameSizes[2],
         transformSpec: {
@@ -689,11 +1009,7 @@ export async function normalizeVideoSource(params: {
         metadata: {
           ...sourceMetadata,
           available: audioAvailable,
-          reason: source.hasAudio
-            ? audioAvailable
-              ? null
-              : "extraction_failed"
-            : "source_without_audio",
+          reason: source.hasAudio ? (audioAvailable ? null : "extraction_failed") : "source_without_audio",
         },
       }),
     },

@@ -571,10 +571,12 @@ export async function resolveWorkspaceAiConsumption(params: {
   }
 
   const item = media[0];
-  const preview = pickReadyVariant(variants, item.mediaId, "ai_preview");
+  const preview =
+    pickReadyVariant(variants, item.mediaId, "ai_preview") ||
+    pickReadyVariant(variants, item.mediaId, "canonical");
   if (!preview) {
     throw new MediaWorkspaceConsumptionError(
-      "L'aperçu IA de la vidéo n'est pas prêt.",
+      "La vidéo de référence pour l'IA n'est pas prête.",
       "workspace_ai_preview_missing",
       409,
     );
