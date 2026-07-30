@@ -1607,9 +1607,11 @@ export default function PublishModal({
             ? 210_000
             : 240_000;
       const startedAt = Date.now();
+      let preparationKick: Promise<void> | null = null;
       let nextPreparationKickAt = 0;
-      let preparationFailures = 0;
       let lastPreparationError: Error | null = null;
+      let retryableFailureSince = 0;
+      let lastObservedProcessingProgress = -1;
 
       while (true) {
         const snapshot = await loadMediaPublicationWorkspace({
@@ -1696,41 +1698,92 @@ export default function PublishModal({
               0,
             ) / Math.max(1, relevantMedia.length),
           );
+          const processingStarting =
+            expectedMediaType === "video" &&
+            processingProgress === 0 &&
+            relevantMedia.some((item) =>
+              ["not_requested", "queued"].includes(
+                String(item.processingStatus || ""),
+              ),
+            );
           onProgress?.(
             Math.max(25, Math.min(41, 25 + Math.round(processingProgress * 0.16))),
             !allProcessed
-              ? `Préparation des ${mediaLabel} sur le serveur ${processingProgress}%`
+              ? processingStarting
+                ? "Démarrage du traitement vidéo sur le serveur..."
+                : `Préparation des ${mediaLabel} sur le serveur ${processingProgress}%`
               : `Finalisation des ${mediaLabel} pour la publication...`,
           );
 
-          if (Date.now() >= nextPreparationKickAt) {
-            nextPreparationKickAt = Date.now() + 8_000;
-            try {
-              const preparation = await prepareMediaPublicationWorkspace({
-                workspaceId: activeWorkspaceId,
-              });
-              preparationFailures = 0;
+          const now = Date.now();
+          const retryableFailure = relevantMedia.find(
+            (item) => String(item.processingStatus || "") === "failed_retryable",
+          );
+          if (retryableFailure) {
+            if (!retryableFailureSince) retryableFailureSince = now;
+            lastPreparationError = new Error(
+              retryableFailure.processingErrorMessage ||
+                "La préparation vidéo a rencontré une erreur temporaire.",
+            );
+          } else {
+            retryableFailureSince = 0;
+            if (processingProgress > lastObservedProcessingProgress) {
               lastPreparationError = null;
-              if (preparation.status === "failed") {
-                throw new Error(
-                  preparation.message ||
-                    "La préparation du média a échoué sur le serveur.",
-                );
-              }
-              if (preparation.status === "ready") continue;
-            } catch (error) {
-              preparationFailures += 1;
-              lastPreparationError =
-                error instanceof Error
-                  ? error
-                  : new Error("Impossible de relancer la préparation du média.");
-              if (
-                preparationFailures >= 3 &&
-                Date.now() - startedAt > 30_000
-              ) {
-                throw lastPreparationError;
-              }
             }
+          }
+          lastObservedProcessingProgress = Math.max(
+            lastObservedProcessingProgress,
+            processingProgress,
+          );
+
+          const preparationErrorMessage = String(
+            lastPreparationError?.message || "",
+          ).toLowerCase();
+          if (
+            preparationErrorMessage.includes("n’est pas activée") ||
+            preparationErrorMessage.includes("n'est pas activée") ||
+            preparationErrorMessage.includes("media_processing_disabled")
+          ) {
+            throw lastPreparationError;
+          }
+
+          if (!preparationKick && now >= nextPreparationKickAt) {
+            nextPreparationKickAt = now + 12_000;
+            preparationKick = prepareMediaPublicationWorkspace({
+              workspaceId: activeWorkspaceId,
+            })
+              .then((preparation) => {
+                if (preparation.status === "failed") {
+                  throw new Error(
+                    preparation.message ||
+                      "La préparation du média a échoué sur le serveur.",
+                  );
+                }
+                if (preparation.status === "ready") {
+                  lastPreparationError = null;
+                  nextPreparationKickAt = 0;
+                }
+              })
+              .catch((error) => {
+                lastPreparationError =
+                  error instanceof Error
+                    ? error
+                    : new Error(
+                        "Impossible de relancer la préparation du média.",
+                      );
+                nextPreparationKickAt = Date.now() + 12_000;
+              })
+              .finally(() => {
+                preparationKick = null;
+              });
+          }
+
+          if (
+            retryableFailureSince &&
+            now - retryableFailureSince > 75_000 &&
+            lastPreparationError
+          ) {
+            throw lastPreparationError;
           }
         } else {
           onProgress?.(42, expectedCount > 1 ? "Médias prêts" : "Média prêt");

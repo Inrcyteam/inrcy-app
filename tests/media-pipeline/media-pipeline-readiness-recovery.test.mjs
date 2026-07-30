@@ -35,12 +35,14 @@ test("Générer peut relancer immédiatement les workers du workspace", () => {
   assert.match(route, /enqueueImageNormalization\(/);
   assert.match(route, /enqueueVideoNormalization\(/);
   assert.match(route, /processImageNormalizationJobs\(/);
-  assert.match(route, /processVideoNormalizationJobs\(/);
+  assert.match(route, /processVideoNormalizationJobsForMedia\(/);
   assert.match(route, /priority: 10_000/);
   assert.match(client, /\/api\/media-pipeline\/workspace\/prepare/);
   assert.match(modal, /prepareMediaPublicationWorkspace\(/);
   assert.match(modal, /processingProgress/);
-  assert.match(modal, /preparationFailures >= 3/);
+  assert.match(modal, /let preparationKick: Promise<void> \| null = null/);
+  assert.match(modal, /preparationKick = prepareMediaPublicationWorkspace\(/);
+  assert.doesNotMatch(modal, /await prepareMediaPublicationWorkspace\(/);
   assert.match(
     vercel.functions["app/api/media-pipeline/workspace/prepare/route.ts"]
       .includeFiles,
@@ -54,3 +56,17 @@ test("le rattrapage reconnaît un fichier déjà présent dans Storage", () => {
   assert.match(source, /storedSize !== item\.sizeBytes/);
   assert.match(source, /upload_status: "uploaded"/);
 });
+
+test("la préparation vidéo cible le média du workspace au lieu d'un job arbitraire", () => {
+  const route = read("app/api/media-pipeline/workspace/prepare/route.ts");
+  const worker = read("lib/mediaVideoNormalizationWorker.ts");
+  const targetedClaim = read("lib/mediaProcessingTargetedClaim.ts");
+
+  assert.match(route, /processVideoNormalizationJobsForMedia\(\{/);
+  assert.match(route, /mediaIds: pendingVideos\.map\(\(item\) => item\.mediaId\)/);
+  assert.match(worker, /claimTargetedProcessingJob\(/);
+  assert.match(worker, /jobType: VIDEO_NORMALIZATION_JOB_TYPE/);
+  assert.match(targetedClaim, /\.eq\("media_id", mediaId\)/);
+  assert.match(targetedClaim, /\.eq\("job_type", jobType\)/);
+});
+

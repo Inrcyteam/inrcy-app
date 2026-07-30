@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enqueueImageNormalization } from "@/lib/mediaImageNormalizationQueue";
 import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
 import { processImageNormalizationJobs } from "@/lib/mediaImageNormalizationWorker";
-import { processVideoNormalizationJobs } from "@/lib/mediaVideoNormalizationWorker";
+import { processVideoNormalizationJobsForMedia } from "@/lib/mediaVideoNormalizationWorker";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
 
 export const runtime = "nodejs";
@@ -392,8 +392,9 @@ export async function POST(request: Request) {
       });
     }
     if (pendingVideos.length) {
-      await processVideoNormalizationJobs({
-        limit: 1,
+      await processVideoNormalizationJobsForMedia({
+        accountId: activeUserId,
+        mediaIds: pendingVideos.map((item) => item.mediaId),
         workerId: `workspace-prepare-video-${requestId}`,
       });
     }
