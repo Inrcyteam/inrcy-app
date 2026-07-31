@@ -7,6 +7,7 @@ import { buildStorageContentUrl } from "@/lib/storageContentUrl";
 import { runTransientPostgrestRead } from "@/lib/supabaseTransientRetry";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
+import { BOOSTER_ASYNC_JOB_EVENT_TYPE, finalizeAsyncPublicationIfReady } from "@/lib/boosterAsyncPublication";
 import {
   INRCY_WORKFLOW_ACTIONS,
   INRSEND_GROUPED_FOLDERS,
@@ -123,6 +124,23 @@ type InrAgentActionRow = {
   last_error: string | null;
 };
 
+type InrAgentScheduledActionRow = {
+  id: string;
+  automation_key: string | null;
+  action_type: string | null;
+  target_tool: string | null;
+  source: string | null;
+  title: string | null;
+  summary: string | null;
+  channels: string[] | null;
+  payload: Record<string, unknown> | null;
+  status: string | null;
+  executed_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  last_error: string | null;
+};
+
 type StoredReportDocument = {
   bucket: string;
   storagePath: string;
@@ -152,7 +170,7 @@ function parsePositiveInt(value: string | null, fallback: number, max: number) {
   return Math.min(parsed, max);
 }
 
-function cleanString(value: string | null) {
+function cleanString(value: unknown) {
   return String(value || "").trim();
 }
 
@@ -216,6 +234,16 @@ function isMissingAgentActionsError(error: { code?: string; message?: string } |
     error?.code === "42703" ||
     error?.code === "PGRST205" ||
     message.includes("inr_agent_actions")
+  );
+}
+
+function isMissingAgentScheduledActionsError(error: { code?: string; message?: string } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42P01" ||
+    error?.code === "42703" ||
+    error?.code === "PGRST205" ||
+    message.includes("inr_agent_scheduled_actions")
   );
 }
 
@@ -778,8 +806,12 @@ function shouldQueryEvents(folder: Folder, view: BoxView) {
     || folder === "fidelisations";
 }
 
-function shouldQueryAgentStatsReports(folder: Folder, view: BoxView) {
-  return view !== "drafts" && folder === "stats";
+function shouldQueryAgentHistory(folder: Folder, view: BoxView) {
+  return view !== "drafts" && (folder === "stats" || folder === "publications");
+}
+
+function shouldQueryAgentScheduledHistory(folder: Folder, view: BoxView) {
+  return view !== "drafts" && folder === "publications";
 }
 
 function mapSendItems(rows: SendItemRow[]): OutboxItem[] {
@@ -953,6 +985,289 @@ function mapEventItems(rows: any[]): OutboxItem[] {
     });
 }
 
+
+function firstRecord(...values: unknown[]): Record<string, unknown> {
+  for (const value of values) {
+    const record = asRecord(value);
+    if (Object.keys(record).length) return record;
+  }
+  return {};
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((entry) => cleanString(String(entry || ""))).filter(Boolean)));
+}
+
+function firstPostFromChannels(postByChannel: Record<string, unknown>, channels: string[]) {
+  for (const channel of channels) {
+    const post = asRecord(postByChannel[channel]);
+    if (Object.keys(post).length) return post;
+  }
+  for (const value of Object.values(postByChannel)) {
+    const post = asRecord(value);
+    if (Object.keys(post).length) return post;
+  }
+  return {};
+}
+
+/**
+ * Filet de sécurité iNrAgent -> iNrSend.
+ * Une publication réellement exécutée reste visible même si l'écriture de son
+ * app_event a échoué ou si une ancienne version ne l'avait pas créée.
+ */
+function mapAgentPublicationFallbacks(rows: InrAgentActionRow[]): OutboxItem[] {
+  const fallbackEvents: any[] = [];
+
+  for (const row of rows) {
+    const automationKey = cleanString(row.automation_key).toLowerCase();
+    const actionType = cleanString(row.action_type).toLowerCase();
+    const targetTool = cleanString(row.target_tool).toLowerCase();
+    if (automationKey !== "publish" || actionType !== "publication" || targetTool !== "booster") continue;
+
+    const payload = asRecord(row.payload);
+    const execution = firstRecord(
+      payload.execution,
+      payload.partialImmediateExecution,
+      payload.scheduledExecution,
+      payload.lastExecution,
+    );
+    const publishResult = firstRecord(execution.publishResult, payload.publishResult);
+    // Depuis ce correctif, publish-now enregistre explicitement si l'historique
+    // canonique a échoué. On ne rouvre donc pas d'anciennes actions déjà nettoyées.
+    if (execution.historyPersisted !== false) continue;
+    const publicationId = cleanString(
+      execution.publicationId ||
+      execution.publication_id ||
+      publishResult.publication_id ||
+      publishResult.publicationId ||
+      payload.publicationId ||
+      payload.publication_id,
+    );
+    const executedAt = cleanString(
+      execution.executedAt || execution.completedAt || row.completed_at || "",
+    );
+
+    // Ne pas transformer une simple proposition/pending_validation en historique envoyé.
+    if (!publicationId || !executedAt) continue;
+
+    const postByChannel = asRecord(payload.postByChannel);
+    const attemptedChannels = Array.from(new Set([
+      ...stringArray(execution.channels),
+      ...stringArray(payload.selectedChannels),
+      ...stringArray(payload.channels),
+      ...stringArray(publishResult.attemptedChannels),
+    ]));
+    const results = firstRecord(execution.results, publishResult.results);
+    const summary = firstRecord(execution.summary, publishResult.summary);
+    const successChannels = stringArray(summary.successChannels);
+    const visibleChannels = successChannels.length ? successChannels : attemptedChannels;
+    const firstPost = firstPostFromChannels(postByChannel, attemptedChannels);
+    const executionOk = execution.ok !== false && publishResult.ok !== false;
+    const failureCount = Math.max(0, Number(summary.failureCount || 0) || 0);
+    const status = !executionOk
+      ? "failed"
+      : cleanString(row.status).toLowerCase() === "executing"
+        ? "processing"
+        : failureCount > 0
+          ? "partial"
+          : "completed";
+
+    fallbackEvents.push({
+      id: `inr-agent-action:${row.id}`,
+      module: "booster",
+      type: "publish",
+      created_at: executedAt || row.updated_at || row.created_at,
+      payload: {
+        workflowTool: "booster",
+        workflowAction: "publier",
+        source: "inr_agent",
+        origin: {
+          source: "inr_agent",
+          label: "iNr’Agent",
+          agentActionId: row.id,
+          automationKey: "publish",
+          reconciled: true,
+        },
+        publication_id: publicationId,
+        channels: visibleChannels,
+        attemptedChannels,
+        post: firstPost,
+        postByChannel,
+        idea: payload.idea || row.summary || "",
+        mediaType: payload.mediaType || asRecord(payload.media).kind || null,
+        mediaModeByChannel: payload.mediaModeByChannel || null,
+        video: payload.video || (asRecord(payload.media).kind === "video" ? payload.media : null),
+        images: payload.images || (asRecord(payload.media).kind === "image" ? [payload.media] : []),
+        results,
+        summary,
+        status,
+        completedAt: executedAt,
+        reconciledFromAgentAction: true,
+        agentActionId: row.id,
+      },
+    });
+  }
+
+  return mapEventItems(fallbackEvents);
+}
+
+function mapAgentHistoryRows(rows: InrAgentActionRow[]): OutboxItem[] {
+  return [
+    ...mapAgentStatsReports(rows.filter((row) =>
+      cleanString(row.automation_key).toLowerCase() === "stats" &&
+      cleanString(row.action_type).toLowerCase() === "stats_report"
+    )),
+    ...mapAgentPublicationFallbacks(rows),
+  ];
+}
+
+function mapAgentScheduledPublicationFallbacks(
+  rows: InrAgentScheduledActionRow[],
+): OutboxItem[] {
+  const fallbackEvents: any[] = [];
+
+  for (const row of rows) {
+    const automationKey = cleanString(row.automation_key).toLowerCase();
+    const actionType = cleanString(row.action_type).toLowerCase();
+    const targetTool = cleanString(row.target_tool).toLowerCase();
+    const status = cleanString(row.status).toLowerCase();
+    if (
+      automationKey !== "publish" ||
+      actionType !== "publication" ||
+      targetTool !== "booster" ||
+      (status !== "done" && status !== "failed")
+    ) {
+      continue;
+    }
+
+    const payload = asRecord(row.payload);
+    const execution = asRecord(payload.lastExecution);
+    if (execution.historyPersisted !== false) continue;
+
+    const publishPayload = asRecord(payload.publishPayload);
+    const publicationId = cleanString(
+      execution.publicationId || execution.publication_id,
+    );
+    const executedAt = cleanString(
+      row.executed_at || execution.at || row.updated_at || row.created_at,
+    );
+    if (!publicationId || !executedAt) continue;
+
+    const postByChannel = asRecord(publishPayload.postByChannel);
+    const attemptedChannels = Array.from(new Set([
+      ...stringArray(row.channels),
+      ...stringArray(publishPayload.channels),
+      ...stringArray(publishPayload.selectedChannels),
+    ]));
+    const summary = asRecord(execution.summary);
+    const results = asRecord(execution.results);
+    const successChannels = stringArray(summary.successChannels);
+    const visibleChannels = successChannels.length
+      ? successChannels
+      : attemptedChannels;
+    const firstPost = firstPostFromChannels(postByChannel, attemptedChannels);
+    const failureCount = Math.max(0, Number(summary.failureCount || 0) || 0);
+
+    fallbackEvents.push({
+      id: `inr-agent-scheduled:${row.id}`,
+      module: "booster",
+      type: "publish",
+      created_at: executedAt,
+      payload: {
+        workflowTool: "booster",
+        workflowAction: "publier",
+        source: "inr_agent",
+        origin: {
+          source: "inr_agent",
+          label: "iNr’Agent programmé",
+          scheduledActionId: row.id,
+          automationKey: "publish",
+          runMode: "scheduled",
+          reconciled: true,
+        },
+        publication_id: publicationId,
+        channels: visibleChannels,
+        attemptedChannels,
+        post: firstPost,
+        postByChannel,
+        idea: publishPayload.idea || row.summary || "",
+        mediaType: publishPayload.mediaType || null,
+        mediaModeByChannel: publishPayload.mediaModeByChannel || null,
+        video: publishPayload.video || null,
+        images: publishPayload.images || [],
+        results,
+        summary,
+        status:
+          status === "failed"
+            ? "failed"
+            : failureCount > 0
+              ? "partial"
+              : "completed",
+        completedAt: executedAt,
+        reconciledFromAgentAction: true,
+        scheduledActionId: row.id,
+      },
+    });
+  }
+
+  return mapEventItems(fallbackEvents);
+}
+
+function publicationHistoryIdentity(item: OutboxItem): string | null {
+  if (item.folder !== "publications" || item.source !== "app_events") return null;
+  const payload = asRecord(asRecord(item.raw).payload);
+  const publicationId = cleanString(payload.publication_id || payload.publicationId);
+  return publicationId ? `publication:${publicationId}` : null;
+}
+
+function historyIdentity(item: OutboxItem): string {
+  return publicationHistoryIdentity(item) || `${item.source}:${item.id}`;
+}
+
+function historyItemPriority(item: OutboxItem): number {
+  const payload = asRecord(asRecord(item.raw).payload);
+  if (payload.reconciledFromAgentAction === true) return 1;
+  return 2;
+}
+
+function dedupeHistoryItems(items: OutboxItem[]): OutboxItem[] {
+  const result: OutboxItem[] = [];
+  const indexByIdentity = new Map<string, number>();
+  for (const item of items) {
+    const identity = historyIdentity(item);
+    const existingIndex = indexByIdentity.get(identity);
+    if (existingIndex == null) {
+      indexByIdentity.set(identity, result.length);
+      result.push(item);
+      continue;
+    }
+    if (historyItemPriority(item) > historyItemPriority(result[existingIndex])) {
+      result[existingIndex] = item;
+    }
+  }
+  return result;
+}
+
+async function reconcilePendingAsyncPublications(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("app_events")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
+    .order("created_at", { ascending: false })
+    .limit(12);
+  if (error) {
+    console.warn("[inrsend] async publication reconciliation lookup failed", { message: error.message });
+    return;
+  }
+  await Promise.allSettled(
+    (data || []).map((row: any) =>
+      finalizeAsyncPublicationIfReady({ userId, publicationId: String(row.id || "") }),
+    ),
+  );
+}
+
 function mapAgentStatsReports(rows: InrAgentActionRow[]): OutboxItem[] {
   return rows.map<OutboxItem>((row) => {
     const payload = asRecord(row.payload);
@@ -1091,8 +1406,6 @@ async function computeFolderCounts(
           .from("inr_agent_actions")
           .select("id, automation_key, action_type, target_tool, title, summary, preview_text, recipients, payload, status, completed_at, created_at, updated_at, last_error")
           .eq("user_id", userId)
-          .eq("automation_key", "stats")
-          .eq("action_type", "stats_report")
           .order("completed_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -1100,14 +1413,36 @@ async function computeFolderCounts(
         return { data: data as InrAgentActionRow[] | null, error };
       });
 
-  const [sendRows, campaignRows, eventRows, statsReportRows] = await Promise.all([sendItemsPromise, campaignsPromise, eventsPromise, statsReportsPromise]);
+  const scheduledActionsPromise = boxView === "drafts"
+    ? Promise.resolve([] as InrAgentScheduledActionRow[])
+    : fetchAllRows<InrAgentScheduledActionRow>(async (from, to) => {
+        const { data, error } = await supabaseAdmin
+          .from("inr_agent_scheduled_actions")
+          .select("id, automation_key, action_type, target_tool, source, title, summary, channels, payload, status, executed_at, created_at, updated_at, last_error")
+          .eq("user_id", userId)
+          .in("status", ["done", "failed"])
+          .order("executed_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        if (error && isMissingAgentScheduledActionsError(error)) return { data: [], error: null };
+        return { data: data as InrAgentScheduledActionRow[] | null, error };
+      });
 
-  const allItems = [
+  const [sendRows, campaignRows, eventRows, statsReportRows, scheduledActionRows] = await Promise.all([
+    sendItemsPromise,
+    campaignsPromise,
+    eventsPromise,
+    statsReportsPromise,
+    scheduledActionsPromise,
+  ]);
+
+  const allItems = dedupeHistoryItems([
     ...mapSendItems(sendRows),
     ...mapCampaignItems(campaignRows),
     ...mapEventItems(eventRows),
-    ...mapAgentStatsReports(statsReportRows),
-  ];
+    ...mapAgentHistoryRows(statsReportRows),
+    ...mapAgentScheduledPublicationFallbacks(scheduledActionRows),
+  ]);
 
   for (const item of allItems) {
     if (!isVisibleInFolder(item.folder, item, boxView)) continue;
@@ -1141,22 +1476,35 @@ export async function GET(req: Request) {
     const eventSourceCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "propulsions", "informations", "suivis", "enquetes", "fidelisations"]);
     const targetVisibleCount = page * pageSize;
 
-    const allItems: OutboxItem[] = [];
-    const seenKeys = new Set<string>();
+    if (boxView !== "drafts" && shouldQueryEvents(folder, boxView)) {
+      await reconcilePendingAsyncPublications(activeUserId);
+    }
 
+    const allItems: OutboxItem[] = [];
     const sourceState = {
       send_items: { offset: 0, exhausted: !shouldQuerySendItems(folder) },
       mail_campaigns: { offset: 0, exhausted: !shouldQueryCampaigns(folder, boxView) },
       app_events: { offset: 0, exhausted: !shouldQueryEvents(folder, boxView) },
-      inr_agent_actions: { offset: 0, exhausted: !shouldQueryAgentStatsReports(folder, boxView) },
+      inr_agent_actions: { offset: 0, exhausted: !shouldQueryAgentHistory(folder, boxView) },
+      inr_agent_scheduled_actions: {
+        offset: 0,
+        exhausted: !shouldQueryAgentScheduledHistory(folder, boxView),
+      },
     };
 
+    const itemIndexByIdentity = new Map<string, number>();
     const pushItems = (items: OutboxItem[]) => {
       for (const item of items) {
-        const key = `${item.source}:${item.id}`;
-        if (seenKeys.has(key)) continue;
-        seenKeys.add(key);
-        allItems.push(item);
+        const key = historyIdentity(item);
+        const existingIndex = itemIndexByIdentity.get(key);
+        if (existingIndex == null) {
+          itemIndexByIdentity.set(key, allItems.length);
+          allItems.push(item);
+          continue;
+        }
+        if (historyItemPriority(item) > historyItemPriority(allItems[existingIndex])) {
+          allItems[existingIndex] = item;
+        }
       }
     };
 
@@ -1171,7 +1519,13 @@ export async function GET(req: Request) {
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
       if (filtered.length >= targetVisibleCount) break;
-      if (sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted && sourceState.inr_agent_actions.exhausted) break;
+      if (
+        sourceState.send_items.exhausted &&
+        sourceState.mail_campaigns.exhausted &&
+        sourceState.app_events.exhausted &&
+        sourceState.inr_agent_actions.exhausted &&
+        sourceState.inr_agent_scheduled_actions.exhausted
+      ) break;
 
       const tasks: Promise<void>[] = [];
 
@@ -1276,8 +1630,6 @@ export async function GET(req: Request) {
             .from("inr_agent_actions")
             .select("id, automation_key, action_type, target_tool, title, summary, preview_text, recipients, payload, status, completed_at, created_at, updated_at, last_error")
             .eq("user_id", activeUserId)
-            .eq("automation_key", "stats")
-            .eq("action_type", "stats_report")
             .order("completed_at", { ascending: false, nullsFirst: false })
             .order("created_at", { ascending: false })
             .range(from, to);
@@ -1291,7 +1643,35 @@ export async function GET(req: Request) {
           const rows = (data || []) as InrAgentActionRow[];
           sourceState.inr_agent_actions.offset += rows.length;
           if (rows.length < SOURCE_BATCH_SIZE) sourceState.inr_agent_actions.exhausted = true;
-          pushItems(mapAgentStatsReports(rows));
+          pushItems(mapAgentHistoryRows(rows));
+        })());
+      }
+
+      if (!sourceState.inr_agent_scheduled_actions.exhausted) {
+        tasks.push((async () => {
+          const from = sourceState.inr_agent_scheduled_actions.offset;
+          const to = from + SOURCE_BATCH_SIZE - 1;
+          const { data, error } = await supabaseAdmin
+            .from("inr_agent_scheduled_actions")
+            .select("id, automation_key, action_type, target_tool, source, title, summary, channels, payload, status, executed_at, created_at, updated_at, last_error")
+            .eq("user_id", activeUserId)
+            .in("status", ["done", "failed"])
+            .order("executed_at", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false })
+            .range(from, to);
+          if (error) {
+            if (isMissingAgentScheduledActionsError(error)) {
+              sourceState.inr_agent_scheduled_actions.exhausted = true;
+              return;
+            }
+            throw error;
+          }
+          const rows = (data || []) as InrAgentScheduledActionRow[];
+          sourceState.inr_agent_scheduled_actions.offset += rows.length;
+          if (rows.length < SOURCE_BATCH_SIZE) {
+            sourceState.inr_agent_scheduled_actions.exhausted = true;
+          }
+          pushItems(mapAgentScheduledPublicationFallbacks(rows));
         })());
       }
 
@@ -1304,7 +1684,12 @@ export async function GET(req: Request) {
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
     const items = filtered.slice(start, end);
-    const allSourcesExhausted = sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted && sourceState.inr_agent_actions.exhausted;
+    const allSourcesExhausted =
+      sourceState.send_items.exhausted &&
+      sourceState.mail_campaigns.exhausted &&
+      sourceState.app_events.exhausted &&
+      sourceState.inr_agent_actions.exhausted &&
+      sourceState.inr_agent_scheduled_actions.exhausted;
     const total = allSourcesExhausted ? filtered.length : null;
     const hasMore = total != null ? end < total : filtered.length > end || !allSourcesExhausted;
     const historyFiles = await fetchInrSendHistoryFiles(

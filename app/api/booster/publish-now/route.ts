@@ -3432,14 +3432,21 @@ async function publishNowHandler(req: Request) {
           uploadErrors,
           results,
           summary,
+          historyEventId: null,
+          historyPersisted: false,
         },
         { status: 200 },
       );
     }
 
-    // 5) Log publication / valorisation event uniquement après succès réel
-    await supabaseAdmin.from("app_events").insert({
-      id: randomUUID(),
+    // 5) Log publication / valorisation event uniquement après succès réel.
+    // Historique iNrSend uniquement après un succès réel.
+    // Une publication canal ne doit jamais être relancée parce que son journal a
+    // rencontré un incident transitoire : on réessaie seulement l'écriture du log,
+    // avec le même identifiant, puis le filet de réconciliation iNrAgent prend le relais.
+    const historyEventId = randomUUID();
+    const historyEventRow = {
+      id: historyEventId,
       user_id: userId,
       module: eventModule,
       type: eventType,
@@ -3475,7 +3482,33 @@ async function publishNowHandler(req: Request) {
         results,
         summary,
       },
-    });
+    };
+
+    let historyPersisted = false;
+    let historyPersistenceError: string | null = null;
+    const { error: historyInsertError } = await supabaseAdmin
+      .from("app_events")
+      .insert(historyEventRow);
+
+    if (!historyInsertError) {
+      historyPersisted = true;
+    } else {
+      const { error: historyRetryError } = await supabaseAdmin
+        .from("app_events")
+        .upsert(historyEventRow, { onConflict: "id" });
+      historyPersisted = !historyRetryError;
+      historyPersistenceError = historyRetryError?.message || historyInsertError.message;
+    }
+
+    if (!historyPersisted) {
+      console.error("[booster-publish] iNrSend history persistence failed", {
+        userId,
+        publicationId,
+        historyEventId,
+        originSource: origin?.source || null,
+        error: historyPersistenceError,
+      });
+    }
 
     if (summary.successChannels.includes("inr_search")) {
       const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin as any, userId);
@@ -3500,6 +3533,8 @@ async function publishNowHandler(req: Request) {
       uploadErrors,
       results,
       summary,
+      historyEventId,
+      historyPersisted,
       idempotencyKey: publishIdempotencyKey || null,
       mediaWorkspaceId: mediaWorkspaceId || null,
       mediaWorkspaceRevision: workspaceConsumption?.workspaceRevision || null,

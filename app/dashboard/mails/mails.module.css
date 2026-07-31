@@ -5429,3 +5429,103 @@
     padding-bottom: 10px;
   }
 }
+
+/* iNrSend — historique en lecture seule et origine iNrAgent */
+.originMarkerSlot {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+}
+
+.inrAgentDetailBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(129, 140, 248, 0.38);
+  background: rgba(99, 102, 241, 0.13);
+  color: rgba(238, 242, 255, 0.96);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.inrAgentDetailBadge img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+}
+
+.detailsHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.detailsNavigation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detailsNavigationButton {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.detailsNavigationCounter {
+  min-width: 62px;
+  text-align: center;
+  color: rgba(226, 232, 255, 0.8);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .originMarkerSlot {
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+  }
+
+  .detailsHeaderActions {
+    gap: 6px;
+  }
+
+  .detailsNavigation {
+    gap: 3px;
+  }
+
+  .detailsNavigationButton {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+  }
+
+  .detailsNavigationCounter {
+    min-width: 48px;
+    font-size: 11px;
+  }
+
+  .inrAgentDetailBadge {
+    padding-right: 8px;
+  }
+}

@@ -44,6 +44,10 @@ type ExecutionResult = {
   preserveAttemptCount?: boolean;
   campaignId?: string | null;
   publicationId?: string | null;
+  historyEventId?: string | null;
+  historyPersisted?: boolean | null;
+  summary?: Record<string, unknown> | null;
+  results?: Record<string, unknown> | null;
   idempotencyKey?: string | null;
   idempotencyState?: "completed" | "running" | "acquired" | "none" | null;
   idempotent?: boolean;
@@ -441,6 +445,11 @@ async function markFailedOrRetry(row: ScheduledActionCronRow, args: {
   payload?: Record<string, unknown>;
   retryAfterSeconds?: number | null;
   preserveAttemptCount?: boolean;
+  publicationId?: string | null;
+  historyEventId?: string | null;
+  historyPersisted?: boolean | null;
+  summary?: Record<string, unknown> | null;
+  results?: Record<string, unknown> | null;
 }) {
   const now = new Date();
   const attemptCount = Math.max(1, Number(row.attempt_count || 1));
@@ -480,6 +489,11 @@ async function markFailedOrRetry(row: ScheduledActionCronRow, args: {
         preserveAttemptCount: args.preserveAttemptCount === true,
         nextRetryAt,
         attemptCount: nextAttemptCount,
+        publicationId: args.publicationId || null,
+        historyEventId: args.historyEventId || null,
+        historyPersisted: args.historyPersisted === true,
+        summary: args.summary || null,
+        results: args.results || null,
         response: args.payload || null,
       }),
       updated_at: now.toISOString(),
@@ -719,6 +733,17 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
         detail,
         retriable: response.ok ? false : isRetriableHttpFailure(response.status, error),
         retryAfterSeconds: response.ok ? null : retryAfterSeconds,
+        publicationId:
+          typeof responsePayload.publication_id === "string"
+            ? responsePayload.publication_id
+            : null,
+        historyEventId:
+          typeof responsePayload.historyEventId === "string"
+            ? responsePayload.historyEventId
+            : null,
+        historyPersisted: responsePayload.historyPersisted === true,
+        summary: asRecord(responsePayload.summary),
+        results: asRecord(responsePayload.results),
         idempotencyKey,
         idempotencyState: idempotent ? "completed" : "acquired",
         idempotent,
@@ -726,12 +751,20 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
     }
 
     const publicationId = typeof responsePayload.publication_id === "string" ? responsePayload.publication_id : null;
+    const historyEventId = typeof responsePayload.historyEventId === "string" ? responsePayload.historyEventId : null;
+    const historyPersisted = responsePayload.historyPersisted === true;
+    const summary = asRecord(responsePayload.summary);
+    const results = asRecord(responsePayload.results);
     return {
       ok: true,
       status: "done",
       scheduledActionId: row.id,
       targetTool: String(row.target_tool || "booster"),
       publicationId,
+      historyEventId,
+      historyPersisted,
+      summary,
+      results,
       idempotencyKey,
       idempotencyState: idempotent ? "completed" : "acquired",
       idempotent,
@@ -850,6 +883,10 @@ async function processDueScheduledActions(args: { origin: string; maxRows: numbe
           targetTool: result.targetTool,
           campaignId: result.campaignId || null,
           publicationId: result.publicationId || null,
+          historyEventId: result.historyEventId || null,
+          historyPersisted: result.historyPersisted === true,
+          summary: result.summary || null,
+          results: result.results || null,
           idempotencyKey: result.idempotencyKey || null,
           idempotencyState: result.idempotencyState || null,
           idempotent: result.idempotent === true,

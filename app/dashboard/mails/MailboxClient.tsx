@@ -47,8 +47,6 @@ import {
   campaignCounts,
   campaignReportToHealth,
   campaignTitleFromFolder,
-  canBulkDeleteHistoryItem,
-  canDeleteHistoryItem,
   channelApiPath,
   computePublicationPreviewLayout,
   defaultFolderFromSendType,
@@ -77,7 +75,6 @@ import {
   hasAttachmentFields,
   firstNonEmpty,
   historyEmptyState,
-  historySelectionKey,
   isBusinessMailFolder,
   isDeletedChannelResult,
   isFailedChannelResult,
@@ -235,6 +232,7 @@ export default function MailboxClient() {
   const [detailsActionSuccess, setDetailsActionSuccess] = useState<
     string | null
   >(null);
+  const [detailsNavigationBusy, setDetailsNavigationBusy] = useState(false);
   const [detailsSourceDocPayload, setDetailsSourceDocPayload] = useState<
     any | null
   >(null);
@@ -429,13 +427,6 @@ export default function MailboxClient() {
   const [signatureEnabled, setSignatureEnabled] = useState(true);
   const [signatureImageUrl, setSignatureImageUrl] = useState("");
   const [signatureImageWidth, setSignatureImageWidth] = useState(400);
-  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
-  const [deletingHistoryItemId, setDeletingHistoryItemId] = useState<
-    string | null
-  >(null);
-  const [deletingHistorySelection, setDeletingHistorySelection] =
-    useState(false);
-  const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<string[]>([]);
   const [lastSavedComposeSnapshot, setLastSavedComposeSnapshot] = useState<
     string | null
   >(null);
@@ -1111,12 +1102,18 @@ export default function MailboxClient() {
         setHistoryTotalCount(nextTotal);
         setFolderCounts(nextCounts);
         setDraftFolderCounts(nextDraftCounts);
-        setSelectedHistoryKeys([]);
         setSelectedId((prev) =>
           nextItems.some((item) => item.id === prev)
             ? prev
             : (nextItems[0]?.id ?? null),
         );
+
+        return {
+          items: nextItems,
+          page: nextPage,
+          total: nextTotal,
+          hasMore: Boolean(payload?.hasMore),
+        };
       } catch (error) {
         console.error(error);
         setItems([]);
@@ -1125,8 +1122,8 @@ export default function MailboxClient() {
         setHistoryTotalCount(0);
         setFolderCounts(emptyFolderCounts());
         setDraftFolderCounts(emptyFolderCounts());
-        setSelectedHistoryKeys([]);
         setSelectedId(null);
+        return null;
       } finally {
         setHistoryLoadedOnce(true);
         setLoading(false);
@@ -1146,39 +1143,32 @@ export default function MailboxClient() {
 
   const visibleItems = filteredItems;
 
-  const visibleBulkDeletableItems = useMemo(
-    () => visibleItems.filter((item) => canBulkDeleteHistoryItem(item)),
-    [visibleItems],
-  );
-  const selectedHistoryKeySet = useMemo(
-    () => new Set(selectedHistoryKeys),
-    [selectedHistoryKeys],
-  );
-  const selectedBulkItems = useMemo(
-    () =>
-      visibleBulkDeletableItems.filter((item) =>
-        selectedHistoryKeySet.has(historySelectionKey(item)),
-      ),
-    [selectedHistoryKeySet, visibleBulkDeletableItems],
-  );
-  const selectedBulkCount = selectedBulkItems.length;
-  const allVisibleBulkItemsSelected = useMemo(
-    () =>
-      visibleBulkDeletableItems.length > 0 &&
-      visibleBulkDeletableItems.every((item) =>
-        selectedHistoryKeySet.has(historySelectionKey(item)),
-      ),
-    [selectedHistoryKeySet, visibleBulkDeletableItems],
-  );
-
-  const selected = useMemo(() => {
-    return items.find((x) => x.id === selectedId) || null;
-  }, [items, selectedId]);
-
   const detailsItem = useMemo(() => {
     if (!detailsId) return null;
     return items.find((x) => x.id === detailsId) || null;
   }, [items, detailsId]);
+
+  const detailsItemIndex = useMemo(
+    () => (detailsId ? visibleItems.findIndex((item) => item.id === detailsId) : -1),
+    [detailsId, visibleItems],
+  );
+  const detailsCanNavigatePrevious = Boolean(
+    detailsItem && (detailsItemIndex > 0 || historyPage > 1),
+  );
+  const detailsCanNavigateNext = Boolean(
+    detailsItem &&
+      (detailsItemIndex >= 0 && detailsItemIndex < visibleItems.length - 1
+        ? true
+        : historyTotalCount != null
+          ? historyPage < historyPageCount
+          : historyHasMorePotential),
+  );
+  const detailsNavigationLabel = useMemo(() => {
+    if (!detailsItem || detailsItemIndex < 0) return "—";
+    const position = (historyPage - 1) * MAILBOX_PAGE_SIZE + detailsItemIndex + 1;
+    const totalLabel = historyTotalCount != null ? String(historyTotalCount) : historyHasMorePotential ? "…" : String(position);
+    return `${position} / ${totalLabel}`;
+  }, [detailsItem, detailsItemIndex, historyHasMorePotential, historyPage, historyTotalCount]);
 
   const detailsAccountLabel = useMemo(() => {
     if (!detailsItem) return "";
@@ -2604,224 +2594,6 @@ export default function MailboxClient() {
     }
   }
 
-  async function deleteDraftPermanently(id: string) {
-    try {
-      if (!id) return;
-      if (deletingDraftId) return;
-
-      const ok = await confirmInrcy({
-        title: "Supprimer le brouillon ?",
-        message: "Cette action supprimera définitivement ce brouillon.",
-        confirmLabel: "Supprimer",
-        variant: "danger",
-      });
-      if (!ok) return;
-
-      setDeletingDraftId(id);
-
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
-      if (!userId) return;
-
-      const { error } = await supabase
-        .from("send_items")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", userId)
-        .eq("status", "draft");
-
-      if (error) {
-        setToast(
-          "Impossible de supprimer ce brouillon pour le moment. Merci de réessayer.",
-        );
-        return;
-      }
-
-      // Optimistic UI
-      setItems((prev) => prev.filter((x) => x.id !== id));
-      setSelectedHistoryKeys((prev) =>
-        prev.filter((key) => key !== `send_items:${id}`),
-      );
-      if (selectedId === id) setSelectedId(null);
-      if (detailsId === id) {
-        setDetailsOpen(false);
-        setDetailsId(null);
-      }
-
-      setToast("Brouillon supprimé.");
-      // Reload to keep the list consistent
-      await loadHistory();
-    } finally {
-      setDeletingDraftId(null);
-    }
-  }
-
-  function toggleHistorySelection(item: OutboxItem) {
-    if (!canBulkDeleteHistoryItem(item)) return;
-    const key = historySelectionKey(item);
-    setSelectedHistoryKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return Array.from(next);
-    });
-  }
-
-  function toggleSelectVisibleHistoryItems(force?: boolean) {
-    const shouldSelect =
-      typeof force === "boolean" ? force : !allVisibleBulkItemsSelected;
-    const pageKeys = visibleBulkDeletableItems.map((item) =>
-      historySelectionKey(item),
-    );
-    setSelectedHistoryKeys((prev) => {
-      const next = new Set(prev);
-      if (shouldSelect) pageKeys.forEach((key) => next.add(key));
-      else pageKeys.forEach((key) => next.delete(key));
-      return Array.from(next);
-    });
-  }
-
-  async function deleteSelectedHistoryEntries() {
-    try {
-      if (deletingHistorySelection || deletingHistoryItemId || deletingDraftId)
-        return;
-      if (selectedBulkCount <= 0) return;
-
-      const label =
-        selectedBulkCount > 1
-          ? `${selectedBulkCount} éléments sélectionnés`
-          : "cet élément sélectionné";
-      const ok = await confirmInrcy({
-        title: "Supprimer la sélection ?",
-        message: `Cette action supprimera ${label} de l’historique.`,
-        confirmLabel: "Supprimer",
-        variant: "danger",
-      });
-      if (!ok) return;
-
-      setDeletingHistorySelection(true);
-
-      const entries = selectedBulkItems.map((item) => ({
-        id: item.id,
-        source: item.source,
-        folder: item.folder,
-      }));
-
-      const response = await fetch("/api/inrsend/history/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: entries }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          payload?.error || "Suppression impossible pour le moment.",
-        );
-      }
-
-      const removedKeys = new Set(
-        entries.map((entry) => `${entry.source}:${entry.id}`),
-      );
-      const selectedItemKey = selected ? historySelectionKey(selected) : null;
-      const detailsItemKey = detailsItem
-        ? historySelectionKey(detailsItem)
-        : null;
-      setItems((prev) =>
-        prev.filter((item) => !removedKeys.has(historySelectionKey(item))),
-      );
-      setSelectedHistoryKeys([]);
-      if (selectedItemKey && removedKeys.has(selectedItemKey)) {
-        setSelectedId(null);
-      }
-      if (detailsItemKey && removedKeys.has(detailsItemKey)) {
-        setDetailsOpen(false);
-        setDetailsId(null);
-      }
-
-      const deletedCount =
-        typeof payload?.deletedCount === "number"
-          ? Math.max(0, Number(payload.deletedCount))
-          : selectedBulkCount;
-      setToast(
-        deletedCount > 1
-          ? `${deletedCount} éléments supprimés.`
-          : "Élément supprimé.",
-      );
-      await loadHistory();
-    } catch (error) {
-      const message = getSimpleFrenchErrorMessage(error, "Suppression impossible pour le moment.");
-      setToast(message);
-    } finally {
-      setDeletingHistorySelection(false);
-    }
-  }
-
-  async function deleteHistoryEntry(item: OutboxItem) {
-    try {
-      if (!canDeleteHistoryItem(item)) return;
-      if (deletingHistoryItemId || deletingHistorySelection) return;
-
-      const isDraftToDelete =
-        String(
-          (item as any)?.status || (item as any)?.raw?.status || "",
-        ).toLowerCase() === "draft";
-      const ok = await confirmInrcy({
-        title: isDraftToDelete
-          ? "Supprimer le brouillon ?"
-          : "Supprimer l’élément ?",
-        message: isDraftToDelete
-          ? "Ce brouillon sera définitivement supprimé."
-          : `Cette action supprimera cet élément de l’historique ${folderLabel(item.folder)}.`,
-        confirmLabel: "Supprimer",
-        variant: "danger",
-      });
-      if (!ok) return;
-
-      setDeletingHistoryItemId(item.id);
-
-      const response = await fetch("/api/inrsend/history/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: item.id,
-          source: item.source,
-          folder: item.folder,
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          payload?.error || "Suppression impossible pour le moment.",
-        );
-      }
-
-      const removedKey = historySelectionKey(item);
-      setItems((prev) =>
-        prev.filter((x) => !(x.id === item.id && x.source === item.source)),
-      );
-      setSelectedHistoryKeys((prev) =>
-        prev.filter((key) => key !== removedKey),
-      );
-      if (selectedId === item.id) setSelectedId(null);
-      if (detailsId === item.id) {
-        setDetailsOpen(false);
-        setDetailsId(null);
-      }
-
-      setToast(
-        isDraftToDelete
-          ? "Brouillon supprimé."
-          : `Élément ${folderLabel(item.folder)} supprimé.`,
-      );
-      await loadHistory();
-    } catch (error) {
-      const message = getSimpleFrenchErrorMessage(error, "Suppression impossible pour le moment.");
-      setToast(message);
-    } finally {
-      setDeletingHistoryItemId(null);
-    }
-  }
-
   function getBulkCampaignFolder(): Folder {
     if (composeType === "facture") return "factures";
     if (composeType === "devis") return "devis";
@@ -3217,17 +2989,54 @@ export default function MailboxClient() {
     }
   }
 
-  // Trash has been intentionally removed: the tool always shows the last sent items.
+  // L’historique iNr’Send est en lecture seule : seule la rétention automatique le nettoie.
 
-  function openDetails(it: OutboxItem) {
-    setSelectedId(it.id);
-    setDetailsId(it.id);
+  function resetDetailsStateForItem(item: OutboxItem) {
+    setSelectedId(item.id);
+    setDetailsId(item.id);
     setDetailsChannelKey(null);
     setDetailsEditMode(false);
     setDetailsActionBusy(false);
     setDetailsActionError(null);
     setDetailsActionSuccess(null);
+    setDetailsSourceDocPayload(null);
+    setCampaignRecipients([]);
+    setCampaignRecipientsPage(1);
+    setCampaignRecipientsPageCount(1);
+    setCampaignRecipientsTotal(0);
+    setCampaignRecipientsFilter("all");
+    setCampaignHealth(null);
+    setCampaignReport(null);
+  }
+
+  function openDetails(it: OutboxItem) {
+    resetDetailsStateForItem(it);
     setDetailsOpen(true);
+  }
+
+  async function navigateDetails(direction: -1 | 1) {
+    if (!detailsItem || detailsNavigationBusy) return;
+    const allowed = direction < 0 ? detailsCanNavigatePrevious : detailsCanNavigateNext;
+    if (!allowed) return;
+
+    setDetailsNavigationBusy(true);
+    try {
+      const localIndex = visibleItems.findIndex((item) => item.id === detailsItem.id);
+      const localTarget = visibleItems[localIndex + direction];
+      if (localTarget) {
+        resetDetailsStateForItem(localTarget);
+        return;
+      }
+
+      const targetPage = historyPage + direction;
+      if (targetPage < 1) return;
+      const loaded = await loadHistory({ page: targetPage });
+      const pageItems = Array.isArray(loaded?.items) ? loaded.items : [];
+      const target = direction > 0 ? pageItems[0] : pageItems[pageItems.length - 1];
+      if (target) resetDetailsStateForItem(target);
+    } finally {
+      setDetailsNavigationBusy(false);
+    }
   }
 
   function updatePublicationChannelAssets(
@@ -4482,14 +4291,6 @@ export default function MailboxClient() {
               historyQuery={historyQuery}
               setSearchOpen={setSearchOpen}
               loadHistory={() => loadHistory()}
-              toggleSelectVisibleHistoryItems={toggleSelectVisibleHistoryItems}
-              visibleBulkDeletableItemsLength={visibleBulkDeletableItems.length}
-              selectedBulkCount={selectedBulkCount}
-              loading={loading}
-              deletingHistorySelection={deletingHistorySelection}
-              deletingDraftId={deletingDraftId}
-              deletingHistoryItemId={deletingHistoryItemId}
-              deleteSelectedHistoryEntries={deleteSelectedHistoryEntries}
               toolCfg={toolCfg}
               resetCompose={resetCompose}
               setComposeOpen={setComposeOpen}
@@ -4516,13 +4317,8 @@ export default function MailboxClient() {
               loading={loading}
               visibleItems={visibleItems}
               selectedId={selectedId}
-              selectedHistoryKeySet={selectedHistoryKeySet}
-              deletingHistorySelection={deletingHistorySelection}
-              deletingDraftId={deletingDraftId}
-              deletingHistoryItemId={deletingHistoryItemId}
               openItem={openItem}
               openDetails={openDetails}
-              toggleHistorySelection={toggleHistorySelection}
               mailAccounts={mailAccounts}
               itemMailAccountId={itemMailAccountId}
               filteredItemsLength={filteredItems.length}
@@ -4531,7 +4327,6 @@ export default function MailboxClient() {
               historyHasMorePotential={historyHasMorePotential}
               historyPageCount={historyPageCount}
               loadHistory={loadHistory}
-              selectedBulkCount={selectedBulkCount}
               historyQuery={historyQuery}
             />
           </div>
@@ -4552,8 +4347,11 @@ export default function MailboxClient() {
           setDetailsActionError={setDetailsActionError}
           setDetailsActionSuccess={setDetailsActionSuccess}
           detailsSourceDocPayload={detailsSourceDocPayload}
-          deletingHistoryItemId={deletingHistoryItemId}
-          deletingHistorySelection={deletingHistorySelection}
+          canNavigatePrevious={detailsCanNavigatePrevious}
+          canNavigateNext={detailsCanNavigateNext}
+          navigationLabel={detailsNavigationLabel}
+          navigationBusy={detailsNavigationBusy}
+          onNavigate={navigateDetails}
           campaignRecipients={campaignRecipients}
           campaignRecipientsLoading={campaignRecipientsLoading}
           campaignRecipientsPage={campaignRecipientsPage}
@@ -4598,7 +4396,6 @@ export default function MailboxClient() {
           retryCampaignFailedRecipients={retryCampaignFailedRecipients}
           resendCampaignCompletionSummary={resendCampaignCompletionSummary}
           openCampaignComposeFromHistory={openCampaignComposeFromHistory}
-          deleteHistoryEntry={deleteHistoryEntry}
           loadCampaignRecipients={loadCampaignRecipients}
           loadCampaignHealth={loadCampaignHealth}
           refreshHistory={loadHistory}

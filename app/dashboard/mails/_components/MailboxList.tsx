@@ -2,11 +2,9 @@ import React from "react";
 import styles from "../mails.module.css";
 import {
   MAILBOX_PAGE_SIZE,
-  canBulkDeleteHistoryItem,
   formatCampaignProgress,
   formatChannelLabel,
   historyEmptyState,
-  historySelectionKey,
   isGroupedActionFolder,
   listGridTemplateColumns,
   renderPublicationChannelsWithFailures,
@@ -14,7 +12,6 @@ import {
   extractChannelPublications,
   extractAttachmentsFromPayload,
   isVideoAttachment,
-  canDeleteHistoryItem,
   folderLabel,
   workflowActionLabelForItem,
   type Folder,
@@ -29,13 +26,8 @@ type Props = {
   loading: boolean;
   visibleItems: OutboxItem[];
   selectedId: string | null;
-  selectedHistoryKeySet: Set<string>;
-  deletingHistorySelection: boolean;
-  deletingDraftId: string | null;
-  deletingHistoryItemId: string | null;
   openItem: (item: OutboxItem) => void;
   openDetails: (item: OutboxItem) => void;
-  toggleHistorySelection: (item: OutboxItem) => void;
   mailAccounts: MailAccount[];
   itemMailAccountId: (item: OutboxItem) => string | null | undefined;
   filteredItemsLength: number;
@@ -43,8 +35,7 @@ type Props = {
   historyTotalCount: number | null;
   historyHasMorePotential: boolean;
   historyPageCount: number;
-  loadHistory: (opts?: { page?: number }) => Promise<void> | void;
-  selectedBulkCount: number;
+  loadHistory: (opts?: { page?: number }) => Promise<unknown> | void;
   historyQuery: string;
 };
 
@@ -174,13 +165,8 @@ export default function MailboxList(props: Props) {
     loading,
     visibleItems,
     selectedId,
-    selectedHistoryKeySet,
-    deletingHistorySelection,
-    deletingDraftId,
-    deletingHistoryItemId,
     openItem,
     openDetails,
-    toggleHistorySelection,
     mailAccounts,
     itemMailAccountId,
     filteredItemsLength,
@@ -189,7 +175,6 @@ export default function MailboxList(props: Props) {
     historyHasMorePotential,
     historyPageCount,
     loadHistory,
-    selectedBulkCount,
     historyQuery,
   } = props;
 
@@ -220,9 +205,7 @@ export default function MailboxList(props: Props) {
               <div style={{ padding: 14, color: "rgba(255,255,255,0.65)" }}>{historyEmptyState(folder, boxView, historyQuery)}</div>
             ) : visibleItems.map((it) => {
               const active = it.id === selectedId;
-              const historyKey = historySelectionKey(it);
-              const bulkDeletable = canBulkDeleteHistoryItem(it);
-              const checked = bulkDeletable && selectedHistoryKeySet.has(historyKey);
+              const historyKey = `${it.source}:${it.id}`;
 
               const accountLabel = (() => {
                 const acc = mailAccounts.find((a) => a.id === itemMailAccountId(it));
@@ -268,18 +251,20 @@ export default function MailboxList(props: Props) {
                 >
                   <div className={styles.itemTop} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
                     <div className={styles.fromRow}>
-                      {bulkDeletable ? (
-                        <label className={styles.rowSelect} onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={deletingHistorySelection || deletingDraftId === it.id || deletingHistoryItemId === it.id}
-                            aria-label={`Sélectionner ${rowTitle || "cet élément"}`}
-                            onChange={() => toggleHistorySelection(it)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </label>
-                      ) : null}
+                      <span
+                        className={styles.originMarkerSlot}
+                        aria-hidden={isInrAgentOrigin ? undefined : true}
+                      >
+                        {isInrAgentOrigin ? (
+                          <span
+                            className={styles.inrAgentOriginIcon}
+                            title={it.originLabel || "Créé par iNr’Agent"}
+                            aria-label={it.originLabel || "Créé par iNr’Agent"}
+                          >
+                            <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
+                          </span>
+                        ) : null}
+                      </span>
                       <div className={styles.from} title={rowTitle}>{rowTitle}</div>
                       {isVideoPublication ? <span className={styles.publicationMediaBadge}>🎬 Vidéo</span> : null}
                     </div>
@@ -308,15 +293,6 @@ export default function MailboxList(props: Props) {
                     </div>
 
                     <div className={styles.rowActions}>
-                      {isInrAgentOrigin ? (
-                        <span
-                          className={styles.inrAgentOriginIcon}
-                          title={it.originLabel || "Action générée par iNr’Agent"}
-                          aria-label={it.originLabel || "Action générée par iNr’Agent"}
-                        >
-                          <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
-                        </span>
-                      ) : null}
                       <button
                         type="button"
                         className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost} ${styles.detailsBtn}`}
@@ -354,7 +330,6 @@ export default function MailboxList(props: Props) {
                 })()
               : historyEmptyState(folder, boxView, historyQuery)}
           </div>
-          {selectedBulkCount > 0 ? <div style={{ color: "rgba(196,181,253,0.95)" }}>{selectedBulkCount} élément{selectedBulkCount > 1 ? "s" : ""} sélectionné{selectedBulkCount > 1 ? "s" : ""} sur cette page.</div> : null}
           {loading ? <div style={{ color: "rgba(125,211,252,0.92)" }}>Actualisation de la liste…</div> : null}
         </div>
         <div className={styles.listFooterPager}>

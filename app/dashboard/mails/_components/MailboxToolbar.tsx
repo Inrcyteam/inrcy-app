@@ -11,15 +11,7 @@ type Props = {
   searchOpen: boolean;
   historyQuery: string;
   setSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  loadHistory: () => Promise<void> | void;
-  toggleSelectVisibleHistoryItems: (selected: boolean) => void;
-  visibleBulkDeletableItemsLength: number;
-  selectedBulkCount: number;
-  loading: boolean;
-  deletingHistorySelection: boolean;
-  deletingDraftId: string | null;
-  deletingHistoryItemId: string | null;
-  deleteSelectedHistoryEntries: () => Promise<void> | void;
+  loadHistory: () => Promise<unknown> | void;
   toolCfg: { href?: string | null; label: string };
   resetCompose: (type: any) => void;
   setComposeOpen: (open: boolean) => void;
@@ -38,14 +30,6 @@ export default function MailboxToolbar(props: Props) {
     historyQuery,
     setSearchOpen,
     loadHistory,
-    toggleSelectVisibleHistoryItems,
-    visibleBulkDeletableItemsLength,
-    selectedBulkCount,
-    loading,
-    deletingHistorySelection,
-    deletingDraftId,
-    deletingHistoryItemId,
-    deleteSelectedHistoryEntries,
     toolCfg,
     resetCompose,
     setComposeOpen,
@@ -99,41 +83,6 @@ export default function MailboxToolbar(props: Props) {
       </div>
 
       <div className={styles.toolbarActions}>
-        <div className={styles.bulkToolbarActions}>
-          <button
-            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
-            onClick={() => toggleSelectVisibleHistoryItems(true)}
-            type="button"
-            title="Tout sélectionner la page"
-            aria-label="Tout sélectionner la page"
-            disabled={visibleBulkDeletableItemsLength <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
-          >
-            <span className={styles.toolbarIconGlyph}>☑</span>
-          </button>
-          <button
-            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn}`}
-            onClick={() => toggleSelectVisibleHistoryItems(false)}
-            type="button"
-            title="Tout désélectionner"
-            aria-label="Tout désélectionner"
-            disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
-          >
-            <span className={styles.toolbarIconGlyph}>☐</span>
-          </button>
-          <button
-            className={`${styles.toolbarBtn} ${styles.toolbarIconBtn} ${selectedBulkCount > 0 ? styles.toolbarBtnDanger : ""}`}
-            onClick={() => {
-              void deleteSelectedHistoryEntries();
-            }}
-            type="button"
-            title={selectedBulkCount > 0 ? `Supprimer la sélection (${selectedBulkCount})` : "Supprimer la sélection"}
-            aria-label="Supprimer la sélection"
-            disabled={selectedBulkCount <= 0 || loading || deletingHistorySelection || Boolean(deletingDraftId) || Boolean(deletingHistoryItemId)}
-          >
-            <span className={styles.toolbarIconGlyph}>🗑</span>
-          </button>
-        </div>
-
         <div className={styles.toolbarSpacer} />
 
         {toolCfg.href ? (

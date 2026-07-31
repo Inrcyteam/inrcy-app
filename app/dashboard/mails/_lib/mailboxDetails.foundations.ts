@@ -84,8 +84,11 @@ export type MailboxDetailsModalProps = {
   setDetailsActionError: Dispatch<SetStateAction<string | null>>;
   setDetailsActionSuccess: Dispatch<SetStateAction<string | null>>;
   detailsSourceDocPayload: any | null;
-  deletingHistoryItemId: string | null;
-  deletingHistorySelection: boolean;
+  canNavigatePrevious: boolean;
+  canNavigateNext: boolean;
+  navigationLabel: string;
+  navigationBusy: boolean;
+  onNavigate: (direction: -1 | 1) => Promise<void> | void;
   campaignRecipients: any[];
   campaignRecipientsLoading: boolean;
   campaignRecipientsPage: number;
@@ -124,10 +127,9 @@ export type MailboxDetailsModalProps = {
   retryCampaignFailedRecipients: (campaignId: string) => Promise<void>;
   resendCampaignCompletionSummary: (campaignId: string) => Promise<void>;
   openCampaignComposeFromHistory: (item: any, mode: "reuse" | "resend") => Promise<void>;
-  deleteHistoryEntry: (item: any) => Promise<void>;
   loadCampaignRecipients: (campaignId: string, targetPage?: number, targetFilter?: CampaignRecipientsFilterId) => Promise<void>;
   loadCampaignHealth: (campaignId: string, raw?: any) => Promise<void>;
-  refreshHistory?: () => Promise<void>;
+  refreshHistory?: () => Promise<unknown>;
   resumeDraft: (item: any) => void;
 };
 

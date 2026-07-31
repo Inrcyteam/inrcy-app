@@ -135,9 +135,9 @@ export default function MailboxHeader({
         </div>
 
         <div style={{ marginTop: 14 }}>
-          <strong>Factures envoyées</strong>
+          <strong>Suppression des historiques</strong>
           <p style={{ margin: "8px 0 0", opacity: 0.86 }}>
-            Une facture envoyée est considérée comme officielle dans l’application. Elle n’est pas supprimable manuellement depuis iNr’Send. Toute demande exceptionnelle de suppression doit être faite par écrit, par mail, au support iNrCy.
+            Aucune suppression manuelle n’est disponible dans iNr’Send. Pour toute demande exceptionnelle de suppression d’un historique, contactez-nous par mail à contact@inrcy.com.
           </p>
         </div>
       </HelpModal>

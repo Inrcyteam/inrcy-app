@@ -42,7 +42,6 @@ import {
   type CampaignRecipientsFilterId,
   type PublicationEditForm,
   campaignCounts,
-  canDeleteHistoryItem,
   extractAttachmentsFromPayload,
   extractChannelPublications,
   extractPublicationParts,
@@ -97,8 +96,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setDetailsActionError,
     setDetailsActionSuccess,
     detailsSourceDocPayload,
-    deletingHistoryItemId,
-    deletingHistorySelection,
+    canNavigatePrevious,
+    canNavigateNext,
+    navigationLabel,
+    navigationBusy,
+    onNavigate,
     campaignRecipients,
     campaignRecipientsLoading,
     campaignRecipientsPage,
@@ -137,7 +139,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     retryCampaignFailedRecipients,
     resendCampaignCompletionSummary,
     openCampaignComposeFromHistory,
-    deleteHistoryEntry,
     loadCampaignRecipients,
     loadCampaignHealth,
     refreshHistory,
@@ -520,6 +521,28 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     onClose();
   }, [confirmDiscardPublicationEdit, onClose, setDetailsEditMode]);
 
+  const requestNavigate = React.useCallback(async (direction: -1 | 1) => {
+    if (navigationBusy) return;
+    const allowed = direction < 0 ? canNavigatePrevious : canNavigateNext;
+    if (!allowed) return;
+    const ok = await confirmDiscardPublicationEdit();
+    if (!ok) return;
+    setPublicationEditDirty(false);
+    setDetailsEditMode(false);
+    setDetailsActionError(null);
+    setDetailsActionSuccess(null);
+    await onNavigate(direction);
+  }, [
+    canNavigateNext,
+    canNavigatePrevious,
+    confirmDiscardPublicationEdit,
+    navigationBusy,
+    onNavigate,
+    setDetailsActionError,
+    setDetailsActionSuccess,
+    setDetailsEditMode,
+  ]);
+
   const closePublicationEditForNavigation = React.useCallback(() => {
     setPublicationEditDirty(false);
     setDetailsEditMode(false);
@@ -548,6 +571,20 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setDetailsChannelKey(channelKey);
   }, [activePublicationEditChannelKey, confirmDiscardPublicationEdit, setDetailsActionError, setDetailsActionSuccess, setDetailsChannelKey, setDetailsEditMode]);
 
+  React.useEffect(() => {
+    if (!open) return;
+    setPublicationPreviewOpen(false);
+    setPublicationCameraOpen(false);
+    setPublicationMediaLibraryOpen(false);
+    setTiktokStatusChecking(false);
+    setTiktokRetrying(false);
+    setTiktokCancelling(false);
+    detailsScrollSnapshotRef.current = null;
+    window.requestAnimationFrame(() => {
+      detailsBodyRef.current?.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }, [open, detailsItem?.id]);
+
   if (!open) return null;
 
   const safeDetailHtml = detailsItem?.detailHtml ? sanitizeHtml(detailsItem.detailHtml) : "";
@@ -561,6 +598,12 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   {detailsItem ? (
                     <>
                       <span className={`${styles.badge} ${pill(detailsItem.provider).cls}`}>{pill(detailsItem.provider).label}</span>
+                      {detailsItem.originSource === "inr_agent" ? (
+                        <span className={styles.inrAgentDetailBadge} title={detailsItem.originLabel || "Créé par iNr’Agent"}>
+                          <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
+                          Créé par iNr’Agent
+                        </span>
+                      ) : null}
                       {detailsItem.source !== "app_events" && detailsAccountLabel ? (
                         <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>• {detailsAccountLabel}</span>
                       ) : null}
@@ -568,9 +611,33 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   ) : null}
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {/* Trash removed intentionally */}
-                  <button className={styles.btnGhost} onClick={() => void requestClose()} type="button">
+                <div className={styles.detailsHeaderActions}>
+                  <div className={styles.detailsNavigation} aria-label="Navigation dans la liste">
+                    <button
+                      className={`${styles.btnGhost} ${styles.detailsNavigationButton}`}
+                      onClick={() => void requestNavigate(-1)}
+                      type="button"
+                      title="Élément précédent"
+                      aria-label="Élément précédent"
+                      disabled={!canNavigatePrevious || navigationBusy}
+                    >
+                      ‹
+                    </button>
+                    <span className={styles.detailsNavigationCounter} aria-live="polite">
+                      {navigationBusy ? "…" : navigationLabel}
+                    </span>
+                    <button
+                      className={`${styles.btnGhost} ${styles.detailsNavigationButton}`}
+                      onClick={() => void requestNavigate(1)}
+                      type="button"
+                      title="Élément suivant"
+                      aria-label="Élément suivant"
+                      disabled={!canNavigateNext || navigationBusy}
+                    >
+                      ›
+                    </button>
+                  </div>
+                  <button className={styles.btnGhost} onClick={() => void requestClose()} type="button" title="Fermer" aria-label="Fermer">
                     ✕
                   </button>
                 </div>
@@ -796,16 +863,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     Créer la facture
                                   </button>
                                 ) : null}
-                                {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
-                                  <button
-                                    type="button"
-                                    className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
-                                    onClick={() => void deleteHistoryEntry(detailsItem)}
-                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
-                                  >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
-                                  </button>
-                                ) : null}
                               </div>
                             </>
                           ) : detailsItem.source === "mail_campaigns" ? (
@@ -977,16 +1034,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     Réouvrir dans l’outil
                                   </button>
                                 ) : null}
-                                {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
-                                  <button
-                                    type="button"
-                                    className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
-                                    onClick={() => void deleteHistoryEntry(detailsItem)}
-                                    disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
-                                  >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
-                                  </button>
-                                ) : null}
                               </div>
                             </>
                           ) : (
@@ -1130,16 +1177,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
                                     </button>
                                   ) : null}
-                                  {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
-                                    <button
-                                      type="button"
-                                      className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
-                                      onClick={() => void deleteHistoryEntry(detailsItem)}
-                                      disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id || detailsActionBusy}
-                                    >
-                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
-                                    </button>
-                                  ) : null}
                                 </div>
                               ) : isDraftItem ? (
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
@@ -1150,16 +1187,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       onClick={() => resumeDraft(detailsItem)}
                                     >
                                       Reprendre l’édition
-                                    </button>
-                                  ) : null}
-                                  {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
-                                    <button
-                                      type="button"
-                                      className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
-                                      onClick={() => void deleteHistoryEntry(detailsItem)}
-                                      disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
-                                    >
-                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
                                     </button>
                                   ) : null}
                                 </div>
