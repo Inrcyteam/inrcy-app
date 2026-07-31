@@ -1684,14 +1684,6 @@ export async function GET(req: Request) {
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
     const items = filtered.slice(start, end);
-    const allSourcesExhausted =
-      sourceState.send_items.exhausted &&
-      sourceState.mail_campaigns.exhausted &&
-      sourceState.app_events.exhausted &&
-      sourceState.inr_agent_actions.exhausted &&
-      sourceState.inr_agent_scheduled_actions.exhausted;
-    const total = allSourcesExhausted ? filtered.length : null;
-    const hasMore = total != null ? end < total : filtered.length > end || !allSourcesExhausted;
     const historyFiles = await fetchInrSendHistoryFiles(
       supabase,
       activeUserId,
@@ -1730,14 +1722,17 @@ export async function GET(req: Request) {
       computeFolderCounts(supabase, activeUserId, "sent", filterAccountId, query),
       computeFolderCounts(supabase, activeUserId, "drafts", filterAccountId, query),
     ]);
+    const activeCounts = boxView === "drafts" ? draftFolderCounts : folderCounts;
+    const exactTotal = Math.max(0, Number(activeCounts[folder] || 0));
+    const hasMore = end < exactTotal;
 
     return NextResponse.json({
       items,
       page,
       pageSize,
       hasMore,
-      total,
-      totalKnown: total != null,
+      total: exactTotal,
+      totalKnown: true,
       folderCounts,
       draftFolderCounts,
     });

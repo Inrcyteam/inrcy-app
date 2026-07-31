@@ -12,12 +12,14 @@ const historyRoute = readFileSync("app/api/inrsend/history/route.ts", "utf8");
 const publishRoute = readFileSync("app/api/booster/publish-now/route.ts", "utf8");
 const agentExecute = readFileSync("app/api/agent/actions/execute/route.ts", "utf8");
 const scheduledCron = readFileSync("app/api/cron/inr-agent-scheduled-actions/route.ts", "utf8");
+const styles = readFileSync("app/dashboard/mails/mails.module.css", "utf8");
 
 
 test("iNrSend ne propose plus de suppression manuelle ni de selection de lignes", () => {
   assert.doesNotMatch(toolbar, /deleteSelectedHistoryEntries|selectedHistoryKeys|Tout sélectionner|Corbeille/i);
   assert.doesNotMatch(list, /type="checkbox"|toggleHistorySelection|selectedHistoryKeys/);
   assert.doesNotMatch(client, /deleteSelectedHistoryEntries|deleteHistoryEntry|selectedHistoryKeys|historySelectionKey/);
+  assert.doesNotMatch(styles, /\.rowSelect\b|\.originMarkerSlot\b/);
 });
 
 
@@ -32,7 +34,8 @@ test("la suppression manuelle est refusee cote serveur et le support est indique
 
 test("les actions iNrAgent sont identifiables dans la liste et le detail", () => {
   assert.match(list, /originSource === "inr_agent"/);
-  assert.match(list, /originMarkerSlot/);
+  assert.doesNotMatch(list, /originMarkerSlot/);
+  assert.match(list, /rowActions[\s\S]*inrAgentOriginIcon[\s\S]*detailsBtn/);
   assert.match(list, /\/icons\/inr-agent\.png/);
   assert.match(details, /Créé par iNr’Agent/);
   assert.match(details, /inrAgentDetailBadge/);
@@ -47,6 +50,16 @@ test("le detail navigue entre les lignes sans revenir au tableau", () => {
   assert.match(client, /async function navigateDetails\(direction: -1 \| 1\)/);
   assert.match(client, /loadHistory\(\{ page: targetPage \}\)/);
   assert.match(client, /navigationLabel=\{detailsNavigationLabel\}/);
+  assert.match(styles, /detailsNavigationCounter[\s\S]*min-width:\s*96px/);
+  assert.match(styles, /detailsNavigationCounter[\s\S]*overflow:\s*visible/);
+});
+
+
+test("le compteur de navigation utilise le total exact de la rubrique", () => {
+  assert.match(historyRoute, /const activeCounts = boxView === "drafts" \? draftFolderCounts : folderCounts/);
+  assert.match(historyRoute, /const exactTotal = Math\.max\(0, Number\(activeCounts\[folder\] \|\| 0\)\)/);
+  assert.match(historyRoute, /total:\s*exactTotal/);
+  assert.match(historyRoute, /totalKnown:\s*true/);
 });
 
 

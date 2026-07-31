@@ -3292,19 +3292,6 @@
   align-items: center;
 }
 
-.rowSelect {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  margin: 0;
-}
-
-.rowSelect input {
-  width: 16px;
-  height: 16px;
-}
-
 .fromRow {
   gap: 10px;
   flex-wrap: nowrap;
@@ -3427,7 +3414,7 @@
 
   .itemTop,
 .itemTop[style] {
-    grid-template-columns: minmax(0, 1fr) 40px !important;
+    grid-template-columns: minmax(0, 1fr) 74px !important;
     grid-template-areas:
       "title action"
       "meta action";
@@ -3494,17 +3481,14 @@
     grid-area: action;
     align-self: center;
     justify-self: end;
+    justify-content: flex-end;
+    gap: 6px;
   }
 
   .iconBtnSmall {
     width: 36px;
     height: 36px;
     border-radius: 12px;
-  }
-
-  .rowSelect input {
-    width: 15px;
-    height: 15px;
   }
 
   .channelStatusInlineWrap {
@@ -5430,17 +5414,6 @@
   }
 }
 
-/* iNrSend — historique en lecture seule et origine iNrAgent */
-.originMarkerSlot {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 28px;
-}
-
 .inrAgentDetailBadge {
   display: inline-flex;
   align-items: center;
@@ -5469,12 +5442,15 @@
   justify-content: flex-end;
   gap: 10px;
   flex: 0 0 auto;
+  min-width: max-content;
 }
 
 .detailsNavigation {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: 0 0 auto;
+  min-width: max-content;
 }
 
 .detailsNavigationButton {
@@ -5490,24 +5466,26 @@
 }
 
 .detailsNavigationCounter {
-  min-width: 62px;
+  min-width: 96px;
+  padding: 0 8px;
+  flex: 0 0 auto;
   text-align: center;
   color: rgba(226, 232, 255, 0.8);
   font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 @media (max-width: 640px) {
-  .originMarkerSlot {
-    width: 26px;
-    min-width: 26px;
-    height: 26px;
-    flex-basis: 26px;
+  .detailsModalCard .modalHeader {
+    flex-wrap: wrap;
   }
 
   .detailsHeaderActions {
     gap: 6px;
+    margin-left: auto;
   }
 
   .detailsNavigation {
@@ -5521,7 +5499,8 @@
   }
 
   .detailsNavigationCounter {
-    min-width: 48px;
+    min-width: 82px;
+    padding-inline: 5px;
     font-size: 11px;
   }
 

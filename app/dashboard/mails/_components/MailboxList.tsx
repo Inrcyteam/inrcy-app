@@ -251,20 +251,6 @@ export default function MailboxList(props: Props) {
                 >
                   <div className={styles.itemTop} style={{ gridTemplateColumns: listGridTemplateColumns(folder) }}>
                     <div className={styles.fromRow}>
-                      <span
-                        className={styles.originMarkerSlot}
-                        aria-hidden={isInrAgentOrigin ? undefined : true}
-                      >
-                        {isInrAgentOrigin ? (
-                          <span
-                            className={styles.inrAgentOriginIcon}
-                            title={it.originLabel || "Créé par iNr’Agent"}
-                            aria-label={it.originLabel || "Créé par iNr’Agent"}
-                          >
-                            <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
-                          </span>
-                        ) : null}
-                      </span>
                       <div className={styles.from} title={rowTitle}>{rowTitle}</div>
                       {isVideoPublication ? <span className={styles.publicationMediaBadge}>🎬 Vidéo</span> : null}
                     </div>
@@ -293,6 +279,16 @@ export default function MailboxList(props: Props) {
                     </div>
 
                     <div className={styles.rowActions}>
+                      {isInrAgentOrigin ? (
+                        <span
+                          className={styles.inrAgentOriginIcon}
+                          title={it.originLabel || "Créé par iNr’Agent"}
+                          aria-label={it.originLabel || "Créé par iNr’Agent"}
+                          role="img"
+                        >
+                          <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost} ${styles.detailsBtn}`}
