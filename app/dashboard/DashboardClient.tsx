@@ -173,7 +173,9 @@ export default function DashboardClient({
     checkProfile,
     checkActivity,
   } = useDashboardCompletionChecks();
-  const requiredSetupAccessAllowed = completionCheckReady && requiredSetupCompleted;
+  // Les boutons restent immédiatement cliquables pendant la vérification.
+  // Seul un état incomplet déjà confirmé bloque réellement la destination.
+  const requiredSetupAccessAllowed = !completionCheckReady || requiredSetupCompleted;
   const requiredSetupLockVisible = completionCheckReady && requiredSetupIncomplete;
   const onboardingState = useDashboardOnboardingState(initialOnboardingState);
   const {
@@ -390,13 +392,23 @@ export default function DashboardClient({
     closePanel();
   }, [closePanel, completeOnboarding, onboardingAccountId, onboardingAiCompleting]);
 
+  const openRequiredSetupPanel = useCallback(() => {
+    openPanel(profileIncomplete ? "profil" : activityIncomplete ? "activite" : "profil");
+  }, [activityIncomplete, openPanel, profileIncomplete]);
+
   const goToRequiredSetupAwareModule = useCallback((path: string) => {
-    if (isDashboardRequiredSetupProtectedDestination(path) && !requiredSetupAccessAllowed) return;
+    if (isDashboardRequiredSetupProtectedDestination(path) && !requiredSetupAccessAllowed) {
+      openRequiredSetupPanel();
+      return;
+    }
     goToModule(path);
-  }, [goToModule, requiredSetupAccessAllowed]);
+  }, [goToModule, openRequiredSetupPanel, requiredSetupAccessAllowed]);
 
   const navigateDashboardCta = useCallback((ctaUrl: string) => {
-    if (isDashboardRequiredSetupProtectedDestination(ctaUrl) && !requiredSetupAccessAllowed) return;
+    if (isDashboardRequiredSetupProtectedDestination(ctaUrl) && !requiredSetupAccessAllowed) {
+      openRequiredSetupPanel();
+      return;
+    }
 
     void requestNavigation(() => {
       if (ctaUrl.startsWith("/")) {
@@ -405,10 +417,13 @@ export default function DashboardClient({
         window.location.href = ctaUrl;
       }
     });
-  }, [requestNavigation, requiredSetupAccessAllowed, router]);
+  }, [openRequiredSetupPanel, requestNavigation, requiredSetupAccessAllowed, router]);
 
   const openBoosterPublish = useCallback(() => {
-    if (!requiredSetupAccessAllowed) return;
+    if (!requiredSetupAccessAllowed) {
+      openRequiredSetupPanel();
+      return;
+    }
 
     void requestNavigation(() => {
       // L'URL est aussi l'état partagé avec le bandeau mobile. Sans ce
@@ -417,12 +432,15 @@ export default function DashboardClient({
       setDashboardBoosterModal("publish");
       router.replace("/dashboard?action=publish", { scroll: false });
     });
-  }, [requestNavigation, requiredSetupAccessAllowed, router]);
+  }, [openRequiredSetupPanel, requestNavigation, requiredSetupAccessAllowed, router]);
 
   const openBoosterStats = useCallback(() => {
-    if (!requiredSetupAccessAllowed) return;
+    if (!requiredSetupAccessAllowed) {
+      openRequiredSetupPanel();
+      return;
+    }
     setDashboardBoosterModal("stats");
-  }, [requiredSetupAccessAllowed]);
+  }, [openRequiredSetupPanel, requiredSetupAccessAllowed]);
 
   const openStatsModule = useCallback(() => {
     void requestNavigation(() => {
@@ -3626,6 +3644,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         openPanel={openPanel}
         requiredSetupAccessAllowed={requiredSetupAccessAllowed}
         requiredSetupLockVisible={requiredSetupLockVisible}
+        onRequiredSetupBlocked={openRequiredSetupPanel}
         onOpenChannelsHelp={() => setHelpCanauxOpen(true)}
         onOpenStats={openStatsModule}
         onOpenBoosterPublish={openBoosterPublish}

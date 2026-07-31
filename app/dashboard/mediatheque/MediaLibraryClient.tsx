@@ -23,6 +23,7 @@ import {
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
+import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 import {
   UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES,
   UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES,
@@ -52,6 +53,25 @@ type MediaItem = {
   created_at: string;
   signed_url: string | null;
 };
+
+
+type MediaLibrarySnapshot = {
+  items: MediaItem[];
+  stats: {
+    total: number;
+    images: number;
+    videos: number;
+    total_bytes: number;
+  };
+};
+
+function readInitialMediaLibrarySnapshot(): MediaLibrarySnapshot | null {
+  const snapshot = readModuleSnapshot<MediaLibrarySnapshot>(
+    MODULE_SNAPSHOT_KEYS.mediaLibraryDefault,
+  );
+  if (!snapshot?.data || !Array.isArray(snapshot.data.items)) return null;
+  return snapshot.data;
+}
 
 type UploadPrepareItem = {
   client_id: string;
@@ -238,14 +258,15 @@ function cleanEditableTags(value: string) {
 }
 
 export default function MediaLibraryClient() {
-  const [items, setItems] = useState<MediaItem[]>([]);
-  const [stats, setStats] = useState({
+  const [initialSnapshot] = useState<MediaLibrarySnapshot | null>(() => readInitialMediaLibrarySnapshot());
+  const [items, setItems] = useState<MediaItem[]>(() => initialSnapshot?.items ?? []);
+  const [stats, setStats] = useState(() => initialSnapshot?.stats ?? ({
     total: 0,
     images: 0,
     videos: 0,
     total_bytes: 0,
-  });
-  const [loading, setLoading] = useState(true);
+  }));
+  const [loading, setLoading] = useState(() => !initialSnapshot);
   const [uploading, setUploading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -286,8 +307,8 @@ export default function MediaLibraryClient() {
     items.length > 0 && items.every((item) => selectedItemIds.has(item.id));
   const bulkDeleting = savingId === "__bulk__";
 
-  const loadItems = useCallback(async () => {
-    setLoading(true);
+  const loadItems = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
@@ -313,14 +334,21 @@ export default function MediaLibraryClient() {
         const visibleIds = new Set(nextItems.map((item) => item.id));
         return new Set(Array.from(prev).filter((id) => visibleIds.has(id)));
       });
-      setStats(
-        json.stats ?? {
-          total: nextItems.length,
-          images: 0,
-          videos: 0,
-          total_bytes: 0,
-        },
-      );
+      const nextStats = json.stats ?? {
+        total: nextItems.length,
+        images: 0,
+        videos: 0,
+        total_bytes: 0,
+      };
+      setStats(nextStats);
+
+      const isDefaultSnapshot = typeFilter === "all" && activeFilter === "active" && !search.trim();
+      if (isDefaultSnapshot) {
+        writeModuleSnapshot<MediaLibrarySnapshot>(MODULE_SNAPSHOT_KEYS.mediaLibraryDefault, {
+          items: nextItems,
+          stats: nextStats,
+        });
+      }
     } catch (e: any) {
       setError(getClientUserFacingErrorMessage(e, "Impossible de charger la médiathèque."));
     } finally {
@@ -329,8 +357,8 @@ export default function MediaLibraryClient() {
   }, [activeFilter, search, typeFilter]);
 
   useEffect(() => {
-    loadItems();
-  }, [loadItems]);
+    void loadItems({ silent: Boolean(initialSnapshot) });
+  }, [initialSnapshot, loadItems]);
 
   function mergeSelectedFiles(nextFiles: File[]) {
     if (nextFiles.length === 0) return;
@@ -830,7 +858,7 @@ export default function MediaLibraryClient() {
             <button
               type="button"
               className={styles.ghostButton}
-              onClick={loadItems}
+              onClick={() => void loadItems()}
               disabled={loading}
               aria-label={loading ? "Chargement de la médiathèque" : "Rafraîchir la médiathèque"}
             >
@@ -1068,7 +1096,7 @@ export default function MediaLibraryClient() {
               <button
                 type="button"
                 className={styles.applyButton}
-                onClick={loadItems}
+                onClick={() => void loadItems()}
               >
                 Appliquer
               </button>

@@ -88,7 +88,7 @@ function ResponsiveBottomNavMobile() {
     requiredSetupCompleted,
     requiredSetupIncomplete,
   } = useDashboardCompletionChecks();
-  const requiredSetupAccessAllowed = completionCheckReady && requiredSetupCompleted;
+  const requiredSetupAccessAllowed = !completionCheckReady || requiredSetupCompleted;
   const requiredSetupLocked = completionCheckReady && requiredSetupIncomplete;
   const requiredSetupLockMessage = t.modules.requiredSetupLocked;
   const notificationsApi = useDashboardNotifications();
@@ -270,7 +270,18 @@ function ResponsiveBottomNavMobile() {
   }, [hidden]);
 
   const navigate = useCallback((href: string) => {
-    if (isDashboardRequiredSetupProtectedDestination(href) && !requiredSetupAccessAllowed) return;
+    if (isDashboardRequiredSetupProtectedDestination(href) && !requiredSetupAccessAllowed) {
+      const panel = profileIncomplete ? "profil" : activityIncomplete ? "activite" : "profil";
+      try {
+        sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+        sessionStorage.setItem("inrcy_last_panel", panel);
+      } catch {}
+      setMenuOpen(false);
+      setLanguageOpen(false);
+      setNotificationMenuOpen(false);
+      router.push(`/dashboard?panel=${encodeURIComponent(panel)}`, { scroll: false });
+      return;
+    }
 
     void requestNavigation(() => {
       setMenuOpen(false);
@@ -279,7 +290,7 @@ function ResponsiveBottomNavMobile() {
       if (/^https?:\/\//i.test(href)) window.location.assign(href);
       else router.push(href);
     });
-  }, [requestNavigation, requiredSetupAccessAllowed, router]);
+  }, [activityIncomplete, profileIncomplete, requestNavigation, requiredSetupAccessAllowed, router]);
 
   const openDashboardPanel = useCallback((panel: DashboardPanelName) => {
     void requestNavigation(() => {

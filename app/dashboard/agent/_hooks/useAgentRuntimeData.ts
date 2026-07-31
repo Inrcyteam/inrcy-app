@@ -205,6 +205,53 @@ export function writeCachedAgentViewSnapshot(
   }
 }
 
+export async function warmAgentRuntimeSnapshot() {
+  if (typeof window === "undefined") return;
+  const cached = readCachedAgentViewSnapshot();
+
+  const readJson = async (url: string) => {
+    const response = await fetch(url, { method: "GET", cache: "no-store" });
+    if (!response.ok) return null;
+    return response.json().catch(() => null);
+  };
+
+  const [settingsResult, channelsResult, actionsResult, scheduledResult] = await Promise.allSettled([
+    cached?.settings ? Promise.resolve(null) : readJson("/api/agent/settings"),
+    cached?.connectedChannels ? Promise.resolve(null) : readJson("/api/integrations/channel-states"),
+    Array.isArray(cached?.actions) ? Promise.resolve(null) : readJson("/api/agent/actions"),
+    Array.isArray(cached?.scheduledActions) ? Promise.resolve(null) : readJson("/api/agent/scheduled-actions"),
+  ]);
+
+  const settingsPayload = settingsResult.status === "fulfilled" ? settingsResult.value : null;
+  if (settingsPayload?.settings) {
+    writeCachedAgentViewSnapshot({
+      settings: sanitizeInrAgentSettings(settingsPayload.settings),
+      tableMissing: Boolean(settingsPayload.tableMissing),
+    });
+  }
+
+  const channelsPayload = channelsResult.status === "fulfilled" ? channelsResult.value : null;
+  if (channelsPayload) {
+    writeCachedAgentViewSnapshot({ connectedChannels: channelMapFromConnectionStates(channelsPayload) });
+  }
+
+  const actionsPayload = actionsResult.status === "fulfilled" ? actionsResult.value : null;
+  if (Array.isArray(actionsPayload?.actions)) {
+    writeCachedAgentViewSnapshot({
+      actions: actionsPayload.actions,
+      tableMissing: Boolean(actionsPayload.tableMissing),
+    });
+  }
+
+  const scheduledPayload = scheduledResult.status === "fulfilled" ? scheduledResult.value : null;
+  if (Array.isArray(scheduledPayload?.scheduledActions)) {
+    writeCachedAgentViewSnapshot({
+      scheduledActions: scheduledPayload.scheduledActions,
+      scheduledActionsTableMissing: Boolean(scheduledPayload.tableMissing),
+    });
+  }
+}
+
 export function useAgentRuntimeData() {
   const cachedInitialAgentSnapshot = useMemo(
     () => readCachedAgentViewSnapshot(),

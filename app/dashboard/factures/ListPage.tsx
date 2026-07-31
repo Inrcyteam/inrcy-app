@@ -6,6 +6,7 @@ import styles from "../_documents/documents.module.css";
 import { type DocRecord, calcTotalsWithDiscount, formatEuro, loadDocs } from "../_documents/docUtils";
 import { deleteDocRecord, duplicateDocRecord, fetchDocRecords, updateDocRecordStatus } from "../_documents/docSaveStore";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 
 type Props = {
   kind: "devis" | "facture";
@@ -16,30 +17,49 @@ type Props = {
 
 type Row = DocRecord & { totals: ReturnType<typeof calcTotalsWithDiscount> };
 
+type DocumentsListSnapshot = {
+  docs: DocRecord[];
+  storageMode: "supabase" | "local";
+};
+
+function snapshotKeyForKind(kind: Props["kind"]) {
+  return kind === "facture" ? MODULE_SNAPSHOT_KEYS.facturesList : MODULE_SNAPSHOT_KEYS.devisList;
+}
+
+function readInitialDocumentsSnapshot(kind: Props["kind"]): DocumentsListSnapshot | null {
+  const snapshot = readModuleSnapshot<DocumentsListSnapshot>(snapshotKeyForKind(kind));
+  if (!snapshot?.data || !Array.isArray(snapshot.data.docs)) return null;
+  return snapshot.data;
+}
+
 function ListPage({ kind, title, ctaLabel, ctaHref }: Props) {
   const router = useRouter();
-  const [docs, setDocs] = useState<DocRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [storageMode, setStorageMode] = useState<"supabase" | "local">("supabase");
+  const [initialSnapshot] = useState<DocumentsListSnapshot | null>(() => readInitialDocumentsSnapshot(kind));
+  const [docs, setDocs] = useState<DocRecord[]>(() => initialSnapshot?.docs ?? []);
+  const [loading, setLoading] = useState(() => !initialSnapshot);
+  const [storageMode, setStorageMode] = useState<"supabase" | "local">(() => initialSnapshot?.storageMode ?? "supabase");
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     try {
       const next = await fetchDocRecords(kind);
       setDocs(next);
       setStorageMode("supabase");
+      writeModuleSnapshot<DocumentsListSnapshot>(snapshotKeyForKind(kind), { docs: next, storageMode: "supabase" });
     } catch (error) {
       console.error(error);
-      setDocs(loadDocs().filter((d) => d.kind === kind));
+      const localDocs = loadDocs().filter((d) => d.kind === kind);
+      setDocs(localDocs);
       setStorageMode("local");
+      writeModuleSnapshot<DocumentsListSnapshot>(snapshotKeyForKind(kind), { docs: localDocs, storageMode: "local" });
     } finally {
       setLoading(false);
     }
   }, [kind]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refresh({ silent: Boolean(initialSnapshot) });
+  }, [initialSnapshot, refresh]);
 
   useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {

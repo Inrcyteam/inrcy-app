@@ -102,11 +102,14 @@ test("dashboard layout blocks direct URLs before rendering protected tools", () 
   assert.match(gateSource, /requiredSetupCompleted/);
 });
 
-test("dashboard and mobile navigation both stop protected module openings", () => {
+test("dashboard buttons stay clickable while completion checks load and guide known incomplete accounts", () => {
+  assert.match(dashboardClientSource, /const requiredSetupAccessAllowed = !completionCheckReady \|\| requiredSetupCompleted/);
   assert.match(dashboardClientSource, /goToRequiredSetupAwareModule/);
-  assert.match(dashboardClientSource, /requiredSetupAccessAllowed \? dashboardBoosterModal : null/);
+  assert.match(dashboardClientSource, /openRequiredSetupPanel/);
   assert.match(bottomNavSource, /isDashboardRequiredSetupProtectedDestination\(href\)/);
-  assert.match(modulesSource, /if \(!requiredSetupAccessAllowed\) return;/);
+  assert.match(bottomNavSource, /!completionCheckReady \|\| requiredSetupCompleted/);
+  assert.match(modulesSource, /onRequiredSetupBlocked\(\)/);
+  assert.doesNotMatch(modulesSource, /if \(!requiredSetupAccessAllowed\) return;/);
 });
 
 test("completion state synchronizes across dashboard, gate and responsive navigation", () => {

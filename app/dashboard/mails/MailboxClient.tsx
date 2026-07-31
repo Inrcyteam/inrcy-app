@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 
 import { readWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
 import { saveWorkflowCampaignState } from "@/app/dashboard/_lib/workflowCampaignState";
@@ -180,6 +181,15 @@ import {
   type PendingTrack,
 } from "./_lib/mailboxComposeCampaign.foundations";
 
+type InrSendDefaultSnapshot = {
+  items: OutboxItem[];
+  page: number;
+  total: number | null;
+  hasMore: boolean;
+  folderCounts: FolderCounts;
+  draftFolderCounts: FolderCounts;
+};
+
 export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
@@ -199,23 +209,28 @@ export default function MailboxClient() {
     return () => mq.removeEventListener?.("change", update);
   }, []);
 
+  const [initialHistorySnapshot] = useState<InrSendDefaultSnapshot | null>(() =>
+    readModuleSnapshot<InrSendDefaultSnapshot>(MODULE_SNAPSHOT_KEYS.inrSendDefault)?.data ?? null,
+  );
   const [folder, setFolder] = useState<Folder>("publications");
   const [boxView, setBoxView] = useState<BoxView>("sent");
-  const [items, setItems] = useState<OutboxItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [historyLoadedOnce, setHistoryLoadedOnce] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [historyPage, setHistoryPage] = useState(1);
-  const historyPageRef = useRef(1);
-  const [historyHasMorePotential, setHistoryHasMorePotential] = useState(false);
+  const [items, setItems] = useState<OutboxItem[]>(() =>
+    Array.isArray(initialHistorySnapshot?.items) ? initialHistorySnapshot.items : [],
+  );
+  const [loading, setLoading] = useState(() => !initialHistorySnapshot);
+  const [historyLoadedOnce, setHistoryLoadedOnce] = useState(() => Boolean(initialHistorySnapshot));
+  const [selectedId, setSelectedId] = useState<string | null>(() => initialHistorySnapshot?.items?.[0]?.id ?? null);
+  const [historyPage, setHistoryPage] = useState(() => Math.max(1, initialHistorySnapshot?.page ?? 1));
+  const historyPageRef = useRef(Math.max(1, initialHistorySnapshot?.page ?? 1));
+  const [historyHasMorePotential, setHistoryHasMorePotential] = useState(() => Boolean(initialHistorySnapshot?.hasMore));
   const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(
-    null,
+    () => initialHistorySnapshot?.total ?? null,
   );
   const [folderCounts, setFolderCounts] = useState<FolderCounts>(() =>
-    emptyFolderCounts(),
+    initialHistorySnapshot?.folderCounts ?? emptyFolderCounts(),
   );
   const [draftFolderCounts, setDraftFolderCounts] = useState<FolderCounts>(() =>
-    emptyFolderCounts(),
+    initialHistorySnapshot?.draftFolderCounts ?? emptyFolderCounts(),
   );
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
@@ -1049,13 +1064,13 @@ export default function MailboxClient() {
   }
 
   const loadHistory = useCallback(
-    async (options?: { page?: number }) => {
+    async (options?: { page?: number; silent?: boolean }) => {
       const targetPage = Math.max(
         1,
         options?.page ?? historyPageRef.current ?? 1,
       );
 
-      setLoading(true);
+      if (!options?.silent) setLoading(true);
       try {
         const params = new URLSearchParams();
         params.set("page", String(targetPage));
@@ -1108,6 +1123,23 @@ export default function MailboxClient() {
             : (nextItems[0]?.id ?? null),
         );
 
+        const isDefaultSnapshot =
+          targetPage === 1 &&
+          folder === "publications" &&
+          boxView === "sent" &&
+          !filterAccountId &&
+          !trimmedQuery;
+        if (isDefaultSnapshot) {
+          writeModuleSnapshot<InrSendDefaultSnapshot>(MODULE_SNAPSHOT_KEYS.inrSendDefault, {
+            items: nextItems,
+            page: nextPage,
+            total: nextTotal,
+            hasMore: Boolean(payload?.hasMore),
+            folderCounts: nextCounts,
+            draftFolderCounts: nextDraftCounts,
+          });
+        }
+
         return {
           items: nextItems,
           page: nextPage,
@@ -1116,20 +1148,22 @@ export default function MailboxClient() {
         };
       } catch (error) {
         console.error(error);
-        setItems([]);
-        setHistoryPage(targetPage);
-        setHistoryHasMorePotential(false);
-        setHistoryTotalCount(0);
-        setFolderCounts(emptyFolderCounts());
-        setDraftFolderCounts(emptyFolderCounts());
-        setSelectedId(null);
+        if (!options?.silent && !initialHistorySnapshot) {
+          setItems([]);
+          setHistoryPage(targetPage);
+          setHistoryHasMorePotential(false);
+          setHistoryTotalCount(0);
+          setFolderCounts(emptyFolderCounts());
+          setDraftFolderCounts(emptyFolderCounts());
+          setSelectedId(null);
+        }
         return null;
       } finally {
         setHistoryLoadedOnce(true);
         setLoading(false);
       }
     },
-    [boxView, filterAccountId, folder, historyQuery],
+    [boxView, filterAccountId, folder, historyQuery, initialHistorySnapshot],
   );
 
   const filteredItems = items;
@@ -1826,8 +1860,8 @@ export default function MailboxClient() {
 
   // refresh des changements de filtres / recherche
   useEffect(() => {
-    void loadHistory({ page: 1 });
-  }, [loadHistory]);
+    void loadHistory({ page: 1, silent: Boolean(initialHistorySnapshot) });
+  }, [initialHistorySnapshot, loadHistory]);
 
   useEffect(() => {
     const handleMailAccountsUpdated = async () => {

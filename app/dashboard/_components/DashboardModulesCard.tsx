@@ -36,12 +36,13 @@ type DashboardModulesCardProps = {
   openPanel: (panel: DashboardPanelName) => void;
   requiredSetupAccessAllowed: boolean;
   requiredSetupLockVisible: boolean;
+  onRequiredSetupBlocked: () => void;
   onOpenStats?: () => void;
   onOpenBoosterPublish?: () => void;
   onOpenBoosterStats?: () => void;
 };
 
-export default function DashboardModulesCard({ goToModule, openPanel, requiredSetupAccessAllowed, requiredSetupLockVisible, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
+export default function DashboardModulesCard({ goToModule, openPanel, requiredSetupAccessAllowed, requiredSetupLockVisible, onRequiredSetupBlocked, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
   const t = useDashboardI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -357,7 +358,10 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                   className={`${styles.gearCapsule} ${styles.gear_orange}`}
                   type="button"
                   onClick={() => {
-                    if (!requiredSetupAccessAllowed) return;
+                    if (!requiredSetupAccessAllowed) {
+                      onRequiredSetupBlocked();
+                      return;
+                    }
                     setCashModalOpen(true);
                   }}
                 >
@@ -369,14 +373,20 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                     aria-label={t.modules.cashSettingsTitle}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (requiredSetupLocked) return;
+                      if (requiredSetupLocked) {
+                        onRequiredSetupBlocked();
+                        return;
+                      }
                       openPanel("documents");
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         event.stopPropagation();
-                        if (requiredSetupLocked) return;
+                        if (requiredSetupLocked) {
+                          onRequiredSetupBlocked();
+                          return;
+                        }
                         openPanel("documents");
                       }
                     }}

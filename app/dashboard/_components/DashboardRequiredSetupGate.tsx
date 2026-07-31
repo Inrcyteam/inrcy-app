@@ -25,8 +25,11 @@ export default function DashboardRequiredSetupGate({ children }: { children: Rea
     router.replace("/dashboard");
   }, [bypassRequiredSetup, completionCheckReady, protectedDestination, requiredSetupCompleted, router]);
 
-  if (!bypassRequiredSetup && protectedDestination && (!completionCheckReady || !requiredSetupCompleted)) {
-    return <StableBootScreen label="Vérification de votre configuration..." />;
+  // Ne jamais figer l’ouverture d’un outil pendant la vérification réseau.
+  // Si le compte est réellement incomplet, l’effet ci-dessus redirige ensuite
+  // vers le dashboard. Le cache de complétion rend ce cas quasi immédiat.
+  if (!bypassRequiredSetup && protectedDestination && completionCheckReady && !requiredSetupCompleted) {
+    return <StableBootScreen label="Configuration initiale requise..." />;
   }
 
   return <>{children}</>;

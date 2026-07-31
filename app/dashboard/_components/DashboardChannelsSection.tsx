@@ -82,6 +82,7 @@ type DashboardChannelsSectionProps = {
   openPanel: (panel: DashboardPanelName) => void;
   requiredSetupAccessAllowed: boolean;
   requiredSetupLockVisible: boolean;
+  onRequiredSetupBlocked: () => void;
   onOpenChannelsHelp: () => void;
   onOpenStats?: () => void;
   onOpenBoosterPublish?: () => void;
@@ -94,6 +95,7 @@ export default function DashboardChannelsSection({
   openPanel,
   requiredSetupAccessAllowed,
   requiredSetupLockVisible,
+  onRequiredSetupBlocked,
   onOpenChannelsHelp,
   onOpenStats,
   onOpenBoosterPublish,
@@ -652,6 +654,7 @@ export default function DashboardChannelsSection({
         openPanel={openPanel}
         requiredSetupAccessAllowed={requiredSetupAccessAllowed}
         requiredSetupLockVisible={requiredSetupLockVisible}
+        onRequiredSetupBlocked={onRequiredSetupBlocked}
         onOpenStats={onOpenStats}
         onOpenBoosterPublish={onOpenBoosterPublish}
         onOpenBoosterStats={onOpenBoosterStats}

@@ -1,0 +1,89 @@
+.root {
+  display: inline-grid;
+  grid-template-columns: 38px minmax(76px, auto) 38px;
+  align-items: center;
+  gap: 6px;
+  min-width: 164px;
+  white-space: nowrap;
+}
+
+.button {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.95);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  font-size: 20px;
+  line-height: 1;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
+}
+
+.button:hover:not(:disabled),
+.button:focus-visible:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.counter {
+  min-width: 76px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 850;
+  color: rgba(255, 255, 255, 0.9);
+  font-variant-numeric: tabular-nums;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+@media (max-width: 760px) {
+  .root {
+    grid-template-columns: 34px minmax(64px, auto) 34px;
+    gap: 4px;
+    min-width: 140px;
+  }
+
+  .button {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    font-size: 18px;
+  }
+
+  .counter {
+    min-width: 64px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 390px) {
+  .root {
+    grid-template-columns: 36px minmax(56px, auto) 36px;
+    min-width: 136px;
+  }
+
+  .button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .counter {
+    min-width: 56px;
+    font-size: 11px;
+  }
+}

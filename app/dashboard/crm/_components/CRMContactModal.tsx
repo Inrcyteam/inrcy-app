@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from
 import styles from "../crm.module.css";
 import type { Category, ContactType, CrmDraft } from "../crm.types";
 import { useUnsavedExitGuard } from "../../_hooks/useUnsavedExitGuard";
+import { confirmInrcy } from "@/lib/inrcyDialog";
+import DetailSequenceNavigation from "../../_components/DetailSequenceNavigation";
 
 type Props = {
   open: boolean;
@@ -17,6 +19,12 @@ type Props = {
   onToggleImportant: () => void;
   onClose: () => void;
   onSave: () => void;
+  navigationLabel: string;
+  navigationBusy: boolean;
+  canNavigatePrevious: boolean;
+  canNavigateNext: boolean;
+  onNavigatePrevious: () => void | Promise<void>;
+  onNavigateNext: () => void | Promise<void>;
 };
 
 export default function CRMContactModal({
@@ -33,6 +41,12 @@ export default function CRMContactModal({
   onToggleImportant,
   onClose,
   onSave,
+  navigationLabel,
+  navigationBusy,
+  canNavigatePrevious,
+  canNavigateNext,
+  onNavigatePrevious,
+  onNavigateNext,
 }: Props) {
   const [baseline, setBaseline] = useState("");
   const snapshot = useMemo(
@@ -57,6 +71,22 @@ export default function CRMContactModal({
     variant: "warning",
   });
 
+  const requestNavigation = async (direction: "previous" | "next") => {
+    if (hasUnsavedChanges) {
+      const ok = await confirmInrcy({
+        eyebrow: "Contacts",
+        title: "Changer de contact sans enregistrer ?",
+        message: "Les modifications apportées à ce contact seront perdues.",
+        confirmLabel: "Changer de contact",
+        cancelLabel: "Continuer l’édition",
+        variant: "warning",
+      });
+      if (!ok) return;
+    }
+    if (direction === "previous") await onNavigatePrevious();
+    else await onNavigateNext();
+  };
+
   if (!open) return null;
 
   return (
@@ -64,9 +94,22 @@ export default function CRMContactModal({
       <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHead}>
           <div className={styles.modalTitle}>{editingId ? "Modifier un contact" : "Ajouter un contact"}</div>
-          <button type="button" className={styles.modalClose} onClick={() => void confirmExit()} aria-label="Fermer">
-            ✕
-          </button>
+          <div className={styles.modalHeadActions}>
+            {editingId && navigationLabel ? (
+              <DetailSequenceNavigation
+                label={navigationLabel}
+                busy={navigationBusy}
+                canPrevious={canNavigatePrevious}
+                canNext={canNavigateNext}
+                onPrevious={() => requestNavigation("previous")}
+                onNext={() => requestNavigation("next")}
+                ariaLabel="Navigation entre les contacts"
+              />
+            ) : null}
+            <button type="button" className={styles.modalClose} onClick={() => void confirmExit()} aria-label="Fermer">
+              ✕
+            </button>
+          </div>
         </div>
 
         {error ? <div className={styles.error}>{error}</div> : null}

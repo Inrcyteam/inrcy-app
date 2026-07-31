@@ -1194,3 +1194,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0.55;
   cursor: default;
 }
+
+/* Navigation événement précédente / suivante toujours accessible sur mobile. */
+@media (max-width: 760px){
+  .modalHeader{
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+
+  .modalHeader > :first-child{
+    flex:1 1 100%;
+    min-width:0;
+  }
+
+  .modalHeaderActions{
+    width:100%;
+    justify-content:flex-end;
+    flex-wrap:nowrap;
+  }
+}

@@ -14,9 +14,10 @@ type LoadContactsOptions = {
   query?: string;
   preserveSuccess?: boolean;
   append?: boolean;
+  silent?: boolean;
 };
 
-type LoadContacts = (options?: LoadContactsOptions) => Promise<void>;
+type LoadContacts = (options?: LoadContactsOptions) => Promise<unknown>;
 
 export function useCrmContactLifecycleEffects({
   query,
@@ -38,6 +39,7 @@ export function useCrmContactLifecycleEffects({
   selectedContactIds,
   setSelectedContactsById,
   contacts,
+  initialSnapshotAvailable,
 }: {
   query: string;
   setServerQuery: SetState<string>;
@@ -58,6 +60,7 @@ export function useCrmContactLifecycleEffects({
   selectedContactIds: Set<string>;
   setSelectedContactsById: SetState<Record<string, CrmContact>>;
   contacts: CrmContact[];
+  initialSnapshotAvailable: boolean;
 }) {
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -80,6 +83,7 @@ export function useCrmContactLifecycleEffects({
       query: serverQuery,
       append,
       preserveSuccess: append || page > 1,
+      silent: initialSnapshotAvailable && page === 1 && !append,
     });
     mobileAppendNextRef.current = false;
   }, [
@@ -92,6 +96,7 @@ export function useCrmContactLifecycleEffects({
     typeFilter,
     departmentFilter,
     importantOnly,
+    initialSnapshotAvailable,
   ]);
 
   useEffect(() => {

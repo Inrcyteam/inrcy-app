@@ -18,6 +18,7 @@ import DashboardUnsavedNavigationProvider from "./_components/DashboardUnsavedNa
 import SentryUserContext from "./_components/SentryUserContext";
 import ClientAuthSessionGuard from "./_components/ClientAuthSessionGuard";
 import DashboardRequiredSetupGate from "./_components/DashboardRequiredSetupGate";
+import DashboardToolWarmup from "./_components/DashboardToolWarmup";
 import { DashboardRequiredSetupBypassProvider } from "./_components/DashboardRequiredSetupBypassProvider";
 import { isRequiredSetupE2EBypassEnabled } from "@/lib/e2eServerFlags";
 
@@ -136,6 +137,7 @@ export default async function DashboardLayout({
       <ProfileRealtimeBridge />
       <LastActiveTracker />
       <ClientAuthSessionGuard />
+      <DashboardToolWarmup />
       <SentryUserContext userId={user.id} accountId={accountScope.activeUserId} />
 
       <DashboardRequiredSetupBypassProvider enabled={bypassRequiredSetup}>

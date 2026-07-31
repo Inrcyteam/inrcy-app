@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import styles from "./agenda.module.css";
+import DetailSequenceNavigation from "../_components/DetailSequenceNavigation";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import SettingsDrawer from "../SettingsDrawer";
 import HelpButton from "../_components/HelpButton";
@@ -678,6 +679,11 @@ type AgendaEventModalProps = {
   startTimeOptions: string[];
   endTimeOptions: string[];
   onClose: () => void | Promise<void>;
+  navigationLabel: string;
+  canNavigatePrevious: boolean;
+  canNavigateNext: boolean;
+  onNavigatePrevious: () => void | Promise<void>;
+  onNavigateNext: () => void | Promise<void>;
   onDelete: () => void;
   onSubmit: () => void;
   onSaveDraft: () => void;
@@ -773,6 +779,16 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
             <p className="text-xs text-white/60 mt-1">{isRequestMode ? "Validez la demande pour créer le RDV et lancer le circuit normal iNr’Calendar." : props.rdvIsDraft ? "Confirmez le brouillon quand le rendez-vous est prêt. Aucun mail ne part tant qu’il reste en brouillon." : "Les rappels suivent les réglages iNr’Calendar et partent aussi aux invités renseignés."}</p>
           </div>
           <div className={styles.modalHeaderActions}>
+            {!isRequestMode && props.rdvMode === "edit" && props.navigationLabel ? (
+              <DetailSequenceNavigation
+                label={props.navigationLabel}
+                canPrevious={props.canNavigatePrevious}
+                canNext={props.canNavigateNext}
+                onPrevious={props.onNavigatePrevious}
+                onNext={props.onNavigateNext}
+                ariaLabel="Navigation entre les évènements"
+              />
+            ) : null}
             {!isRequestMode && (
               <button
                 className={`${styles.btnGhost} ${styles.modalDraftButton}`}

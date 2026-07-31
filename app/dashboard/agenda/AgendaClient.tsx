@@ -6,6 +6,7 @@ import styles from "./agenda.module.css";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import { getClientUserFacingApiError as getSimpleFrenchApiError, getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 import {
   addDays,
   buildCrmDisplayName,
@@ -160,20 +161,43 @@ function comparableEvent(event: DayEvent | undefined | null) {
   });
 }
 
+type AgendaMonthSnapshot = {
+  ok?: boolean;
+  events?: EventItem[];
+  appointmentRequests?: EventItem[];
+};
+
+type AgendaContactsSnapshot = { contacts?: CrmContact[] };
+type AgendaSettingsSnapshot = {
+  accounts?: MailAccountOption[];
+  selectedMailAccountId?: string;
+  reminderOffsetsMinutes?: number[];
+};
+
+function readInitialAgendaMonthSnapshot(date: Date) {
+  return readModuleSnapshot<AgendaMonthSnapshot>(
+    MODULE_SNAPSHOT_KEYS.agendaMonth(date.getFullYear(), date.getMonth()),
+  )?.data ?? null;
+}
+
 export default function AgendaClient() {
+  const [initialMonth] = useState(() => startOfMonth(new Date()));
+  const [initialAgendaSnapshot] = useState<AgendaMonthSnapshot | null>(() => readInitialAgendaMonthSnapshot(initialMonth));
+  const [initialContactsSnapshot] = useState<AgendaContactsSnapshot | null>(() => readModuleSnapshot<AgendaContactsSnapshot>(MODULE_SNAPSHOT_KEYS.agendaContacts)?.data ?? null);
+  const [initialSettingsSnapshot] = useState<AgendaSettingsSnapshot | null>(() => readModuleSnapshot<AgendaSettingsSnapshot>(MODULE_SNAPSHOT_KEYS.agendaSettings)?.data ?? null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [appointmentRequests, setAppointmentRequests] = useState<EventItem[]>([]);
+  const [events, setEvents] = useState<EventItem[]>(() => Array.isArray(initialAgendaSnapshot?.events) ? initialAgendaSnapshot.events : []);
+  const [appointmentRequests, setAppointmentRequests] = useState<EventItem[]>(() => Array.isArray(initialAgendaSnapshot?.appointmentRequests) ? initialAgendaSnapshot.appointmentRequests : []);
   const [activeRequestIndex, setActiveRequestIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialAgendaSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [cursorMonth, setCursorMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const [cursorMonth, setCursorMonth] = useState<Date>(() => initialMonth);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
@@ -181,8 +205,8 @@ export default function AgendaClient() {
   const [query, setQuery] = useState("");
   const [showMobileSearch, setShowMobileSearch] = useState(false);
 
-  const [contacts, setContacts] = useState<CrmContact[]>([]);
-  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contacts, setContacts] = useState<CrmContact[]>(() => Array.isArray(initialContactsSnapshot?.contacts) ? initialContactsSnapshot.contacts : []);
+  const [contactsLoading, setContactsLoading] = useState(() => !initialContactsSnapshot);
 
   const [rdvOpen, setRdvOpen] = useState(false);
   const [rdvMode, setRdvMode] = useState<RdvMode>("create");
@@ -215,12 +239,12 @@ export default function AgendaClient() {
   const [rdvExistingContact, setRdvExistingContact] = useState<any | null>(null);
   const [rdvGuests, setRdvGuests] = useState<GuestContactForm[]>([]);
 
-  const [mailAccounts, setMailAccounts] = useState<MailAccountOption[]>([]);
-  const [agendaMailAccountId, setAgendaMailAccountId] = useState("");
-  const [agendaMailLoading, setAgendaMailLoading] = useState(false);
+  const [mailAccounts, setMailAccounts] = useState<MailAccountOption[]>(() => Array.isArray(initialSettingsSnapshot?.accounts) ? initialSettingsSnapshot.accounts : []);
+  const [agendaMailAccountId, setAgendaMailAccountId] = useState(() => String(initialSettingsSnapshot?.selectedMailAccountId || ""));
+  const [agendaMailLoading, setAgendaMailLoading] = useState(() => !initialSettingsSnapshot);
   const [agendaMailSaving, setAgendaMailSaving] = useState(false);
   const [agendaMailError, setAgendaMailError] = useState<string | null>(null);
-  const [agendaReminderOffsetsMinutes, setAgendaReminderOffsetsMinutes] = useState<number[]>([1440, 120]);
+  const [agendaReminderOffsetsMinutes, setAgendaReminderOffsetsMinutes] = useState<number[]>(() => Array.isArray(initialSettingsSnapshot?.reminderOffsetsMinutes) ? initialSettingsSnapshot.reminderOffsetsMinutes : [1440, 120]);
   const [rdvRemindersEnabled, setRdvRemindersEnabled] = useState(true);
   const rdvRemindersAvailable = agendaReminderOffsetsMinutes.length > 0;
 
@@ -302,16 +326,24 @@ export default function AgendaClient() {
     setRdvExistingContact(null);
   }, [rdvContactId, contacts]);
 
-  async function loadAgendaMailSettings() {
-    setAgendaMailLoading(true);
+  async function loadAgendaMailSettings(options?: { silent?: boolean }) {
+    if (!options?.silent) setAgendaMailLoading(true);
     setAgendaMailError(null);
     try {
       const response = await fetch("/api/calendar/settings");
       if (!response.ok) throw new Error(await getSimpleFrenchApiError(response, "Impossible de charger la boîte d’envoi agenda."));
       const json = await response.json().catch(() => ({}));
-      setMailAccounts(Array.isArray((json as any)?.accounts) ? (json as any).accounts : []);
-      setAgendaMailAccountId(String((json as any)?.selectedMailAccountId || ""));
-      setAgendaReminderOffsetsMinutes(Array.isArray((json as any)?.reminderOffsetsMinutes) ? (json as any).reminderOffsetsMinutes.map((item: unknown) => Number(item)).filter((item: number) => Number.isFinite(item)) : []);
+      const nextAccounts = Array.isArray((json as any)?.accounts) ? (json as any).accounts : [];
+      const nextSelectedMailAccountId = String((json as any)?.selectedMailAccountId || "");
+      const nextReminderOffsets = Array.isArray((json as any)?.reminderOffsetsMinutes) ? (json as any).reminderOffsetsMinutes.map((item: unknown) => Number(item)).filter((item: number) => Number.isFinite(item)) : [];
+      setMailAccounts(nextAccounts);
+      setAgendaMailAccountId(nextSelectedMailAccountId);
+      setAgendaReminderOffsetsMinutes(nextReminderOffsets);
+      writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.agendaSettings, {
+        accounts: nextAccounts,
+        selectedMailAccountId: nextSelectedMailAccountId,
+        reminderOffsetsMinutes: nextReminderOffsets,
+      });
     } catch (e: any) {
       setAgendaMailError(getSimpleFrenchErrorMessage(e, "Impossible de charger la boîte d’envoi agenda."));
     } finally {
@@ -473,13 +505,15 @@ export default function AgendaClient() {
     if (structuredLocation) setRdvLocation(structuredLocation);
   }
 
-  async function loadContacts() {
-    setContactsLoading(true);
+  async function loadContacts(options?: { silent?: boolean }) {
+    if (!options?.silent) setContactsLoading(true);
     try {
       const response = await fetch("/api/crm/contacts?all=1&pageSize=200");
       if (!response.ok) throw new Error(await getSimpleFrenchApiError(response, "Impossible de charger les contacts du CRM."));
       const json = await response.json().catch(() => ({}));
-      setContacts(Array.isArray((json as any)?.contacts) ? (json as any).contacts : []);
+      const nextContacts = Array.isArray((json as any)?.contacts) ? (json as any).contacts : [];
+      setContacts(nextContacts);
+      writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.agendaContacts, { contacts: nextContacts });
     } catch (e: any) {
       setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
     } finally {
@@ -1101,8 +1135,15 @@ export default function AgendaClient() {
     }
   }
 
-  async function loadEventsForMonth(monthDate: Date) {
-    setLoading(true);
+  async function loadEventsForMonth(monthDate: Date, options?: { silent?: boolean }) {
+    const snapshotKey = MODULE_SNAPSHOT_KEYS.agendaMonth(monthDate.getFullYear(), monthDate.getMonth());
+    const cached = readModuleSnapshot<AgendaMonthSnapshot>(snapshotKey)?.data ?? null;
+    if (cached) {
+      setEvents(Array.isArray(cached.events) ? cached.events : []);
+      setAppointmentRequests(Array.isArray(cached.appointmentRequests) ? cached.appointmentRequests : []);
+    }
+    if (!options?.silent && !cached) setLoading(true);
+    else setLoading(false);
     setError(null);
     try {
       const monthStart = startOfMonth(monthDate);
@@ -1127,8 +1168,11 @@ export default function AgendaClient() {
         return;
       }
 
-      setEvents(Array.isArray(json.events) ? json.events : []);
-      setAppointmentRequests(Array.isArray(json.appointmentRequests) ? json.appointmentRequests : []);
+      const nextEvents = Array.isArray(json.events) ? json.events : [];
+      const nextAppointmentRequests = Array.isArray(json.appointmentRequests) ? json.appointmentRequests : [];
+      setEvents(nextEvents);
+      setAppointmentRequests(nextAppointmentRequests);
+      writeModuleSnapshot(snapshotKey, { ok: true, events: nextEvents, appointmentRequests: nextAppointmentRequests });
     } catch (e: any) {
       setError(getSimpleFrenchErrorMessage(e, "Impossible de charger l’agenda."));
     } finally {
@@ -1137,9 +1181,8 @@ export default function AgendaClient() {
   }
 
   useEffect(() => {
-    loadEventsForMonth(cursorMonth);
-    loadContacts();
-    loadAgendaMailSettings();
+    void loadContacts({ silent: Boolean(initialContactsSnapshot) });
+    void loadAgendaMailSettings({ silent: Boolean(initialSettingsSnapshot) });
   }, []);
 
   useEffect(() => {
@@ -1152,7 +1195,7 @@ export default function AgendaClient() {
   }, []);
 
   useEffect(() => {
-    loadEventsForMonth(cursorMonth);
+    void loadEventsForMonth(cursorMonth, { silent: Boolean(readInitialAgendaMonthSnapshot(cursorMonth)) });
   }, [cursorMonth]);
 
   const monthStart = useMemo(() => startOfMonth(cursorMonth), [cursorMonth]);
@@ -1261,6 +1304,33 @@ export default function AgendaClient() {
         return ta - tb;
       });
   }, [normalized, query]);
+
+  const navigableEvents = useMemo(() => {
+    const source = query.trim() ? globalMatches : normalized;
+    return [...source].sort((a, b) => {
+      const ta = a.startDate ? a.startDate.getTime() : 0;
+      const tb = b.startDate ? b.startDate.getTime() : 0;
+      return ta - tb;
+    });
+  }, [globalMatches, normalized, query]);
+  const navigableEventIndex = rdvMode === "edit" ? navigableEvents.findIndex((event) => event.id === rdvEventId) : -1;
+  const eventNavigationLabel = navigableEventIndex >= 0 ? `${navigableEventIndex + 1} / ${navigableEvents.length}` : "";
+
+  const navigateAgendaEvent = useCallback(async (direction: -1 | 1) => {
+    if (rdvMode !== "edit" || navigableEventIndex < 0) return;
+    const target = navigableEvents[navigableEventIndex + direction];
+    if (!target) return;
+    const ok = await confirmInrcy({
+      eyebrow: "Agenda",
+      title: "Changer d’évènement ?",
+      message: "Les modifications non enregistrées de l’évènement actuel seront perdues.",
+      confirmLabel: "Changer d’évènement",
+      cancelLabel: "Continuer l’édition",
+      variant: "warning",
+    });
+    if (!ok) return;
+    openEditRdv(target);
+  }, [navigableEventIndex, navigableEvents, rdvMode]);
 
   const todayKey = useMemo(() => keyOf(new Date()), []);
 
@@ -1371,6 +1441,11 @@ export default function AgendaClient() {
         startTimeOptions={startTimeOptions}
         endTimeOptions={endTimeOptions}
         onClose={requestCloseRdvModal}
+        navigationLabel={eventNavigationLabel}
+        canNavigatePrevious={rdvMode === "edit" && navigableEventIndex > 0}
+        canNavigateNext={rdvMode === "edit" && navigableEventIndex >= 0 && navigableEventIndex < navigableEvents.length - 1}
+        onNavigatePrevious={() => navigateAgendaEvent(-1)}
+        onNavigateNext={() => navigateAgendaEvent(1)}
         onDelete={deleteRdv}
         onSubmit={submitRdv}
         onSaveDraft={saveRdvDraft}

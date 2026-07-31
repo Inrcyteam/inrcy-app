@@ -3216,3 +3216,40 @@
     padding-inline: 10px !important;
   }
 }
+
+.modalHeadActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  min-width:0;
+}
+
+@media (max-width: 760px){
+  .modalCard{
+    padding:12px;
+  }
+
+  .modalHead{
+    align-items:center;
+    gap:8px;
+  }
+
+  .modalTitle{
+    min-width:0;
+    font-size:15px;
+    line-height:1.2;
+  }
+
+  .modalHeadActions{
+    gap:5px;
+    flex-shrink:0;
+  }
+
+  .modalClose{
+    width:34px;
+    min-width:34px;
+    height:34px;
+    border-radius:11px;
+  }
+}

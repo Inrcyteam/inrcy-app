@@ -10,7 +10,8 @@ for (const target of targets) {
   rmSync(absolutePath, {
     recursive: true,
     force: true,
-    maxRetries: 2,
+    maxRetries: 8,
+    retryDelay: 250,
   });
 
   console.log(`[prebuild-clean] removed ${target}`);

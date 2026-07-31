@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { readAccountCacheValue, resolveActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import {
   DASHBOARD_ACTIVITY_COMPLETION_SELECT,
   DASHBOARD_PROFILE_COMPLETION_SELECT,
@@ -70,6 +70,40 @@ const BYPASSED_COMPLETION_STATE: DashboardCompletionState = {
   activityCheckReady: true,
   completionCheckReady: true,
 };
+
+
+const COMPLETION_CACHE_KEY = "inrcy_dashboard_completion_state_v1";
+
+function readCachedCompletionState(): DashboardCompletionState | null {
+  try {
+    const raw = readAccountCacheValue(COMPLETION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DashboardCompletionState;
+    if (!parsed || typeof parsed !== "object" || !parsed.accountId) return null;
+    if (!parsed.completionCheckReady || !parsed.profileCheckReady || !parsed.activityCheckReady) return null;
+    return {
+      ...INITIAL_COMPLETION_STATE,
+      ...parsed,
+      missingSections: Array.isArray(parsed.missingSections) ? parsed.missingSections : [],
+      profileMissingFields: Array.isArray(parsed.profileMissingFields) ? parsed.profileMissingFields : [],
+      activityMissingFields: Array.isArray(parsed.activityMissingFields) ? parsed.activityMissingFields : [],
+      completionCheckReady: true,
+      profileCheckReady: true,
+      activityCheckReady: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedCompletionState(state: DashboardCompletionState) {
+  if (!state.accountId || !state.completionCheckReady) return;
+  try {
+    writeAccountCacheValue(COMPLETION_CACHE_KEY, JSON.stringify(state), state.accountId);
+  } catch {
+    // Cache UX uniquement.
+  }
+}
 
 // DashboardClient et ResponsiveBottomNav utilisent tous deux ce hook.
 // Les requêtes sont mutualisées par établissement pour éviter les doublons,
@@ -188,7 +222,7 @@ function buildFailedState(accountId: string | null): DashboardCompletionState {
 export function useDashboardCompletionChecks() {
   const bypassRequiredSetup = useDashboardRequiredSetupBypass();
   const [completionState, setCompletionState] = useState<DashboardCompletionState>(
-    INITIAL_COMPLETION_STATE,
+    () => readCachedCompletionState() ?? INITIAL_COMPLETION_STATE,
   );
   const refreshSequenceRef = useRef(0);
   const activeAccountIdRef = useRef<string | null>(null);
@@ -216,12 +250,14 @@ export function useDashboardCompletionChecks() {
       if (completionRefreshGenerationByAccount.get(accountId) !== accountRefreshGeneration) return null;
       const readyState = buildReadyState(snapshot);
       setCompletionState(readyState);
+      writeCachedCompletionState(readyState);
       broadcastCompletionState(readyState);
       return readyState;
     } catch {
       if (refreshSequence !== refreshSequenceRef.current) return null;
       if (completionRefreshGenerationByAccount.get(accountId) !== accountRefreshGeneration) return null;
-      const failedState = buildFailedState(accountId);
+      const cachedState = readCachedCompletionState();
+      const failedState = cachedState?.accountId === accountId ? cachedState : buildFailedState(accountId);
       setCompletionState(failedState);
       broadcastCompletionState(failedState);
       return failedState;
@@ -252,7 +288,7 @@ export function useDashboardCompletionChecks() {
 
     const handleActiveAccountChange = () => {
       activeAccountIdRef.current = null;
-      setCompletionState(INITIAL_COMPLETION_STATE);
+      setCompletionState(readCachedCompletionState() ?? INITIAL_COMPLETION_STATE);
       void refreshCompletion({ force: true });
     };
 

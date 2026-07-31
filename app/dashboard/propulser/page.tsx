@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import styles from "../../dashboard/dashboard.module.css";
 import b from "../booster/booster.module.css";
 import BaseModal from "../_components/WorkflowBaseModal";
+import DetailSequenceNavigation from "../_components/DetailSequenceNavigation";
 import ValoriserModal from "./components/valoriser/ValoriserModal";
 import RecolterModal from "./components/recolter/RecolterModal";
 import OffrirModal from "./components/offrir/OffrirModal";
@@ -17,6 +18,7 @@ import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/pr
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
+import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 
 type ActiveModal = null | "valorize" | "reviews" | "promo";
 
@@ -28,6 +30,9 @@ type WeeklySummary = {
 };
 
 const PROPULSER_GOAL = 1;
+const PROPULSER_THEMES = ["valorize", "reviews", "promo"] as const;
+type PropulserTheme = (typeof PROPULSER_THEMES)[number];
+type PropulserMetricsSnapshot = { metrics: any; weeklySummary: WeeklySummary | null };
 
 export default function PropulserPage() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -37,9 +42,12 @@ export default function PropulserPage() {
   const workflowDraftActionRef = useRef<(() => Promise<void>) | null>(null);
   const [workflowDraftSaving, setWorkflowDraftSaving] = useState(false);
   const [workflowDraftMessage, setWorkflowDraftMessage] = useState("");
-  const [metrics, setMetrics] = useState<any>(null);
-  const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
-  const [metricsLoadedOnce, setMetricsLoadedOnce] = useState(false);
+  const [initialMetricsSnapshot] = useState<PropulserMetricsSnapshot | null>(() =>
+    readModuleSnapshot<PropulserMetricsSnapshot>(MODULE_SNAPSHOT_KEYS.propulserMetrics)?.data ?? null,
+  );
+  const [metrics, setMetrics] = useState<any>(() => initialMetricsSnapshot?.metrics ?? null);
+  const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(() => initialMetricsSnapshot?.weeklySummary ?? null);
+  const [metricsLoadedOnce, setMetricsLoadedOnce] = useState(() => Boolean(initialMetricsSnapshot));
 
   const searchParams = useSearchParams();
 
@@ -102,10 +110,18 @@ export default function PropulserPage() {
         fetch("/api/propulser/metrics?days=30", { cache: "no-store" as any }),
         fetch("/api/loyalty/weekly-summary", { cache: "no-store" as any }),
       ]);
-      if (metricsRes.ok) setMetrics(await metricsRes.json());
-      if (summaryRes.ok) setWeeklySummary(await summaryRes.json());
+      const nextMetrics = metricsRes.ok ? await metricsRes.json() : null;
+      const nextWeeklySummary = summaryRes.ok ? await summaryRes.json() : null;
+      if (nextMetrics !== null) setMetrics(nextMetrics);
+      if (nextWeeklySummary !== null) setWeeklySummary(nextWeeklySummary);
+      if (nextMetrics !== null && nextWeeklySummary !== null) {
+        writeModuleSnapshot<PropulserMetricsSnapshot>(MODULE_SNAPSHOT_KEYS.propulserMetrics, {
+          metrics: nextMetrics,
+          weeklySummary: nextWeeklySummary,
+        });
+      }
     } catch {
-      // ignore
+      // Le cache déjà affiché reste disponible pendant une coupure réseau.
     } finally {
       setMetricsLoadedOnce(true);
     }
@@ -122,6 +138,25 @@ export default function PropulserPage() {
     window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     return () => window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
   }, [refreshMetrics]);
+
+  const activeThemeIndex = active ? PROPULSER_THEMES.indexOf(active as PropulserTheme) : -1;
+  const switchActiveTheme = useCallback(async (direction: -1 | 1) => {
+    if (activeThemeIndex < 0) return;
+    const next = PROPULSER_THEMES[activeThemeIndex + direction];
+    if (!next) return;
+    const ok = await confirmInrcy({
+      eyebrow: "Modèle en cours",
+      title: "Changer de thème ?",
+      message: "Les modifications non enregistrées du thème actuel seront perdues.",
+      cancelLabel: "Continuer l’édition",
+      confirmLabel: "Changer de thème",
+      variant: "warning",
+    });
+    if (!ok) return;
+    setWorkflowDraftMessage("");
+    workflowDraftActionRef.current = null;
+    setActive(next);
+  }, [activeThemeIndex]);
 
   const metricsLoading = !metricsLoadedOnce;
 
@@ -360,10 +395,20 @@ export default function PropulserPage() {
           moduleLabel="Module Propulser"
           onClose={requestCloseActiveModal}
           headerHidden={false}
+          titleOnLeftOnMobile
+          hideModuleLabelOnMobile
           headerStatus={workflowDraftMessage ? <span style={{ fontSize: 12, fontWeight: 800 }}>{workflowDraftMessage}</span> : null}
           headerStatusMobileHidden
           headerActions={
             <>
+              <DetailSequenceNavigation
+                label={`${activeThemeIndex + 1} / ${PROPULSER_THEMES.length}`}
+                canPrevious={activeThemeIndex > 0}
+                canNext={activeThemeIndex >= 0 && activeThemeIndex < PROPULSER_THEMES.length - 1}
+                onPrevious={() => switchActiveTheme(-1)}
+                onNext={() => switchActiveTheme(1)}
+                ariaLabel="Navigation entre les thèmes Propulser"
+              />
               <button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA" style={{ width: isMobileHeader ? 32 : 38, minWidth: isMobileHeader ? 32 : 38, minHeight: isMobileHeader ? 32 : 36, padding: 0, fontSize: isMobileHeader ? 12 : 13, borderRadius: 999 }}>IA</button>
               <button type="button" className={styles.secondaryBtn} onClick={() => void saveWorkflowDraftFromHeader()} disabled={workflowDraftSaving} title="Enregistrer le brouillon" aria-label="Enregistrer le brouillon" style={{ width: isMobileHeader ? 32 : 38, minWidth: isMobileHeader ? 32 : 38, minHeight: isMobileHeader ? 32 : 36, padding: 0, display: "inline-grid", placeItems: "center", fontSize: isMobileHeader ? 15 : 18, borderRadius: 999, opacity: workflowDraftSaving ? 0.64 : 1, cursor: workflowDraftSaving ? "wait" : "pointer" }}>
                 {workflowDraftSaving ? "…" : "💾"}

@@ -6,6 +6,7 @@ import styles from "./crm.module.css";
 import { getClientUserFacingApiError as getSimpleFrenchApiError, getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 import HelpModal from "../_components/HelpModal";
 import CRMContactModal from "./_components/CRMContactModal";
 import CRMContactsView from "./_components/CRMContactsView";
@@ -28,9 +29,24 @@ import {
   useCrmTableViewportEffects,
 } from "./crm.client-hooks";
 
+type CrmDefaultSnapshot = {
+  contacts?: CrmContact[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  pageCount?: number;
+  summary?: Partial<CrmSummary>;
+};
+
+function readInitialCrmSnapshot(): CrmDefaultSnapshot | null {
+  const snapshot = readModuleSnapshot<CrmDefaultSnapshot>(MODULE_SNAPSHOT_KEYS.crmDefault);
+  return snapshot?.data && Array.isArray(snapshot.data.contacts) ? snapshot.data : null;
+}
+
 export default function CRMClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
+  const [initialSnapshot] = useState<CrmDefaultSnapshot | null>(() => readInitialCrmSnapshot());
 
   // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
   useEffect(() => {
@@ -61,24 +77,24 @@ export default function CRMClient() {
 
   // Orientation: gérée globalement via <OrientationGuard />
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialSnapshot);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [contacts, setContacts] = useState<CrmContact[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
-  const [pageCount, setPageCount] = useState(1);
-  const [kpis, setKpis] = useState<CrmSummary>({
-    total: 0,
-    prospects: 0,
-    clients: 0,
-    partenaires: 0,
-    fournisseurs: 0,
-    autres: 0,
-  });
+  const [contacts, setContacts] = useState<CrmContact[]>(() => (initialSnapshot?.contacts ?? []) as CrmContact[]);
+  const [total, setTotal] = useState(() => Number(initialSnapshot?.total ?? 0));
+  const [page, setPage] = useState(() => Math.max(1, Number(initialSnapshot?.page ?? 1)));
+  const [pageSize, setPageSize] = useState<number>(() => Number(initialSnapshot?.pageSize ?? DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE);
+  const [pageCount, setPageCount] = useState(() => Math.max(1, Number(initialSnapshot?.pageCount ?? 1)));
+  const [kpis, setKpis] = useState<CrmSummary>(() => ({
+    total: Number(initialSnapshot?.summary?.total ?? initialSnapshot?.total ?? 0),
+    prospects: Number(initialSnapshot?.summary?.prospects ?? 0),
+    clients: Number(initialSnapshot?.summary?.clients ?? 0),
+    partenaires: Number(initialSnapshot?.summary?.partenaires ?? 0),
+    fournisseurs: Number(initialSnapshot?.summary?.fournisseurs ?? 0),
+    autres: Number(initialSnapshot?.summary?.autres ?? 0),
+  }));
   const [query, setQuery] = useState("");
   const [serverQuery, setServerQuery] = useState("");
   const requestSeqRef = useRef(0);
@@ -134,6 +150,7 @@ export default function CRMClient() {
   const [draft, setDraft] = useState<ReturnType<typeof emptyDraft>>(() => emptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedMobileContactId, setExpandedMobileContactId] = useState<string | null>(null);
+  const [contactNavigationBusy, setContactNavigationBusy] = useState(false);
 
   const mergeContactWithLocalState = useCallback(
     (contact: CrmContact): CrmContact => ({
@@ -151,13 +168,14 @@ export default function CRMClient() {
       query?: string;
       preserveSuccess?: boolean;
       append?: boolean;
+      silent?: boolean;
     }) => {
       const targetPage = Math.max(1, options?.page ?? page);
       const targetPageSize = options?.pageSize ?? pageSize;
       const targetQuery = options?.query ?? serverQuery;
       const requestId = ++requestSeqRef.current;
 
-      setLoading(true);
+      if (!options?.silent) setLoading(true);
       setError(null);
       if (!options?.preserveSuccess) setSuccess(null);
 
@@ -198,17 +216,33 @@ export default function CRMClient() {
         setPage(safePage);
         setPageSize(typeof j?.pageSize === "number" ? j.pageSize : targetPageSize);
         setPageCount(nextPageCount);
-        setKpis({
+        const nextSummary: CrmSummary = {
           total: Number(j?.summary?.total ?? nextTotal ?? 0),
           prospects: Number(j?.summary?.prospects ?? 0),
           clients: Number(j?.summary?.clients ?? 0),
           partenaires: Number(j?.summary?.partenaires ?? 0),
           fournisseurs: Number(j?.summary?.fournisseurs ?? 0),
           autres: Number(j?.summary?.autres ?? 0),
-        });
+        };
+        setKpis(nextSummary);
+
+        const isDefaultSnapshot = targetPage === 1 && !targetQuery && !categoryFilter && !typeFilter && !departmentFilter.trim() && !importantOnly;
+        if (isDefaultSnapshot) {
+          writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.crmDefault, {
+            contacts: merged,
+            total: nextTotal,
+            page: safePage,
+            pageSize: typeof j?.pageSize === "number" ? j.pageSize : targetPageSize,
+            pageCount: nextPageCount,
+            summary: nextSummary,
+          });
+        }
+
+        return { contacts: merged, total: nextTotal, page: safePage, pageSize: targetPageSize, pageCount: nextPageCount, summary: nextSummary };
       } catch (e: any) {
         if (requestId !== requestSeqRef.current) return;
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les contacts du CRM."));
+        return null;
       } finally {
         if (requestId === requestSeqRef.current) setLoading(false);
       }
@@ -245,6 +279,7 @@ export default function CRMClient() {
     selectedContactIds,
     setSelectedContactsById,
     contacts,
+    initialSnapshotAvailable: Boolean(initialSnapshot),
   });
 
   useCrmFloatingUiEffects({
@@ -534,6 +569,58 @@ export default function CRMClient() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  const editingContactIndex = editingId ? contacts.findIndex((contact) => contact.id === editingId) : -1;
+  const responsiveListContainsPreviousPages = isResponsive && contacts.length > pageSize;
+  const contactListIsSinglePageWindow = !isResponsive || !responsiveListContainsPreviousPages;
+  const editingContactPosition = editingContactIndex >= 0
+    ? contactListIsSinglePageWindow
+      ? (page - 1) * pageSize + editingContactIndex + 1
+      : editingContactIndex + 1
+    : 0;
+  const contactNavigationLabel = editingContactPosition > 0 ? `${editingContactPosition} / ${Math.max(total, editingContactPosition)}` : "";
+  const canNavigatePreviousContact = Boolean(editingId) && (
+    editingContactIndex > 0 || (contactListIsSinglePageWindow && page > 1)
+  );
+  const canNavigateNextContact = Boolean(editingId) && (
+    editingContactIndex >= 0 && editingContactIndex < contacts.length - 1
+      ? true
+      : page < pageCount || contacts.length < total
+  );
+
+  const navigateEditingContact = useCallback(async (direction: -1 | 1) => {
+    if (!editingId || contactNavigationBusy) return;
+    const currentIndex = contacts.findIndex((contact) => contact.id === editingId);
+    if (currentIndex < 0) return;
+
+    const localTarget = contacts[currentIndex + direction];
+    if (localTarget) {
+      startEdit(localTarget);
+      return;
+    }
+
+    const targetPage = page + direction;
+    if (targetPage < 1 || targetPage > pageCount) return;
+
+    setContactNavigationBusy(true);
+    try {
+      const result = await loadContacts({
+        page: targetPage,
+        pageSize,
+        query: serverQuery,
+        preserveSuccess: true,
+        append: false,
+        silent: true,
+      });
+      const nextContacts = result && typeof result === "object" && "contacts" in result
+        ? (result.contacts as CrmContact[])
+        : [];
+      const target = direction > 0 ? nextContacts[0] : nextContacts[nextContacts.length - 1];
+      if (target) startEdit(target);
+    } finally {
+      setContactNavigationBusy(false);
+    }
+  }, [contactNavigationBusy, contacts, editingId, loadContacts, page, pageCount, pageSize, serverQuery]);
+
   const deliverySameAsPrimary = !String(draft.delivery_address || "").trim() || String(draft.delivery_address || "").trim() === String(draft.address || "").trim();
 
   function updatePrimaryAddress(value: string) {
@@ -782,6 +869,12 @@ export default function CRMClient() {
         onToggleImportant={toggleDraftImportant}
         onClose={() => setAddOpen(false)}
         onSave={save}
+        navigationLabel={contactNavigationLabel}
+        navigationBusy={contactNavigationBusy}
+        canNavigatePrevious={canNavigatePreviousContact}
+        canNavigateNext={canNavigateNextContact}
+        onNavigatePrevious={() => navigateEditingContact(-1)}
+        onNavigateNext={() => navigateEditingContact(1)}
       />
 
       <section className={`${styles.card} ${styles.tableCard} ${styles.crmBoardCard}`} onClick={(e) => e.stopPropagation()}>

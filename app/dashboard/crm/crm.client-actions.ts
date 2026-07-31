@@ -25,7 +25,7 @@ type LoadContactsOptions = {
   append?: boolean;
 };
 
-type LoadContacts = (options?: LoadContactsOptions) => Promise<void>;
+type LoadContacts = (options?: LoadContactsOptions) => Promise<unknown>;
 
 export function useCrmImportExportActions({
   fileInputRef,
