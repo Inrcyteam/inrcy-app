@@ -291,16 +291,23 @@ function getTiktokStatusMeta(result: any) {
     getNestedString(result, ["diagnostics", "status", "status"]),
     getNestedString(result, ["diagnostics", "status", "raw", "data", "status"]),
   ).toUpperCase();
+  const cancelled = Boolean(
+    result?.cancelled === true ||
+      status === "CANCELLED" ||
+      status === "CANCELED",
+  );
   const statusFetchFailed = Boolean(
     result?.tiktok_status_fetch_failed ||
       status === "STATUS_FETCH_ERROR" ||
       getNestedString(result, ["diagnostics", "status", "statusFetchFailed"]) === "true",
   );
   const stalled = Boolean(result?.tiktok_stalled || getNestedString(result, ["diagnostics", "stalled"]) === "true");
-  const failed = ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status) || (result?.ok === false && !statusFetchFailed);
-  const complete = ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
-  const pending = !failed && !complete && Boolean(statusFetchFailed || result?.warning || status || getTiktokPublishId(result));
-  const label = failed
+  const failed = !cancelled && (["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status) || (result?.ok === false && !statusFetchFailed));
+  const complete = !cancelled && ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
+  const pending = !cancelled && !failed && !complete && Boolean(statusFetchFailed || result?.warning || status || getTiktokPublishId(result));
+  const label = cancelled
+    ? "Annulé"
+    : failed
     ? "Échec"
     : complete
       ? "Publié"
@@ -327,7 +334,7 @@ function getTiktokStatusMeta(result: any) {
     failReason,
   );
   const uploadedBytes = Number(result?.tiktok_uploaded_bytes ?? getNestedString(result, ["diagnostics", "status", "uploadedBytes"]) ?? 0) || 0;
-  return { status, failed, complete, pending, label, message, failReason, statusFetchFailed, stalled, uploadedBytes };
+  return { status, cancelled, failed, complete, pending, label, message, failReason, statusFetchFailed, stalled, uploadedBytes };
 }
 
 function getTiktokAutoPollTarget(detailsItem: any) {
@@ -449,6 +456,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [publicationMediaLibraryOpen, setPublicationMediaLibraryOpen] = React.useState(false);
   const [tiktokStatusChecking, setTiktokStatusChecking] = React.useState(false);
   const [tiktokRetrying, setTiktokRetrying] = React.useState(false);
+  const [tiktokCancelling, setTiktokCancelling] = React.useState(false);
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
   const detailsScrollSnapshotRef = React.useRef<number | null>(null);
@@ -460,7 +468,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const detailsMailProvider = String(detailsItem?.provider || detailsItem?.payload?.provider || "").trim();
 
   React.useEffect(() => {
-    if (!open || !tiktokAutoPollTarget || tiktokRetrying || tiktokStatusChecking) return;
+    if (!open || !tiktokAutoPollTarget || tiktokRetrying || tiktokStatusChecking || tiktokCancelling) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -484,7 +492,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
           );
           const json = await res.json().catch(() => ({}));
           const status = String(json?.status?.status || "").toUpperCase();
-          shouldContinue = !["PUBLISH_COMPLETE", "DONE", "SUCCESS", "FAILED", "PUBLISH_FAILED", "ERROR"].includes(status);
+          shouldContinue = !["PUBLISH_COMPLETE", "DONE", "SUCCESS", "FAILED", "PUBLISH_FAILED", "ERROR", "CANCELLED", "CANCELED"].includes(status);
           if (!res.ok || json?.status?.statusFetchFailed) nextDelay = 60_000;
           await refreshHistory?.();
         } catch {
@@ -510,6 +518,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     tiktokAutoPollTarget?.publicationId,
     tiktokAutoPollTarget?.publishId,
     tiktokAutoPollTarget?.statusFetchFailed,
+    tiktokCancelling,
     tiktokRetrying,
     tiktokStatusChecking,
   ]);
@@ -582,6 +591,52 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
       );
     } finally {
       setTiktokRetrying(false);
+    }
+  }
+
+  async function cancelPendingTiktokPublication(
+    publicationId: string,
+    statusMeta?: ReturnType<typeof getTiktokStatusMeta> | null,
+  ) {
+    if (!publicationId || tiktokCancelling || !statusMeta?.pending) return;
+
+    const ok = await confirmInrcy({
+      eyebrow: "Publication TikTok en attente",
+      title: "Annuler cette publication en cours ?",
+      message:
+        "iNrSend arrêtera immédiatement le suivi et marquera cet envoi comme annulé. TikTok ne permet pas d'interrompre à distance une tentative déjà acceptée : si TikTok la finalise malgré tout, elle pourra encore apparaître sur le compte.",
+      cancelLabel: "Conserver le suivi",
+      confirmLabel: "Annuler la publication",
+      variant: "danger",
+    });
+    if (!ok) return;
+
+    setTiktokCancelling(true);
+    setDetailsActionError(null);
+    setDetailsActionSuccess(null);
+    try {
+      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/tiktok`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel_pending" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(json?.error || json?.message || "Annulation TikTok impossible.");
+      }
+      setDetailsActionSuccess(
+        String(json?.message || "Publication annulée dans iNrSend. Le suivi automatique est arrêté."),
+      );
+      await refreshHistory?.();
+    } catch (e: any) {
+      setDetailsActionError(
+        getSimpleFrenchErrorMessage(
+          e,
+          "Impossible d'annuler cette publication TikTok pour le moment.",
+        ),
+      );
+    } finally {
+      setTiktokCancelling(false);
     }
   }
 
@@ -1283,24 +1338,37 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   ) : null}
                                   {isTiktokPublicationEntry && !isDraftItem ? (
                                     <>
-                                      <button
-                                        type="button"
-                                        className={styles.btnGhost}
-                                        onClick={() => void checkTiktokPublicationStatus(publicationId)}
-                                        disabled={detailsActionBusy || tiktokStatusChecking || !tiktokPublishId}
-                                        title={tiktokPublishId ? "Vérifier le statut réel auprès de TikTok" : "Identifiant TikTok introuvable"}
-                                      >
-                                        {tiktokStatusChecking ? "Vérification…" : "Vérifier le statut"}
-                                      </button>
+                                      {!tiktokStatusMeta?.cancelled ? (
+                                        <button
+                                          type="button"
+                                          className={styles.btnGhost}
+                                          onClick={() => void checkTiktokPublicationStatus(publicationId)}
+                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling || !tiktokPublishId}
+                                          title={tiktokPublishId ? "Vérifier le statut réel auprès de TikTok" : "Identifiant TikTok introuvable"}
+                                        >
+                                          {tiktokStatusChecking ? "Vérification…" : "Vérifier le statut"}
+                                        </button>
+                                      ) : null}
                                       {tiktokStatusMeta?.failed || tiktokStatusMeta?.pending ? (
                                         <button
                                           type="button"
                                           className={tiktokStatusMeta?.failed ? styles.btnPrimary : styles.btnGhost}
                                           onClick={() => void retryTiktokPublication(publicationId, tiktokStatusMeta)}
-                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying}
+                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling}
                                           title={tiktokStatusMeta?.pending ? "Retenter avec confirmation pour éviter les doublons" : "Retenter l’envoi TikTok"}
                                         >
                                           {tiktokRetrying ? "Relance…" : "Retenter l’envoi"}
+                                        </button>
+                                      ) : null}
+                                      {tiktokStatusMeta?.pending ? (
+                                        <button
+                                          type="button"
+                                          className={styles.btnDangerSmall}
+                                          onClick={() => void cancelPendingTiktokPublication(publicationId, tiktokStatusMeta)}
+                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling}
+                                          title="Arrêter le suivi iNrSend et annuler cette publication en attente"
+                                        >
+                                          {tiktokCancelling ? "Annulation…" : "Annuler"}
                                         </button>
                                       ) : null}
                                       <button
@@ -1309,7 +1377,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         onClick={() => {
                                           if (typeof window !== "undefined") window.open(tiktokPublicationHref || "https://www.tiktok.com", "_blank", "noopener,noreferrer");
                                         }}
-                                        disabled={detailsActionBusy}
+                                        disabled={detailsActionBusy || tiktokCancelling}
                                         title="Ouvrir TikTok pour gérer la publication"
                                       >
                                         Ouvrir TikTok
@@ -1423,11 +1491,15 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 borderRadius: 14,
                                 border: tiktokStatusMeta?.failed
                                   ? "1px solid rgba(248,113,113,0.35)"
+                                  : tiktokStatusMeta?.cancelled
+                                    ? "1px solid rgba(168,85,247,0.35)"
                                   : tiktokStatusMeta?.pending
                                     ? "1px solid rgba(250,204,21,0.35)"
                                     : "1px solid rgba(56,189,248,0.24)",
                                 background: tiktokStatusMeta?.failed
                                   ? "rgba(127,29,29,0.22)"
+                                  : tiktokStatusMeta?.cancelled
+                                    ? "rgba(88,28,135,0.18)"
                                   : tiktokStatusMeta?.pending
                                     ? "rgba(250,204,21,0.10)"
                                     : "rgba(56,189,248,0.08)",
@@ -1447,9 +1519,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   </span>
                                 ) : null}
                               </div>
-                              <div style={{ marginTop: 6, color: tiktokStatusMeta?.failed ? "#fecaca" : tiktokStatusMeta?.pending ? "#fde68a" : "rgba(225,245,255,0.88)" }}>
+                              <div style={{ marginTop: 6, color: tiktokStatusMeta?.failed ? "#fecaca" : tiktokStatusMeta?.cancelled ? "#e9d5ff" : tiktokStatusMeta?.pending ? "#fde68a" : "rgba(225,245,255,0.88)" }}>
                                 {tiktokStatusMeta?.message ||
-                                  (tiktokStatusMeta?.pending
+                                  (tiktokStatusMeta?.cancelled
+                                    ? "Publication annulée dans iNrSend. Le suivi automatique est arrêté."
+                                    : tiktokStatusMeta?.pending
                                     ? "TikTok traite encore la publication. iNrSend vérifie automatiquement son résultat ; le bouton permet aussi une vérification immédiate."
                                     : "iNrSend garde l’historique et le suivi TikTok. La modification ou suppression réelle se fait dans TikTok.")}
                               </div>

@@ -1151,6 +1151,12 @@ export function isDeletedChannelResult(result: any): boolean {
   return result.deleted === true || String(result.status || "").toLowerCase() === "deleted";
 }
 
+export function isCancelledChannelResult(result: any): boolean {
+  if (!result || typeof result !== "object") return false;
+  const status = String(result.tiktok_status || result.status || "").toLowerCase();
+  return result.cancelled === true || status === "cancelled" || status === "canceled";
+}
+
 export function orderChannelKeys(channels: string[]): string[] {
   const priority = ["inrcy_site", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"];
   const normalizedUnique = Array.from(new Set(channels.map((channel) => normalizeChannelKey(channel)).filter(Boolean)));
@@ -1170,13 +1176,20 @@ export function extractPublicationResults(payload: any): Record<string, any> {
 
 export function isFailedChannelResult(result: any): boolean {
   if (!result || typeof result !== "object") return false;
-  if (isDeletedChannelResult(result)) return false;
+  if (isDeletedChannelResult(result) || isCancelledChannelResult(result)) return false;
   if (result.ok === false) return true;
   const status = String(result.status || "").toLowerCase();
   return status === "failed" || status === "error";
 }
 
-export function getChannelIndicatorMeta(result: any): { kind: "failed" | "deleted"; title: string; className: string } | null {
+export function getChannelIndicatorMeta(result: any): { kind: "failed" | "deleted" | "cancelled"; title: string; className: string } | null {
+  if (isCancelledChannelResult(result)) {
+    return {
+      kind: "cancelled",
+      title: "Publication annulée dans iNrSend",
+      className: styles.channelCancelledDot,
+    };
+  }
   if (isDeletedChannelResult(result)) {
     return {
       kind: "deleted",

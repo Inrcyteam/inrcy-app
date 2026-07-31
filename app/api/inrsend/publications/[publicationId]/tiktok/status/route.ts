@@ -17,6 +17,96 @@ type AppEventRow = {
   payload?: unknown;
 };
 
+const TIKTOK_LOCAL_CANCEL_MESSAGE =
+  "Publication annulée dans iNrSend. Le suivi automatique est arrêté. Une tentative déjà acceptée par TikTok ne peut pas être interrompue à distance.";
+
+function isTiktokCancelledResult(resultLike: unknown) {
+  const result = asRecord(resultLike);
+  const status = String(result.tiktok_status || result.status || "").toUpperCase();
+  return result.cancelled === true || status === "CANCELLED" || status === "CANCELED";
+}
+
+function buildCancelledEventState(payloadLike: unknown) {
+  const payload = asRecord(payloadLike);
+  const results = asRecord(payload.results);
+  const current = asRecord(results.tiktok);
+  const diagnostics = asRecord(current.diagnostics);
+  const message = isTiktokCancelledResult(current)
+    ? String(current.tiktok_status_message || TIKTOK_LOCAL_CANCEL_MESSAGE)
+    : TIKTOK_LOCAL_CANCEL_MESSAGE;
+  const cancelledAt = String(
+    current.tiktok_cancelled_at ||
+      current.cancelled_at ||
+      diagnostics.cancelled_at ||
+      new Date().toISOString(),
+  );
+  const nextResult: JsonRecord = {
+    ...current,
+    status: "cancelled",
+    cancelled: true,
+    cancelled_at: cancelledAt,
+    error: null,
+    warning: false,
+    warning_message: null,
+    tiktok_status: "CANCELLED",
+    tiktok_status_label: "Annulé",
+    tiktok_status_message: message,
+    tiktok_cancelled_at: cancelledAt,
+    tiktok_status_fetch_failed: false,
+    tiktok_stalled: false,
+    diagnostics: {
+      ...diagnostics,
+      cancelled: true,
+      cancelled_at: cancelledAt,
+    },
+  };
+  const nextPayload: JsonRecord = {
+    ...payload,
+    results: {
+      ...results,
+      tiktok: nextResult,
+    },
+  };
+  return { nextPayload, nextResult };
+}
+
+async function getTiktokDeliveryStatus(userId: string, publicationId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("publication_deliveries")
+    .select("status")
+    .eq("user_id", userId)
+    .eq("publication_id", publicationId)
+    .eq("channel", "tiktok")
+    .maybeSingle();
+
+  if (error) throw error;
+  return String(data?.status || "").toLowerCase();
+}
+
+async function ensureCancelledEventState({
+  userId,
+  event,
+}: {
+  userId: string;
+  event: AppEventRow | null;
+}) {
+  const state = buildCancelledEventState(event?.payload);
+  if (event?.id) {
+    const { error } = await supabaseAdmin
+      .from("app_events")
+      .update({ payload: state.nextPayload })
+      .eq("id", event.id)
+      .eq("user_id", userId);
+    if (error) throw error;
+  }
+  return {
+    ...state,
+    message: String(state.nextResult.tiktok_status_message || TIKTOK_LOCAL_CANCEL_MESSAGE),
+    stalled: false,
+    cancelled: true,
+  };
+}
+
 function isExpired(expiresAt: unknown, skewSeconds = 120) {
   const raw = asString(expiresAt) || "";
   if (!raw) return false;
@@ -165,6 +255,9 @@ async function persistTiktokStatus({
   const payload = asRecord(event?.payload);
   const results = asRecord(payload.results);
   const current = asRecord(results.tiktok);
+  if (isTiktokCancelledResult(current)) {
+    return ensureCancelledEventState({ userId, event });
+  }
   const diagnostics = asRecord(current.diagnostics);
   const nowIso = new Date().toISOString();
   const previousStatus = String(current.tiktok_status || asRecord(diagnostics.status).status || "").toUpperCase();
@@ -240,7 +333,7 @@ async function persistTiktokStatus({
     await supabaseAdmin.from("app_events").update({ payload: nextPayload }).eq("id", event.id).eq("user_id", userId);
   }
 
-  await supabaseAdmin
+  const { error: deliveryUpdateError } = await supabaseAdmin
     .from("publication_deliveries")
     .update({
       status: status.failed ? "failed" : status.complete ? "delivered" : "processing",
@@ -248,9 +341,16 @@ async function persistTiktokStatus({
     })
     .eq("user_id", userId)
     .eq("publication_id", publicationId)
-    .eq("channel", "tiktok");
+    .eq("channel", "tiktok")
+    .neq("status", "deleted");
+  if (deliveryUpdateError) throw deliveryUpdateError;
 
-  return { nextPayload, nextResult, message, stalled };
+  if (await getTiktokDeliveryStatus(userId, publicationId) === "deleted") {
+    const latestEvent = await loadAppEvent(userId, publicationId);
+    return ensureCancelledEventState({ userId, event: latestEvent });
+  }
+
+  return { nextPayload, nextResult, message, stalled, cancelled: false };
 }
 
 async function handler(_request: Request, context: { params: Promise<{ publicationId: string }> }) {
@@ -278,6 +378,28 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
     const diagnostics = asRecord(eventResult.diagnostics);
     const publishId = String(eventResult.external_id || diagnostics.publish_id || "").trim();
 
+    if (isTiktokCancelledResult(eventResult) || String(delivery?.status || "").toLowerCase() === "deleted") {
+      const cancelledState = await ensureCancelledEventState({ userId: activeUserId, event });
+      return NextResponse.json({
+        ok: true,
+        cancelled: true,
+        publication_id: publicationId,
+        channel: "tiktok",
+        publish_id: publishId || null,
+        status: {
+          ok: true,
+          status: "CANCELLED",
+          pending: false,
+          complete: false,
+          failed: false,
+        },
+        status_label: "Annulé",
+        message: cancelledState.message,
+        result: cancelledState.nextResult,
+        payload: cancelledState.nextPayload,
+      });
+    }
+
     if (!publishId) {
       return jsonUserFacingError("Identifiant TikTok introuvable pour cette publication.", { status: 404, code: "missing_tiktok_publish_id" });
     }
@@ -297,10 +419,13 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
       channel: "tiktok",
       publish_id: publishId,
       status,
-      status_label: tiktokStatusLabel(status.status, Boolean(status.statusFetchFailed), persisted.stalled),
+      status_label: persisted.cancelled
+        ? "Annulé"
+        : tiktokStatusLabel(status.status, Boolean(status.statusFetchFailed), persisted.stalled),
       message: persisted.message,
       result: persisted.nextResult,
       payload: persisted.nextPayload,
+      cancelled: persisted.cancelled,
     });
   } catch (e: unknown) {
     return jsonUserFacingError(e, {

@@ -25,7 +25,7 @@ test("publication retries a lost mobile response with the same idempotency key",
     },
   );
 
-  assert.equal((result.summary as any)?.successCount, 1);
+  assert.equal((result.summary as Record<string, unknown> | undefined)?.successCount, 1);
   assert.equal(bodies.length, 2);
   assert.ok(String(bodies[0]?.idempotencyKey || "").startsWith("booster_manual:"));
   assert.equal(bodies[0]?.idempotencyKey, bodies[1]?.idempotencyKey);
@@ -71,7 +71,7 @@ test("publication reuses the same lock while the first server execution is still
     },
   );
 
-  assert.equal((result.summary as any)?.successCount, 1);
+  assert.equal((result.summary as Record<string, unknown> | undefined)?.successCount, 1);
   assert.equal(new Set(keys).size, 1);
 });
 

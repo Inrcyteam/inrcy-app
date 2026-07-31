@@ -2012,6 +2012,82 @@ function buildDeletedPayload(params: {
   } as JsonRecord;
 }
 
+function isCancelledResult(result: JsonRecord) {
+  const status = String(result.tiktok_status || result.status || "").toUpperCase();
+  return result.cancelled === true || status === "CANCELLED" || status === "CANCELED";
+}
+
+function isPendingTiktokResult(result: JsonRecord) {
+  if (isCancelledResult(result)) return false;
+
+  const diagnostics = asRecord(result.diagnostics);
+  const statusDiagnostics = asRecord(diagnostics.status);
+  const status = String(
+    result.tiktok_status ||
+      result.status ||
+      statusDiagnostics.status ||
+      "",
+  ).toUpperCase();
+  const publishId = String(
+    result.external_id ||
+      result.publish_id ||
+      diagnostics.publish_id ||
+      "",
+  ).trim();
+  const complete = ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
+  const failed =
+    ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status) ||
+    (result.ok === false && status !== "STATUS_FETCH_ERROR");
+
+  return !complete && !failed && Boolean(publishId || result.warning || status);
+}
+
+function buildCancelledPayload(params: {
+  eventPayload: JsonRecord;
+  channel: ChannelKey;
+  previousExternalId: string | null;
+}) {
+  const { eventPayload, channel, previousExternalId } = params;
+  const results = cloneRecord(asRecord(eventPayload.results));
+  const channelResult = asRecord(results[channel]);
+  const diagnostics = asRecord(channelResult.diagnostics);
+  const cancelledAt = new Date().toISOString();
+  const message =
+    "Publication annulée dans iNrSend. Le suivi automatique est arrêté. Une tentative déjà acceptée par TikTok ne peut pas être interrompue à distance.";
+
+  results[channel] = {
+    ...channelResult,
+    status: "cancelled",
+    cancelled: true,
+    cancelled_at: cancelledAt,
+    error: null,
+    warning: false,
+    warning_message: null,
+    external_id: previousExternalId || channelResult.external_id || null,
+    ...(channel === "tiktok"
+      ? {
+          tiktok_status: "CANCELLED",
+          tiktok_status_label: "Annulé",
+          tiktok_status_message: message,
+          tiktok_cancelled_at: cancelledAt,
+          tiktok_status_fetch_failed: false,
+          tiktok_stalled: false,
+          diagnostics: {
+            ...diagnostics,
+            cancelled: true,
+            cancelled_at: cancelledAt,
+          },
+        }
+      : {}),
+  };
+
+  return {
+    ...eventPayload,
+    channels: Array.from(new Set([...(Array.isArray(eventPayload.channels) ? eventPayload.channels : []), channel])),
+    results,
+  } as JsonRecord;
+}
+
 export function createPublicationChannelHandlers(channel: ChannelKey) {
   async function PATCH(req: Request, context: { params: Promise<{ publicationId: string }> }) {
     try {
@@ -2171,13 +2247,53 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       const publicationId = String(params.publicationId || "").trim();
       if (!publicationId) return jsonUserFacingError("Paramètres invalides.", { status: 400, code: "invalid_input" });
 
+      const body = (await req.json().catch(() => ({}))) as JsonRecord;
+
       if (channel === "tiktok") {
-        return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
+        if (String(body.action || "").trim() !== "cancel_pending") {
+          return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
+        }
+
+        const ctx = await loadPublicationContext(activeUserId, publicationId);
+        if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
+
+        const results = asRecord(ctx.eventPayload.results);
+        const channelResult = asRecord(results[channel]);
+        const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
+
+        if (isCancelledResult(channelResult)) {
+          const payload = buildCancelledPayload({ eventPayload: ctx.eventPayload, channel, previousExternalId });
+          return NextResponse.json({
+            ok: true,
+            cancelled: true,
+            remote_cancellation_supported: false,
+            message: "Cette publication est déjà annulée dans iNrSend.",
+            payload,
+          });
+        }
+
+        if (!isPendingTiktokResult(channelResult)) {
+          return jsonUserFacingError(
+            "Seule une publication TikTok encore en attente peut être annulée depuis iNrSend.",
+            { status: 409, code: "tiktok_not_pending" },
+          );
+        }
+
+        const nextPayload = buildCancelledPayload({ eventPayload: ctx.eventPayload, channel, previousExternalId });
+        await syncDeliveryRow({ userId: activeUserId, publicationId, channel, status: "deleted", error: null });
+        await persistEventPayload(activeUserId, publicationId, nextPayload);
+
+        return NextResponse.json({
+          ok: true,
+          cancelled: true,
+          remote_cancellation_supported: false,
+          message: "Publication annulée dans iNrSend. Le suivi automatique est arrêté.",
+          payload: nextPayload,
+        });
       }
       const ctx = await loadPublicationContext(activeUserId, publicationId);
       if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
 
-      const body = (await req.json().catch(() => ({}))) as JsonRecord;
       const results = asRecord(ctx.eventPayload.results);
       const channelResult = asRecord(results[channel]);
       const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;

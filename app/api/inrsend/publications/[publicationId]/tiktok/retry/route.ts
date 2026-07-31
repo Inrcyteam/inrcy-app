@@ -57,6 +57,12 @@ function isUsableTiktokSettings(value: unknown): value is TiktokPublicationSetti
   );
 }
 
+function isTiktokCancelledResult(resultLike: unknown) {
+  const result = asRecord(resultLike);
+  const status = String(result.tiktok_status || result.status || "").toUpperCase();
+  return result.cancelled === true || status === "CANCELLED" || status === "CANCELED";
+}
+
 async function getLatestTiktokIntegration(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("integrations")
@@ -284,6 +290,12 @@ async function handler(request: Request, context: { params: Promise<{ publicatio
     const payload = asRecord(event.payload);
     const results = asRecord(payload.results);
     const previous = asRecord(results.tiktok);
+    if (isTiktokCancelledResult(previous)) {
+      return jsonUserFacingError(
+        "Cette publication a été annulée dans iNrSend. Crée une nouvelle publication depuis Booster pour la renvoyer.",
+        { status: 409, code: "tiktok_publication_cancelled" },
+      );
+    }
     const diagnostics = asRecord(previous.diagnostics);
     const settingsCandidate = diagnostics.publicationSettings || previous.publicationSettings;
     if (!isUsableTiktokSettings(settingsCandidate)) {

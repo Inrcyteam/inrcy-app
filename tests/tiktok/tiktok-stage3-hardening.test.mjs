@@ -7,6 +7,8 @@ const publishNow = readFileSync(new URL("../../app/api/booster/publish-now/route
 const retryRoute = readFileSync(new URL("../../app/api/inrsend/publications/[publicationId]/tiktok/retry/route.ts", import.meta.url), "utf8");
 const statusRoute = readFileSync(new URL("../../app/api/inrsend/publications/[publicationId]/tiktok/status/route.ts", import.meta.url), "utf8");
 const detailsModal = readFileSync(new URL("../../app/dashboard/mails/_components/MailboxDetailsModal.tsx", import.meta.url), "utf8");
+const channelActions = readFileSync(new URL("../../lib/inrsend/publicationChannelActions.ts", import.meta.url), "utf8");
+const mailboxPhase1 = readFileSync(new URL("../../app/dashboard/mails/_lib/mailboxPhase1.tsx", import.meta.url), "utf8");
 
 test("TikTok video publication is FILE_UPLOAD only", () => {
   assert.match(publishNow, /tiktokDirectPostVideoFileUpload/);
@@ -54,4 +56,23 @@ test("iNrSend automatically polls pending TikTok publications", () => {
   assert.match(detailsModal, /20_000/);
   assert.match(detailsModal, /60_000/);
   assert.match(detailsModal, /Motif technique TikTok/);
+});
+
+test("iNrSend can cancel a pending TikTok publication locally", () => {
+  assert.match(detailsModal, /cancelPendingTiktokPublication/);
+  assert.match(detailsModal, /body:\s*JSON\.stringify\(\{ action: "cancel_pending" \}\)/);
+  assert.match(detailsModal, /Annuler la publication/);
+  assert.match(channelActions, /isPendingTiktokResult/);
+  assert.match(channelActions, /buildCancelledPayload/);
+  assert.match(channelActions, /remote_cancellation_supported:\s*false/);
+  assert.match(channelActions, /status:\s*"deleted"/);
+});
+
+test("cancelled TikTok publications are terminal for status and retry flows", () => {
+  assert.match(statusRoute, /isTiktokCancelledResult/);
+  assert.match(statusRoute, /status:\s*"CANCELLED"/);
+  assert.match(retryRoute, /tiktok_publication_cancelled/);
+  assert.match(detailsModal, /"CANCELLED", "CANCELED"/);
+  assert.match(mailboxPhase1, /isCancelledChannelResult/);
+  assert.match(mailboxPhase1, /channelCancelledDot/);
 });
