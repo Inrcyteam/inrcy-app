@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import {
+  extractEmbedActusStorageReference,
+  normalizeEmbedActusStorageReference,
+  verifyEmbedActusMediaToken,
+} from "@/lib/embedActusMedia";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 
 export const runtime = "nodejs";
 
-function jsonError(status: number) {
+function mediaError(status: number) {
   const cacheControl = status === 404
     ? "public, s-maxage=3600, max-age=300, stale-while-revalidate=86400"
     : "private, no-store, max-age=0";
@@ -17,45 +22,40 @@ function jsonError(status: number) {
   });
 }
 
-function extractBoosterStoragePath(raw: string): string | null {
-  const source = String(raw || "").trim();
-  if (!source) return null;
-
-  let url: URL;
-  try {
-    url = new URL(source);
-  } catch {
-    return null;
-  }
-
-  const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  if (configuredSupabaseUrl) {
-    try {
-      const expected = new URL(configuredSupabaseUrl);
-      if (url.origin !== expected.origin) return null;
-    } catch {
-      // Keep parsing by path when the configured URL is malformed.
-    }
-  }
-
-  const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/booster\/(.+)$/);
-  if (!match?.[1]) return null;
-
-  try {
-    return decodeURIComponent(match[1]).replace(/^\/+/, "");
-  } catch {
-    return match[1].replace(/^\/+/, "");
-  }
-}
-
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const src = searchParams.get("src") || "";
-  const path = extractBoosterStoragePath(src);
-  if (!path) return jsonError(400);
+  const bucket = searchParams.get("bucket") || "";
+  const storagePath = searchParams.get("path") || "";
+  const token = searchParams.get("token") || "";
 
-  const target = await createSafeStorageSignedUrl("booster", path, 60 * 60);
-  if (!target) return jsonError(404);
+  const signedReference = verifyEmbedActusMediaToken(
+    bucket,
+    storagePath,
+    token,
+  )
+    ? normalizeEmbedActusStorageReference(bucket, storagePath)
+    : null;
+
+  // Compatibility for an iframe HTML response generated before this patch.
+  // The URL is still restricted to the configured Supabase origin and to the
+  // two media buckets explicitly supported by the website publication flow.
+  const parsedLegacyReference = signedReference
+    ? null
+    : extractEmbedActusStorageReference(searchParams.get("src") || "");
+  // Legacy iframe markup only ever proxied the historical `booster` bucket.
+  // Do not expose token-free signing for the newer private universal bucket.
+  const legacyReference = parsedLegacyReference?.bucket === "booster"
+    ? parsedLegacyReference
+    : null;
+  const reference = signedReference || legacyReference;
+  if (!reference) return mediaError(400);
+
+  const target = await createSafeStorageSignedUrl(
+    reference.bucket,
+    reference.storagePath,
+    60 * 60,
+  );
+  if (!target) return mediaError(404);
 
   return NextResponse.redirect(target, {
     status: 302,

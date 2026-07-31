@@ -90,8 +90,12 @@ test("les aperçus locaux restent affichés pendant la préparation serveur", as
   const source = await readSource(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
+  const videoAiRuntime = await readSource(
+    "app/dashboard/booster/publier/publishModal.videoAiRuntime.ts",
+  );
 
-  assert.match(source, /function preloadPreparedImagePreview/);
+  assert.match(videoAiRuntime, /export function preloadPreparedImagePreview/);
+  assert.match(source, /preloadPreparedImagePreview\(previewUrl\)/);
   assert.match(source, /const imagesRef = useRef<File\[\]>\(\[\]\)/);
   assert.match(
     source,

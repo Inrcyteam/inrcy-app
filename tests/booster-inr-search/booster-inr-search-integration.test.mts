@@ -22,9 +22,10 @@ test("iNrSearch content is capped at 300 characters before publication", () => {
 });
 
 test("Booster exposes iNrSearch in content, generation and image channel flows", async () => {
-  const [modal, imageController, contentEditor, mediaPanel, shared, prompt, generation] =
+  const [modal, foundations, imageController, contentEditor, mediaPanel, shared, prompt, generation] =
     await Promise.all([
       read("app/dashboard/booster/publier/PublishModal.tsx"),
+      read("app/dashboard/booster/publier/publishModal.foundations.ts"),
       read("app/dashboard/booster/publier/usePublishImageController.ts"),
       read("app/dashboard/booster/publier/components/PublishContentEditorPanel.tsx"),
       read("app/dashboard/booster/publier/components/PublishImagesPanel.tsx"),
@@ -33,7 +34,7 @@ test("Booster exposes iNrSearch in content, generation and image channel flows",
       read("lib/boosterPublishGeneration.ts"),
     ]);
 
-  assert.match(modal, /CHANNEL_KEYS: ChannelKey\[\] = BOOSTER_CHANNEL_ORDER/);
+  assert.match(foundations, /CHANNEL_KEYS: ChannelKey\[\] = BOOSTER_CHANNEL_ORDER/);
   assert.match(modal, /CHANNEL_KEYS\.filter\(\(channel\) => channels\[channel\] && connected\[channel\]\)/);
   assert.match(imageController, /BOOSTER_CHANNEL_ORDER\.filter/);
   assert.match(contentEditor, /Phrase courte iNr'Search/);
@@ -48,23 +49,25 @@ test("Booster exposes iNrSearch in content, generation and image channel flows",
 });
 
 test("the immediate and iNrSend publication paths enforce the same iNrSearch limit", async () => {
-  const [publishRoute, inrSend] = await Promise.all([
+  const [publishRoute, channelContext, inrSend] = await Promise.all([
     read("app/api/booster/publish-now/route.ts"),
+    read("app/api/booster/publish-now/publishNow.channel-context.ts"),
     read("lib/inrsend/publicationChannelActions.ts"),
   ]);
 
-  assert.match(publishRoute, /limitBoosterChannelContent/);
+  assert.match(publishRoute, /createPublishNowPostResolver/);
+  assert.match(channelContext, /limitBoosterChannelContent/);
   assert.match(inrSend, /limitBoosterChannelContent/);
 });
 
 test("iNrSearch is available in iNrAgent between Google Business and Facebook", async () => {
-  const [agentClient, agentSettings, preparePublish] = await Promise.all([
-    read("app/dashboard/agent/AgentClient.tsx"),
+  const [agentConfig, agentSettings, preparePublish] = await Promise.all([
+    read("app/dashboard/agent/_lib/agent.config.ts"),
     read("lib/inrAgentSettings.ts"),
     read("app/api/agent/actions/prepare-publish/route.ts"),
   ]);
 
-  assert.match(agentClient, /"gmb",\s*\n\s*"inrSearch",\s*\n\s*"facebook"/);
+  assert.match(agentConfig, /"gmb",\s*\n\s*"inrSearch",\s*\n\s*"facebook"/);
   assert.match(agentSettings, /"gmb", "inr_search", "facebook"/);
   assert.match(preparePublish, /inr_search/);
 });

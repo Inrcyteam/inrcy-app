@@ -1,0 +1,181 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+function read(path: string) {
+  return readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+}
+
+const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
+const persistentWorkspace = read(
+  "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+);
+const imageController = read(
+  "app/dashboard/booster/publier/usePublishImageController.ts",
+);
+const shared = read("app/dashboard/booster/publier/publishModal.shared.tsx");
+const modalLayer = read(
+  "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
+);
+const publishClient = read("lib/boosterPublishClient.ts");
+const publishRoute = read("app/api/booster/publish-now/route.ts");
+const generationRoute = read("app/api/booster/generate/route.ts");
+const statusRoute = read(
+  "app/api/booster/publications/[publicationId]/status/route.ts",
+);
+
+test("PublishModal keeps the three dedicated media controllers", () => {
+  assert.match(publishModal, /usePersistentMediaWorkspace\(/);
+  assert.match(publishModal, /usePublishImageController\(/);
+  assert.match(publishModal, /usePublishVideoController\(/);
+  assert.match(publishModal, /isUnifiedMediaConsumptionClientEnabled\(\)/);
+  assert.match(publishModal, /isLegacyMediaTransportCutoverClientEnabled\(\)/);
+});
+
+test("generation, publication and scheduling all wait for the persistent workspace", () => {
+  assert.match(
+    publishModal,
+    /waitForPersistentWorkspaceReadiness\("generate"/,
+  );
+  assert.match(
+    publishModal,
+    /waitForPersistentWorkspaceReadiness\("publish"/,
+  );
+  assert.match(
+    publishModal,
+    /waitForPersistentWorkspaceReadiness\("schedule"/,
+  );
+  assert.match(publishModal, /loadMediaPublicationWorkspace\(/);
+  assert.match(publishModal, /prepareMediaPublicationWorkspace\(/);
+});
+
+test("strict cutover sends workspace references instead of browser media binaries", () => {
+  assert.match(publishModal, /mediaWorkspaceId:/);
+  assert.match(publishModal, /mediaWorkspaceClientKey:/);
+  assert.match(publishModal, /mediaPipelineCutoverV1:/);
+  assert.match(
+    publishModal,
+    /imagesForAI:\s*mediaPipelineCutoverEnabled\s*\?\s*\[\]\s*:\s*imagesForAI/,
+  );
+  assert.match(publishModal, /imageCount:\s*mediaPipelineCutoverEnabled\s*\?\s*0/);
+  assert.ok(
+    (publishModal.match(/images:\s*\[\]/g) || []).length >= 3,
+    "publish, schedule and preview payloads must keep the base binary image array empty",
+  );
+  assert.match(generationRoute, /strictMediaCutover/);
+  assert.match(generationRoute, /mediaWorkspaceExpected/);
+  assert.match(publishRoute, /strictMediaCutover/);
+});
+
+test("legacy uploads remain isolated behind the cutover-off branch", () => {
+  assert.match(
+    publishModal,
+    /hasAnyImagePublish\s*&&\s*!mediaPipelineCutoverEnabled/,
+  );
+  assert.match(
+    publishModal,
+    /hasAnyVideoPublish\s*&&\s*!mediaPipelineCutoverEnabled/,
+  );
+  assert.match(publishModal, /uploadPublicationVideoForPublish\(\)/);
+  assert.match(publishModal, /uploadOriginalImagesForPublication\(/);
+});
+
+test("compatible MP4 or M4V sources bypass a second silent re-encode", () => {
+  assert.match(persistentWorkspace, /canPublishVideoSourceDirectly\(/);
+  assert.match(
+    persistentWorkspace,
+    /mediaType === "video"\s*&&\s*request\.directVideoSource/,
+  );
+  assert.match(persistentWorkspace, /corePreparationReadyRef\.current = true/);
+  assert.match(
+    publishModal,
+    /generateMissingVideoVariants:\s*false,[\s\S]*allowOriginalVideoFallback:\s*true/,
+  );
+  assert.match(
+    publishModal,
+    /generateMissingVideoVariants:\s*true,[\s\S]*allowOriginalVideoFallback:\s*false/,
+  );
+});
+
+test("workspace uploads are serialized, abortable and bounded", () => {
+  assert.match(persistentWorkspace, /operationVersionRef/);
+  assert.match(persistentWorkspace, /operationAbortRef\.current\?\.abort\(\)/);
+  assert.match(persistentWorkspace, /await previousTask\.catch/);
+  assert.match(
+    persistentWorkspace,
+    /mediaType === "video"\s*\?\s*1\s*:\s*3/,
+  );
+  assert.match(persistentWorkspace, /activeUploadFailureRef/);
+});
+
+test("image and video source limits stay centralized", () => {
+  assert.match(imageController, /BOOSTER_MAX_IMAGE_COUNT/);
+  assert.match(imageController, /BOOSTER_MAX_IMAGE_BYTES/);
+  assert.match(imageController, /BOOSTER_MAX_MEDIA_BYTES/);
+  assert.match(shared, /INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT/);
+  assert.match(shared, /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/);
+  assert.match(publishModal, /BOOSTER_MAX_VIDEO_BYTES/);
+});
+
+test("final review blocks invalid channels before the dispatch", () => {
+  assert.match(publishModal, /buildFinalReviewItems\(/);
+  assert.match(publishModal, /getChannelPublicationRequirements\(/);
+  assert.match(publishModal, /Aucun canal publiable/);
+  assert.match(publishModal, /Instagram nécessite une vidéo ou au moins 1 image/);
+  assert.match(publishModal, /Choisissez un tableau Pinterest/);
+  assert.match(publishModal, /Pinterest nécessite une image ou une vidéo/);
+});
+
+test("manual publication remains idempotent, asynchronous and partially retryable", () => {
+  assert.match(modalLayer, /postBoosterPublication\(/);
+  assert.match(publishClient, /idempotencyKey/);
+  assert.match(publishClient, /execution_already_running/);
+  assert.match(publishRoute, /BOOSTER_ASYNC_CHANNEL_EVENT_TYPE/);
+  assert.match(publishRoute, /\{ status: 202 \}/);
+  assert.match(statusRoute, /publicationId/);
+  assert.match(publishModal, /const retryFailedChannels = resultEntries/);
+  assert.match(publishModal, /entry\?\.retryable !== false/);
+  assert.match(
+    publishModal,
+    /if \(publicationComplete\) \{[\s\S]*archivePersistentMediaWorkspace/,
+  );
+  assert.match(
+    publishModal,
+    /options\?\.closeOnSuccess !== false && publicationComplete/,
+  );
+});
+
+test("scheduling preserves the workspace and separates immediate channels", () => {
+  assert.match(publishModal, /\/api\/agent\/scheduled-actions/);
+  assert.match(publishModal, /timezone:\s*"Europe\/Paris"/);
+  assert.match(publishModal, /scheduleGroups/);
+  assert.match(publishModal, /immediateChannelsToPublish/);
+  assert.match(publishModal, /publishImmediateChannelsAfterSchedule/);
+  assert.match(publishModal, /source:\s*"booster_scheduled"/);
+  assert.match(publishModal, /mediaWorkspaceId:/);
+});
+
+test("drafts reuse and restore the persistent workspace", () => {
+  assert.match(publishModal, /adoptMediaWorkspace\(/);
+  assert.match(publishModal, /linkPersistentWorkspaceDraft\(/);
+  assert.match(publishModal, /loadMediaPublicationWorkspace\(/);
+  assert.match(
+    publishModal,
+    /images\.length && !\(mediaPipelineCutoverEnabled && mediaWorkspaceId\)/,
+  );
+  assert.match(
+    publishModal,
+    /mediaPipelineCutoverEnabled && mediaWorkspaceId\s*\?\s*null/,
+  );
+});
+
+test("network uncertainty never encourages an unsafe blind retry", () => {
+  assert.match(
+    publishModal,
+    /L’envoi peut encore être en cours : vérifiez iNr’Send avant de relancer/,
+  );
+  assert.match(
+    publishClient,
+    /vérifiez iNr’Send avant de relancer/,
+  );
+});

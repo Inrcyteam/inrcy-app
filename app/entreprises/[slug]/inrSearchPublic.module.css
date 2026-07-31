@@ -13225,3 +13225,44 @@
     }
   }
 }
+
+/* iNrSearch — Étape 4 : surface mobile opaque et compositing sans flash blanc. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  .page {
+    background-color: #050b2b !important;
+    isolation: isolate;
+  }
+
+  .orbitViewport {
+    background:
+      radial-gradient(circle at 18% 14%, rgb(var(--section-accent-rgb) / .1), transparent 28rem),
+      radial-gradient(circle at 84% 82%, rgb(var(--section-secondary-rgb) / .08), transparent 32rem),
+      #050b2b !important;
+    background-color: #050b2b !important;
+    isolation: isolate;
+    scroll-behavior: auto;
+  }
+
+  .orbitPanel,
+  .orbitPanel.section,
+  .servicesSection {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    background-color: #050b2b;
+    background-clip: padding-box;
+    -webkit-overflow-scrolling: auto !important;
+  }
+
+  .presentationOrbit,
+  .presentationStage {
+    background-color: #071126 !important;
+  }
+
+  .topbar,
+  .topbarInner,
+  .orbitControls {
+    backface-visibility: hidden;
+  }
+}

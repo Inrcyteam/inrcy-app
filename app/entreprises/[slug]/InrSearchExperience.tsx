@@ -123,21 +123,21 @@ export default function InrSearchExperience({
       root.style.setProperty("--active-orbit-index", String(safeIndex));
       setCurrentIndex(safeIndex);
 
-      // Keep every section in the rendered document. The horizontal orbit is
-      // a visual navigation layer, not a reason to hide the business facts
-      // from assistive technology, crawlers, or no-JavaScript renderers.
+      // Every section stays in the server-rendered HTML for crawlers and
+      // no-JavaScript readers. After hydration, only the current visual scene
+      // remains interactive so focus cannot jump into an off-screen chapter.
       sections.forEach((item, itemIndex) => {
         if (itemIndex === safeIndex) {
           item.removeAttribute("data-orbit-inactive");
           item.setAttribute("data-orbit-active", "true");
+          item.removeAttribute("aria-hidden");
+          item.removeAttribute("inert");
         } else {
           item.setAttribute("data-orbit-inactive", "true");
           item.removeAttribute("data-orbit-active");
           item.setAttribute("aria-hidden", "true");
           item.setAttribute("inert", "");
         }
-        item.removeAttribute("aria-hidden");
-        item.removeAttribute("inert");
       });
 
       if (section?.id) {

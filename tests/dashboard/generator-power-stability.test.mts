@@ -6,6 +6,10 @@ const dashboardClientSource = readFileSync(
   new URL("../../app/dashboard/DashboardClient.tsx", import.meta.url),
   "utf8",
 );
+const dashboardBootstrapSource = readFileSync(
+  new URL("../../app/dashboard/dashboard.bootstrap-cache.ts", import.meta.url),
+  "utf8",
+);
 
 test("generator power keeps the last confirmed value while channel states settle", () => {
   assert.match(
@@ -20,7 +24,7 @@ test("generator power keeps the last confirmed value while channel states settle
 
 test("generator power commits only after a quiet settling window", () => {
   assert.match(
-    dashboardClientSource,
+    dashboardBootstrapSource,
     /const GENERATOR_POWER_SETTLE_MS = 700;/,
   );
   assert.match(

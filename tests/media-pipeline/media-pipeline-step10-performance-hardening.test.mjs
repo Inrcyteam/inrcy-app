@@ -125,7 +125,9 @@ test("les variantes par canal sont persistantes et la publication reste légère
   const prewarm = read(
     "app/api/media-pipeline/workspace/prewarm/route.ts",
   );
-  const publish = read("app/api/booster/publish-now/route.ts");
+  const publish =
+    read("app/api/booster/publish-now/route.ts") +
+    read("app/api/booster/publish-now/publishNow.server-preparation.ts");
   assert.match(images, /purpose:\s*"channel_publish"/);
   assert.match(images, /workspace-channel-images/);
   assert.match(images, /publicationReady:\s*true/);

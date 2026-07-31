@@ -7,6 +7,7 @@ const required = [
   "lib/mediaWorkspaceConsumption.ts",
   "app/api/booster/generate/route.ts",
   "app/api/booster/publish-now/route.ts",
+  "app/api/booster/publish-now/publishNow.server-preparation.ts",
   "app/api/agent/scheduled-actions/route.ts",
   "app/dashboard/booster/publier/PublishModal.tsx",
   "ops/sql/2026-07-29_media_pipeline_step7_unified_consumption.sql",
@@ -24,7 +25,9 @@ const read = (file) => readFileSync(resolve(root, file), "utf8");
 const policy = read("lib/mediaPipelineUnifiedConsumptionPolicy.ts");
 const resolver = read("lib/mediaWorkspaceConsumption.ts");
 const generate = read("app/api/booster/generate/route.ts");
-const publish = read("app/api/booster/publish-now/route.ts");
+const publish =
+  read("app/api/booster/publish-now/route.ts") +
+  read("app/api/booster/publish-now/publishNow.server-preparation.ts");
 const schedule = read("app/api/agent/scheduled-actions/route.ts");
 const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 const migration = read(

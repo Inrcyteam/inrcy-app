@@ -8,42 +8,45 @@ const read = (relativePath: string) =>
   readFileSync(resolve(ROOT, relativePath), "utf8");
 
 const client = read("app/dashboard/agent/AgentClient.tsx");
+const agentTypes = read("app/dashboard/agent/_lib/agent.types.ts");
+const scheduleHelpers = read("app/dashboard/agent/_lib/agent.schedule.ts");
+const scheduledMediaSource = `${client}\n${scheduleHelpers}`;
 const api = read("app/api/agent/actions/route.ts");
 
 test("iNrAgent appends scheduled images without replacing the selected image", () => {
   assert.match(
-    client,
+    agentTypes,
     /type PublishMediaMutation = "append" \| "replace" \| "remove"/,
   );
   assert.match(
-    client,
+    scheduledMediaSource,
     /mutation === "append"[\s\S]*?nextImages = \[\.\.\.channelImages, media\]\.slice\([\s\S]*?INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT/,
   );
   assert.match(
-    client,
+    scheduledMediaSource,
     /item\.media_type === "image" \? "append" : "replace"/,
   );
   assert.match(
-    client,
+    scheduledMediaSource,
     /uploadPublishMedia\([\s\S]*?= "append"/,
   );
 });
 
 test("image adaptation replaces only the active image and video replaces the gallery", () => {
-  assert.match(client, /uploadPublishMedia\(renderedFile, "replace"\)/);
+  assert.match(scheduledMediaSource, /uploadPublishMedia\(renderedFile, "replace"\)/);
   assert.match(
-    client,
+    scheduledMediaSource,
     /transformedVariants,[\s\S]*?},[\s\S]*?"replace",[\s\S]*?\);/,
   );
   assert.match(
-    client,
+    scheduledMediaSource,
     /mediaKind === "video"[\s\S]*?imagesByChannel\[displayKey\] = \[\]/,
   );
 });
 
 test("the image gallery is capped at five in the UI and API", () => {
-  assert.match(client, /publishImageLimitReached/);
-  assert.match(client, /Maximum de \$\{INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT\} images atteint/);
+  assert.match(scheduledMediaSource, /publishImageLimitReached/);
+  assert.match(scheduledMediaSource, /Maximum de \$\{INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT\} images atteint/);
   assert.match(api, /mediaOperation: "append" \| "replace" \| "remove"/);
   assert.match(
     api,
@@ -54,12 +57,12 @@ test("the image gallery is capped at five in the UI and API", () => {
 
 test("removing an image removes only the active index", () => {
   assert.match(
-    client,
+    scheduledMediaSource,
     /currentImages\.filter\(\(_, index\) => index !== removeIndex\)/,
   );
   assert.match(
     api,
     /currentImages\.filter\(\(_, index\) => index !== removeIndex\)/,
   );
-  assert.match(client, /mediaIndex: publishMediaActiveIndex/);
+  assert.match(scheduledMediaSource, /mediaIndex: publishMediaActiveIndex/);
 });

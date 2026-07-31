@@ -6,9 +6,12 @@ const read = (path) =>
   readFile(new URL(`../../${path}`, import.meta.url), "utf8");
 
 test("Step 5 locks final Booster geometry before channel optimization", async () => {
-  const route = await read("app/api/booster/publish-now/route.ts");
+  const route = await read("app/api/booster/publish-now/publishNow.server-preparation.ts");
+  const foundations = await read(
+    "app/api/booster/publish-now/publishNow.foundations.ts",
+  );
 
-  assert.match(route, /function hasFinalImageGeometryDecision/);
+  assert.match(foundations, /function hasFinalImageGeometryDecision/);
   assert.match(route, /const finalGeometryLocked = hasFinalImageGeometryDecision\(img\)/);
   assert.match(
     route,
@@ -39,7 +42,9 @@ test("Final geometry optimizer only uses proportional native resizing", async ()
 });
 
 test("Step 5 preserves prepared source instead of recropping when locked optimization fails", async () => {
-  const route = await read("app/api/booster/publish-now/route.ts");
+  const route = await read(
+    "app/api/booster/publish-now/publishNow.server-preparation.ts",
+  );
 
   assert.match(route, /instagramGeometryPreserveFallback/);
   assert.match(route, /socialFeedGeometryPreserveFallback/);
@@ -49,7 +54,9 @@ test("Step 5 preserves prepared source instead of recropping when locked optimiz
 });
 
 test("Legacy safety curtain remains available for payloads without a final decision", async () => {
-  const route = await read("app/api/booster/publish-now/route.ts");
+  const route = await read(
+    "app/api/booster/publish-now/publishNow.server-preparation.ts",
+  );
   const optimizer = await read("lib/imageOptimizer.ts");
 
   assert.match(route, /: await optimizeForInstagram\(parsed\.buffer\)/);

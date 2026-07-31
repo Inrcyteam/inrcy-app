@@ -24,15 +24,16 @@ test("iNrAgent immediate and scheduled publications use the shared intelligent i
 });
 
 test("iNrSend edit restarts from the preserved original without cumulative crop", async () => {
-  const [client, publishRoute, details] = await Promise.all([
+  const [client, publishRoute, publishFoundations, details] = await Promise.all([
     read("app/dashboard/mails/MailboxClient.tsx"),
     read("app/api/booster/publish-now/route.ts"),
+    read("app/api/booster/publish-now/publishNow.foundations.ts"),
     read("app/dashboard/mails/_components/MailboxDetailsModal.tsx"),
   ]);
 
   assert.match(client, /const initialTransform = originalUrl\s*\? \{ \.\.\.defaultTransform \}/);
   assert.match(publishRoute, /originalSourceUrlByKey/);
-  assert.match(publishRoute, /mappedOriginalUrl/);
+  assert.match(publishFoundations, /mappedOriginalUrl/);
   assert.match(details, /\? "Originale"\s*:\s*"Personnalisée"/);
 });
 

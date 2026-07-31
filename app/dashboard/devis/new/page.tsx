@@ -2,22 +2,18 @@
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
-import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy, promptInrcy } from "@/lib/inrcyDialog";
 import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";
 import SettingsDrawer from "../../SettingsDrawer";
 import DocumentsSettingsContent from "../../settings/_components/DocumentsSettingsContent";
-import { useUnsavedExitGuard } from "../../_hooks/useUnsavedExitGuard";
 import {
-  DEFAULT_INRDOCUMENTS_SETTINGS,
   INRDOCUMENTS_SETTINGS_UPDATED_EVENT,
   InrDocumentsSettings,
-  dateWithAddedDays,
   makeDefaultLine,
   normalizeInrDocumentsSettings,
 } from "@/lib/inrdocumentsSettings";
@@ -36,346 +32,62 @@ import {
   prepareTemplateSnapshot,
 } from "../../_documents/documentTemplateUtils";
 import { printWithIosSafariScale } from "../../_documents/printUtils";
+import { DocumentContactSection } from "../../_documents/DocumentContactSection";
+import { DocumentParties } from "../../_documents/DocumentParties";
 import {
-  DEFAULT_CLIENT_EXCHANGE_PREFERENCES,
-  buildClientExchangePreferences,
+  NotesAndMentionsSection,
+  ServiceDateFields,
+} from "../../_documents/DocumentAdvancedSections";
+import {
+  applyDocumentCrmContact,
+  useDocumentClientForm,
+  useDocumentClientQueryPrefill,
+  useDocumentCrmContactsLoader,
+  useDocumentCrmDirectory,
+  useDocumentCrmUiState,
+  useDocumentLineEditor,
+  getDocumentCrmContactLabel,
+  useDocumentModalBodyLock,
+  useDocumentOutsideClose,
+  useDocumentProfileLoader,
+  useDocumentProviderPreferences,
+  useDocumentSettingsPanel,
+} from "../../_documents/useDocumentEditorHooks";
+import {
+  DocumentDateInput,
+  OPERATION_CATEGORY_OPTIONS,
+  PAYMENT_METHODS,
+  buildFullCrmAddress,
+  inferServiceDateMode,
+  isValidEmail,
+  normalizeClientType,
+  splitFrenchAddress,
+  type ClientType,
+  type CrmContact,
+  type Profile,
+  type ServiceDateMode,
+} from "../../_documents/documentEditorShared";
+import {
+  VAT_OPTIONS,
+  buildQuotePrintPages,
+  getQuotePrintFooterSpacerMm,
+  type QuoteFieldErrors,
+} from "../../_documents/quoteDocumentEditor";
+import {
   buildDocumentMailTexts,
-  formatClientCurrency,
-  formatClientDateOnly,
-  getDocumentClientTexts,
   getDocumentOperationCategoryLabel,
   getDocumentPaymentLabel,
-  type ClientExchangePreferences,
 } from "@/lib/clientCommunication";
-
-
-
-type Profile = {
-  user_id: string;
-  company_legal_name?: string | null;
-  hq_address?: string | null;
-  hq_zip?: string | null;
-  hq_city?: string | null;
-  contact_email?: string | null;
-  phone?: string | null;
-  siren?: string | null;
-  rcs_city?: string | null;
-  vat_number?: string | null;
-  vat_dispense?: boolean | null;
-  logo_url?: string | null;
-  logo_path?: string | null;
-};
-
-type CrmContact = {
-  id: string;
-  last_name?: string | null;
-  first_name?: string | null;
-  company_name?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  billing_address?: string | null;
-  delivery_address?: string | null;
-  city?: string | null;
-  postal_code?: string | null;
-  siret?: string | null;
-  vat_number?: string | null;
-  category?: string | null;
-  contact_type?: string | null;
-};
-
-type ClientType = "" | "particulier" | "professionnel" | "institution";
-
-type ServiceDateMode = "single" | "period";
-
-function getQuotePrintFooterSpacerMm(lineCount: number): number {
-  const count = Math.max(1, Number(lineCount) || 1);
-
-  // Le devis a un footer plus haut que la facture grâce à la signature.
-  // La logique garde le footer en bas de la dernière page utilisée,
-  // sans le répéter sur toutes les pages.
-  if (count <= 24) {
-    return Math.max(0, 90 - (count - 1) * 12);
-  }
-
-  const firstPageRows = 24;
-  const rowsPerNextPage = 39;
-  const rowsAfterFirstPage = count - firstPageRows;
-  const rowsOnLastPage = ((rowsAfterFirstPage - 1) % rowsPerNextPage) + 1;
-
-  return Math.max(0, 150 - (rowsOnLastPage - 1) * 4.2);
-}
-
-type QuotePrintPage = {
-  includeHeader: boolean;
-  includeFooter: boolean;
-  lines: LineItem[];
-};
-
-function buildQuotePrintPages(lines: LineItem[]): QuotePrintPage[] {
-  const safeLines = lines.length ? lines : [];
-
-  /*
-   * Pagination print maîtrisée V112.
-   * Le devis a un footer plus haut (signature), donc les seuils sont plus
-   * prudents. On réserve toujours quelques lignes pour la dernière page afin
-   * que le footer ne parte pas seul si des prestations peuvent l'accompagner.
-   */
-  const firstPageWithFooterRows = 13;
-  const firstPageRowsWithoutFooter = 32;
-  const middlePageRows = 32;
-  const lastPageRowsWithFooter = 12;
-
-  if (safeLines.length <= firstPageWithFooterRows) {
-    return [{ includeHeader: true, includeFooter: true, lines: safeLines }];
-  }
-
-  const pages: QuotePrintPage[] = [];
-  let cursor = 0;
-
-  const firstPageLines = safeLines.slice(cursor, cursor + firstPageRowsWithoutFooter);
-  pages.push({
-    includeHeader: true,
-    includeFooter: false,
-    lines: firstPageLines,
-  });
-  cursor += firstPageLines.length;
-
-  let remaining = safeLines.length - cursor;
-
-  while (remaining > middlePageRows + lastPageRowsWithFooter) {
-    const pageLines = safeLines.slice(cursor, cursor + middlePageRows);
-    pages.push({
-      includeHeader: false,
-      includeFooter: false,
-      lines: pageLines,
-    });
-    cursor += pageLines.length;
-    remaining = safeLines.length - cursor;
-  }
-
-  if (remaining > lastPageRowsWithFooter) {
-    const linesBeforeFooter = remaining - lastPageRowsWithFooter;
-    const pageLines = safeLines.slice(cursor, cursor + linesBeforeFooter);
-    pages.push({
-      includeHeader: false,
-      includeFooter: false,
-      lines: pageLines,
-    });
-    cursor += pageLines.length;
-  }
-
-  pages.push({
-    includeHeader: false,
-    includeFooter: true,
-    lines: safeLines.slice(cursor),
-  });
-
-  return pages;
-}
-
-function normalizeClientType(value: unknown): ClientType {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  if (
-    normalized === "particulier" ||
-    normalized === "professionnel" ||
-    normalized === "institution"
-  )
-    return normalized;
-  return "";
-}
-
-function inferServiceDateMode(value: {
-  serviceDateMode?: unknown;
-  serviceDate?: string | null;
-  servicePeriodStart?: string | null;
-  servicePeriodEnd?: string | null;
-}): ServiceDateMode {
-  if (
-    value.serviceDateMode === "period" ||
-    value.serviceDateMode === "single"
-  ) {
-    return value.serviceDateMode;
-  }
-  if (value.servicePeriodStart || value.servicePeriodEnd) return "period";
-  return "single";
-}
-
-type QuoteFieldErrors = {
-  clientType?: string;
-  clientName?: string;
-  billingAddress?: string;
-  billingPostalCode?: string;
-  billingCity?: string;
-  clientEmail?: string;
-  clientSiren?: string;
-  number?: string;
-  docDateISO?: string;
-  validityDays?: string;
-  lines?: string;
-};
-
-function DocumentDateInput({
-  value,
-  onChange,
-  disabled = false,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div className={styles.dateInputWrap}>
-      <input
-        className={styles.dateInput}
-        type="date"
-        lang="fr-FR"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-      />
-      <span className={styles.dateInputIcon} aria-hidden="true">
-        <svg viewBox="0 0 24 24" focusable="false">
-          <path d="M7 3v3M17 3v3M4.5 9h15M6.5 5.5h13v15h-15v-15h2Z" />
-        </svg>
-      </span>
-    </div>
-  );
-}
-
-function normalizeAddressPart(value?: string | null) {
-  return String(value ?? "")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function addressContainsPart(address: string, part: string) {
-  if (!address || !part) return false;
-  const normalize = (value: string) =>
-    value
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-  return normalize(address).includes(normalize(part));
-}
-
-function buildFullCrmAddress(
-  address?: string | null,
-  postalCode?: string | null,
-  city?: string | null,
-) {
-  const parts: string[] = [];
-  const base = normalizeAddressPart(address);
-  if (base) parts.push(base);
-
-  [postalCode, city]
-    .map(normalizeAddressPart)
-    .filter(Boolean)
-    .forEach((part) => {
-      const current = parts.join(" ");
-      if (!addressContainsPart(current, part)) parts.push(part);
-    });
-
-  return parts.join(" ").trim();
-}
-
-function splitFrenchAddress(value?: string | null) {
-  const clean = normalizeAddressPart(value);
-  const match = clean.match(/^(.*?)\s+(\d{5})\s+(.+)$/);
-  if (!match) return { address: clean, postal_code: "", city: "" };
-  return {
-    address: normalizeAddressPart(match[1]),
-    postal_code: normalizeAddressPart(match[2]),
-    city: normalizeAddressPart(match[3]),
-  };
-}
-
-const VAT_OPTIONS = [0, 5.5, 10, 20];
-
-const PAYMENT_METHODS = [
-  { key: "", label: "—" },
-  { key: "virement", label: "Virement bancaire" },
-  { key: "cb", label: "Carte bancaire" },
-  { key: "cheque", label: "Chèque" },
-  { key: "especes", label: "Espèces" },
-  { key: "abonnement", label: "Abonnement" },
-] as const;
-
-const OPERATION_CATEGORY_OPTIONS = [
-  { key: "", label: "—" },
-  { key: "vente", label: "Vente" },
-  { key: "prestation", label: "Prestation de services" },
-  { key: "mixte", label: "Vente + prestation" },
-] as const;
-
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-}
-
-function normalizeLabel(s: string) {
-  // tri FR, sans casse/accents (stable)
-  return s
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .trim();
-}
-
-function contactDisplayName(c: CrmContact) {
-  const label =
-    (c.company_name && c.company_name.trim()) ||
-    [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
-    (c.last_name || "").trim() ||
-    "(Sans nom)";
-  return label;
-}
-
-function contactSearchText(c: CrmContact) {
-  return [
-    contactDisplayName(c),
-    c.email,
-    c.phone,
-    c.address,
-    c.billing_address,
-    c.delivery_address,
-    c.city,
-    c.postal_code,
-    c.siret,
-    c.vat_number,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
 
 export default function NewDevisPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsHasUnsavedChanges, setSettingsHasUnsavedChanges] = useState(false);
-  useEffect(() => {
-    if (!settingsOpen) setSettingsHasUnsavedChanges(false);
-  }, [settingsOpen]);
-  const { confirmExit: confirmSettingsExit } = useUnsavedExitGuard({
-    active: settingsOpen,
-    shouldBlock: settingsHasUnsavedChanges,
-    onConfirmExit: () => setSettingsOpen(false),
-    eyebrow: "Réglages par défaut",
-    title: "Quitter sans enregistrer ?",
-    message: "Ces réglages contiennent des modifications non enregistrées. Si vous fermez maintenant, elles seront perdues.",
-    confirmLabel: "Fermer sans enregistrer",
-    cancelLabel: "Continuer l’édition",
-    variant: "warning",
-  });
-  const requestCloseSettings = useCallback(() => {
-    void confirmSettingsExit();
-  }, [confirmSettingsExit]);
-  const [documentsSettings, setDocumentsSettings] =
-    useState<InrDocumentsSettings>(DEFAULT_INRDOCUMENTS_SETTINGS);
+  const {
+    settingsOpen, setSettingsOpen, settingsHasUnsavedChanges,
+    setSettingsHasUnsavedChanges, requestCloseSettings,
+    documentsSettings, setDocumentsSettings,
+  } = useDocumentSettingsPanel();
 
   // Toujours arriver en haut du module (évite de récupérer le scroll du dashboard)
   useEffect(() => {
@@ -387,328 +99,106 @@ export default function NewDevisPage() {
   const ATTACH_BUCKET = "inrbox_attachments";
   const previewRef = useRef<HTMLDivElement | null>(null);
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [clientExchangePreferences, setClientExchangePreferences] = useState<ClientExchangePreferences>(DEFAULT_CLIENT_EXCHANGE_PREFERENCES);
-  const [isEditingProvider, setIsEditingProvider] = useState(false);
-  const [providerOverride, setProviderOverride] = useState<Partial<Profile>>({});
-  const vatDispense = !!profile?.vat_dispense;
-  const providerData = { ...(profile || {}), ...(providerOverride || {}) } as Profile;
-
-  const documentClientTexts = useMemo(
-    () => getDocumentClientTexts(clientExchangePreferences.clientLanguage),
-    [clientExchangePreferences.clientLanguage],
-  );
-  const formatDocumentDate = useCallback(
-    (iso: string | null | undefined) => formatClientDateOnly(iso, clientExchangePreferences),
-    [clientExchangePreferences],
-  );
-  const formatDocumentMoney = useCallback(
-    (value: number) => formatClientCurrency(value, clientExchangePreferences),
-    [clientExchangePreferences],
-  );
+  const {
+    profile, setProfile, clientExchangePreferences, setClientExchangePreferences,
+    isEditingProvider, setIsEditingProvider, providerOverride, setProviderOverride,
+    vatDispense, providerData, documentClientTexts,
+    formatDocumentDate, formatDocumentMoney,
+  } = useDocumentProviderPreferences();
 
   // IMPORTANT: stable SSR/CSR
   const [number, setNumber] = useState<string>("");
   const [docDateISO, setDocDateISO] = useState<string>(""); // pour affichage stable
 
-  const [clientName, setClientName] = useState("");
-  const [clientAddress, setClientAddress] = useState("");
-  const [clientEmail, setClientEmail] = useState("");
-  const [clientSiren, setClientSiren] = useState("");
-  const [clientVatNumber, setClientVatNumber] = useState("");
-  const [clientType, setClientType] = useState<ClientType>("");
-  const [billingAddress, setBillingAddress] = useState("");
-  const [billingPostalCode, setBillingPostalCode] = useState("");
-  const [billingCity, setBillingCity] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [deliveryPostalCode, setDeliveryPostalCode] = useState("");
-  const [deliveryCity, setDeliveryCity] = useState("");
-  const [sameAddresses, setSameAddresses] = useState(true);
-  const [operationCategory, setOperationCategory] =
-    useState<(typeof OPERATION_CATEGORY_OPTIONS)[number]["key"]>("");
-  const [serviceDateMode, setServiceDateMode] =
-    useState<ServiceDateMode>("single");
-  const [serviceDate, setServiceDate] = useState("");
-  const [servicePeriodStart, setServicePeriodStart] = useState("");
-  const [servicePeriodEnd, setServicePeriodEnd] = useState("");
+  const {
+    clientName, setClientName, clientAddress, setClientAddress,
+    clientEmail, setClientEmail, clientSiren, setClientSiren,
+    clientVatNumber, setClientVatNumber, clientType, setClientType,
+    billingAddress, setBillingAddress, billingPostalCode, setBillingPostalCode,
+    billingCity, setBillingCity, deliveryAddress, setDeliveryAddress,
+    deliveryPostalCode, setDeliveryPostalCode, deliveryCity, setDeliveryCity,
+    sameAddresses, setSameAddresses, operationCategory, setOperationCategory,
+    serviceDateMode, setServiceDateMode, serviceDate, setServiceDate,
+    servicePeriodStart, setServicePeriodStart, servicePeriodEnd, setServicePeriodEnd,
+    updateServiceDateMode, purchaseOrderReference, setPurchaseOrderReference,
+    depositKind, setDepositKind, depositValue, setDepositValue,
+    billingFullAddress, deliveryFullAddress, setPrimaryClientAddress,
+    discountKind, setDiscountKind, discountValue, setDiscountValue,
+    discountDetails, setDiscountDetails,
+  } = useDocumentClientForm();
 
-  const updateServiceDateMode = (mode: ServiceDateMode) => {
-    setServiceDateMode(mode);
-    if (mode === "single") {
-      setServicePeriodStart("");
-      setServicePeriodEnd("");
-    } else {
-      setServiceDate("");
-    }
-  };
-  const [purchaseOrderReference, setPurchaseOrderReference] = useState("");
-  const [depositKind, setDepositKind] = useState<"" | "percent" | "amount">("");
-  const [depositValue, setDepositValue] = useState("");
   const [paymentMethod, setPaymentMethod] =
     useState<(typeof PAYMENT_METHODS)[number]["key"]>("");
   const [paymentDetails, setPaymentDetails] = useState("");
   const [notes, setNotes] = useState("");
   const [quoteMention, setQuoteMention] = useState("");
 
-  const billingFullAddress = buildFullCrmAddress(
-    billingAddress,
-    billingPostalCode,
-    billingCity,
-  );
-  const deliveryFullAddress = buildFullCrmAddress(
-    deliveryAddress,
-    deliveryPostalCode,
-    deliveryCity,
-  );
-
-  const setPrimaryClientAddress = (value: string) => {
-    const parsed = splitFrenchAddress(value);
-    setBillingAddress(parsed.address);
-    setBillingPostalCode(parsed.postal_code);
-    setBillingCity(parsed.city);
-    setClientAddress(
-      buildFullCrmAddress(parsed.address, parsed.postal_code, parsed.city),
-    );
-    if (sameAddresses) {
-      setDeliveryAddress(parsed.address);
-      setDeliveryPostalCode(parsed.postal_code);
-      setDeliveryCity(parsed.city);
-    }
-  };
-
-  useEffect(() => {
-    const full = buildFullCrmAddress(
-      billingAddress,
-      billingPostalCode,
-      billingCity,
-    );
-    setClientAddress(full);
-    if (!sameAddresses) return;
-    setDeliveryAddress(billingAddress);
-    setDeliveryPostalCode(billingPostalCode);
-    setDeliveryCity(billingCity);
-  }, [sameAddresses, billingAddress, billingPostalCode, billingCity]);
-
-  // --- Remise commerciale (appliquée sur le total TTC)
-  const [discountKind, setDiscountKind] = useState<DiscountKind | "">("");
-  const [discountValue, setDiscountValue] = useState<number>(0);
-  const [discountDetails, setDiscountDetails] = useState<string>("");
-
   // --- CRM: import d'un contact pour pré-remplir automatiquement
-  const [crmContacts, setCrmContacts] = useState<CrmContact[]>([]);
-  const [crmLoading, setCrmLoading] = useState(false);
-  const [crmError, setCrmError] = useState<string | null>(null);
-  const [selectedCrmContactId, setSelectedCrmContactId] = useState<string>("");
-  const [formMessage, setFormMessage] = useState<{
-    type: "error" | "success";
-    text: string;
-  } | null>(null);
-  const [crmActionMessage, setCrmActionMessage] = useState<{
-    type: "error" | "success";
-    text: string;
-  } | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<QuoteFieldErrors>({});
-  const [addingToCrm, setAddingToCrm] = useState(false);
-  const [currentSaveId, setCurrentSaveId] = useState<string>("");
+  const {
+    crmContacts, setCrmContacts, crmLoading, setCrmLoading,
+    crmError, setCrmError, selectedCrmContactId, setSelectedCrmContactId,
+    formMessage, setFormMessage, crmActionMessage, setCrmActionMessage,
+    fieldErrors, setFieldErrors, addingToCrm, setAddingToCrm,
+    currentSaveId, setCurrentSaveId, crmOpen, setCrmOpen,
+    advancedOpen, setAdvancedOpen, crmQuery, setCrmQuery,
+    crmContainerRef: crmBoxRef,
+  } = useDocumentCrmUiState<QuoteFieldErrors>();
 
-  // UI dropdown custom (style "select blanc", 10 items visibles + scroll)
-  const [crmOpen, setCrmOpen] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [crmQuery, setCrmQuery] = useState("");
-  const crmBoxRef = useRef<HTMLDivElement | null>(null);
+  useDocumentClientQueryPrefill(searchParams, {
+    setClientName,
+    setClientAddress,
+    setClientEmail,
+    setClientSiren,
+    setClientVatNumber,
+    setBillingAddress,
+    setBillingPostalCode,
+    setBillingCity,
+    setDeliveryAddress,
+    setDeliveryPostalCode,
+    setDeliveryCity,
+  });
 
-  // ✅ Pré-remplissage depuis CRM / iNrBox
-  useEffect(() => {
-    const name =
-      searchParams.get("clientName") || searchParams.get("name") || "";
-    const email =
-      searchParams.get("clientEmail") || searchParams.get("email") || "";
-    const address =
-      searchParams.get("clientAddress") || searchParams.get("address") || "";
-    const siren = searchParams.get("clientSiren") || "";
-    const vatNumber = searchParams.get("clientVatNumber") || "";
-    const billing = searchParams.get("billingAddress") || "";
-    const billingPostal =
-      searchParams.get("billingPostalCode") ||
-      searchParams.get("postal_code") ||
-      "";
-    const billingCityParam =
-      searchParams.get("billingCity") || searchParams.get("city") || "";
-    const delivery = searchParams.get("deliveryAddress") || "";
-    if (name) setClientName((prev) => prev || name);
-    if (email) setClientEmail((prev) => prev || email);
-    if (siren) setClientSiren((prev) => prev || siren);
-    if (vatNumber) setClientVatNumber((prev) => prev || vatNumber);
-    if (address) {
-      setClientAddress((prev) => prev || address);
-      const parsed = splitFrenchAddress(billing || address);
-      setBillingAddress((prev) => prev || parsed.address);
-      setBillingPostalCode(
-        (prev) => prev || billingPostal || parsed.postal_code,
-      );
-      setBillingCity((prev) => prev || billingCityParam || parsed.city);
-      const parsedDelivery = splitFrenchAddress(delivery || billing || address);
-      setDeliveryAddress((prev) => prev || parsedDelivery.address);
-      setDeliveryPostalCode(
-        (prev) => prev || billingPostal || parsedDelivery.postal_code,
-      );
-      setDeliveryCity(
-        (prev) => prev || billingCityParam || parsedDelivery.city,
-      );
-    } else {
-      if (billing) {
-        const parsed = splitFrenchAddress(billing);
-        setBillingAddress((prev) => prev || parsed.address);
-        setBillingPostalCode(
-          (prev) => prev || billingPostal || parsed.postal_code,
-        );
-        setBillingCity((prev) => prev || billingCityParam || parsed.city);
-      }
-      if (delivery) {
-        const parsedDelivery = splitFrenchAddress(delivery);
-        setDeliveryAddress((prev) => prev || parsedDelivery.address);
-        setDeliveryPostalCode(
-          (prev) => prev || billingPostal || parsedDelivery.postal_code,
-        );
-        setDeliveryCity(
-          (prev) => prev || billingCityParam || parsedDelivery.city,
-        );
-      }
-    }
-  }, []);
+  useDocumentCrmContactsLoader({
+    setContacts: setCrmContacts,
+    setLoading: setCrmLoading,
+    setError: setCrmError,
+  });
 
-  // ✅ Liste des contacts CRM pour import dans ce formulaire
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setCrmLoading(true);
-      setCrmError(null);
-
-      try {
-        const res = await fetch("/api/crm/contacts?all=1", { method: "GET" });
-        const json = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(
-            getSimpleFrenchErrorMessage(
-              json?.error,
-              "Impossible de charger les contacts CRM.",
-            ),
-          );
-        }
-
-        const contacts: CrmContact[] = Array.isArray(json?.contacts)
-          ? json.contacts
-          : [];
-        if (!cancelled) setCrmContacts(contacts);
-      } catch (e: any) {
-        if (!cancelled)
-          setCrmError(
-            getSimpleFrenchErrorMessage(
-              e,
-              "Impossible de charger les contacts CRM.",
-            ),
-          );
-      } finally {
-        if (!cancelled) setCrmLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const applyCrmContact = (c: CrmContact) => {
-    const displayName = contactDisplayName(c);
-
-    const billingParsed = splitFrenchAddress(
-      c.billing_address || c.address || "",
-    );
-    const deliveryParsed = splitFrenchAddress(
-      c.delivery_address || c.address || "",
-    );
-    const nextBillingPostal =
-      normalizeAddressPart(c.postal_code) || billingParsed.postal_code;
-    const nextBillingCity = normalizeAddressPart(c.city) || billingParsed.city;
-    const fullAddress = buildFullCrmAddress(
-      billingParsed.address,
-      nextBillingPostal,
-      nextBillingCity,
-    );
-    const fullDeliveryAddress = buildFullCrmAddress(
-      deliveryParsed.address,
-      nextBillingPostal,
-      nextBillingCity,
+  const applyCrmContact = (contact: CrmContact) =>
+    applyDocumentCrmContact(
+      contact,
+      {
+        setClientName,
+        setClientEmail,
+        setClientSiren,
+        setClientVatNumber,
+        setClientType,
+        setBillingAddress,
+        setBillingPostalCode,
+        setBillingCity,
+        setClientAddress,
+        setSameAddresses,
+        setDeliveryAddress,
+        setDeliveryPostalCode,
+        setDeliveryCity,
+      },
+      "(Sans nom)",
     );
 
-    setClientName(displayName);
-    setClientEmail((c.email || "").trim());
-    setClientSiren((c.siret || "").trim());
-    setClientVatNumber((c.vat_number || "").trim());
-    setClientType(
-      normalizeClientType(c.category) ||
-        (c.siret || c.company_name ? "professionnel" : "particulier"),
-    );
-    setBillingAddress(billingParsed.address);
-    setBillingPostalCode(nextBillingPostal);
-    setBillingCity(nextBillingCity);
-    setClientAddress(fullAddress);
-    if (fullDeliveryAddress && fullDeliveryAddress !== fullAddress) {
-      setSameAddresses(false);
-      setDeliveryAddress(deliveryParsed.address);
-      setDeliveryPostalCode(nextBillingPostal);
-      setDeliveryCity(nextBillingCity);
-    } else {
-      setSameAddresses(true);
-      setDeliveryAddress(billingParsed.address);
-      setDeliveryPostalCode(nextBillingPostal);
-      setDeliveryCity(nextBillingCity);
-    }
-  };
-
-  const sortedCrmContacts = useMemo(() => {
-    const arr = [...crmContacts];
-    arr.sort((a, b) => {
-      const aKey = normalizeLabel(contactDisplayName(a));
-      const bKey = normalizeLabel(contactDisplayName(b));
-      return aKey.localeCompare(bKey, "fr", { sensitivity: "base" });
+  const { sortedCrmContacts, filteredCrmContacts, selectedCrmContact } =
+    useDocumentCrmDirectory({
+      contacts: crmContacts,
+      query: crmQuery,
+      selectedContactId: selectedCrmContactId,
+      normalizeSortLabel: true,
     });
-    return arr;
-  }, [crmContacts]);
 
-  const filteredCrmContacts = useMemo(() => {
-    const query = normalizeLabel(crmQuery);
-    if (!query) return sortedCrmContacts;
-    return sortedCrmContacts.filter((contact) =>
-      normalizeLabel(contactSearchText(contact)).includes(query),
-    );
-  }, [crmQuery, sortedCrmContacts]);
-
-  const selectedCrmContact = useMemo(() => {
-    if (!selectedCrmContactId) return null;
-    return (
-      sortedCrmContacts.find(
-        (x) => String(x.id) === String(selectedCrmContactId),
-      ) || null
-    );
-  }, [selectedCrmContactId, sortedCrmContacts]);
-
-  // fermer le dropdown au clic extérieur
-  useEffect(() => {
-    if (!crmOpen) return;
-
-    const onDown = (e: MouseEvent) => {
-      const el = crmBoxRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) setCrmOpen(false);
-    };
-
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [crmOpen]);
+  useDocumentOutsideClose({
+    active: crmOpen,
+    containerRef: crmBoxRef,
+    setOpen: setCrmOpen,
+    eventTarget: "window",
+  });
 
   const clearCrmSelection = () => {
     setSelectedCrmContactId("");
@@ -738,9 +228,12 @@ export default function NewDevisPage() {
   // Orientation: gérée globalement via <OrientationGuard />
 
   // IMPORTANT: id stable au 1er render
-  const [lines, setLines] = useState<LineItem[]>([
-    { id: "l_1", label: "Prestation", qty: 1, unitPrice: 100, vatRate: 20 },
-  ]);
+  const { lines, setLines, addLine, removeLine, updateLine, clearFieldError } =
+    useDocumentLineEditor<QuoteFieldErrors>({
+      vatDispense,
+      initialUnitPrice: 100,
+      setFieldErrors,
+    });
 
   const applyDocumentDefaults = (settings: InrDocumentsSettings) => {
     setOperationCategory(
@@ -800,49 +293,11 @@ export default function NewDevisPage() {
     setDocDateISO(new Date().toISOString().slice(0, 10));
   }, []);
 
-  useEffect(() => {
-    const load = async () => {
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
-      if (userErr || !user) return;
-
-      const { data } = await supabase
-        .from("profiles")
-        .select(
-          "user_id,company_legal_name,hq_address,hq_zip,hq_city,contact_email,phone,siren,rcs_city,vat_number,vat_dispense,logo_url,logo_path",
-        )
-        .eq("user_id", resolveActiveBrowserUserId(user.id))
-        .single();
-
-      const { data: businessProfile } = await supabase
-        .from("business_profiles")
-        .select("client_language, timezone, date_format, currency, updated_at")
-        .eq("user_id", resolveActiveBrowserUserId(user.id))
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      setClientExchangePreferences(buildClientExchangePreferences(businessProfile));
-
-      const resolvedLogo = await resolveProfileLogoUrl(supabase, {
-        logo_path: data?.logo_path ?? null,
-        logo_url: data?.logo_url ?? null,
-      });
-
-      setProfile(
-        data
-          ? ({
-              ...(data as Profile),
-              logo_url: resolvedLogo.logoUrl,
-              logo_path: resolvedLogo.logoPath,
-            } as Profile)
-          : null,
-      );
-    };
-    load();
-  }, [supabase]);
+  useDocumentProfileLoader({
+    supabase,
+    setProfile,
+    setClientExchangePreferences,
+  });
 
   const totals = useMemo(
     () =>
@@ -916,18 +371,7 @@ export default function NewDevisPage() {
   const [finalizedAt, setFinalizedAt] = useState<string>("");
   const [finalizing, setFinalizing] = useState(false);
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (!draftsOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    const previousTouchAction = document.body.style.touchAction;
-    document.body.style.overflow = "hidden";
-    document.body.style.touchAction = "none";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.touchAction = previousTouchAction;
-    };
-  }, [draftsOpen]);
+  useDocumentModalBodyLock(draftsOpen);
 
   const refreshSaves = async () => {
     setDraftsLoading(true);
@@ -1020,38 +464,6 @@ export default function NewDevisPage() {
       cancelled = true;
     };
   }, [searchParams, supabase]);
-
-  const addLine = () => {
-    clearFieldError("lines");
-    setLines((prev) => [
-      ...prev,
-      {
-        id: uid("l"), // OK: action utilisateur
-        label: "",
-        qty: 1,
-        unitPrice: 0,
-        vatRate: vatDispense ? 0 : 20,
-      },
-    ]);
-  };
-
-  const removeLine = (id: string) => {
-    clearFieldError("lines");
-    setLines((prev) =>
-      prev.length > 1 ? prev.filter((l) => l.id !== id) : prev,
-    );
-  };
-
-  const updateLine = (id: string, patch: Partial<LineItem>) => {
-    clearFieldError("lines");
-    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
-  };
-
-  const clearFieldError = (field: keyof QuoteFieldErrors) => {
-    setFieldErrors((prev) =>
-      prev[field] ? { ...prev, [field]: undefined } : prev,
-    );
-  };
 
   const validateQuoteAction = (options?: { requireEmail?: boolean }) => {
     const nextErrors: QuoteFieldErrors = {};
@@ -1808,7 +1220,7 @@ export default function NewDevisPage() {
   const crmButtonText = useMemo(() => {
     if (crmLoading) return "Chargement...";
     if (selectedCrmContact) {
-      const name = contactDisplayName(selectedCrmContact);
+      const name = getDocumentCrmContactLabel(selectedCrmContact);
       return selectedCrmContact.email
         ? `${name} — ${selectedCrmContact.email}`
         : name;
@@ -2256,326 +1668,71 @@ export default function NewDevisPage() {
             </div>
           ) : null}
 
-          <div className={styles.formBlock}>
-            <div className={styles.formBlockHeader}>
-              <div>
-                <div className={styles.formBlockTitleRow}>
-                  <span className={styles.formBlockIcon} aria-hidden="true">
-                    👤
-                  </span>
-                  <div className={styles.formBlockTitle}>Infos contact</div>
-                </div>
-                <div className={styles.formBlockSubtitle}>
-                  Import CRM, coordonnées et adresse du client.
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.crmActionBar} ref={crmBoxRef}>
-              <div className={styles.crmActionMain}>
-                <span className={styles.crmActionLabel}>
-                  Importer un contact
-                </span>
-                <button
-                  type="button"
-                  className={styles.crmImportButton}
-                  onClick={() => setCrmOpen((v) => !v)}
-                  disabled={crmLoading}
-                  aria-haspopup="listbox"
-                  aria-expanded={crmOpen}
-                >
-                  <span
-                    className={styles.crmImportButtonText}
-                    title={crmButtonText}
-                  >
-                    {crmButtonText}
-                  </span>
-                  <span aria-hidden="true">▾</span>
-                </button>
-
-                {crmOpen ? (
-                  <div
-                    className={styles.crmSearchPanel}
-                    role="dialog"
-                    aria-label="Importer ou rechercher un contact CRM"
-                  >
-                    <input
-                      className={styles.crmSearchInput}
-                      type="search"
-                      value={crmQuery}
-                      onChange={(e) => setCrmQuery(e.target.value)}
-                      placeholder="Rechercher un contact, email, téléphone..."
-                      autoFocus
-                    />
-                    <div className={styles.crmSearchResults} role="listbox">
-                      {filteredCrmContacts.length ? (
-                        filteredCrmContacts.map((c) => {
-                          const name = contactDisplayName(c);
-                          const line = c.email ? `${name} — ${c.email}` : name;
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              className={styles.crmSearchItem}
-                              onClick={() => selectCrmContact(c)}
-                              title={line}
-                            >
-                              {line}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className={styles.crmSearchEmpty}>
-                          Aucun contact trouvé. Remplissez le client puis
-                          utilisez “+ Ajouter au CRM”.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={`${styles.field} ${styles.crmClientTypeField}`}>
-                <label>
-                  Type de client<span className={styles.requiredMark}>*</span>
-                </label>
-                <select
-                  value={clientType}
-                  onChange={(e) => {
-                    setClientType(e.target.value as ClientType);
-                    clearFieldError("clientType");
-                    clearFieldError("clientSiren");
-                  }}
-                >
-                  <option value="">—</option>
-                  <option value="particulier">Particulier</option>
-                  <option value="professionnel">Professionnel</option>
-                  <option value="institution">Institution</option>
-                </select>
-                {fieldErrors.clientType ? (
-                  <div className={styles.fieldError}>
-                    {fieldErrors.clientType}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.crmAddColumn}>
-                <button
-                  type="button"
-                  className={styles.crmAddButton}
-                  onClick={() => void addCurrentClientToCrm()}
-                  disabled={addingToCrm}
-                >
-                  {addingToCrm ? "Ajout CRM…" : "+ Ajouter au CRM"}
-                </button>
-                {crmActionMessage ? (
-                  <div
-                    className={`${styles.crmActionMessage} ${crmActionMessage.type === "success" ? styles.crmActionMessageSuccess : styles.crmActionMessageError}`}
-                  >
-                    {crmActionMessage.text}
-                  </div>
-                ) : null}
-              </div>
-
-              {crmError ? (
-                <div
-                  style={{
-                    gridColumn: "1 / -1",
-                    marginTop: -4,
-                    fontSize: 12,
-                    opacity: 0.8,
-                  }}
-                >
-                  ⚠️ {crmError}
-                </div>
-              ) : null}
-            </div>
-
-            <div className={styles.fourCol}>
-              <div className={styles.field}>
-                <label>
-                  Client<span className={styles.requiredMark}>*</span>
-                </label>
-                <input
-                  value={clientName}
-                  onChange={(e) => {
-                    setClientName(e.target.value);
-                    clearFieldError("clientName");
-                  }}
-                  placeholder="Nom du client"
-                />
-                {fieldErrors.clientName ? (
-                  <div className={styles.fieldError}>
-                    {fieldErrors.clientName}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.field}>
-                <label>
-                  Email client<span className={styles.requiredMark}>*</span>
-                </label>
-                <input
-                  value={clientEmail}
-                  onChange={(e) => {
-                    setClientEmail(e.target.value);
-                    clearFieldError("clientEmail");
-                  }}
-                  placeholder="email@client.fr"
-                />
-                {fieldErrors.clientEmail ? (
-                  <div className={styles.fieldError}>
-                    {fieldErrors.clientEmail}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.field}>
-                <label>
-                  SIREN client
-                  {clientType && clientType !== "particulier" ? (
-                    <span className={styles.requiredMark}>*</span>
-                  ) : (
-                    <span> (optionnel)</span>
-                  )}
-                </label>
-                <input
-                  value={clientSiren}
-                  onChange={(e) => {
-                    setClientSiren(e.target.value);
-                    clearFieldError("clientSiren");
-                  }}
-                  placeholder="Ex : 123456789"
-                />
-                {fieldErrors.clientSiren ? (
-                  <div className={styles.fieldError}>
-                    {fieldErrors.clientSiren}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={styles.field}>
-                <label>N° TVA client (optionnel)</label>
-                <input
-                  value={clientVatNumber}
-                  onChange={(e) => setClientVatNumber(e.target.value)}
-                  placeholder="Ex : FR12345678901"
-                />
-              </div>
-            </div>
-
-            <div className={styles.compactThreeCol}>
-              <div className={styles.field}>
-                <label>
-                  Adresse<span className={styles.requiredMark}>*</span>
-                </label>
-                <input
-                  value={billingAddress}
-                  onChange={(e) => {
-                    setBillingAddress(e.target.value);
-                    clearFieldError("billingAddress");
-                  }}
-                  placeholder="Adresse"
-                />
-                {fieldErrors.billingAddress ? (
-                  <div className={styles.fieldError}>
-                    {fieldErrors.billingAddress}
-                  </div>
-                ) : null}
-              </div>
-              <div className={styles.field}>
-                <label>
-                  Code postal<span className={styles.requiredMark}>*</span>
-                </label>
-                <input
-                  value={billingPostalCode}
-                  onChange={(e) => {
-                    setBillingPostalCode(e.target.value);
-                    clearFieldError("billingPostalCode");
-                  }}
-                  placeholder="Ex : 62440"
-                />
-                {fieldErrors.billingPostalCode ? (
-                  <div className={styles.fieldError}>
-                    {fieldErrors.billingPostalCode}
-                  </div>
-                ) : null}
-              </div>
-              <div className={styles.field}>
-                <label>
-                  Ville<span className={styles.requiredMark}>*</span>
-                </label>
-                <input
-                  value={billingCity}
-                  onChange={(e) => {
-                    setBillingCity(e.target.value);
-                    clearFieldError("billingCity");
-                  }}
-                  placeholder="Ex : Harnes"
-                />
-                {fieldErrors.billingCity ? (
-                  <div className={styles.fieldError}>
-                    {fieldErrors.billingCity}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className={styles.field}>
-              <label className={styles.checkboxLabel}>
-                <input
-                  className={styles.checkboxInput}
-                  type="checkbox"
-                  checked={sameAddresses}
-                  onChange={(e) => setSameAddresses(e.target.checked)}
-                />
-                <span>
-                  Adresse de livraison identique à l’adresse de facturation
-                </span>
-              </label>
-            </div>
-
-            {!sameAddresses ? (
-              <div
-                style={{
-                  marginTop: -2,
-                  marginBottom: 4,
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
-                }}
-              >
-                <div className={styles.compactThreeCol}>
-                  <div className={styles.field} style={{ marginBottom: 0 }}>
-                    <label>Adresse de livraison</label>
-                    <input
-                      value={deliveryAddress}
-                      onChange={(e) => setDeliveryAddress(e.target.value)}
-                      placeholder="Adresse"
-                    />
-                  </div>
-                  <div className={styles.field} style={{ marginBottom: 0 }}>
-                    <label>Code postal livraison</label>
-                    <input
-                      value={deliveryPostalCode}
-                      onChange={(e) => setDeliveryPostalCode(e.target.value)}
-                      placeholder="Ex : 62440"
-                    />
-                  </div>
-                  <div className={styles.field} style={{ marginBottom: 0 }}>
-                    <label>Ville livraison</label>
-                    <input
-                      value={deliveryCity}
-                      onChange={(e) => setDeliveryCity(e.target.value)}
-                      placeholder="Ex : Harnes"
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
+          <DocumentContactSection
+            crmContainerRef={crmBoxRef}
+            crmLoading={crmLoading}
+            crmOpen={crmOpen}
+            onToggleCrm={() => setCrmOpen((value) => !value)}
+            crmButtonText={crmButtonText}
+            crmQuery={crmQuery}
+            onCrmQueryChange={setCrmQuery}
+            filteredCrmContacts={filteredCrmContacts}
+            getContactLabel={getDocumentCrmContactLabel}
+            onSelectCrmContact={selectCrmContact}
+            clientType={clientType}
+            onClientTypeChange={(value) => {
+              setClientType(value);
+              clearFieldError("clientType");
+              clearFieldError("clientSiren");
+            }}
+            fieldErrors={fieldErrors}
+            addingToCrm={addingToCrm}
+            addToCrmDisabled={addingToCrm}
+            onAddCurrentClientToCrm={() => void addCurrentClientToCrm()}
+            crmActionMessage={crmActionMessage}
+            crmError={crmError}
+            clientName={clientName}
+            onClientNameChange={(value) => {
+              setClientName(value);
+              clearFieldError("clientName");
+            }}
+            clientEmail={clientEmail}
+            onClientEmailChange={(value) => {
+              setClientEmail(value);
+              clearFieldError("clientEmail");
+            }}
+            clientSiren={clientSiren}
+            onClientSirenChange={(value) => {
+              setClientSiren(value);
+              clearFieldError("clientSiren");
+            }}
+            clientVatNumber={clientVatNumber}
+            onClientVatNumberChange={setClientVatNumber}
+            billingAddress={billingAddress}
+            onBillingAddressChange={(value) => {
+              setBillingAddress(value);
+              clearFieldError("billingAddress");
+            }}
+            billingPostalCode={billingPostalCode}
+            onBillingPostalCodeChange={(value) => {
+              setBillingPostalCode(value);
+              clearFieldError("billingPostalCode");
+            }}
+            billingCity={billingCity}
+            onBillingCityChange={(value) => {
+              setBillingCity(value);
+              clearFieldError("billingCity");
+            }}
+            sameAddresses={sameAddresses}
+            onSameAddressesChange={setSameAddresses}
+            deliveryAddress={deliveryAddress}
+            onDeliveryAddressChange={setDeliveryAddress}
+            deliveryPostalCode={deliveryPostalCode}
+            onDeliveryPostalCodeChange={setDeliveryPostalCode}
+            deliveryCity={deliveryCity}
+            onDeliveryCityChange={setDeliveryCity}
+            showOptionalSirenLabel
+          />
           <div className={styles.formBlock}>
             <div className={styles.formBlockHeader}>
               <div>
@@ -2759,92 +1916,27 @@ export default function NewDevisPage() {
 
                 <div className={styles.advancedSection}>
                   <div className={styles.advancedSectionTitle}>Prestation</div>
-                  <div
-                    className={styles.serviceDateModeSelector}
-                    role="radiogroup"
-                    aria-label="Type de date de prestation"
-                  >
-                    <label
-                      className={`${styles.serviceDateModeOption} ${serviceDateMode === "single" ? styles.serviceDateModeOptionActive : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        name="devisServiceDateMode"
-                        value="single"
-                        checked={serviceDateMode === "single"}
-                        onChange={() => updateServiceDateMode("single")}
-                      />
-                      <span>Date unique</span>
-                    </label>
-                    <label
-                      className={`${styles.serviceDateModeOption} ${serviceDateMode === "period" ? styles.serviceDateModeOptionActive : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        name="devisServiceDateMode"
-                        value="period"
-                        checked={serviceDateMode === "period"}
-                        onChange={() => updateServiceDateMode("period")}
-                      />
-                      <span>Période</span>
-                    </label>
-                  </div>
-
-                  {serviceDateMode === "single" ? (
-                    <div className={styles.serviceDateSingleGrid}>
-                      <div className={styles.field}>
-                        <label>Date de prestation / livraison</label>
-                        <DocumentDateInput
-                          value={serviceDate}
-                          onChange={setServiceDate}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={styles.serviceDateFieldsGrid}>
-                      <div className={styles.field}>
-                        <label>Début de prestation</label>
-                        <DocumentDateInput
-                          value={servicePeriodStart}
-                          onChange={setServicePeriodStart}
-                        />
-                      </div>
-                      <div className={styles.field}>
-                        <label>Fin de prestation</label>
-                        <DocumentDateInput
-                          value={servicePeriodEnd}
-                          onChange={setServicePeriodEnd}
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <ServiceDateFields
+                    radioName="devisServiceDateMode"
+                    mode={serviceDateMode}
+                    onModeChange={updateServiceDateMode}
+                    serviceDate={serviceDate}
+                    onServiceDateChange={setServiceDate}
+                    servicePeriodStart={servicePeriodStart}
+                    onServicePeriodStartChange={setServicePeriodStart}
+                    servicePeriodEnd={servicePeriodEnd}
+                    onServicePeriodEndChange={setServicePeriodEnd}
+                  />
                 </div>
 
-                <div className={styles.advancedSection}>
-                  <div className={styles.advancedSectionTitle}>
-                    Notes & mentions
-                  </div>
-                  <div className={styles.twoCol}>
-                    <div className={styles.field}>
-                      <label>Notes</label>
-                      <textarea
-                        className={styles.advancedTextArea}
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Ex : Merci pour votre confiance."
-                      />
-                    </div>
-                    <div className={styles.field}>
-                      <label>Mention spécifique devis</label>
-                      <textarea
-                        className={styles.advancedTextArea}
-                        value={quoteMention}
-                        onChange={(e) => setQuoteMention(e.target.value)}
-                        placeholder="Ex : Devis valable selon disponibilité."
-                      />
-                    </div>
-                  </div>
-                </div>
+                <NotesAndMentionsSection
+                  notes={notes}
+                  onNotesChange={setNotes}
+                  mentionLabel="Mention spécifique devis"
+                  mention={quoteMention}
+                  onMentionChange={setQuoteMention}
+                  mentionPlaceholder="Ex : Devis valable selon disponibilité."
+                />
               </div>
             </details>
 
@@ -2996,56 +2088,33 @@ export default function NewDevisPage() {
             ) : null}
           </div>
 
-          <div className={styles.previewParties}>
-            <div className={styles.previewPartyCard}>
-              <div className={styles.previewPartyTitle}>{documentClientTexts.labels.provider}</div>
-              <div className={styles.noPrint} style={{ display: "flex", gap: 8, marginBottom: 8, marginTop: 4 }}>
-                <button type="button" onClick={() => setIsEditingProvider((prev) => !prev)} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>✏️ Modifier</button>
-                <button type="button" onClick={() => setProviderOverride({})} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>↩ Réinitialiser</button>
-              </div>
-              <div style={{ fontWeight: 600 }}>
-                {isEditingProvider ? (<input value={providerData.company_legal_name ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, company_legal_name: e.target.value }))} style={{ width: "100%" }} />) : (providerData.company_legal_name ?? "—")}
-              </div>
-              <div>{isEditingProvider ? (<input value={providerData.hq_address ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, hq_address: e.target.value }))} placeholder="Adresse" style={{ width: "100%", marginTop: 4 }} />) : (providerData.hq_address ?? "")}</div>
-              <div>
-                {isEditingProvider ? (<input value={providerData.hq_zip ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, hq_zip: e.target.value }))} placeholder="CP" style={{ width: "100%", marginTop: 4 }} />) : (providerData.hq_zip ?? "")} {isEditingProvider ? (<input value={providerData.hq_city ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, hq_city: e.target.value }))} placeholder="Ville" style={{ width: "100%", marginTop: 4 }} />) : (providerData.hq_city ?? "")}
-              </div>
-
-              <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
-                {isEditingProvider ? (
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <input value={providerData.phone ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Téléphone" />
-                    <input value={providerData.contact_email ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, contact_email: e.target.value }))} placeholder="Email" />
-                    <input value={providerData.siren ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, siren: e.target.value }))} placeholder="SIREN" />
-                    <input value={providerData.vat_number ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, vat_number: e.target.value }))} placeholder="TVA" />
-                  </div>
-                ) : (
-                  <>
-                    {providerData?.phone ? (<><div>{documentClientTexts.labels.phone} : {providerData.phone}</div></>) : null}
-                    {providerData?.contact_email ? (<><div>Email : {providerData.contact_email}</div></>) : null}
-                    {providerData?.siren ? (<><div>SIREN : {providerData.siren}</div></>) : null}
-                    {providerData?.vat_number ? (<><div>{documentClientTexts.labels.vat} : {providerData.vat_number}</div></>) : null}
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className={styles.previewPartyCard}>
-              <div className={styles.previewPartyTitle}>{documentClientTexts.labels.client}</div>
-              <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
-              {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
-              {clientVatNumber ? <div>{documentClientTexts.labels.vat} : {clientVatNumber}</div> : null}
-              <div>{billingFullAddress}</div>
-              {!sameAddresses && deliveryAddress ? (
-                <div style={{ marginTop: 6 }}>
-                  <strong>{documentClientTexts.labels.deliveryAddress} :</strong> {deliveryFullAddress}
-                </div>
-              ) : null}
-              <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
-                {clientEmail || ""}
-              </div>
-            </div>
-          </div>
+          <DocumentParties
+            providerLabel={documentClientTexts.labels.provider}
+            clientLabel={documentClientTexts.labels.client}
+            phoneLabel={documentClientTexts.labels.phone}
+            vatLabel={documentClientTexts.labels.vat}
+            deliveryAddressLabel={documentClientTexts.labels.deliveryAddress}
+            providerData={providerData}
+            allowProviderEditing
+            isEditingProvider={isEditingProvider}
+            onToggleProviderEditing={() =>
+              setIsEditingProvider((previous) => !previous)
+            }
+            onResetProvider={() => setProviderOverride({})}
+            onProviderFieldChange={(field, value) =>
+              setProviderOverride((previous) => ({
+                ...previous,
+                [field]: value,
+              }))
+            }
+            clientName={clientName}
+            clientSiren={clientSiren}
+            clientVatNumber={clientVatNumber}
+            billingFullAddress={billingFullAddress}
+            showDeliveryAddress={!sameAddresses && !!deliveryAddress}
+            deliveryFullAddress={deliveryFullAddress}
+            clientEmail={clientEmail}
+          />
 
           <table className={styles.table}>
             <thead>
@@ -3467,32 +2536,21 @@ export default function NewDevisPage() {
                       ) : null}
                     </div>
 
-                    <div className={styles.previewParties}>
-                      <div className={styles.previewPartyCard}>
-                        <div className={styles.previewPartyTitle}>{documentClientTexts.labels.provider}</div>
-                        <div style={{ fontWeight: 600 }}>{providerData.company_legal_name ?? "—"}</div>
-                        <div>{providerData.hq_address ?? ""}</div>
-                        <div>{providerData.hq_zip ?? ""} {providerData.hq_city ?? ""}</div>
-                        <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
-                          {providerData?.phone ? <div>{documentClientTexts.labels.phone} : {providerData.phone}</div> : null}
-                          {providerData?.contact_email ? <div>Email : {providerData.contact_email}</div> : null}
-                          {providerData?.siren ? <div>SIREN : {providerData.siren}</div> : null}
-                          {providerData?.vat_number ? <div>{documentClientTexts.labels.vat} : {providerData.vat_number}</div> : null}
-                        </div>
-                      </div>
-
-                      <div className={styles.previewPartyCard}>
-                        <div className={styles.previewPartyTitle}>{documentClientTexts.labels.client}</div>
-                        <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
-                        {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
-                        {clientVatNumber ? <div>{documentClientTexts.labels.vat} : {clientVatNumber}</div> : null}
-                        <div>{billingFullAddress}</div>
-                        {!sameAddresses && deliveryAddress ? (
-                          <div style={{ marginTop: 6 }}><strong>{documentClientTexts.labels.deliveryAddress} :</strong> {deliveryFullAddress}</div>
-                        ) : null}
-                        <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>{clientEmail || ""}</div>
-                      </div>
-                    </div>
+                    <DocumentParties
+                      providerLabel={documentClientTexts.labels.provider}
+                      clientLabel={documentClientTexts.labels.client}
+                      phoneLabel={documentClientTexts.labels.phone}
+                      vatLabel={documentClientTexts.labels.vat}
+                      deliveryAddressLabel={documentClientTexts.labels.deliveryAddress}
+                      providerData={providerData}
+                      clientName={clientName}
+                      clientSiren={clientSiren}
+                      clientVatNumber={clientVatNumber}
+                      billingFullAddress={billingFullAddress}
+                      showDeliveryAddress={!sameAddresses && !!deliveryAddress}
+                      deliveryFullAddress={deliveryFullAddress}
+                      clientEmail={clientEmail}
+                    />
                   </>
                 ) : page.lines.length ? (
                   <div className={styles.documentPrintContinuation}>{documentClientTexts.labels.continuation}</div>

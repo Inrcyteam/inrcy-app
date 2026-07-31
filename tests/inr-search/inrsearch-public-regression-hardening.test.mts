@@ -1,0 +1,74 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+
+function read(relativePath: string) {
+  return fs.readFileSync(path.join(root, relativePath), "utf8");
+}
+
+test("website embeds renew private booster and universal media URLs from durable storage references", () => {
+  const render = read("app/embed/actus/_lib/render.ts");
+  const mediaRoute = read("app/embed/actus/media/route.ts");
+  const helper = read("lib/embedActusMedia.ts");
+
+  assert.match(render, /article\.video_path/);
+  assert.match(render, /metadataVideo\.storagePath/);
+  assert.match(render, /metadataVideo\.bucket/);
+  assert.match(render, /buildStableEmbedActusMediaUrl/);
+  assert.match(helper, /"booster", "inrcy-pro-media"/);
+  assert.match(helper, /createHmac\("sha256"/);
+  assert.match(mediaRoute, /verifyEmbedActusMediaToken/);
+  assert.match(mediaRoute, /parsedLegacyReference\?\.bucket === "booster"/);
+  assert.match(mediaRoute, /createSafeStorageSignedUrl/);
+  assert.doesNotMatch(render, /Vidï¿½o|actualitï¿½|prï¿½cï¿½dente/);
+  assert.match(render, /Vidéo indisponible/);
+});
+
+test("the iNrSearch settings drawer overrides the dashboard touch nowrap rule locally", () => {
+  const source = read("app/dashboard/settings/_components/InrSearchSettingsContent.tsx");
+  const css = read("app/dashboard/settings/_components/InrSearchSettingsContent.module.css");
+
+  assert.match(source, /InrSearchSettingsContent\.module\.css/);
+  assert.match(source, /localStyles\.muted/);
+  assert.match(source, /localStyles\.directoryButton/);
+  assert.match(css, /white-space:\s*normal !important/);
+  assert.match(css, /margin-left:\s*0 !important/);
+  assert.match(css, /min-width:\s*0/);
+  assert.match(css, /overflow-wrap:\s*anywhere/);
+});
+
+test("public iNrSearch logos can fall back from the account profile to the owner profile", () => {
+  const publicData = read("lib/inrSearchPublic.ts");
+  const logoHelpers = read("lib/profileLogo.ts");
+
+  assert.match(publicData, /const accountProfile/);
+  assert.match(publicData, /const ownerProfile/);
+  assert.match(publicData, /const logoCandidates/);
+  assert.match(publicData, /probeStorageObject/);
+  assert.match(publicData, /objectState === "missing"/);
+  assert.match(logoHelpers, /extractLogoPathFromUrl\(source\?\.logo_path/);
+});
+
+test("mobile iNrSearch always paints an opaque dark surface between horizontal scenes", () => {
+  const page = read("app/entreprises/[slug]/page.tsx");
+  const css = read("app/entreprises/[slug]/inrSearchPublic.module.css");
+  const experience = read("app/entreprises/[slug]/InrSearchExperience.tsx");
+  const marker = "/* iNrSearch — Étape 4 : surface mobile opaque et compositing sans flash blanc. */";
+  const block = css.slice(css.indexOf(marker));
+
+  assert.ok(block.startsWith(marker));
+  assert.match(page, /html,body\{background:#050b2b!important/);
+  assert.match(block, /\.orbitViewport\s*\{[\s\S]*#050b2b !important/);
+  assert.match(block, /flex:\s*0 0 100% !important/);
+  assert.match(block, /width:\s*100% !important/);
+  assert.match(block, /-webkit-overflow-scrolling:\s*auto !important/);
+  assert.match(experience, /item\.setAttribute\("aria-hidden", "true"\)/);
+  assert.match(experience, /item\.setAttribute\("inert", ""\)/);
+  assert.doesNotMatch(
+    experience,
+    /item\.setAttribute\("inert", ""\)[\s\S]{0,80}item\.removeAttribute\("inert"\)/,
+  );
+});

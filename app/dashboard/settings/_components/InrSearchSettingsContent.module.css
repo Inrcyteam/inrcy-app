@@ -1,0 +1,97 @@
+.root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.headerRow,
+.actionRow,
+.headerCopy,
+.directoryCopy {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.headerCopy,
+.directoryCopy {
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  min-width: 0;
+  max-width: 100%;
+  margin-left: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.5;
+}
+
+.headerActions {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.statusPill {
+  max-width: 100%;
+}
+
+.directoryButton {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.directoryCopy {
+  flex: 1 1 auto;
+}
+
+.publicUrl {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 520px), (any-hover: none) and (any-pointer: coarse) {
+  .headerRow {
+    align-items: stretch !important;
+  }
+
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .actionRow {
+    align-items: stretch !important;
+  }
+
+  .actionRow > button,
+  .actionRow > a {
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .directoryButton {
+    align-items: flex-start !important;
+  }
+
+  .statusPill {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+}

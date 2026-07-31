@@ -17,7 +17,9 @@ test("Step 3 publishes Originale from the source payload and Adaptée from the m
 });
 
 test("Facebook, LinkedIn, TikTok and Pinterest use native-first derivatives", async () => {
-  const source = await read("app/api/booster/publish-now/route.ts");
+  const source = await read(
+    "app/api/booster/publish-now/publishNow.foundations.ts",
+  );
   for (const channel of ["facebook", "linkedin", "tiktok", "pinterest"]) {
     assert.match(source, new RegExp(`channel === "${channel}"`));
   }

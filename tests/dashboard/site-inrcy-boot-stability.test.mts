@@ -6,6 +6,10 @@ const dashboardClientSource = readFileSync(
   new URL("../../app/dashboard/DashboardClient.tsx", import.meta.url),
   "utf8",
 );
+const dashboardBootstrapSource = readFileSync(
+  new URL("../../app/dashboard/dashboard.bootstrap-cache.ts", import.meta.url),
+  "utf8",
+);
 const fluxBubblesSource = readFileSync(
   new URL("../../app/dashboard/dashboard.flux-bubbles.ts", import.meta.url),
   "utf8",
@@ -13,7 +17,7 @@ const fluxBubblesSource = readFileSync(
 
 test("Site iNrCy keeps a display-only confirmed state during the authoritative check", () => {
   assert.match(
-    dashboardClientSource,
+    dashboardBootstrapSource,
     /function readCachedSiteInrcyDisplayAccess\(\): boolean \{[\s\S]*return parsed\.site_inrcy === true;/,
   );
   assert.match(

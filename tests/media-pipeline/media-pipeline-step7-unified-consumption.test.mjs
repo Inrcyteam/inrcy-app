@@ -56,7 +56,9 @@ test("Générer consomme les aperçus IA, captures et audio avec secours histori
 
 test("Publier préfère le canonique privé tout en conservant les variantes historiques", () => {
   const resolver = read("lib/mediaWorkspaceConsumption.ts");
-  const publish = read("app/api/booster/publish-now/route.ts");
+  const publish =
+    read("app/api/booster/publish-now/route.ts") +
+    read("app/api/booster/publish-now/publishNow.server-preparation.ts");
   assert.match(resolver, /pickReadyVariant\([\s\S]*"canonical"/);
   assert.match(resolver, /bucket: canonical\.bucket/);
   assert.match(resolver, /canonicalImageName\(/);

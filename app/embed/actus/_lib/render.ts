@@ -1,4 +1,8 @@
 import { renderBoosterSiteContentHtml } from "@/lib/boosterFormatting";
+import {
+  buildStableEmbedActusMediaUrl,
+  extractEmbedActusStorageReference,
+} from "@/lib/embedActusMedia";
 
 export type LayoutMode = "list" | "carousel" | "grid" | "compact";
 export type FontMode = "site" | "inter" | "poppins" | "montserrat" | "lora";
@@ -34,20 +38,17 @@ function safeAttr(input: unknown) {
   return escapeHtml(input);
 }
 
-function isSupabaseBoosterStorageUrl(input: string) {
-  try {
-    const url = new URL(input);
-    return url.pathname.includes("/storage/v1/object/") && url.pathname.includes("/booster/");
-  } catch {
-    return false;
-  }
-}
-
-function stableMediaSrc(input: string) {
+function stableMediaSrc(
+  input: string,
+  reference?: { bucket?: string; storagePath?: string },
+) {
   const raw = String(input || "").trim();
-  if (!raw) return "";
-  if (!isSupabaseBoosterStorageUrl(raw)) return raw;
-  return `/embed/actus/media?src=${encodeURIComponent(raw)}`;
+  const stableUrl = buildStableEmbedActusMediaUrl({
+    sourceUrl: raw,
+    bucket: reference?.bucket,
+    storagePath: reference?.storagePath,
+  });
+  return stableUrl || raw;
 }
 
 function stableImageSrc(input: string) {
@@ -84,11 +85,55 @@ function getVideoAttachment(article: Record<string, unknown>) {
     metadataVideo.url ||
     "",
   ).trim();
-  if (!rawUrl) return null;
+  const urlReference = extractEmbedActusStorageReference(rawUrl);
+  const storagePath = String(
+    article.video_path ||
+    article.videoPath ||
+    metadataVideo.storagePath ||
+    metadataVideo.storage_path ||
+    metadataVideo.path ||
+    urlReference?.storagePath ||
+    "",
+  ).trim();
+  const bucket = String(
+    metadataVideo.bucket ||
+    metadataVideo.bucketName ||
+    metadataVideo.bucket_name ||
+    urlReference?.bucket ||
+    "booster",
+  ).trim() || "booster";
+
+  const poster = String(
+    article.video_thumbnail_url ||
+    metadataVideo.thumbnailUrl ||
+    metadataVideo.thumbnail_url ||
+    "",
+  ).trim();
+  const posterReference = extractEmbedActusStorageReference(poster);
+  const posterStoragePath = String(
+    metadataVideo.thumbnailStoragePath ||
+    metadataVideo.thumbnail_storage_path ||
+    metadataVideo.video_thumbnail_storage_path ||
+    posterReference?.storagePath ||
+    "",
+  ).trim();
+  const posterBucket = String(
+    metadataVideo.thumbnailBucket ||
+    metadataVideo.thumbnail_bucket ||
+    metadataVideo.video_thumbnail_bucket ||
+    posterReference?.bucket ||
+    bucket,
+  ).trim() || bucket;
+
+  if (!rawUrl && !storagePath) return null;
   return {
     url: rawUrl,
+    storagePath,
+    bucket,
     mime: String(article.video_mime || metadataVideo.type || "video/mp4").trim() || "video/mp4",
-    poster: String(article.video_thumbnail_url || metadataVideo.thumbnailUrl || metadataVideo.thumbnail_url || "").trim(),
+    poster,
+    posterStoragePath,
+    posterBucket,
   };
 }
 
@@ -150,14 +195,20 @@ function renderArticleBody(article: Record<string, unknown>, idPrefix: string) {
 function renderMediaBlock(article: Record<string, unknown>, idPrefix: string) {
   const video = getVideoAttachment(article);
   if (video) {
-    const src = stableMediaSrc(video.url);
-    const poster = video.poster ? stableMediaSrc(video.poster) : "";
+    const src = stableMediaSrc(video.url, {
+      bucket: video.bucket,
+      storagePath: video.storagePath,
+    });
+    const poster = stableMediaSrc(video.poster, {
+      bucket: video.posterBucket,
+      storagePath: video.posterStoragePath,
+    });
     return `
       <div class="mediaCol mediaColVideo">
-        <video class="media mediaVideo" src="${safeAttr(src)}" ${poster ? `poster="${safeAttr(poster)}"` : ""} controls playsinline preload="metadata" controlslist="nodownload" data-original-src="${safeAttr(video.url)}">
+        <video class="media mediaVideo" src="${safeAttr(src)}" ${poster ? `poster="${safeAttr(poster)}"` : ""} controls playsinline preload="metadata" controlslist="nodownload" data-original-src="${safeAttr(video.url || video.storagePath)}">
           <source src="${safeAttr(src)}" type="${safeAttr(video.mime)}" />
         </video>
-        <div class="mediaFallback" aria-hidden="true">Vidï¿½o indisponible</div>
+        <div class="mediaFallback" aria-hidden="true">Vidéo indisponible</div>
       </div>`;
   }
 
@@ -184,9 +235,9 @@ function renderMediaBlock(article: Record<string, unknown>, idPrefix: string) {
         </div>
         <div class="mediaFallback" aria-hidden="true">Image indisponible</div>
         <div class="mediaNavWrap">
-          <button class="mediaNavBtn" type="button" data-media-prev aria-label="Photo prï¿½cï¿½dente">ï¿½</button>
+          <button class="mediaNavBtn" type="button" data-media-prev aria-label="Photo précédente">‹</button>
           <div class="mediaDots" aria-label="Navigation des photos">${dots}</div>
-          <button class="mediaNavBtn" type="button" data-media-next aria-label="Photo suivante">ï¿½</button>
+          <button class="mediaNavBtn" type="button" data-media-next aria-label="Photo suivante">›</button>
         </div>
       </div>
     </div>`;
@@ -482,7 +533,7 @@ export function renderEmbedHtml(params: {
   const brandDeep = safeAccent ? `color-mix(in srgb, ${safeAccent} 68%, ${palette.text})` : palette.brandDeep;
   const dots = articles.map((_, i) => `<button class="dot" type="button" aria-label="Actualité ${i + 1}" data-dot="${i}"></button>`).join("");
   const counter = articles.length > 0 ? `<div class="counter" aria-live="polite"><span data-current>1</span>/<span data-total>${articles.length}</span></div>` : "";
-  const empty = `<section class="empty reveal"><h2>Aucune actualitï¿½ pour le moment</h2><p>Les prochaines publications apparaï¿½tront ici automatiquement.</p></section>`;
+  const empty = `<section class="empty reveal"><h2>Aucune actualité pour le moment</h2><p>Les prochaines publications apparaîtront ici automatiquement.</p></section>`;
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -505,7 +556,7 @@ export function renderEmbedHtml(params: {
 </style>
 </head>
 <body>
-<div class="shell"><section class="frame" id="root"><header class="header reveal"><h1 class="title">${escapeHtml(title)}</h1></header>${articles.length === 0 ? empty : layout === "carousel" ? `<section class="carouselWrap" id="carouselRoot"><div class="carouselHead reveal"><div class="dots" aria-label="Navigation des actualitï¿½s">${dots}</div><div class="carouselControls">${counter}<div class="nav"><button class="navBtn" type="button" data-prev aria-label="Actualité prï¿½cï¿½dente">ï¿½</button><button class="navBtn" type="button" data-next aria-label="Actualité suivante">ï¿½</button></div></div></div><div class="viewport"><div class="track" id="track">${carouselItems}</div></div></section>` : layout === "grid" ? `<section class="gridStack">${gridItems}</section>` : layout === "compact" ? `<section class="compactStack">${compactItems}</section>` : `<section class="stack">${listItems}</section>`}</section></div>
+<div class="shell"><section class="frame" id="root"><header class="header reveal"><h1 class="title">${escapeHtml(title)}</h1></header>${articles.length === 0 ? empty : layout === "carousel" ? `<section class="carouselWrap" id="carouselRoot"><div class="carouselHead reveal"><div class="dots" aria-label="Navigation des actualités">${dots}</div><div class="carouselControls">${counter}<div class="nav"><button class="navBtn" type="button" data-prev aria-label="Actualité précédente">‹</button><button class="navBtn" type="button" data-next aria-label="Actualité suivante">›</button></div></div></div><div class="viewport"><div class="track" id="track">${carouselItems}</div></div></section>` : layout === "grid" ? `<section class="gridStack">${gridItems}</section>` : layout === "compact" ? `<section class="compactStack">${compactItems}</section>` : `<section class="stack">${listItems}</section>`}</section></div>
 <script>
 (function(){
 var EMBED_ID=${JSON.stringify(frameId)};var root=document.getElementById('root');var parentOrigin='*';var sentHeight=0;var resizeTimer=null;var settleTicks=0;

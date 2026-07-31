@@ -9,6 +9,7 @@ const requiredFiles = [
   "app/api/media-pipeline/upload-event/route.ts",
   "app/api/cron/media-orphan-cleanup/route.ts",
   "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+  "app/api/booster/publish-now/publishNow.server-preparation.ts",
   "lib/mediaImageNormalizer.ts",
   "lib/boosterImageServerPreparation.ts",
   "lib/boosterVideoVariantServer.ts",
@@ -31,11 +32,14 @@ if (existsSync(resolve(ROOT, "app/api/booster/convert-image/route.ts"))) {
 
 const workspace = read(
   "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+  "app/api/booster/publish-now/publishNow.server-preparation.ts",
 );
 const imageVariants = read("lib/boosterImageServerPreparation.ts");
 const imageNormalizer = read("lib/mediaImageNormalizer.ts");
 const videoVariants = read("lib/boosterVideoVariantServer.ts");
-const publishRoute = read("app/api/booster/publish-now/route.ts");
+const publishRoute =
+  read("app/api/booster/publish-now/route.ts") +
+  read("app/api/booster/publish-now/publishNow.server-preparation.ts");
 const uploadEvent = read("app/api/media-pipeline/upload-event/route.ts");
 const cleanup = read("app/api/cron/media-orphan-cleanup/route.ts");
 const sql = read(

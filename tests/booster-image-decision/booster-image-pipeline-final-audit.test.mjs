@@ -7,10 +7,13 @@ const read = (path) =>
 
 test("final audit keeps per-channel fallbacks local and rejects partial image lists", async () => {
   const route = await read("app/api/booster/publish-now/route.ts");
+  const channelContext = await read(
+    "app/api/booster/publish-now/publishNow.channel-context.ts",
+  );
 
-  assert.match(route, /function[\s\S]*pickCompleteChannelImageUrls|const pickCompleteChannelImageUrls/);
-  assert.match(route, /never borrow a fallback from another channel/i);
-  assert.match(route, /urls\.length >= expected/);
+  assert.match(channelContext, /const pickCompleteChannelImageUrls/);
+  assert.match(channelContext, /never borrow a fallback from another channel/i);
+  assert.match(channelContext, /urls\.length >= expected/);
   assert.match(route, /candidates: \["instagramPublishableUrls"\]/);
   assert.match(route, /facebookImageUrls/);
   assert.match(route, /linkedInImages/);

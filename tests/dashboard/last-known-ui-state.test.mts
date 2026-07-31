@@ -7,13 +7,14 @@ function read(relativePath: string) {
 }
 
 const dashboardClient = read("app/dashboard/DashboardClient.tsx");
+const dashboardBootstrap = read("app/dashboard/dashboard.bootstrap-cache.ts");
 const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
 const notificationsHook = read("app/dashboard/_hooks/useDashboardNotifications.ts");
 const dashboardTopbar = read("app/dashboard/_components/DashboardTopbar.tsx");
 const accountCache = read("lib/browserAccountCache.ts");
 
 test("generator power reuses the last confirmed details before live checks settle", () => {
-  assert.match(dashboardClient, /GENERATOR_POWER_SNAPSHOT_CACHE_KEY = "inrcy_generator_power_snapshot_v1"/);
+  assert.match(dashboardBootstrap, /GENERATOR_POWER_SNAPSHOT_CACHE_KEY = "inrcy_generator_power_snapshot_v1"/);
   assert.match(
     dashboardClient,
     /const shouldUseConfirmedGeneratorPowerDetails = !generatorPowerReady \|\| generatorPowerIsSettling;/,

@@ -62,6 +62,7 @@ test("les points d’entrée média utilisent les règles partagées", () => {
     "app/api/media-library/upload/route.ts",
     "app/api/admin/image-bank/upload/route.ts",
     "app/api/agent/actions/route.ts",
+    "app/api/agent/actions/actionPublishDraft.foundations.ts",
     "app/api/booster/upload-video/route.ts",
     "app/api/booster/video-transform/route.ts",
   ];
@@ -94,6 +95,7 @@ test("anciennes limites médias supprimées des outils de publication", () => {
     "app/api/media-library/upload/route.ts",
     "app/api/admin/image-bank/upload/route.ts",
     "app/api/agent/actions/route.ts",
+    "app/api/agent/actions/actionPublishDraft.foundations.ts",
   ];
 
   for (const file of files) {

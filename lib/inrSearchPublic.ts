@@ -3,8 +3,8 @@ import { unstable_cache } from "next/cache";
 import { getActivitySectorLabel, decodeBusinessSector } from "@/lib/activitySectors";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { filterEligibleInrSearchAccountIds, getInrSearchPublicationEligibility } from "@/lib/inrSearchEligibility";
-import { resolveProfileLogoUrl } from "@/lib/profileLogo";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { LOGO_BUCKET, resolveProfileLogoUrl } from "@/lib/profileLogo";
+import { createSafeStorageSignedUrl, probeStorageObject } from "@/lib/safeStorageSignedUrl";
 import { createInrBadgePublicUrl, createInrBadgeQrTrackingUrl } from "@/lib/inrBadge";
 import { resolveFrenchGeography } from "@/lib/frenchGeography";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -677,19 +677,48 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
     loadMedia(userId),
   ]);
 
-  const profileRows = Array.isArray(profileRes.data) ? profileRes.data : [];
-  const selectedProfile = profileRows.find((row: any) => clean(row?.user_id, 120) === userId)
-    || profileRows.find((row: any) => clean(row?.user_id, 120) === eligibility.authUserId)
-    || null;
+  const profileRows = Array.isArray(profileRes.data)
+    ? profileRes.data.map((row) => asRecord(row))
+    : [];
+  const accountProfile = profileRows.find(
+    (row) => clean(row.user_id, 120) === userId,
+  ) || null;
+  const ownerProfile = profileRows.find(
+    (row) => clean(row.user_id, 120) === eligibility.authUserId,
+  ) || null;
+  const selectedProfile = accountProfile || ownerProfile;
   if (profileRes.error || !selectedProfile) return null;
 
-  const profile = asRecord(selectedProfile);
+  const profile = selectedProfile;
   const business = asRecord(businessRes.data);
   const siteConfig = asRecord(siteRes.data);
-  const logo = await resolveProfileLogoUrl(supabaseAdmin, {
-    logo_path: clean(profile.logo_path, 600) || null,
-    logo_url: clean(profile.logo_url, 1000) || null,
-  });
+
+  // The active professional account remains the source of business identity,
+  // but its logo may still live on the authenticated owner profile after a
+  // multicompte migration. Resolve the first real object instead of silently
+  // falling back to initials when the preferred row has no usable logo.
+  const logoCandidates = Array.from(
+    new Set([accountProfile, ownerProfile, ...profileRows].filter(Boolean)),
+  ) as Array<Record<string, unknown>>;
+  let logo = { logoPath: "", logoUrl: "" };
+  for (const candidate of logoCandidates) {
+    const resolvedLogo = await resolveProfileLogoUrl(supabaseAdmin, {
+      logo_path: clean(candidate.logo_path, 600) || null,
+      logo_url: clean(candidate.logo_url, 1000) || null,
+    });
+    if (!resolvedLogo.logoPath && !resolvedLogo.logoUrl) continue;
+
+    if (resolvedLogo.logoPath) {
+      const objectState = await probeStorageObject(
+        LOGO_BUCKET,
+        resolvedLogo.logoPath,
+      );
+      if (objectState === "missing") continue;
+    }
+
+    logo = resolvedLogo;
+    break;
+  }
 
   const channelStates = await getChannelConnectionStates(supabaseAdmin, userId, {
     profile,

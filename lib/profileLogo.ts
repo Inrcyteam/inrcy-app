@@ -160,7 +160,7 @@ export async function resolveProfileLogoUrl(
   _supabase: SupabaseClient,
   source: LogoSource | null | undefined
 ): Promise<{ logoPath: string; logoUrl: string }> {
-  const storedPath = trimSlashes(source?.logo_path || "");
+  const storedPath = extractLogoPathFromUrl(source?.logo_path || "") || "";
   const legacyPath = extractLogoPathFromUrl(source?.logo_url || "") || "";
   const finalPath = storedPath || legacyPath;
 

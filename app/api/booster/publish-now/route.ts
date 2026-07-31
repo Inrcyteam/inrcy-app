@@ -10,14 +10,7 @@ import {
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { randomUUID } from "crypto";
-import {
-  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
-  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
-} from "@/lib/mediaRules";
-
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import {
   facebookPublishToPage,
   facebookPublishVideoToPage,
@@ -36,13 +29,6 @@ import {
   linkedinResharePost,
 } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
-import {
-  optimizeFinalImageGeometry,
-  optimizeForGoogleBusiness,
-  optimizeForInstagram,
-  optimizeForSiteCard,
-  optimizeForSocialFeed,
-} from "@/lib/imageOptimizer";
 import { findSimilarUpcomingScheduledPublication } from "@/lib/scheduledPublicationDedupe";
 import {
   acquireExecutionIdempotencyLock,
@@ -99,19 +85,10 @@ import {
   createPinterestVideoPin,
 } from "@/lib/pinterestPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
-import {
-  buildVideoTransformSignature,
-  getVariantForChannel,
-  type BoosterVideoTransformedVariant,
-} from "@/lib/boosterVideoTransforms";
+import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { ensureSystemManagedInrSearch, notifyInrSearchIndexing, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
-import { limitBoosterChannelContent } from "@/lib/boosterChannelRules";
-import {
-  sanitizeBoosterSiteText,
-  stripSiteTextFormatting,
-  stripSiteTextFormattingPreserveLayout,
-} from "@/lib/boosterFormatting";
+import { stripSiteTextFormattingPreserveLayout } from "@/lib/boosterFormatting";
 import {
   MediaWorkspaceConsumptionError,
   resolveWorkspacePublicationConsumption,
@@ -134,1254 +111,64 @@ import {
   finalizeAsyncPublicationIfReady,
   updateAsyncChannelEvent,
 } from "@/lib/boosterAsyncPublication";
+import { normalizeBoosterPublicationChannels } from "@/lib/boosterPublicationPolicy";
+
+import {
+  EMPTY_IMAGE_FORMATS,
+  IMMEDIATE_PUBLISH_DUPLICATE_LOOKAHEAD_MINUTES,
+  PUBLISH_IDEMPOTENCY_SCOPE,
+  PUBLISH_IDEMPOTENCY_TTL_MS,
+  asRecord,
+  buildAsyncPreparedImagePayloads,
+  buildEditableImageAttachments,
+  buildImmediateDuplicateMessage,
+  buildPublishIdempotencyKey,
+  buildPublishIdempotencyMetadata,
+  buildQueuedPublicationSummary,
+  buildResultsSummary,
+  getRequiredImageFormatsForChannel,
+  hasFinalImageGeometryDecision,
+  isExpired,
+  mergeImageFormats,
+  normalizeChannelMediaMode,
+  normalizeHashtag,
+  normalizePublicationMediaType,
+  normalizePublicHttpUrl,
+  normalizeTiktokPublicationSettings,
+  slugify,
+  type ChannelKey,
+  type ChannelMediaMode,
+  type ImagePayload,
+  type ImageSet,
+  type ImagesByChannel,
+  type JsonRecord,
+  type PersistedVideoAttachment,
+  type PostByChannel,
+  type PostPayload,
+} from "./publishNow.foundations";
+
+import {
+  buildInstagramPublishTokenCandidates,
+  getLatestIntegrationRow,
+  isGoogleBusinessImageError,
+  normalizeVideoPayload,
+  uploadImageSet,
+} from "./publishNow.server-preparation";
+
+import {
+  createPublishNowImageContext,
+  createPublishNowPostResolver,
+  createPublishNowVideoContext,
+} from "./publishNow.channel-context";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-type ChannelKey =
-  | "inrcy_site"
-  | "site_web"
-  | "inr_search"
-  | "gmb"
-  | "facebook"
-  | "instagram"
-  | "linkedin"
-  | "tiktok"
-  | "youtube_shorts"
-  | "pinterest";
-
-type JsonRecord = Record<string, unknown>;
-const asRecord = (v: unknown): JsonRecord =>
-  v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
-const errMessage = (e: unknown, fallback: string) =>
-  getSimpleFrenchErrorMessage(e, fallback);
-
-const CHANNEL_LABELS: Record<ChannelKey, string> = {
-  inrcy_site: "Site iNrCy",
-  site_web: "Site web",
-  inr_search: "iNr'Search",
-  gmb: "Google Business",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  linkedin: "LinkedIn",
-  tiktok: "TikTok",
-  youtube_shorts: "YouTube",
-  pinterest: "Pinterest",
-};
-
-const IMMEDIATE_PUBLISH_DUPLICATE_LOOKAHEAD_MINUTES = 240;
-
-function formatDuplicateScheduledAt(value?: string | null) {
-  const time = Date.parse(String(value || ""));
-  if (!Number.isFinite(time)) return "prochainement";
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Europe/Paris",
-  }).format(new Date(time));
-}
-
-function buildImmediateDuplicateMessage(
-  duplicate: Awaited<
-    ReturnType<typeof findSimilarUpcomingScheduledPublication>
-  >,
-) {
-  const channels = (duplicate.overlappingChannels || [])
-    .map((channel) => CHANNEL_LABELS[channel as ChannelKey] || channel)
-    .filter(Boolean)
-    .join(", ");
-  const dateLabel = formatDuplicateScheduledAt(duplicate.existingScheduledAt);
-  return `Cette publication semble déjà programmée${channels ? ` sur ${channels}` : ""} pour ${dateLabel}. Pour éviter une double publication, annulez la programmation existante ou modifiez le contenu avant de publier maintenant.`;
-}
-
-const PUBLISH_IDEMPOTENCY_SCOPE = "booster_publish";
-const PUBLISH_IDEMPOTENCY_TTL_MS = 30 * 60 * 1000;
-
-function buildPublishIdempotencyKey(args: {
-  body: any;
-  origin: JsonRecord | null;
-}) {
-  const explicit = cleanExecutionIdempotencyKey(
-    args.body.idempotencyKey ||
-      args.body.idempotency_key ||
-      args.origin?.idempotencyKey ||
-      args.origin?.idempotency_key,
-  );
-  if (explicit) return explicit;
-
-  const scheduledActionId = cleanExecutionIdempotencyKey(
-    args.body.origin?.scheduledActionId || args.origin?.scheduledActionId,
-  );
-  if (scheduledActionId) return `scheduled_publication:${scheduledActionId}`;
-
-  return "";
-}
-
-function buildPublishIdempotencyMetadata(args: {
-  origin: JsonRecord | null;
-  channels: ChannelKey[];
-  source: string;
-}) {
-  return {
-    source: args.source || null,
-    origin: args.origin || null,
-    channels: args.channels,
-    workflow: "booster_publish",
-  };
-}
-
-const NON_RETRYABLE_PUBLISH_CODES = new Set([
-  "bubble_access_disabled",
-  "unsupported_channel",
-  "delivery_status_unknown",
-]);
-
-function buildResultsSummary(
-  results: Record<string, any>,
-  selected: ChannelKey[],
-) {
-  const entries = selected.map((channel) => {
-    const value = results[channel] || {};
-    const ok = value?.ok !== false;
-    const code = String(value?.code || "").trim() || null;
-    const retryable =
-      !ok &&
-      value?.retryable !== false &&
-      !NON_RETRYABLE_PUBLISH_CODES.has(String(code || ""));
-    return {
-      channel,
-      label: CHANNEL_LABELS[channel] || channel,
-      ok,
-      status: ok
-        ? value?.warning
-          ? "processing"
-          : "published"
-        : "failed",
-      code,
-      retryable,
-      error: !ok ? String(value?.error || "erreur") : null,
-      warning: value?.warning ? String(value.warning) : null,
-      warning_message: value?.warning_message
-        ? String(value.warning_message)
-        : null,
-    };
-  });
-
-  const successes = entries.filter((entry) => entry.ok);
-  const failures = entries.filter((entry) => !entry.ok);
-
-  return {
-    total: entries.length,
-    successCount: successes.length,
-    failureCount: failures.length,
-    allSucceeded: failures.length === 0,
-    allFailed: successes.length === 0,
-    entries,
-    successChannels: successes.map((entry) => entry.channel),
-    failedChannels: failures.map((entry) => entry.channel),
-  };
-}
-
-function slugify(input: string): string {
-  return String(input || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "")
-    .slice(0, 80);
-}
-
-type ImagePayload = {
-  mediaId?: string;
-  name: string;
-  type: string;
-  dataUrl?: string; // base64 data URL
-  storagePath?: string; // Supabase Storage path
-  bucket?: string;
-  publicUrl?: string;
-  renderedUrl?: string;
-  originalUrl?: string;
-  originalPublicUrl?: string;
-  originalStoragePath?: string;
-  originalName?: string;
-  originalType?: string;
-  imageKey?: string;
-  transform?: unknown;
-  imageMeta?: unknown;
-  imageDecisionMode?: "original" | "adapted" | "customized" | "unsupported";
-  imageDecisionLabel?:
-    "Originale" | "Adaptée" | "Personnalisée" | "Indisponible";
-  isCustomized?: boolean;
-  publicationReady?: boolean;
-};
-
-type PublicationMediaType = "images" | "video";
-type ChannelMediaMode = "video" | "images" | "none";
-
-type VideoPayload = {
-  name?: string;
-  type?: string;
-  size?: number;
-  lastModified?: number;
-  duration?: number | null;
-  storagePath?: string;
-  publicUrl?: string;
-  url?: string;
-  thumbnailUrl?: string | null;
-  thumbnailStoragePath?: string | null;
-  thumbnailBucket?: string | null;
-};
-
-type PersistedVideoAttachment = {
-  mediaId?: string | null;
-  name: string;
-  type: string;
-  size: number;
-  duration: number | null;
-  url: string;
-  publicUrl: string;
-  storagePath: string | null;
-  bucket?: string | null;
-  thumbnailUrl: string | null;
-  thumbnailStoragePath: string | null;
-  thumbnailBucket: string | null;
-  transformedVariants?: BoosterVideoTransformedVariant[];
-  transformedVariant?: BoosterVideoTransformedVariant | null;
-  sourceVideo?: PersistedVideoAttachment | null;
-};
-
-const BOOSTER_MAX_VIDEO_SOURCE_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
-const BOOSTER_MAX_VIDEO_SOURCE_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
-
-function normalizePublicationMediaType(value: unknown): PublicationMediaType {
-  return value === "video" ? "video" : "images";
-}
-
-function normalizeChannelMediaMode(
-  value: unknown,
-  fallback: ChannelMediaMode,
-): ChannelMediaMode {
-  return value === "video" || value === "images" || value === "none"
-    ? value
-    : fallback;
-}
-
-function normalizeTiktokPublicationSettings(
-  value: unknown,
-): TiktokPublicationSettings | null {
-  const raw = asRecord(value);
-  const privacyLevel = String(raw.privacyLevel || "").trim();
-  const commercialContentRaw = String(raw.commercialContent || "").trim();
-  const commercialContent = ["none", "self", "branded", "both"].includes(
-    commercialContentRaw,
-  )
-    ? commercialContentRaw
-    : "";
-  if (!privacyLevel || !commercialContent) return null;
-  return {
-    privacyLevel,
-    allowComments: raw.allowComments === true,
-    allowDuo: raw.allowDuo === true,
-    allowStitch: raw.allowStitch === true,
-    commercialContent:
-      commercialContent as TiktokPublicationSettings["commercialContent"],
-    aiContent: raw.aiContent === true,
-    photoAutoMusic: raw.photoAutoMusic === true,
-    musicUsageConfirmed: raw.musicUsageConfirmed === true,
-  };
-}
-
-type EditableImageAttachment = {
-  name: string;
-  type?: string | null;
-  url: string;
-  renderedUrl: string;
-  publicUrl: string;
-  originalUrl?: string | null;
-  originalPublicUrl?: string | null;
-  originalStoragePath?: string | null;
-  originalName?: string | null;
-  originalType?: string | null;
-  imageKey?: string | null;
-  transform?: unknown;
-  imageMeta?: unknown;
-  imageDecisionMode?: string | null;
-  imageDecisionLabel?: string | null;
-  isCustomized?: boolean;
-};
-
-type PostPayload = {
-  title: string;
-  content: string;
-  cta: string;
-  ctaMode?: string;
-  ctaUrl?: string;
-  ctaPhone?: string;
-  hashtags?: string[];
-};
-
-type PostByChannel = Partial<Record<ChannelKey, PostPayload>>;
-type ImagesByChannel = Partial<Record<ChannelKey, ImagePayload[]>>;
-type ImageSet = {
-  images: string[];
-  publishableUrls: string[];
-  instagramPublishableUrls: string[];
-  socialFeedPublishableUrls: string[];
-  siteCardPublishableUrls: string[];
-  gmbPublishableUrls: string[];
-  storagePaths: string[];
-  publishableStoragePaths: string[];
-  socialFeedStoragePaths: string[];
-  imageKeys?: string[];
-  editableAttachments?: EditableImageAttachment[];
-};
-
-function buildAsyncPreparedImagePayloads(
-  channel: ChannelKey,
-  rawImages: ImagePayload[],
-  imageSet: ImageSet,
-): ImagePayload[] {
-  const usesSocialDerivative = [
-    "facebook",
-    "linkedin",
-    "tiktok",
-    "pinterest",
-  ].includes(channel);
-  const usesInstagramDerivative = channel === "instagram";
-  const usesGmbDerivative = channel === "gmb";
-  const preferredUrls =
-    usesInstagramDerivative && imageSet.instagramPublishableUrls.length
-      ? imageSet.instagramPublishableUrls
-      : usesGmbDerivative && imageSet.gmbPublishableUrls.length
-        ? imageSet.gmbPublishableUrls
-        : usesSocialDerivative && imageSet.socialFeedPublishableUrls.length
-          ? imageSet.socialFeedPublishableUrls
-          : imageSet.publishableUrls.length
-            ? imageSet.publishableUrls
-            : imageSet.images;
-  const preferredStoragePaths = usesSocialDerivative
-    ? imageSet.socialFeedStoragePaths
-    : usesInstagramDerivative || usesGmbDerivative
-      ? []
-      : imageSet.publishableStoragePaths.length
-        ? imageSet.publishableStoragePaths
-        : imageSet.storagePaths;
-
-  return preferredUrls.slice(0, 5).map((url, index) => {
-    const raw = rawImages[index] || ({} as ImagePayload);
-    const storagePath = String(preferredStoragePaths[index] || "").trim();
-    const originalUrl = String(
-      imageSet.images[index] ||
-        raw.originalPublicUrl ||
-        raw.publicUrl ||
-        url,
-    ).trim();
-    return {
-      name: String(raw.name || `image-${index + 1}.jpg`),
-      type: String(raw.type || "image/jpeg"),
-      publicUrl: url,
-      renderedUrl: url,
-      storagePath: storagePath || undefined,
-      bucket: storagePath ? "booster" : undefined,
-      originalPublicUrl: originalUrl || undefined,
-      originalUrl: originalUrl || undefined,
-      originalStoragePath:
-        String(raw.originalStoragePath || "").trim() || undefined,
-      originalName:
-        String(raw.originalName || raw.name || "").trim() || undefined,
-      originalType:
-        String(raw.originalType || raw.type || "").trim() || undefined,
-      imageKey:
-        String(raw.imageKey || imageSet.imageKeys?.[index] || "").trim() ||
-        undefined,
-      transform: raw.transform,
-      imageMeta: raw.imageMeta,
-      imageDecisionMode: raw.imageDecisionMode,
-      imageDecisionLabel: raw.imageDecisionLabel,
-      isCustomized: raw.isCustomized === true,
-      publicationReady: Boolean(storagePath),
-    };
-  });
-}
-
-function buildQueuedPublicationSummary(selected: ChannelKey[]) {
-  return {
-    total: selected.length,
-    successCount: 0,
-    failureCount: 0,
-    pendingCount: selected.length,
-    allSucceeded: false,
-    allFailed: false,
-    entries: selected.map((channel) => ({
-      channel,
-      label: CHANNEL_LABELS[channel] || channel,
-      ok: null,
-      status: "queued",
-      code: null,
-      retryable: false,
-      error: null,
-      warning: null,
-      warning_message: null,
-    })),
-    successChannels: [] as ChannelKey[],
-    failedChannels: [] as ChannelKey[],
-  };
-}
-
-type ResolvedImageInput = {
-  mime: string;
-  buffer: Buffer;
-  originalPublicUrl: string | null;
-  originalPublishableUrl: string | null;
-  storagePath?: string;
-  bucket?: string;
-};
-
-function dataUrlToBuffer(dataUrl: string) {
-  const match = /^data:(.+?);base64,(.+)$/.exec(dataUrl || "");
-  if (!match) return null;
-  const mime = match[1];
-  const b64 = match[2];
-  return { mime, buffer: Buffer.from(b64, "base64") };
-}
-
-function imageExtensionFromMime(mimeType: unknown, fallbackName: unknown) {
-  const mime = String(mimeType || "")
-    .toLowerCase()
-    .split(";")[0]
-    ?.trim();
-  if (mime === "image/png") return "png";
-  if (mime === "image/webp") return "webp";
-  if (mime === "image/avif") return "avif";
-  if (mime === "image/gif") return "gif";
-  if (mime === "image/jpeg" || mime === "image/jpg") return "jpg";
-  const fallbackExtension = String(fallbackName || "")
-    .split(".")
-    .pop()
-    ?.toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-  return fallbackExtension || "jpg";
-}
-
-function normalizeHashtag(input: string): string {
-  return String(input || "")
-    .trim()
-    .replace(/^#+/, "")
-    .replace(/[^\p{L}\p{N}_]/gu, "")
-    .slice(0, 40);
-}
-
-function normalizePublicHttpUrl(input: unknown) {
-  const raw = String(input || "").trim();
-  return /^https?:\/\//i.test(raw) ? raw : "";
-}
-
-function isExpired(expiresAt: unknown, skewSeconds = 60) {
-  const iso = String(expiresAt || "").trim();
-  if (!iso) return false;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return false;
-  return t <= Date.now() + skewSeconds * 1000;
-}
-
-function buildInstagramPublishTokenCandidates(
-  igRowLike: unknown,
-  fbRowLike?: unknown,
-) {
-  const candidates: Array<{ source: string; accessToken: string }> = [];
-  const seen = new Set<string>();
-
-  const push = (source: string, rawEncrypted: unknown) => {
-    const token = tryDecryptToken(String(rawEncrypted || "")) || "";
-    if (!token || seen.has(token)) return;
-    seen.add(token);
-    candidates.push({ source, accessToken: token });
-  };
-
-  const ig = asRecord(igRowLike);
-  const igMeta = asRecord(ig["meta"]);
-  push("instagram.access_token_enc", ig["access_token_enc"]);
-  push("instagram.meta.page_access_token_enc", igMeta["page_access_token_enc"]);
-  push(
-    "instagram.meta.standard_user_access_token_enc",
-    igMeta["standard_user_access_token_enc"],
-  );
-  push(
-    "instagram.meta.business_user_access_token_enc",
-    igMeta["business_user_access_token_enc"],
-  );
-  push("instagram.meta.user_access_token_enc", igMeta["user_access_token_enc"]);
-  push("instagram.meta.user_access_token", igMeta["user_access_token"]);
-
-  const fb = asRecord(fbRowLike);
-  const fbMeta = asRecord(fb["meta"]);
-  push("facebook.access_token_enc", fb["access_token_enc"]);
-  push("facebook.meta.page_access_token_enc", fbMeta["page_access_token_enc"]);
-  push("facebook.meta.user_access_token_enc", fbMeta["user_access_token_enc"]);
-
-  return candidates;
-}
-
-async function buildUrlsFromStoragePath(
-  path: string,
-  bucket = "booster",
-): Promise<{ publicUrl: string | null; signedUrl: string | null }> {
-  const publicUrl =
-    supabaseAdmin.storage.from(bucket).getPublicUrl(path)?.data?.publicUrl ||
-    null;
-  const signedUrl = await createSafeStorageSignedUrl(
-    bucket,
-    path,
-    60 * 60 * 24,
-  );
-  return {
-    publicUrl: signedUrl ? publicUrl : null,
-    signedUrl,
-  };
-}
-
-async function normalizeVideoPayload(
-  input: unknown,
-): Promise<{ video: PersistedVideoAttachment | null; error?: string }> {
-  const raw = asRecord(input);
-  if (!Object.keys(raw).length) return { video: null };
-
-  const storagePath = String(
-    raw["storagePath"] || raw["storage_path"] || raw["path"] || "",
-  ).trim();
-  const bucket =
-    String(
-      raw["bucket"] || raw["bucketName"] || raw["bucket_name"] || "booster",
-    ).trim() || "booster";
-  const directPublicUrl = String(raw["publicUrl"] || raw["url"] || "").trim();
-  let publicUrl = directPublicUrl;
-  const thumbnailStoragePath = String(
-    raw["thumbnailStoragePath"] ||
-      raw["thumbnail_storage_path"] ||
-      raw["video_thumbnail_storage_path"] ||
-      "",
-  ).trim();
-  const thumbnailBucket =
-    String(
-      raw["thumbnailBucket"] ||
-        raw["thumbnail_bucket"] ||
-        raw["video_thumbnail_bucket"] ||
-        bucket,
-    ).trim() || bucket;
-  let thumbnailUrl = String(
-    raw["thumbnailUrl"] || raw["thumbnail_url"] || raw["video_thumbnail_url"] || "",
-  ).trim();
-
-  if (storagePath) {
-    const urls = await buildUrlsFromStoragePath(storagePath, bucket);
-    publicUrl =
-      bucket === "booster"
-        ? publicUrl || urls.publicUrl || urls.signedUrl || ""
-        : urls.signedUrl || publicUrl || urls.publicUrl || "";
-  }
-
-  if (thumbnailStoragePath) {
-    const thumbnailUrls = await buildUrlsFromStoragePath(
-      thumbnailStoragePath,
-      thumbnailBucket,
-    );
-    thumbnailUrl =
-      thumbnailBucket === "booster"
-        ? thumbnailUrl ||
-          thumbnailUrls.publicUrl ||
-          thumbnailUrls.signedUrl ||
-          ""
-        : thumbnailUrls.signedUrl ||
-          thumbnailUrl ||
-          thumbnailUrls.publicUrl ||
-          "";
-  }
-
-  if (!publicUrl)
-    return { video: null, error: "Vidéo introuvable. Merci de la renvoyer." };
-
-  const size = Number(raw["size"] || 0);
-  if (Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_SOURCE_BYTES) {
-    return {
-      video: null,
-      error: `Vidéo trop lourde. Taille maximale : ${BOOSTER_MAX_VIDEO_SOURCE_MB_LABEL}.`,
-    };
-  }
-
-  const durationRaw = Number(raw["duration"] || 0);
-  const duration =
-    Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
-  const transformedVariants = Array.isArray(raw["transformedVariants"])
-    ? (raw["transformedVariants"] as BoosterVideoTransformedVariant[]).filter(
-        (variant: any) =>
-          variant &&
-          typeof variant === "object" &&
-          typeof variant.publicUrl === "string" &&
-          typeof variant.storagePath === "string" &&
-          typeof variant.signature === "string",
-      )
-    : [];
-
-  return {
-    video: {
-      mediaId: String(raw["mediaId"] || raw["media_id"] || "").trim() || null,
-      name: String(raw["name"] || "video-inrcy.mp4"),
-      type: String(raw["type"] || "video/mp4"),
-      size: Number.isFinite(size) && size > 0 ? size : 0,
-      duration,
-      url: publicUrl,
-      publicUrl,
-      storagePath: storagePath || null,
-      bucket,
-      thumbnailUrl: thumbnailUrl || null,
-      thumbnailStoragePath: thumbnailStoragePath || null,
-      thumbnailBucket: thumbnailBucket || null,
-      transformedVariants,
-    },
-  };
-}
-
-async function canGoogleFetchImageUrl(url: string): Promise<boolean> {
-  const target = String(url || "").trim();
-  if (!target) return false;
-
-  const attempts: Array<"HEAD" | "GET"> = ["HEAD", "GET"];
-  for (const method of attempts) {
-    try {
-      const response = await fetch(target, {
-        method,
-        redirect: "follow",
-        cache: "no-store",
-      });
-      if (!response.ok) continue;
-      const contentType = String(
-        response.headers.get("content-type") || "",
-      ).toLowerCase();
-      if (contentType.startsWith("image/")) return true;
-      if (method === "GET") return false;
-    } catch {
-      // Ignore and try the next strategy.
-    }
-  }
-
-  return false;
-}
-
-async function getGoogleBusinessPublishableUrl(
-  path: string,
-): Promise<string | null> {
-  const urls = await buildUrlsFromStoragePath(path);
-  if (urls.publicUrl && (await canGoogleFetchImageUrl(urls.publicUrl))) {
-    return urls.publicUrl;
-  }
-  if (urls.signedUrl && (await canGoogleFetchImageUrl(urls.signedUrl))) {
-    return urls.signedUrl;
-  }
-  return urls.publicUrl || urls.signedUrl || null;
-}
-
-function isGoogleBusinessImageError(error: unknown) {
-  const message = errMessage(error, "").toLowerCase();
-  return [
-    "image",
-    "images",
-    "photo",
-    "media",
-    "sourceurl",
-    "url",
-    "fetch",
-    "download",
-    "content-type",
-    "content type",
-    "invalid media",
-    "mediaitem",
-  ].some((needle) => message.includes(needle));
-}
-
-async function resolveImageInput(
-  img: ImagePayload,
-): Promise<ResolvedImageInput | null> {
-  if (img?.storagePath) {
-    const bucket = String(img.bucket || "booster").trim() || "booster";
-    const download = await supabaseAdmin.storage
-      .from(bucket)
-      .download(img.storagePath);
-    if (download.error || !download.data) {
-      throw new Error(
-        download.error?.message || "Impossible de relire l'image préparée.",
-      );
-    }
-
-    const arrayBuffer = await download.data.arrayBuffer();
-    const mime = download.data.type || img.type || "application/octet-stream";
-    const urls = await buildUrlsFromStoragePath(img.storagePath, bucket);
-    const privateBucket = bucket !== "booster";
-    return {
-      mime,
-      buffer: Buffer.from(arrayBuffer),
-      originalPublicUrl: privateBucket
-        ? urls.signedUrl || img.publicUrl || urls.publicUrl
-        : img.publicUrl || urls.publicUrl,
-      originalPublishableUrl:
-        urls.signedUrl || img.publicUrl || urls.publicUrl,
-      storagePath: img.storagePath,
-      bucket,
-    };
-  }
-
-  if (img?.dataUrl) {
-    const parsed = dataUrlToBuffer(img.dataUrl);
-    if (!parsed) return null;
-    return {
-      mime: parsed.mime || img.type || "application/octet-stream",
-      buffer: parsed.buffer,
-      originalPublicUrl: null,
-      originalPublishableUrl: null,
-    };
-  }
-
-  if (img?.publicUrl) {
-    const res = await fetch(img.publicUrl);
-    if (!res.ok) {
-      throw new Error(`Impossible de télécharger l'image (${res.status}).`);
-    }
-    const arrayBuffer = await res.arrayBuffer();
-    return {
-      mime:
-        res.headers.get("content-type") ||
-        img.type ||
-        "application/octet-stream",
-      buffer: Buffer.from(arrayBuffer),
-      originalPublicUrl: img.publicUrl,
-      originalPublishableUrl: img.publicUrl,
-    };
-  }
-
-  return null;
-}
-
-type ImageOptimizationFormats = {
-  instagram?: boolean;
-  socialFeed?: boolean;
-  socialFeedNativeFirst?: boolean;
-  siteCard?: boolean;
-  gmb?: boolean;
-};
-
-const EMPTY_IMAGE_FORMATS: ImageOptimizationFormats = {};
-
-function hasFinalImageGeometryDecision(img: ImagePayload) {
-  return (
-    img.imageDecisionMode === "original" ||
-    img.imageDecisionMode === "adapted" ||
-    img.imageDecisionMode === "customized"
-  );
-}
-
-function getRequiredImageFormatsForChannel(
-  channel: ChannelKey,
-): ImageOptimizationFormats {
-  if (channel === "instagram") return { instagram: true };
-  if (
-    channel === "facebook" ||
-    channel === "linkedin" ||
-    channel === "tiktok" ||
-    channel === "pinterest"
-  ) {
-    return { socialFeed: true, socialFeedNativeFirst: true };
-  }
-  if (channel === "gmb") return { gmb: true };
-  // Site iNrCy / Site web use the original prepared image in the article payload.
-  // Avoid generating social/Instagram/GMB derivatives when they are not needed.
-  return EMPTY_IMAGE_FORMATS;
-}
-
-function mergeImageFormats(
-  ...formatsList: ImageOptimizationFormats[]
-): ImageOptimizationFormats {
-  return formatsList.reduce<ImageOptimizationFormats>(
-    (acc, formats) => ({
-      instagram: Boolean(acc.instagram || formats.instagram),
-      socialFeed: Boolean(acc.socialFeed || formats.socialFeed),
-      socialFeedNativeFirst: Boolean(
-        acc.socialFeedNativeFirst || formats.socialFeedNativeFirst,
-      ),
-      siteCard: Boolean(acc.siteCard || formats.siteCard),
-      gmb: Boolean(acc.gmb || formats.gmb),
-    }),
-    {},
-  );
-}
-
-function buildEditableImageAttachments(
-  rawImages: ImagePayload[],
-  imageSet: ImageSet,
-  originalSourceUrlByKey?: ReadonlyMap<string, string>,
-): EditableImageAttachment[] {
-  return imageSet.images.map((renderedUrl, index) => {
-    const raw = rawImages[index] || ({} as ImagePayload);
-    const imageKey = String(raw.imageKey || "").trim();
-    const mappedOriginalUrl = imageKey
-      ? String(originalSourceUrlByKey?.get(imageKey) || "").trim()
-      : "";
-    const originalUrl = String(
-      raw.originalPublicUrl ||
-        raw.originalUrl ||
-        mappedOriginalUrl ||
-        raw.publicUrl ||
-        renderedUrl ||
-        "",
-    ).trim();
-    const name =
-      String(raw.originalName || raw.name || `image-${index + 1}.jpg`).trim() ||
-      `image-${index + 1}.jpg`;
-    const type =
-      String(raw.originalType || raw.type || "image/jpeg").trim() ||
-      "image/jpeg";
-    return {
-      name,
-      type,
-      url: renderedUrl,
-      renderedUrl,
-      publicUrl: renderedUrl,
-      originalUrl: originalUrl || null,
-      originalPublicUrl: originalUrl || null,
-      originalStoragePath: String(raw.originalStoragePath || "").trim() || null,
-      originalName: String(raw.originalName || raw.name || "").trim() || null,
-      originalType: String(raw.originalType || raw.type || "").trim() || null,
-      imageKey: imageKey || null,
-      transform: raw.transform || null,
-      imageMeta: raw.imageMeta || null,
-      imageDecisionMode: String(raw.imageDecisionMode || "").trim() || null,
-      imageDecisionLabel: String(raw.imageDecisionLabel || "").trim() || null,
-      isCustomized: raw.isCustomized === true,
-    };
-  });
-}
-
-async function uploadImageSet(
-  userId: string,
-  images: ImagePayload[],
-  formats: ImageOptimizationFormats = EMPTY_IMAGE_FORMATS,
-): Promise<{
-  imageSet: ImageSet;
-  uploadErrors: Array<{ name: string; reason: string; stage: string }>;
-}> {
-  const uploadedUrls: string[] = [];
-  const publishableUrls: string[] = [];
-  const instagramPublishableUrls: string[] = [];
-  const socialFeedPublishableUrls: string[] = [];
-  const siteCardPublishableUrls: string[] = [];
-  const gmbPublishableUrls: string[] = [];
-  const storagePaths: string[] = [];
-  const publishableStoragePaths: string[] = [];
-  const socialFeedStoragePaths: string[] = [];
-  const imageKeys: string[] = [];
-  const uploadErrors: Array<{ name: string; reason: string; stage: string }> =
-    [];
-
-  for (const img of images.slice(0, 5)) {
-    const preparedStoragePath = String(img.storagePath || "").trim();
-    const preparedPublicUrl = String(
-      img.publicUrl || img.renderedUrl || "",
-    ).trim();
-    if (
-      img.publicationReady === true &&
-      String(img.bucket || "") === "booster" &&
-      preparedStoragePath &&
-      preparedPublicUrl
-    ) {
-      uploadedUrls.push(preparedPublicUrl);
-      publishableUrls.push(preparedPublicUrl);
-      storagePaths.push(preparedStoragePath);
-      publishableStoragePaths.push(preparedStoragePath);
-      imageKeys.push(String(img.imageKey || "").trim());
-      if (formats.instagram) {
-        instagramPublishableUrls.push(preparedPublicUrl);
-      }
-      if (formats.socialFeed) {
-        socialFeedPublishableUrls.push(preparedPublicUrl);
-        socialFeedStoragePaths.push(preparedStoragePath);
-      }
-      if (formats.siteCard) {
-        siteCardPublishableUrls.push(preparedPublicUrl);
-      }
-      if (formats.gmb) {
-        gmbPublishableUrls.push(preparedPublicUrl);
-      }
-      continue;
-    }
-
-    let source: ResolvedImageInput | null = null;
-    try {
-      source = await resolveImageInput(img);
-    } catch (e) {
-      uploadErrors.push({
-        name: img?.name || "image",
-        reason: errMessage(e, "Impossible de préparer l'image."),
-        stage: "resolve",
-      });
-      continue;
-    }
-
-    if (!source) {
-      uploadErrors.push({
-        name: img?.name || "image",
-        reason:
-          "Invalid image payload (expected dataUrl, storagePath or publicUrl)",
-        stage: "parse",
-      });
-      continue;
-    }
-
-    const parsed = { mime: source.mime, buffer: source.buffer };
-    const finalGeometryLocked = hasFinalImageGeometryDecision(img);
-    let originalPublicUrl = source.originalPublicUrl;
-    let originalPublishableUrl = source.originalPublishableUrl;
-    let sourceStoragePath = source.storagePath || "";
-
-    const needsPublicationCopy =
-      !source.storagePath || source.bucket !== "booster";
-    if (needsPublicationCopy) {
-      const ext = imageExtensionFromMime(parsed.mime || img.type, img.name);
-      const path = `${userId}/${randomUUID()}.${ext}`;
-
-      const up = await supabaseAdmin.storage
-        .from("booster")
-        .upload(path, toExactStorageArrayBuffer(parsed.buffer), {
-          contentType: parsed.mime || img.type || "application/octet-stream",
-          upsert: false,
-        });
-
-      if (up.error) {
-        console.error("[Booster] Storage upload error:", up.error.message, {
-          path,
-          name: img.name,
-        });
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: up.error.message,
-          stage: "upload",
-        });
-        continue;
-      }
-
-      const urls = await buildUrlsFromStoragePath(path);
-      originalPublicUrl = urls.publicUrl;
-      originalPublishableUrl = urls.signedUrl;
-      sourceStoragePath = path;
-    }
-
-    if (originalPublicUrl) {
-      uploadedUrls.push(originalPublicUrl);
-      imageKeys.push(String(img.imageKey || "").trim());
-    } else {
-      uploadErrors.push({
-        name: img?.name || "image",
-        reason: "Original image public URL unavailable",
-        stage: "publicUrl",
-      });
-    }
-
-    if (sourceStoragePath) {
-      storagePaths.push(sourceStoragePath);
-      publishableStoragePaths.push(sourceStoragePath);
-    }
-
-    if (originalPublishableUrl) {
-      publishableUrls.push(originalPublishableUrl);
-    } else if (originalPublicUrl) {
-      publishableUrls.push(originalPublicUrl);
-      uploadErrors.push({
-        name: img?.name || "image",
-        reason: "Signed URL unavailable, fell back to publicUrl",
-        stage: "signedUrl",
-      });
-    } else {
-      uploadErrors.push({
-        name: img?.name || "image",
-        reason: "Original image publishable URL unavailable",
-        stage: "signedUrl",
-      });
-    }
-
-    if (formats.instagram) {
-      try {
-        const optimized = finalGeometryLocked
-          ? await optimizeFinalImageGeometry(parsed.buffer, "instagram")
-          : await optimizeForInstagram(parsed.buffer);
-        const igPath = `${userId}/instagram/${randomUUID()}.${optimized.extension}`;
-        const igUpload = await supabaseAdmin.storage
-          .from("booster")
-          .upload(igPath, toExactStorageArrayBuffer(optimized.buffer), {
-            contentType: optimized.mime,
-            upsert: false,
-          });
-
-        if (igUpload.error) {
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason: igUpload.error.message,
-            stage: "instagramUpload",
-          });
-        } else {
-          const igSigned = await createSafeStorageSignedUrl(
-            "booster",
-            igPath,
-            60 * 60 * 24,
-          );
-          if (igSigned) {
-            instagramPublishableUrls.push(igSigned);
-          } else {
-            uploadErrors.push({
-              name: img?.name || "image",
-              reason: "Instagram optimized image URL unavailable",
-              stage: "instagramUpload",
-            });
-          }
-        }
-      } catch (optErr) {
-        if (
-          finalGeometryLocked &&
-          (originalPublishableUrl || originalPublicUrl)
-        ) {
-          instagramPublishableUrls.push(
-            originalPublishableUrl || originalPublicUrl || "",
-          );
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason:
-              "Final geometry optimizer unavailable; preserved the Booster-prepared image without fallback recrop",
-            stage: "instagramGeometryPreserveFallback",
-          });
-        } else {
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason: errMessage(optErr, "Instagram image optimization failed"),
-            stage: "instagramOptimize",
-          });
-        }
-      }
-    }
-
-    if (formats.socialFeed) {
-      try {
-        const optimized = finalGeometryLocked
-          ? await optimizeFinalImageGeometry(parsed.buffer, "social-feed")
-          : await optimizeForSocialFeed(parsed.buffer, {
-              nativeFirst: Boolean(formats.socialFeedNativeFirst),
-            });
-        const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
-        const socialUpload = await supabaseAdmin.storage
-          .from("booster")
-          .upload(socialPath, toExactStorageArrayBuffer(optimized.buffer), {
-            contentType: optimized.mime,
-            upsert: false,
-          });
-
-        if (socialUpload.error) {
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason: socialUpload.error.message,
-            stage: "socialFeedUpload",
-          });
-        } else {
-          const socialSigned = await createSafeStorageSignedUrl(
-            "booster",
-            socialPath,
-            60 * 60 * 24,
-          );
-          if (socialSigned) {
-            socialFeedPublishableUrls.push(socialSigned);
-            socialFeedStoragePaths.push(socialPath);
-          } else {
-            uploadErrors.push({
-              name: img?.name || "image",
-              reason: "Social feed optimized image URL unavailable",
-              stage: "socialFeedUpload",
-            });
-          }
-        }
-      } catch (optErr) {
-        if (
-          finalGeometryLocked &&
-          (originalPublishableUrl || originalPublicUrl)
-        ) {
-          socialFeedPublishableUrls.push(
-            originalPublishableUrl || originalPublicUrl || "",
-          );
-          if (sourceStoragePath) socialFeedStoragePaths.push(sourceStoragePath);
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason:
-              "Final geometry optimizer unavailable; preserved the Booster-prepared image without fallback recrop",
-            stage: "socialFeedGeometryPreserveFallback",
-          });
-        } else {
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason: errMessage(optErr, "Social feed image optimization failed"),
-            stage: "socialFeedOptimize",
-          });
-        }
-      }
-    }
-
-    if (formats.siteCard) {
-      try {
-        const optimized = await optimizeForSiteCard(parsed.buffer);
-        const sitePath = `${userId}/site-card/${randomUUID()}.${optimized.extension}`;
-        const siteUpload = await supabaseAdmin.storage
-          .from("booster")
-          .upload(sitePath, toExactStorageArrayBuffer(optimized.buffer), {
-            contentType: optimized.mime,
-            upsert: false,
-          });
-
-        if (siteUpload.error) {
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason: siteUpload.error.message,
-            stage: "siteCardUpload",
-          });
-        } else {
-          const siteSigned = await createSafeStorageSignedUrl(
-            "booster",
-            sitePath,
-            60 * 60 * 24,
-          );
-          if (siteSigned) {
-            siteCardPublishableUrls.push(siteSigned);
-          } else {
-            uploadErrors.push({
-              name: img?.name || "image",
-              reason: "Site card optimized image URL unavailable",
-              stage: "siteCardUpload",
-            });
-          }
-        }
-      } catch (optErr) {
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: errMessage(optErr, "Site card image optimization failed"),
-          stage: "siteCardOptimize",
-        });
-      }
-    }
-
-    if (formats.gmb) {
-      try {
-        const optimized = finalGeometryLocked
-          ? await optimizeFinalImageGeometry(parsed.buffer, "gmb")
-          : await optimizeForGoogleBusiness(parsed.buffer);
-        const gmbPath = `${userId}/gmb/${randomUUID()}.${optimized.extension}`;
-        const gmbUpload = await supabaseAdmin.storage
-          .from("booster")
-          .upload(gmbPath, toExactStorageArrayBuffer(optimized.buffer), {
-            contentType: optimized.mime,
-            upsert: false,
-          });
-
-        if (gmbUpload.error) {
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason: gmbUpload.error.message,
-            stage: "gmbUpload",
-          });
-        } else {
-          const gmbUrl = await getGoogleBusinessPublishableUrl(gmbPath);
-          if (gmbUrl) {
-            gmbPublishableUrls.push(gmbUrl);
-          } else {
-            uploadErrors.push({
-              name: img?.name || "image",
-              reason: "Google Business optimized image URL unavailable",
-              stage: "gmbUpload",
-            });
-          }
-        }
-      } catch (optErr) {
-        if (finalGeometryLocked) {
-          const preservedUrl = sourceStoragePath
-            ? await getGoogleBusinessPublishableUrl(sourceStoragePath).catch(
-                () => null,
-              )
-            : originalPublishableUrl || originalPublicUrl;
-          if (preservedUrl) {
-            gmbPublishableUrls.push(preservedUrl);
-            uploadErrors.push({
-              name: img?.name || "image",
-              reason:
-                "Final geometry optimizer unavailable; preserved the Booster-prepared image without fallback recrop",
-              stage: "gmbGeometryPreserveFallback",
-            });
-          } else {
-            uploadErrors.push({
-              name: img?.name || "image",
-              reason: errMessage(
-                optErr,
-                "Google Business image optimization failed",
-              ),
-              stage: "gmbOptimize",
-            });
-          }
-        } else {
-          uploadErrors.push({
-            name: img?.name || "image",
-            reason: errMessage(
-              optErr,
-              "Google Business image optimization failed",
-            ),
-            stage: "gmbOptimize",
-          });
-        }
-      }
-    }
-  }
-
-  return {
-    imageSet: {
-      images: uploadedUrls,
-      publishableUrls,
-      instagramPublishableUrls,
-      socialFeedPublishableUrls,
-      siteCardPublishableUrls,
-      gmbPublishableUrls,
-      storagePaths,
-      publishableStoragePaths,
-      socialFeedStoragePaths,
-      imageKeys,
-    },
-    uploadErrors,
-  };
-}
-
-async function getLatestIntegrationRow(
-  userId: string,
-  provider: string,
-  source: string,
-  product: string,
-  columns: string,
-) {
-  const { data, error } = await supabaseAdmin
-    .from("integrations")
-    .select(columns)
-    .eq("user_id", userId)
-    .eq("provider", provider)
-    .eq("source", source)
-    .eq("product", product)
-    .order("updated_at", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  if (error) throw error;
-  return Array.isArray(data) ? (data[0] ?? null) : null;
-}
-
 async function publishNowHandler(req: Request) {
   let lifecycleWorkspaceId = "";
   let lifecycleUserId = "";
+  let publishIdempotencyLockId: string | null = null;
+  let shouldFailPublishIdempotencyLockOnError = false;
   let asyncFailureContext: {
     userId: string;
     publicationId: string;
@@ -1434,13 +221,25 @@ async function publishNowHandler(req: Request) {
       body._asyncChannelEventId,
     );
 
-    const channels = (
-      Array.isArray(body.channels) ? body.channels : []
-    ) as ChannelKey[];
+    const normalizedChannels = normalizeBoosterPublicationChannels(
+      body.channels,
+    );
     const post = (body.post || {}) as PostPayload;
     const postByChannel = ((body.postByChannel || {}) as PostByChannel) || {};
     const idea = String(body.idea || "").trim();
-    const selected = Array.from(new Set(channels)).filter(Boolean);
+    const selected = normalizedChannels.channels;
+    if (normalizedChannels.invalidChannels.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "unsupported_channel",
+          retryable: false,
+          error: "Un ou plusieurs canaux de publication ne sont pas pris en charge.",
+          invalidChannels: normalizedChannels.invalidChannels,
+        },
+        { status: 400 },
+      );
+    }
     if (
       internalAsyncDispatch &&
       (selected.length !== 1 || !asyncPublicationId || !asyncChannelEventId)
@@ -1450,6 +249,17 @@ async function publishNowHandler(req: Request) {
           ok: false,
           code: "async_dispatch_invalid",
           error: "Le dispatch interne doit cibler exactement un canal existant.",
+        },
+        { status: 400 },
+      );
+    }
+    if (!selected.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "channels_required",
+          retryable: false,
+          error: "Sélectionnez au moins 1 canal.",
         },
         { status: 400 },
       );
@@ -1798,69 +608,15 @@ async function publishNowHandler(req: Request) {
       }
     }
 
-    const getPublicationVideoForChannel = (
-      channel: ChannelKey,
-    ): PersistedVideoAttachment | null => {
-      if (!publicationVideo) return null;
-      const settings = videoSettingsByChannel[channel];
-      if (!settings) return publicationVideo;
-      const variant = getVariantForChannel(
-        publicationVideo.transformedVariants,
-        channel as any,
-        settings.format,
-        settings.adaptationMode,
-      );
-      const sourceValidation = validateVideoPublicationForChannel({
-        channel,
-        name: publicationVideo.name,
-        type: publicationVideo.type,
-        storagePath: publicationVideo.storagePath,
-        sizeBytes: publicationVideo.size,
-        durationSeconds: publicationVideo.duration,
-      });
-      if (!variant?.publicUrl || !variant?.storagePath) {
-        return sourceValidation.ok ? publicationVideo : null;
-      }
-      const variantValidation = validateVideoPublicationForChannel({
-        channel,
-        name: variant.name || `video-${channel}.mp4`,
-        type: variant.contentType,
-        storagePath: variant.storagePath,
-        sizeBytes: variant.size,
-        durationSeconds: variant.duration ?? publicationVideo.duration,
-      });
-      if (!variantValidation.ok) {
-        return sourceValidation.ok ? publicationVideo : null;
-      }
-
-      return {
-        ...publicationVideo,
-        name: `${publicationVideo.name} — ${variant.target?.label || settings.format}`,
-        type: variant.contentType || publicationVideo.type || "video/mp4",
-        size: Number(variant.size || publicationVideo.size || 0),
-        duration: variant.duration ?? publicationVideo.duration ?? null,
-        url: variant.publicUrl,
-        publicUrl: variant.publicUrl,
-        storagePath:
-          variant.storagePath || publicationVideo.storagePath || null,
-        transformedVariant: variant,
-        sourceVideo: {
-          ...publicationVideo,
-          sourceVideo: null,
-          transformedVariant: null,
-        },
-      };
-    };
-
-    const buildPublicationVideoByChannel = () => {
-      if (!publicationVideo)
-        return {} as Partial<Record<ChannelKey, PersistedVideoAttachment>>;
-      return Object.fromEntries(
-        selected
-          .filter((channel) => mediaModeByChannel[channel] === "video")
-          .map((channel) => [channel, getPublicationVideoForChannel(channel)]),
-      ) as Partial<Record<ChannelKey, PersistedVideoAttachment>>;
-    };
+    const {
+      getPublicationVideoForChannel,
+      buildPublicationVideoByChannel,
+    } = createPublishNowVideoContext({
+      publicationVideo,
+      videoSettingsByChannel,
+      selected,
+      mediaModeByChannel,
+    });
 
     if (!strictMediaCutover && hasAnyVideoChannel && publicationVideo) {
       const invalidLegacyVideoChannels = selected
@@ -1946,6 +702,19 @@ async function publishNowHandler(req: Request) {
           { status: 422 },
         );
       }
+    }
+
+    if (hasAnyVideoChannel && videoPayloadError) {
+      return NextResponse.json(
+        { ok: false, error: videoPayloadError },
+        { status: 400 },
+      );
+    }
+    if (hasAnyVideoChannel && !publicationVideo) {
+      return NextResponse.json(
+        { ok: false, error: "Ajoutez une vidéo avant de publier." },
+        { status: 400 },
+      );
     }
 
     const workflowToolRaw = String(body.workflowTool || "")
@@ -2129,9 +898,11 @@ async function publishNowHandler(req: Request) {
       );
     }
 
-    const publishIdempotencyLockId = internalAsyncDispatch
+    publishIdempotencyLockId = internalAsyncDispatch
       ? cleanExecutionIdempotencyKey(body._asyncParentIdempotencyLockId) || null
       : publishIdempotency.lock?.id || null;
+    shouldFailPublishIdempotencyLockOnError =
+      !internalAsyncDispatch && Boolean(publishIdempotencyLockId);
 
     const hadAnyImageInput =
       hasAnyImageChannel &&
@@ -2141,74 +912,15 @@ async function publishNowHandler(req: Request) {
           (value) => Array.isArray(value) && value.length > 0,
         ));
 
-    if (hasAnyVideoChannel && videoPayloadError) {
-      return NextResponse.json(
-        { ok: false, error: videoPayloadError },
-        { status: 400 },
-      );
-    }
-    if (hasAnyVideoChannel && !publicationVideo) {
-      return NextResponse.json(
-        { ok: false, error: "Ajoutez une vidéo avant de publier." },
-        { status: 400 },
-      );
-    }
-
-    if (!selected.length) {
-      return NextResponse.json(
-        { error: "Sélectionnez au moins 1 canal." },
-        { status: 400 },
-      );
-    }
-
     const publicationId = internalAsyncDispatch
       ? asyncPublicationId
       : randomUUID();
     const publicationVideoByChannel = buildPublicationVideoByChannel();
 
-    const fallbackTitle = String(post.title || "").trim();
-    const fallbackContent = String(post.content || "").trim();
-    const fallbackCta = String(post.cta || "").trim();
-    const fallbackHashtags = Array.isArray(post.hashtags)
-      ? post.hashtags
-          .map((h) => normalizeHashtag(String(h || "")))
-          .filter(Boolean)
-          .slice(0, 20)
-      : [];
-
-    const getChannelPost = (channel: ChannelKey): PostPayload => {
-      const raw = ((channel === "inrcy_site"
-        ? postByChannel?.inrcy_site || postByChannel?.site_web
-        : channel === "site_web"
-          ? postByChannel?.site_web || postByChannel?.inrcy_site
-          : channel === "inr_search"
-            ? postByChannel?.inr_search || postByChannel?.site_web || postByChannel?.inrcy_site
-            : postByChannel?.[channel]) || {}) as PostPayload;
-      const isSiteChannel = channel === "inrcy_site" || channel === "site_web" || channel === "inr_search";
-      const rawTitle = String(raw.title || fallbackTitle || "").trim();
-      const rawContent = limitBoosterChannelContent(
-        channel,
-        String(raw.content || fallbackContent || "").trim(),
-      );
-      const rawCta = String(raw.cta || fallbackCta || "").trim();
-      const title = isSiteChannel
-        ? sanitizeBoosterSiteText(rawTitle)
-        : stripSiteTextFormatting(rawTitle);
-      const content = isSiteChannel
-        ? sanitizeBoosterSiteText(rawContent)
-        : stripSiteTextFormattingPreserveLayout(rawContent);
-      const cta = stripSiteTextFormatting(rawCta);
-      const ctaMode = String(raw.ctaMode || "").trim();
-      const ctaUrl = String(raw.ctaUrl || "").trim();
-      const ctaPhone = String(raw.ctaPhone || "").trim();
-      const hashtags = Array.isArray(raw.hashtags)
-        ? raw.hashtags
-            .map((h) => normalizeHashtag(String(h || "")))
-            .filter(Boolean)
-            .slice(0, 20)
-        : fallbackHashtags;
-      return { title, content, cta, ctaMode, ctaUrl, ctaPhone, hashtags };
-    };
+    const getChannelPost = createPublishNowPostResolver({
+      post,
+      postByChannel,
+    });
 
     const firstPost = getChannelPost(selected[0]);
 
@@ -2352,6 +1064,7 @@ async function publishNowHandler(req: Request) {
         result: { publicationId, uploadErrors },
         metadata: { stage: "image_upload" },
       });
+      shouldFailPublishIdempotencyLockOnError = false;
       return NextResponse.json(
         {
           ok: false,
@@ -2405,6 +1118,7 @@ async function publishNowHandler(req: Request) {
           result: { publicationId, detail: pubErr.message || null },
           metadata: { stage: "publication_insert" },
         });
+        shouldFailPublishIdempotencyLockOnError = false;
         return NextResponse.json(
           {
             error: "Impossible d'enregistrer la publication pour le moment.",
@@ -2436,6 +1150,7 @@ async function publishNowHandler(req: Request) {
           result: { publicationId, detail: deliveriesError.message || null },
           metadata: { stage: "delivery_insert" },
         });
+        shouldFailPublishIdempotencyLockOnError = false;
         return NextResponse.json(
           {
             ok: false,
@@ -2873,81 +1588,20 @@ async function publishNowHandler(req: Request) {
     const inrcySiteUrl = String(inrcyCfg["site_url"] ?? "").trim();
     const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
-    const externalImageUrls = (
-      publicationImageSet.publishableUrls.length
-        ? publicationImageSet.publishableUrls
-        : publicationImageSet.images
-    ).slice(0, 5);
-    const socialFeedImageUrls = (
-      publicationImageSet.socialFeedPublishableUrls.length
-        ? publicationImageSet.socialFeedPublishableUrls
-        : externalImageUrls
-    ).slice(0, 5);
-    const instagramImageUrls = (
-      publicationImageSet.instagramPublishableUrls.length
-        ? publicationImageSet.instagramPublishableUrls
-        : socialFeedImageUrls.length
-          ? socialFeedImageUrls
-          : externalImageUrls
-    ).slice(0, 5);
-    const gmbImageUrls = (
-      publicationImageSet.gmbPublishableUrls.length
-        ? publicationImageSet.gmbPublishableUrls
-        : publicationImageSet.publishableUrls.length
-          ? publicationImageSet.publishableUrls
-          : publicationImageSet.images
-    ).slice(0, 5);
-
-    const getChannelImageSet = (channel: ChannelKey): ImageSet =>
-      channelImageSets[channel] || baseImageSet;
-
-    type ChannelImageUrlKey =
-      | "images"
-      | "publishableUrls"
-      | "instagramPublishableUrls"
-      | "socialFeedPublishableUrls"
-      | "gmbPublishableUrls";
-
-    const getExpectedChannelImageCount = (channel: ChannelKey) => {
-      const raw = Array.isArray(imagesByChannel?.[channel])
-        ? (imagesByChannel[channel] as ImagePayload[])
-        : [];
-      const limited = raw.slice(0, 5);
-      return limited.length;
-    };
-
-    /**
-     * New Booster payloads carry a dedicated image set per channel. Once such
-     * a set exists, never borrow a fallback from another channel: that could
-     * publish the wrong crop/ratio. Also reject partial derivative lists so a
-     * carousel cannot silently lose one image. Legacy payloads still use the
-     * historical global fallback passed by the caller.
-     */
-    const pickCompleteChannelImageUrls = (params: {
-      channel: ChannelKey;
-      candidates: ChannelImageUrlKey[];
-      legacyFallback: string[];
-      limit: number;
-    }) => {
-      const { channel, candidates, legacyFallback, limit } = params;
-      const explicitSet = channelImageSets[channel];
-      if (!explicitSet) {
-        return legacyFallback.filter(Boolean).slice(0, limit);
-      }
-
-      const expected = Math.min(getExpectedChannelImageCount(channel), limit);
-      for (const key of candidates) {
-        const urls = (explicitSet[key] || []).filter(Boolean);
-        if (expected > 0 && urls.length >= expected) {
-          return urls.slice(0, expected);
-        }
-        if (expected === 0 && urls.length) {
-          return urls.slice(0, limit);
-        }
-      }
-
-      return [];
-    };
+    const {
+      externalImageUrls,
+      socialFeedImageUrls,
+      instagramImageUrls,
+      gmbImageUrls,
+      getChannelImageSet,
+      getExpectedChannelImageCount,
+      pickCompleteChannelImageUrls,
+    } = createPublishNowImageContext({
+      publicationImageSet,
+      channelImageSets,
+      baseImageSet,
+      imagesByChannel,
+    });
 
     async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
       const nextStatus = String(patch.status ?? "").trim();
@@ -4546,7 +3200,18 @@ async function publishNowHandler(req: Request) {
           continue;
         }
 
-        results[ch] = { ok: false, error: "unsupported_channel" };
+        const unsupportedChannelMessage =
+          "Ce canal de publication n'est pas pris en charge.";
+        await setDelivery(ch, {
+          status: "failed",
+          error: unsupportedChannelMessage,
+        });
+        results[ch] = {
+          ok: false,
+          error: unsupportedChannelMessage,
+          code: "unsupported_channel",
+          retryable: false,
+        };
       } catch (e: unknown) {
         const msg = getPublishChannelUserMessage(
           ch,
@@ -4746,6 +3411,7 @@ async function publishNowHandler(req: Request) {
         result: { publicationId, summary },
         metadata: { stage: "publish_results" },
       });
+      shouldFailPublishIdempotencyLockOnError = false;
       return NextResponse.json(
         {
           ok: false,
@@ -4853,6 +3519,7 @@ async function publishNowHandler(req: Request) {
       result: responsePayload,
       metadata: { publicationId, summary },
     });
+    shouldFailPublishIdempotencyLockOnError = false;
 
     return NextResponse.json(responsePayload);
   } catch (e: unknown) {
@@ -4924,6 +3591,26 @@ async function publishNowHandler(req: Request) {
           failureMessage: e instanceof Error ? e.message : String(e || "Erreur inconnue"),
         },
       }).catch(() => undefined);
+    }
+    if (
+      shouldFailPublishIdempotencyLockOnError &&
+      publishIdempotencyLockId
+    ) {
+      const failureMessage = getSimpleFrenchErrorMessage(
+        e,
+        "L'action n'a pas pu être finalisée.",
+      );
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: publishIdempotencyLockId,
+        error: failureMessage,
+        result: {
+          ok: false,
+          code: "publish_now_failed",
+        },
+        metadata: { stage: "unhandled_exception" },
+      }).catch(() => undefined);
+      shouldFailPublishIdempotencyLockOnError = false;
     }
     captureApiException(req, e, {
       area: "booster",

@@ -12,6 +12,10 @@ const resultModal = read("app/dashboard/_components/PublishExecutionResultModal.
 const bottomNav = read("app/dashboard/_components/ResponsiveBottomNav.tsx");
 const bottomNavCss = read("app/dashboard/_components/ResponsiveBottomNav.module.css");
 const publishRoute = read("app/api/booster/publish-now/route.ts");
+const publishNowFoundations = read(
+  "app/api/booster/publish-now/publishNow.foundations.ts",
+);
+const publicationPolicy = read("lib/boosterPublicationPolicy.ts");
 const mediaWorkspaceClient = read("lib/mediaWorkspaceClient.ts");
 
 test("partial publishing retries only retryable failed channels and keeps the workspace", () => {
@@ -31,8 +35,9 @@ test("the result modal exposes a dedicated retry for failed channels", () => {
 
 test("manual publishing now goes through the idempotent mobile-safe transport", () => {
   assert.match(modalLayer, /postBoosterPublication/);
-  assert.match(publishRoute, /NON_RETRYABLE_PUBLISH_CODES/);
-  assert.match(publishRoute, /retryable,/);
+  assert.match(publishNowFoundations, /isBoosterPublishFailureRetryable/);
+  assert.match(publicationPolicy, /NON_RETRYABLE_BOOSTER_PUBLISH_CODES/);
+  assert.match(publishNowFoundations, /retryable,/);
 });
 
 test("the Google Pixel bottom publish button is disabled from real modal state, not URL only", () => {

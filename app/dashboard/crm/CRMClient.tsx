@@ -21,287 +21,12 @@ import {
   TYPE_LABEL,
 } from "./crm.shared";
 import type { Category, ContactType, CrmContact, CrmSummary } from "./crm.types";
-
-function downloadTextFile(filename: string, content: string, mime = "text/plain;charset=utf-8") {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function toCsvValue(v: any) {
-  const s = String(v ?? "");
-  const needsWrap = /[",;\n\r]/.test(s);
-  const escaped = s.replace(/"/g, '""');
-  return needsWrap ? `"${escaped}"` : escaped;
-}
-
-function contactsToCsv(rows: any[]) {
-  const headers = [
-    "display_name",
-    "last_name",
-    "first_name",
-    "company_name",
-    "siret",
-    "email",
-    "phone",
-    "address",
-    "billing_address",
-    "delivery_address",
-    "vat_number",
-    "city",
-    "postal_code",
-    "category",
-    "contact_type",
-    "notes",
-    "important",
-  ];
-  const lines = [
-    headers.join(";"),
-    ...rows.map((r) => headers.map((h) => toCsvValue((r as any)[h])).join(";")),
-  ];
-  return lines.join("\n");
-}
-
-function detectDelimiter(line: string) {
-  const c = (line.match(/,/g) || []).length;
-  const s = (line.match(/;/g) || []).length;
-  const t = (line.match(/\t/g) || []).length;
-  if (s >= c && s >= t) return ";";
-  if (t >= c && t >= s) return "\t";
-  return ",";
-}
-
-function parseCsv(text: string) {
-  const clean = (text || "").replace(/^\uFEFF/, "");
-  const lines = clean.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [] as Record<string, string>[];
-  const delim = detectDelimiter(lines[0]);
-
-  const parseLine = (line: string) => {
-    const out: string[] = [];
-    let cur = "";
-    let inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        const next = line[i + 1];
-        if (inQ && next === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQ = !inQ;
-        }
-      } else if (!inQ && ch === delim) {
-        out.push(cur);
-        cur = "";
-      } else {
-        cur += ch;
-      }
-    }
-    out.push(cur);
-    return out.map((x) => x.trim());
-  };
-
-  const headers = parseLine(lines[0]).map((h) => h.trim());
-  return lines.slice(1).map((ln) => {
-    const cols = parseLine(ln);
-    const obj: Record<string, string> = {};
-    headers.forEach((h, idx) => (obj[h] = cols[idx] ?? ""));
-    return obj;
-  });
-}
-
-function parseBooleanLike(value: unknown) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  return ["1", "true", "vrai", "oui", "yes", "y", "x", "important", "★"].includes(normalized);
-}
-
-function normalizeImportKey(value: unknown) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[_/\-]+/g, " ")
-    .replace(/[^a-zA-Z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-function buildImportRowMap(row: Record<string, unknown>) {
-  const map = new Map<string, unknown>();
-  Object.entries(row || {}).forEach(([key, value]) => {
-    map.set(key, value);
-    const normalizedKey = normalizeImportKey(key);
-    if (normalizedKey && !map.has(normalizedKey)) {
-      map.set(normalizedKey, value);
-    }
-  });
-  return map;
-}
-
-function pickImportedValue(map: Map<string, unknown>, ...keys: string[]) {
-  for (const key of keys) {
-    const direct = map.get(key);
-    if (direct != null && String(direct).trim() !== "") return direct;
-    const normalizedKey = normalizeImportKey(key);
-    const normalized = map.get(normalizedKey);
-    if (normalized != null && String(normalized).trim() !== "") return normalized;
-  }
-  return "";
-}
-
-function normalizeImportedCategory(value: unknown): Category {
-  const normalized = normalizeImportKey(value);
-  if (!normalized) return "";
-  if (["particulier", "personne", "personne physique", "individual"].includes(normalized)) {
-    return "particulier";
-  }
-  if (["professionnel", "professionnelle", "pro", "entreprise", "societe", "societe privee"].includes(normalized)) {
-    return "professionnel";
-  }
-  if (
-    [
-      "institution",
-      "collectivite publique",
-      "collectivite",
-      "collectivite territoriale",
-      "organisme public",
-      "publique",
-      "public",
-      "mairie",
-      "commune",
-    ].includes(normalized)
-  ) {
-    return "collectivite_publique";
-  }
-  return "";
-}
-
-function normalizeImportedContactType(value: unknown): ContactType {
-  const normalized = normalizeImportKey(value);
-  if (!normalized) return "";
-  if (["client", "clients"].includes(normalized)) return "client";
-  if (["prospect", "propsect", "prospects"].includes(normalized)) return "prospect";
-  if (["fournisseur", "fournisseurs", "supplier"].includes(normalized)) return "fournisseur";
-  if (["partenaire", "partenaires", "partner"].includes(normalized)) return "partenaire";
-  if (["autre", "other", "others"].includes(normalized)) return "autre";
-  return "";
-}
-
-function inferImportedDefaults(rows: any[]) {
-  const categoryValues = new Set<Category>();
-  const typeValues = new Set<ContactType>();
-
-  for (const row of Array.isArray(rows) ? rows : []) {
-    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
-    const map = buildImportRowMap(row as Record<string, unknown>);
-    const category = normalizeImportedCategory(
-      pickImportedValue(map, "category", "Categorie", "Catégorie", "Category"),
-    );
-    const contactType = normalizeImportedContactType(
-      pickImportedValue(map, "contact_type", "Type", "Type de contact", "Contact type"),
-    );
-    if (category) categoryValues.add(category);
-    if (contactType) typeValues.add(contactType);
-  }
-
-  return {
-    category: categoryValues.size === 1 ? Array.from(categoryValues)[0] : ("" as Category),
-    contact_type: typeValues.size === 1 ? Array.from(typeValues)[0] : ("" as ContactType),
-  };
-}
-
-async function loadXlsxModule() {
-  return (await import("@/lib/vendor/xlsx.mjs")) as any;
-}
-
-function normalizeImportedRow(
-  row: any,
-  defaults?: { category?: Category; contact_type?: ContactType },
-) {
-  const map = buildImportRowMap((row && typeof row === "object" ? row : {}) as Record<string, unknown>);
-
-  return {
-    display_name: String(
-      pickImportedValue(map, "display_name", "Nom / RS", "Nom", "Raison sociale", "Entreprise"),
-    ).trim(),
-    last_name: String(pickImportedValue(map, "last_name", "Nom")).trim(),
-    first_name: String(pickImportedValue(map, "first_name", "Prénom", "Prenom")).trim(),
-    company_name: String(
-      pickImportedValue(map, "company_name", "Entreprise", "Raison sociale", "Societe", "Société"),
-    ).trim(),
-    siret: String(pickImportedValue(map, "siret", "SIRET")).trim(),
-    email: String(pickImportedValue(map, "email", "Email", "Mail", "E-mail")).trim(),
-    phone: String(pickImportedValue(map, "phone", "Téléphone", "Telephone", "Tel")).trim(),
-    address: String(pickImportedValue(map, "address", "Adresse", "Adresse principale")).trim(),
-    billing_address: String(
-      pickImportedValue(map, "billing_address", "Adresse de facturation", "Billing address"),
-    ).trim(),
-    delivery_address: String(
-      pickImportedValue(map, "delivery_address", "Adresse de livraison", "Delivery address"),
-    ).trim(),
-    vat_number: String(pickImportedValue(map, "vat_number", "TVA", "TVA intracom", "VAT", "VAT number")).trim(),
-    city: String(pickImportedValue(map, "city", "Ville")).trim(),
-    postal_code: String(pickImportedValue(map, "postal_code", "Code postal", "CP")).trim(),
-    category:
-      normalizeImportedCategory(pickImportedValue(map, "category", "Categorie", "Catégorie", "Category")) ||
-      defaults?.category ||
-      "",
-    contact_type:
-      normalizeImportedContactType(
-        pickImportedValue(map, "contact_type", "Type", "Type de contact", "Contact type"),
-      ) ||
-      defaults?.contact_type ||
-      "",
-    notes: String(pickImportedValue(map, "notes", "Notes", "Commentaires", "Commentaire")).trim(),
-    important: parseBooleanLike(pickImportedValue(map, "important", "Important", "Favori", "Favorite", "Star")),
-  };
-}
-
-
-
-function normalizeAddressPart(value?: string | null) {
-  return String(value ?? "").trim().replace(/\s+/g, " ");
-}
-
-function addressContainsPart(address: string, part: string) {
-  if (!address || !part) return false;
-  const normalize = (value: string) =>
-    value
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-  return normalize(address).includes(normalize(part));
-}
-
-function buildFullCrmAddress(address?: string | null, postalCode?: string | null, city?: string | null) {
-  const parts: string[] = [];
-  const base = normalizeAddressPart(address);
-  if (base) parts.push(base);
-
-  [postalCode, city]
-    .map(normalizeAddressPart)
-    .filter(Boolean)
-    .forEach((part) => {
-      const current = parts.join(" ");
-      if (!addressContainsPart(current, part)) parts.push(part);
-    });
-
-  return parts.join(" ").trim();
-}
-
+import { createCrmNavigationActions, useCrmImportExportActions } from "./crm.client-actions";
+import {
+  useCrmContactLifecycleEffects,
+  useCrmFloatingUiEffects,
+  useCrmTableViewportEffects,
+} from "./crm.client-hooks";
 
 export default function CRMClient() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -500,150 +225,48 @@ export default function CRMClient() {
     ],
   );
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setServerQuery(query.trim());
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
-  useEffect(() => {
-    mobileAppendNextRef.current = false;
-    setExpandedMobileContactId(null);
-    setPage(1);
-  }, [pageSize, serverQuery, categoryFilter, typeFilter, departmentFilter, importantOnly]);
-
-  useEffect(() => {
-    const append = isResponsive && mobileAppendNextRef.current && page > 1;
-    void loadContacts({
-      page,
-      pageSize,
-      query: serverQuery,
-      append,
-      preserveSuccess: append || page > 1,
-    });
-    mobileAppendNextRef.current = false;
-  }, [
-    isResponsive,
-    loadContacts,
-    page,
+  useCrmContactLifecycleEffects({
+    query,
+    setServerQuery,
     pageSize,
     serverQuery,
     categoryFilter,
     typeFilter,
     departmentFilter,
     importantOnly,
-  ]);
+    setExpandedMobileContactId,
+    setPage,
+    isResponsive,
+    mobileAppendNextRef,
+    page,
+    loadContacts,
+    mergeContactWithLocalState,
+    setContacts,
+    selectedContactIds,
+    setSelectedContactsById,
+    contacts,
+  });
 
-  useEffect(() => {
-    // Keep derived fields in sync when local ⭐ important / notes change
-    setContacts((prev) => prev.map((c) => mergeContactWithLocalState(c)));
-    setSelectedContactsById((prev) => {
-      if (Object.keys(prev).length === 0) return prev;
-      const next: Record<string, CrmContact> = {};
-      for (const [id, contact] of Object.entries(prev)) {
-        next[id] = mergeContactWithLocalState(contact);
-      }
-      return next;
-    });
-  }, [mergeContactWithLocalState]);
-
-  useEffect(() => {
-    if (contacts.length === 0 || selectedContactIds.size === 0) return;
-    setSelectedContactsById((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const contact of contacts) {
-        if (!selectedContactIds.has(contact.id)) continue;
-        next[contact.id] = contact;
-        changed = true;
-      }
-      return changed ? next : prev;
-    });
-  }, [contacts, selectedContactIds]);
-
-  useEffect(() => {
-    if (!actionsOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = actionsRef.current;
-      if (!el) return;
-      if (el.contains(e.target as any)) return;
-      setActionsOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [actionsOpen]);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      const el = statsRef.current;
-      if (!el) return;
-      if (el.contains(e.target as any)) return;
-      setStatsOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, []);
-
-  useEffect(() => {
-    if (!exportOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = exportRef.current;
-      if (!el) return;
-      if (el.contains(e.target as any)) return;
-      setExportOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [exportOpen]);
-
-  useEffect(() => {
-    if (!headerSearchOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = headerSearchRef.current;
-      if (!el) return;
-      if (el.contains(e.target as any)) return;
-      setHeaderSearchOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [headerSearchOpen]);
-
-  useEffect(() => {
-    if (!desktopFiltersOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = desktopFiltersRef.current;
-      if (!el) return;
-      if (el.contains(e.target as any)) return;
-      setDesktopFiltersOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [desktopFiltersOpen]);
-
-  useEffect(() => {
-    if (!headerSearchOpen) return;
-    const timer = window.setTimeout(() => {
-      headerSearchInputRef.current?.focus();
-      headerSearchInputRef.current?.select();
-    }, 10);
-    return () => window.clearTimeout(timer);
-  }, [headerSearchOpen]);
-
-  useEffect(() => {
-    if (isResponsive) return;
-    setHeaderSearchOpen(false);
-    setMobileFiltersOpen(false);
-    setExpandedMobileContactId(null);
-  }, [isResponsive]);
-
-  useEffect(() => {
-    if (isResponsive) {
-      setDesktopFiltersOpen(false);
-    } else {
-      setHeaderSearchOpen(false);
-    }
-  }, [isResponsive]);
+  useCrmFloatingUiEffects({
+    actionsOpen,
+    actionsRef,
+    setActionsOpen,
+    statsRef,
+    setStatsOpen,
+    exportOpen,
+    exportRef,
+    setExportOpen,
+    headerSearchOpen,
+    headerSearchRef,
+    headerSearchInputRef,
+    setHeaderSearchOpen,
+    desktopFiltersOpen,
+    desktopFiltersRef,
+    setDesktopFiltersOpen,
+    isResponsive,
+    setMobileFiltersOpen,
+    setExpandedMobileContactId,
+  });
 
   const selectedContacts = useMemo(() => {
     if (selectedContactIds.size === 0) return [] as CrmContact[];
@@ -684,65 +307,22 @@ export default function CRMClient() {
     importantOnly ? "Important" : "",
   ].filter(Boolean);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isResponsive) return;
-
-    const el = tableWrapRef.current;
-    if (!el) return;
-
-    const HEADER_HEIGHT = 34;
-
-    const recompute = () => {
-      const wrapHeight = el.clientHeight || 0;
-      if (wrapHeight <= HEADER_HEIGHT) return;
-      const next = Math.max(18, Math.floor((wrapHeight - HEADER_HEIGHT - 2) / DEFAULT_PAGE_SIZE));
-      setDesktopRowHeight((prev) => (prev === next ? prev : next));
-    };
-
-    const raf = window.requestAnimationFrame(recompute);
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(recompute) : null;
-    if (ro) ro.observe(el);
-    window.addEventListener("resize", recompute);
-
-    return () => {
-      window.cancelAnimationFrame(raf);
-      ro?.disconnect();
-      window.removeEventListener("resize", recompute);
-    };
-  }, [isResponsive, loading, page, pageSize, visibleContacts.length, showDesktopEmptyMessage]);
-
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!isResponsive) return;
-
-    const sentinel = mobileLoadMoreRef.current;
-    if (!sentinel) return;
-
-    const root = tableWrapRef.current;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (!first?.isIntersecting) return;
-        if (loading) return;
-        if (contacts.length >= total) return;
-        if (mobileAppendNextRef.current) return;
-
-        mobileAppendNextRef.current = true;
-        setPage((prev) => (prev >= pageCount ? prev : prev + 1));
-      },
-      {
-        root,
-        rootMargin: "220px 0px 220px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [isResponsive, loading, contacts.length, total, pageCount]);
-
+  useCrmTableViewportEffects({
+    isResponsive,
+    loading,
+    page,
+    pageSize,
+    visibleContactsLength: visibleContacts.length,
+    showDesktopEmptyMessage,
+    tableWrapRef,
+    setDesktopRowHeight,
+    mobileLoadMoreRef,
+    contactsLength: contacts.length,
+    total,
+    pageCount,
+    mobileAppendNextRef,
+    setPage,
+  });
 
   const selectedEmails = useMemo(() => {
     const emails = selectedContacts
@@ -894,257 +474,29 @@ export default function CRMClient() {
   };
 
 
-  
-async function importContacts(rows: any[]) {
-  const inferredDefaults = inferImportedDefaults(rows);
-  const cleaned = rows
-    .map((row) => normalizeImportedRow(row, inferredDefaults))
-    .filter((r) => r.display_name || r.email || r.phone || r.last_name || r.company_name);
+  const { handleImportFile, triggerImport, exportCsv, exportExcel } = useCrmImportExportActions({
+    fileInputRef,
+    setImporting,
+    setError,
+    setSuccess,
+    setPage,
+    loadContacts,
+    serverQuery,
+    categoryFilter,
+    typeFilter,
+    departmentFilter,
+    importantOnly,
+    mergeContactWithLocalState,
+    setExportingFormat,
+  });
 
-  if (cleaned.length === 0) {
-    setError("Aucune ligne exploitable trouvée dans le fichier.");
-    setSuccess(null);
-    return;
-  }
-
-  setImporting(true);
-  setError(null);
-  try {
-    const r = await fetch("/api/crm/contacts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contacts: cleaned }),
+  const { sendMailToAction, sendMailToContact, goNewDevis, goNewFacture, goPlanifierIntervention } =
+    createCrmNavigationActions({
+      router,
+      actionRecipients,
+      actionEmails,
+      primaryContact,
     });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Import impossible."));
-    setPage(1);
-    await loadContacts({ page: 1, preserveSuccess: true });
-
-    const inserted = Math.max(0, Number(j?.inserted ?? cleaned.length));
-    const skippedDuplicates = Math.max(0, Number(j?.skipped_duplicates ?? 0));
-    const skippedExisting = Math.max(0, Number(j?.skipped_existing ?? 0));
-    const ignoredInvalid = Math.max(0, Number(j?.ignored_invalid ?? 0));
-    const parts = [`Import terminé : ${inserted} contact(s) ajouté(s).`];
-    if (skippedDuplicates > 0) parts.push(`${skippedDuplicates} doublon${skippedDuplicates > 1 ? "s" : ""} ignoré${skippedDuplicates > 1 ? "s" : ""} dans le fichier.`);
-    if (skippedExisting > 0) parts.push(`${skippedExisting} email${skippedExisting > 1 ? "s" : ""} déjà présent${skippedExisting > 1 ? "s" : ""} ignoré${skippedExisting > 1 ? "s" : ""}.`);
-    if (ignoredInvalid > 0) parts.push(`${ignoredInvalid} ligne${ignoredInvalid > 1 ? "s" : ""} invalide${ignoredInvalid > 1 ? "s" : ""} ignorée${ignoredInvalid > 1 ? "s" : ""}.`);
-    setSuccess(parts.join(" "));
-  } catch (e: any) {
-    setError(getSimpleFrenchErrorMessage(e, "Import impossible."));
-  } finally {
-    setImporting(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-}
-
-async function handleImportFile(file: File) {
-  const name = (file?.name || "").toLowerCase();
-
-  if (name.endsWith(".json")) {
-    const text = await file.text();
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) throw new Error("Le JSON doit être un tableau de contacts.");
-    await importContacts(parsed);
-    return;
-  }
-
-  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
-    const XLSX = await loadXlsxModule();
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
-    const firstSheetName = workbook.SheetNames?.[0];
-    if (!firstSheetName) throw new Error("Le fichier Excel est vide.");
-    const firstSheet = workbook.Sheets[firstSheetName];
-    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
-    await importContacts(rows);
-    return;
-  }
-
-  const text = await file.text();
-  const rows = parseCsv(text);
-  await importContacts(rows);
-}
-
-const triggerImport = () => fileInputRef.current?.click();
-
-const fetchAllContactsForCurrentQuery = useCallback(async () => {
-  const params = new URLSearchParams({ all: "1" });
-  if (serverQuery) params.set("q", serverQuery);
-  if (categoryFilter) params.set("category", categoryFilter);
-  if (typeFilter) params.set("contactType", typeFilter);
-  if (departmentFilter.trim()) params.set("department", departmentFilter.trim());
-  if (importantOnly) params.set("important", "1");
-
-  const r = await fetch(`/api/crm/contacts?${params.toString()}`, { method: "GET" });
-  if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Export impossible."));
-  const j = await r.json().catch(() => ({}));
-  const base = Array.isArray(j?.contacts) ? j.contacts : [];
-  return base.map((contact: CrmContact) => mergeContactWithLocalState(contact));
-}, [mergeContactWithLocalState, serverQuery, categoryFilter, typeFilter, departmentFilter, importantOnly]);
-
-const buildExportRows = useCallback(
-  (rows: CrmContact[]) =>
-    rows.map((c) => ({
-      display_name: buildDisplayName(c),
-      last_name: c.last_name ?? "",
-      first_name: c.first_name ?? "",
-      company_name: c.company_name ?? "",
-      siret: c.siret ?? "",
-      email: c.email ?? "",
-      phone: c.phone ?? "",
-      address: c.address ?? "",
-      billing_address: c.billing_address ?? "",
-      delivery_address: c.delivery_address ?? "",
-      vat_number: c.vat_number ?? "",
-      city: c.city ?? "",
-      postal_code: c.postal_code ?? "",
-      category: c.category ?? "",
-      contact_type: c.contact_type ?? "",
-      notes: (c.notes ?? "") as string,
-      important: Boolean((c as any).important),
-    })),
-  [],
-);
-
-const getExportBaseFilename = () => `crm_inrcy_${new Date().toISOString().slice(0, 10)}`;
-
-const exportCsv = async () => {
-  setExportingFormat("csv");
-  setError(null);
-  try {
-    const exportedContacts = await fetchAllContactsForCurrentQuery();
-    const rows = buildExportRows(exportedContacts);
-    const csv = contactsToCsv(rows);
-    downloadTextFile(`${getExportBaseFilename()}.csv`, csv, "text/csv;charset=utf-8");
-  } catch (e: any) {
-    setError(getSimpleFrenchErrorMessage(e, "Export CSV impossible."));
-  } finally {
-    setExportingFormat("");
-  }
-};
-
-const exportExcel = async () => {
-  setExportingFormat("xlsx");
-  setError(null);
-  try {
-    const XLSX = await loadXlsxModule();
-    const exportedContacts = await fetchAllContactsForCurrentQuery();
-    const rows = buildExportRows(exportedContacts);
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    worksheet["!cols"] = [
-      { wch: 28 },
-      { wch: 24 },
-      { wch: 18 },
-      { wch: 24 },
-      { wch: 16 },
-      { wch: 28 },
-      { wch: 32 },
-      { wch: 32 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 12 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 36 },
-      { wch: 12 },
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Contacts CRM");
-    XLSX.writeFile(workbook, `${getExportBaseFilename()}.xlsx`, {
-      bookType: "xlsx",
-      compression: true,
-    });
-  } catch (e: any) {
-    setError(getSimpleFrenchErrorMessage(e, "Export Excel impossible."));
-  } finally {
-    setExportingFormat("");
-  }
-};
-
-  const sendMailToAction = () => {
-    if (actionRecipients.length === 0) return;
-
-    if (typeof window !== "undefined") {
-      try {
-        window.sessionStorage.setItem(
-          "inrcy_pending_mail_compose",
-          JSON.stringify({
-            to: actionEmails,
-            from: "crm",
-            contactId: primaryContact?.id || "",
-            contactName: primaryContact ? buildDisplayName(primaryContact) : "",
-            recipients: actionRecipients,
-            createdAt: Date.now(),
-          }),
-        );
-        const params = new URLSearchParams({ compose: "1", from: "crm", prefillStorage: "session" });
-        if (primaryContact?.id) params.set("contactId", primaryContact.id);
-        if (primaryContact) params.set("contactName", buildDisplayName(primaryContact));
-        router.push(`/dashboard/mails?${params.toString()}`);
-        return;
-      } catch {
-        // fallback URL prefill below
-      }
-    }
-
-    const params = new URLSearchParams({ compose: "1", to: actionEmails.join(","), from: "crm" });
-    if (primaryContact?.id) params.set("contactId", primaryContact.id);
-    if (primaryContact) params.set("contactName", buildDisplayName(primaryContact));
-    router.push(`/dashboard/mails?${params.toString()}`);
-  };
-
-  const sendMailToContact = (c: CrmContact) => {
-    const to = (c.email || "").trim();
-    if (!to) return;
-    const contactName = buildDisplayName(c);
-    const params = new URLSearchParams({ compose: "1", to, from: "crm" });
-    if (contactName) params.set("name", contactName);
-    router.push(`/dashboard/mails?${params.toString()}`);
-  };
-
-  const buildDocPrefillParams = (c: CrmContact) => {
-    const clientName = buildDisplayName(c);
-    const clientEmail = (c.email || "").trim();
-    const clientAddress = buildFullCrmAddress(c.address, c.postal_code, c.city);
-    const billingAddress = buildFullCrmAddress(c.billing_address || c.address, c.postal_code, c.city);
-    const deliveryAddress = buildFullCrmAddress(c.delivery_address || c.address, c.postal_code, c.city);
-    const params = new URLSearchParams();
-    if (clientName) params.set("clientName", clientName);
-    if (clientEmail) params.set("clientEmail", clientEmail);
-    if (clientAddress) params.set("clientAddress", clientAddress);
-    if ((c.siret || "").trim()) params.set("clientSiren", (c.siret || "").trim());
-    if ((c.vat_number || "").trim()) params.set("clientVatNumber", (c.vat_number || "").trim());
-    if ((c.billing_address || "").trim()) params.set("billingAddress", (c.billing_address || "").trim());
-    if ((c.delivery_address || "").trim()) params.set("deliveryAddress", (c.delivery_address || "").trim());
-    params.set("from", "crm");
-    params.set("contactId", c.id);
-    return params;
-  };
-
-  const goNewDevis = (c: CrmContact) => {
-    const params = buildDocPrefillParams(c);
-    router.push(`/dashboard/devis/new?${params.toString()}`);
-  };
-
-  const goNewFacture = (c: CrmContact) => {
-    const params = buildDocPrefillParams(c);
-    router.push(`/dashboard/factures/new?${params.toString()}`);
-  };
-
-  const goPlanifierIntervention = (c: CrmContact) => {
-    const q = new URLSearchParams();
-    q.set("action", "new");
-    q.set("contactId", c.id);
-    q.set("contactName", buildDisplayName(c));
-    if ((c.email || "").trim()) q.set("contactEmail", (c.email || "").trim());
-    if ((c.phone || "").trim()) q.set("contactPhone", (c.phone || "").trim());
-    if ((c.address || "").trim()) q.set("contactAddress", (c.address || "").trim());
-    if ((c.city || "").trim()) q.set("contactCity", (c.city || "").trim());
-    if ((c.postal_code || "").trim()) q.set("contactPostalCode", (c.postal_code || "").trim());
-    router.push(`/dashboard/agenda?${q.toString()}`);
-  };
-
 
   function startNew() {
     setEditingId(null);

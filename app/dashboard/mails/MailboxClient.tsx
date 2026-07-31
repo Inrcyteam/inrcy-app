@@ -165,139 +165,23 @@ import {
   type VideoFormat,
   type VideoPayload,
 } from "../booster/publier/publishModal.shared";
-
-type PublicationEditVideoState = {
-  file: File | null;
-  previewUrl: string;
-  name: string;
-  type: string;
-  size: number;
-  duration: number | null;
-  sourceMetadata: BoosterVideoSourceMetadata | null;
-  sourceVideo: VideoPayload | null;
-  transformedVariants: NonNullable<VideoPayload["transformedVariants"]>;
-  format: VideoFormat;
-  adaptationMode: VideoAdaptationMode;
-  preparation?: {
-    status: "idle" | "preparing" | "ready" | "error";
-    label: string;
-    detail?: string;
-  } | null;
-  preparing?: boolean;
-  removed?: boolean;
-};
-
-type CampaignDistributionNotice = {
-  queuedCount: number;
-  batchSize: number;
-  deferredReason: string;
-  extras: string[];
-  estimatedDurationMs: number | null;
-  estimatedCompletionAt: string | null;
-};
-
-function normalizeBoosterChannelKeyForVideo(value: string): BoosterChannelKey {
-  const channel = normalizeChannelKey(value);
-  return (channel || "inrcy_site") as BoosterChannelKey;
-}
-
-function attachmentToVideoPayload(att: any): VideoPayload | null {
-  const url = String(att?.publicUrl || att?.url || att?.videoUrl || "").trim();
-  if (!url) return null;
-  return {
-    name: String(att?.name || "video-inrcy.mp4"),
-    type: String(att?.type || "video/mp4"),
-    size: Number(att?.size || 0),
-    lastModified: Date.now(),
-    duration: Number.isFinite(Number(att?.duration))
-      ? Number(att.duration)
-      : null,
-    sourceMetadata: (att?.sourceMetadata ||
-      att?.source_metadata ||
-      null) as BoosterVideoSourceMetadata | null,
-    storagePath: String(att?.storagePath || att?.storage_path || ""),
-    publicUrl: url,
-    url,
-    transformedVariants: Array.isArray(att?.transformedVariants)
-      ? att.transformedVariants
-      : [],
-    ...(att?.sourceVideo || att?.source_video
-      ? { sourceVideo: att.sourceVideo || att.source_video }
-      : {}),
-  } as VideoPayload & { sourceVideo?: unknown };
-}
-
-function readPublicationVideoMetadata(
-  file: File,
-  previewUrl: string,
-): Promise<BoosterVideoSourceMetadata> {
-  return new Promise((resolve) => {
-    if (typeof document === "undefined") {
-      resolve({
-        width: null,
-        height: null,
-        duration: null,
-        size: file.size || 0,
-        type: file.type || "video/mp4",
-        ratio: null,
-        ratioLabel: "Ratio inconnu",
-        orientation: "unknown",
-        orientationLabel: "Orientation inconnue",
-      });
-      return;
-    }
-
-    const video = document.createElement("video");
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      const width = Number(video.videoWidth || 0) || null;
-      const height = Number(video.videoHeight || 0) || null;
-      const rawDuration = Number(video.duration || 0);
-      const duration =
-        Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
-      const ratio = width && height ? width / height : null;
-      const ratioLabel =
-        width && height ? `${width}:${height}` : "Ratio inconnu";
-      const orientation =
-        width && height
-          ? width > height
-            ? "horizontal"
-            : width < height
-              ? "vertical"
-              : "square"
-          : "unknown";
-      const orientationLabel =
-        orientation === "horizontal"
-          ? "Horizontale"
-          : orientation === "vertical"
-            ? "Verticale"
-            : orientation === "square"
-              ? "Carrée"
-              : "Orientation inconnue";
-      video.removeAttribute("src");
-      video.load();
-      resolve({
-        width,
-        height,
-        duration,
-        size: file.size || 0,
-        type: file.type || "video/mp4",
-        ratio,
-        ratioLabel,
-        orientation,
-        orientationLabel,
-      });
-    };
-    window.setTimeout(finish, 2600);
-    video.preload = "metadata";
-    video.onloadedmetadata = finish;
-    video.onerror = finish;
-    video.src = previewUrl;
-    video.load();
-  });
-}
+import {
+  attachmentToVideoPayload,
+  normalizeBoosterChannelKeyForVideo,
+  readPublicationVideoMetadata,
+  type CampaignDistributionNotice,
+  type PublicationEditVideoState,
+} from "./_lib/mailboxPublicationVideo.foundations";
+import {
+  asScheduledRecord,
+  contactDepartment,
+  inferTrackFromCampaign,
+  normalizeCampaignAttachments,
+  sanitizeCrmDepartmentFilter,
+  serializeComposeAttachments,
+  workflowDraftTargetFromSendItem,
+  type PendingTrack,
+} from "./_lib/mailboxComposeCampaign.foundations";
 
 export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
@@ -566,11 +450,6 @@ export default function MailboxClient() {
 
   // Optional tracking intent passed by Booster / Propulser / Fidéliser templates.
   // iNr'Send must only count items that are actually SENT.
-  type PendingTrack = {
-    kind: "booster" | "propulser" | "fideliser";
-    type: string;
-    payload: Record<string, any>;
-  };
   const [pendingTrack, setPendingTrack] = useState<PendingTrack | null>(null);
   type CampaignReuseMode = "reuse" | "resend";
 
@@ -653,37 +532,6 @@ export default function MailboxClient() {
     } finally {
       setAttachBusy(false);
     }
-  }
-
-  function serializeComposeAttachments(
-    input: ComposeAttachmentRef[] = composeAttachments,
-  ) {
-    return input
-      .map((att) => ({
-        bucket: String(att.bucket || "").trim(),
-        path: String(att.path || "").trim(),
-        name: String(
-          att.name || att.path?.split("/").pop() || "piece-jointe",
-        ).trim(),
-        type: att.type || null,
-        size: att.size ?? null,
-      }))
-      .filter((att) => att.bucket && att.path && att.name);
-  }
-
-  function sanitizeCrmDepartmentFilter(value: string) {
-    return String(value || "")
-      .trim()
-      .replace(/\s+/g, "")
-      .toUpperCase()
-      .replace(/[^0-9AB]/g, "")
-      .slice(0, 3);
-  }
-
-  function contactDepartment(postalCode: string | null) {
-    const cleaned = sanitizeCrmDepartmentFilter(postalCode || "");
-    if (/^(97|98)\d/.test(cleaned)) return cleaned.slice(0, 3);
-    return cleaned.slice(0, 2);
   }
 
   // Recherche dans l'historique iNr'Send
@@ -820,12 +668,6 @@ export default function MailboxClient() {
     setLastSavedComposeSnapshot(makeComposeSnapshot());
   }
 
-  function asScheduledRecord(value: unknown): Record<string, any> {
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, any>)
-      : {};
-  }
-
   function buildScheduledMailEditPayload(scheduledAt?: string | null) {
     if (!scheduledMailEdit) return null;
     if (!selectedAccount) {
@@ -862,7 +704,7 @@ export default function MailboxClient() {
           display_name: hint?.display_name || crmContact?.display_name || null,
         };
       }),
-      attachments: serializeComposeAttachments(),
+      attachments: serializeComposeAttachments(composeAttachments),
       sourceDocSaveId: composeSourceDocSaveId || undefined,
       sourceDocType: composeSourceDocType || undefined,
       sourceDocNumber: composeSourceDocNumber || undefined,
@@ -994,199 +836,6 @@ export default function MailboxClient() {
     setComposeAttachments([]);
     setComposeRecipientHints([]);
     setCrmPickerOpen(false);
-  }
-
-  function inferTrackFromCampaign(item: OutboxItem): PendingTrack | null {
-    if (!item || item.source !== "mail_campaigns") return null;
-    const raw = ((item as any).raw || {}) as Record<string, any>;
-    const rawKind = String(raw.track_kind || item.module || "")
-      .trim()
-      .toLowerCase();
-    const rawType = String(raw.track_type || "")
-      .trim()
-      .toLowerCase();
-    const folderName = String(item.folder || raw.folder || "")
-      .trim()
-      .toLowerCase();
-
-    if (
-      (rawKind === "booster" ||
-        rawKind === "propulser" ||
-        rawKind === "fideliser") &&
-      rawType
-    ) {
-      return {
-        kind: rawKind as "booster" | "propulser" | "fideliser",
-        type: rawType,
-        payload: {},
-      };
-    }
-
-    if (rawType === "review_mail" || folderName === "recoltes") {
-      return { kind: "propulser", type: "review_mail", payload: {} };
-    }
-    if (rawType === "promo_mail" || folderName === "offres") {
-      return { kind: "propulser", type: "promo_mail", payload: {} };
-    }
-    if (rawType === "newsletter_mail" || folderName === "informations") {
-      return { kind: "fideliser", type: "newsletter_mail", payload: {} };
-    }
-    if (rawType === "thanks_mail" || folderName === "suivis") {
-      return { kind: "fideliser", type: "thanks_mail", payload: {} };
-    }
-    if (rawType === "satisfaction_mail" || folderName === "enquetes") {
-      return { kind: "fideliser", type: "satisfaction_mail", payload: {} };
-    }
-
-    return null;
-  }
-
-  function normalizeCampaignAttachments(
-    input: unknown,
-  ): ComposeAttachmentRef[] {
-    let values: unknown = input;
-    if (typeof values === "string") {
-      try {
-        values = JSON.parse(values);
-      } catch {
-        values = [];
-      }
-    }
-    const rows = Array.isArray(values) ? values : [];
-    return rows
-      .map((attachment: any) => {
-        const bucket = String(attachment?.bucket || "").trim();
-        const path = String(attachment?.path || "").trim();
-        const name = String(
-          attachment?.name ||
-            attachment?.filename ||
-            attachment?.fileName ||
-            path.split("/").pop() ||
-            "",
-        ).trim();
-        if (!bucket || !path || !name) return null;
-        return {
-          bucket,
-          path,
-          name,
-          type:
-            attachment?.type ||
-            attachment?.mime_type ||
-            attachment?.mimeType ||
-            null,
-          size:
-            attachment?.size == null ? null : Number(attachment.size) || null,
-        } satisfies ComposeAttachmentRef;
-      })
-      .filter(Boolean) as ComposeAttachmentRef[];
-  }
-
-  function workflowDraftTargetFromSendItem(
-    item: OutboxItem,
-    raw: Record<string, any>,
-  ) {
-    const trackKind = String(raw.track_kind || item.module || "")
-      .trim()
-      .toLowerCase();
-    const trackType = String(raw.track_type || "")
-      .trim()
-      .toLowerCase();
-    const folderName = String(raw.folder || item.folder || "")
-      .trim()
-      .toLowerCase();
-    const workflowAction = String((item as any).workflowAction || "")
-      .trim()
-      .toLowerCase();
-
-    const byTrackType: Record<
-      string,
-      {
-        kind: "propulser" | "fideliser";
-        action: string;
-        folder: string;
-        trackType: string;
-      }
-    > = {
-      valorize: {
-        kind: "propulser",
-        action: "valorize",
-        folder: "propulsions",
-        trackType: "valorize",
-      },
-      review_mail: {
-        kind: "propulser",
-        action: "reviews",
-        folder: "propulsions",
-        trackType: "review_mail",
-      },
-      promo_mail: {
-        kind: "propulser",
-        action: "promo",
-        folder: "propulsions",
-        trackType: "promo_mail",
-      },
-      newsletter_mail: {
-        kind: "fideliser",
-        action: "inform",
-        folder: "fidelisations",
-        trackType: "newsletter_mail",
-      },
-      thanks_mail: {
-        kind: "fideliser",
-        action: "thanks",
-        folder: "fidelisations",
-        trackType: "thanks_mail",
-      },
-      satisfaction_mail: {
-        kind: "fideliser",
-        action: "satisfaction",
-        folder: "fidelisations",
-        trackType: "satisfaction_mail",
-      },
-    };
-
-    const byWorkflowAction: Record<
-      string,
-      {
-        kind: "propulser" | "fideliser";
-        action: string;
-        folder: string;
-        trackType: string;
-      }
-    > = {
-      valoriser: byTrackType.valorize,
-      recolter: byTrackType.review_mail,
-      offrir: byTrackType.promo_mail,
-      informer: byTrackType.newsletter_mail,
-      suivre: byTrackType.thanks_mail,
-      enqueter: byTrackType.satisfaction_mail,
-    };
-
-    const byLegacyFolder: Record<
-      string,
-      {
-        kind: "propulser" | "fideliser";
-        action: string;
-        folder: string;
-        trackType: string;
-      }
-    > = {
-      recoltes: byTrackType.review_mail,
-      offres: byTrackType.promo_mail,
-      informations: byTrackType.newsletter_mail,
-      suivis: byTrackType.thanks_mail,
-      enquetes: byTrackType.satisfaction_mail,
-    };
-
-    if (byTrackType[trackType]) return byTrackType[trackType];
-    if (byWorkflowAction[workflowAction])
-      return byWorkflowAction[workflowAction];
-    if (byLegacyFolder[folderName]) return byLegacyFolder[folderName];
-    if (trackKind === "propulser" || folderName === "propulsions")
-      return byTrackType.valorize;
-    if (trackKind === "fideliser" || folderName === "fidelisations")
-      return byTrackType.newsletter_mail;
-    return null;
   }
 
   function openWorkflowCampaignDraft(
@@ -2852,7 +2501,7 @@ export default function MailboxClient() {
       track_kind: pendingTrack?.kind || null,
       track_type: pendingTrack?.type || null,
       template_key: composeTemplateKey || null,
-      attachments: serializeComposeAttachments(),
+      attachments: serializeComposeAttachments(composeAttachments),
     };
 
     const legacyPayload = {
@@ -3273,7 +2922,7 @@ export default function MailboxClient() {
           display_name: hint?.display_name || crmContact?.display_name || null,
         };
       }),
-      attachments: serializeComposeAttachments(),
+      attachments: serializeComposeAttachments(composeAttachments),
       sourceDocSaveId: composeSourceDocSaveId || undefined,
       sourceDocType: composeSourceDocType || undefined,
       sourceDocNumber: composeSourceDocNumber || undefined,
@@ -3430,7 +3079,7 @@ export default function MailboxClient() {
                 hint?.display_name || crmContact?.display_name || null,
             };
           }),
-          attachments: serializeComposeAttachments(),
+          attachments: serializeComposeAttachments(composeAttachments),
           sourceDocSaveId: composeSourceDocSaveId || undefined,
           sourceDocType: composeSourceDocType || undefined,
           sourceDocNumber: composeSourceDocNumber || undefined,
@@ -3531,7 +3180,7 @@ export default function MailboxClient() {
         html: normalizeRichMailHtmlForSend(text, html),
         type: composeType,
         ...(draftId ? { sendItemId: draftId } : {}),
-        attachments: serializeComposeAttachments(),
+        attachments: serializeComposeAttachments(composeAttachments),
         sourceDocSaveId: composeSourceDocSaveId || undefined,
         sourceDocType: composeSourceDocType || undefined,
         sourceDocNumber: composeSourceDocNumber || undefined,

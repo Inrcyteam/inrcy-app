@@ -26,6 +26,19 @@ test("a versioned profile logo URL keeps the storage path and cache token", asyn
   assert.deepEqual(resolved, { logoPath: PATH, logoUrl: displayUrl });
 });
 
+
+test("legacy logo paths that still contain the bucket prefix are normalized", async () => {
+  const resolved = await resolveProfileLogoUrl(null as never, {
+    logo_path: `logos/${PATH}`,
+    logo_url: "",
+  });
+
+  assert.deepEqual(resolved, {
+    logoPath: PATH,
+    logoUrl: `/api/public/logo?path=${encodeURIComponent(PATH)}`,
+  });
+});
+
 test("logo versions are deterministic for a supplied timestamp", () => {
   assert.equal(createProfileLogoVersion(1_700_000_000_000), Math.trunc(1_700_000_000_000).toString(36));
 });

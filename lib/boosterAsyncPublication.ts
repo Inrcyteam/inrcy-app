@@ -2,6 +2,12 @@ import "server-only";
 
 import { completeExecutionIdempotencyLock, failExecutionIdempotencyLock } from "@/lib/executionIdempotency";
 import { syncPublicationWorkspaceContext } from "@/lib/mediaWorkspaceConsumption";
+import {
+  BOOSTER_PUBLICATION_CHANNEL_LABELS as CHANNEL_LABELS,
+  isBoosterPublicationChannel,
+  isBoosterPublishFailureRetryable,
+  type BoosterPublicationChannelKey,
+} from "@/lib/boosterPublicationPolicy";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const BOOSTER_ASYNC_JOB_EVENT_TYPE = "publish_async_job";
@@ -9,33 +15,10 @@ export const BOOSTER_ASYNC_CHANNEL_EVENT_TYPE = "publish_async_channel";
 export const BOOSTER_ASYNC_CHANNEL_SCOPE = "booster_publish_channel";
 export const BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS = 5 * 60 * 1000;
 
-export type BoosterAsyncChannelKey =
-  | "inrcy_site"
-  | "site_web"
-  | "inr_search"
-  | "gmb"
-  | "facebook"
-  | "instagram"
-  | "linkedin"
-  | "tiktok"
-  | "youtube_shorts"
-  | "pinterest";
+export type BoosterAsyncChannelKey = BoosterPublicationChannelKey;
 
 type JsonRecord = Record<string, unknown>;
 type AppEventPayloadRow = { id: string; payload: unknown };
-
-const CHANNEL_LABELS: Record<BoosterAsyncChannelKey, string> = {
-  inrcy_site: "Site iNrCy",
-  site_web: "Site web",
-  inr_search: "iNr'Search",
-  gmb: "Google Business",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  linkedin: "LinkedIn",
-  tiktok: "TikTok",
-  youtube_shorts: "YouTube",
-  pinterest: "Pinterest",
-};
 
 const TERMINAL_CHANNEL_STATUSES = new Set(["completed", "failed"]);
 
@@ -50,10 +33,8 @@ function cleanString(value: unknown) {
 }
 
 function asChannel(value: unknown): BoosterAsyncChannelKey | null {
-  const channel = cleanString(value) as BoosterAsyncChannelKey;
-  return Object.prototype.hasOwnProperty.call(CHANNEL_LABELS, channel)
-    ? channel
-    : null;
+  const channel = cleanString(value);
+  return isBoosterPublicationChannel(channel) ? channel : null;
 }
 
 export function buildAsyncPublicationSummary(
@@ -64,7 +45,11 @@ export function buildAsyncPublicationSummary(
     const value = asRecord(results[channel]);
     const ok = value.ok !== false;
     const code = cleanString(value.code) || null;
-    const retryable = !ok && value.retryable !== false;
+    const retryable = isBoosterPublishFailureRetryable({
+      ok,
+      code,
+      retryable: value.retryable,
+    });
     return {
       channel,
       label: CHANNEL_LABELS[channel],

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "../../dashboard.module.css";
+import localStyles from "./InrSearchSettingsContent.module.css";
 import StatusMessage from "../../_components/StatusMessage";
 
 const INR_SEARCH_PUBLIC_ORIGIN = ((process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, "") === "https://inrcy.com" ? "https://app.inrcy.com" : (process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, ""));
@@ -69,6 +70,10 @@ const cardStyle = {
   padding: 14,
   display: "grid",
   gap: 10,
+  minWidth: 0,
+  maxWidth: "100%",
+  overflow: "hidden",
+  boxSizing: "border-box",
 } as const;
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -327,52 +332,52 @@ export default function InrSearchSettingsContent({
               : "La page est en cours de synchronisation automatique.";
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
+    <div className={localStyles.root} style={{ display: "grid", gap: 14 }}>
       {error && feedbackAction !== "directory" ? <StatusMessage variant="error">{error}</StatusMessage> : null}
       {success && feedbackAction !== "directory" ? <StatusMessage variant="success">{success}</StatusMessage> : null}
 
-      <div style={{ ...cardStyle, gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "grid", gap: 5, flex: "1 1 280px" }}>
+      <div className={localStyles.card} style={{ ...cardStyle, gap: 12 }}>
+        <div className={localStyles.headerRow} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div className={localStyles.headerCopy} style={{ display: "grid", gap: 5, flex: "1 1 280px" }}>
             <div className={styles.blockTitle}>Page publique iNr&apos;Search</div>
-            <div className={styles.smallMuted}>
+            <div className={`${styles.smallMuted} ${localStyles.muted}`}>
               iNrCy transforme les informations du professionnel en une présence publique claire, vivante et exploitable par les moteurs de recherche.
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className={localStyles.headerActions} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button type="button" aria-label="Comprendre iNr’Search" onClick={() => setHelperOpen(true)} style={{ width: 30, height: 30, borderRadius: 999, border: "1px solid rgba(167,139,250,.55)", background: "rgba(99,102,241,.18)", color: "#ddd6fe", fontWeight: 950, cursor: "pointer" }}>?</button>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minHeight: 30, padding: "0 11px", borderRadius: 999, border: `1px solid ${isPublished ? "rgba(34,197,94,.38)" : "rgba(148,163,184,.28)"}`, background: isPublished ? "rgba(34,197,94,.10)" : "rgba(148,163,184,.08)", color: isPublished ? "#86efac" : "rgba(226,232,240,.76)", fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" }}>
+            <span className={`${localStyles.statusPill}`} style={{ display: "inline-flex", alignItems: "center", gap: 7, minHeight: 30, padding: "0 11px", borderRadius: 999, border: `1px solid ${isPublished ? "rgba(34,197,94,.38)" : "rgba(148,163,184,.28)"}`, background: isPublished ? "rgba(34,197,94,.10)" : "rgba(148,163,184,.08)", color: isPublished ? "#86efac" : "rgba(226,232,240,.76)", fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" }}>
               <span aria-hidden style={{ width: 7, height: 7, borderRadius: 999, background: isPublished ? "#22c55e" : "#94a3b8" }} />
               {publicationLabel}
             </span>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div className={localStyles.actionRow} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button className={isPublished ? `${styles.actionBtn} ${styles.disconnectBtn}` : styles.primaryBtn} type="button" disabled={loading || actionLoading || !hasPage} onClick={() => { if (isPublished) setDisconnectConfirmOpen(true); else void performAction("connect"); }}>
             {actionLoading && feedbackAction !== "directory" ? "Mise à jour…" : isPublished ? "Déconnecter" : "Connecter"}
           </button>
-          <span className={styles.smallMuted}>{isPublished ? "Votre page est publique et peut être référencée." : "Connectez la page pour activer sa visibilité SEO."}</span>
+          <span className={`${styles.smallMuted} ${localStyles.muted}`}>{isPublished ? "Votre page est publique et peut être référencée." : "Connectez la page pour activer sa visibilité SEO."}</span>
         </div>
       </div>
 
-      <div style={cardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "grid", gap: 5 }}>
+      <div className={localStyles.card} style={cardStyle}>
+        <div className={localStyles.headerRow} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div className={localStyles.headerCopy} style={{ display: "grid", gap: 5 }}>
             <div className={styles.blockTitle}>Annuaire public iNrCy</div>
-            <div className={styles.smallMuted}>Choisissez si votre page publique doit aussi être proposée aux internautes dans l’annuaire iNrCy.</div>
+            <div className={`${styles.smallMuted} ${localStyles.muted}`}>Choisissez si votre page publique doit aussi être proposée aux internautes dans l’annuaire iNrCy.</div>
           </div>
           <span style={{ color: settings.directoryEnabled && isPublished ? "#86efac" : "rgba(226,232,240,.68)", fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" }}>{settings.directoryEnabled && isPublished ? "Visible dans l’annuaire" : "Hors annuaire"}</span>
         </div>
-        <button type="button" disabled={!isPublished || actionLoading} aria-pressed={Boolean(settings.directoryEnabled && isPublished)} onClick={() => void performAction("directory", !settings.directoryEnabled)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid ${settings.directoryEnabled && isPublished ? "rgba(34,197,94,.42)" : "rgba(255,255,255,.12)"}`, background: settings.directoryEnabled && isPublished ? "rgba(34,197,94,.10)" : "rgba(15,23,42,.52)", color: "inherit", textAlign: "left", cursor: isPublished ? "pointer" : "not-allowed", opacity: isPublished ? 1 : .62 }}>
-          <span style={{ display: "grid", gap: 3 }}>
+        <button className={localStyles.directoryButton} type="button" disabled={!isPublished || actionLoading} aria-pressed={Boolean(settings.directoryEnabled && isPublished)} onClick={() => void performAction("directory", !settings.directoryEnabled)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid ${settings.directoryEnabled && isPublished ? "rgba(34,197,94,.42)" : "rgba(255,255,255,.12)"}`, background: settings.directoryEnabled && isPublished ? "rgba(34,197,94,.10)" : "rgba(15,23,42,.52)", color: "inherit", textAlign: "left", cursor: isPublished ? "pointer" : "not-allowed", opacity: isPublished ? 1 : .62 }}>
+          <span className={localStyles.directoryCopy} style={{ display: "grid", gap: 3 }}>
             <strong>{settings.directoryEnabled && isPublished ? "Page ajoutée à l’annuaire iNrCy" : "Ajouter ma page à l’annuaire iNrCy"}</strong>
-            <span className={styles.smallMuted}>{isPublished ? "Vous pouvez modifier ce choix à tout moment." : "Connectez d’abord votre page iNr’Search."}</span>
+            <span className={`${styles.smallMuted} ${localStyles.muted}`}>{isPublished ? "Vous pouvez modifier ce choix à tout moment." : "Connectez d’abord votre page iNr’Search."}</span>
           </span>
          <span aria-hidden style={{ width: 38, height: 22, padding: 3, borderRadius: 999, background: settings.directoryEnabled && isPublished ? "#22c55e" : "rgba(148,163,184,.28)", flex: "0 0 auto" }}><span style={{ display: "block", width: 16, height: 16, borderRadius: 999, background: "#fff", transform: settings.directoryEnabled && isPublished ? "translateX(16px)" : "translateX(0)", transition: "transform .18s ease" }} /></span>
         </button>
         {feedbackAction === "directory" && actionLoading ? (
-          <div role="status" aria-live="polite" className={styles.smallMuted} style={{ border: "1px solid rgba(167,139,250,.28)", borderRadius: 10, padding: "9px 11px", color: "#ddd6fe" }}>
+          <div role="status" aria-live="polite" className={`${styles.smallMuted} ${localStyles.muted}`} style={{ border: "1px solid rgba(167,139,250,.28)", borderRadius: 10, padding: "9px 11px", color: "#ddd6fe" }}>
             Mise à jour de votre présence dans l’annuaire iNrCy…
           </div>
         ) : null}
@@ -380,15 +385,15 @@ export default function InrSearchSettingsContent({
         {feedbackAction === "directory" && success ? <StatusMessage variant="success">{success}</StatusMessage> : null}
       </div>
 
-      <div style={cardStyle}>
+      <div className={localStyles.card} style={cardStyle}>
         <div className={styles.blockTitle}>État de publication</div>
-        <div className={styles.smallMuted}>{loading ? "Création et synchronisation en cours…" : publicationMessage}</div>
+        <div className={`${styles.smallMuted} ${localStyles.muted}`}>{loading ? "Création et synchronisation en cours…" : publicationMessage}</div>
       </div>
 
       {publicUrl ? (
-        <div style={cardStyle}>
+        <div className={localStyles.card} style={cardStyle}>
           <div className={styles.blockTitle}>Adresse publique permanente</div>
-          <div style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.62)", borderRadius: 12, padding: "10px 12px", overflowWrap: "anywhere" }}>{publicUrl}</div>
+          <div className={localStyles.publicUrl} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.62)", borderRadius: 12, padding: "10px 12px", overflowWrap: "anywhere" }}>{publicUrl}</div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
             <button className={styles.ghostBtn} type="button" onClick={() => void load()} disabled={loading || actionLoading}>{loading ? "Synchronisation…" : "Actualiser"}</button>
             {isPublished ? <a className={styles.primaryBtn} href={previewUrl} target="_blank" rel="noreferrer">Voir ma page</a> : null}
@@ -400,11 +405,11 @@ export default function InrSearchSettingsContent({
         <div role="dialog" aria-modal="true" aria-labelledby="inrsearch-helper-title" style={{ position: "fixed", inset: 0, zIndex: 10050, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.76)" }}>
           <div style={{ width: "min(680px, 100%)", maxHeight: "min(760px, 90vh)", overflowY: "auto", border: "1px solid rgba(167,139,250,.35)", borderRadius: 18, padding: 20, background: "linear-gradient(145deg, #111827, #0b1020)", boxShadow: "0 30px 80px rgba(0,0,0,.45)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}><div id="inrsearch-helper-title" className={styles.blockTitle}>À quoi sert iNr&apos;Search ?</div><button className={styles.ghostBtn} type="button" onClick={() => setHelperOpen(false)}>Fermer</button></div>
-            <p className={styles.smallMuted} style={{ marginTop: 12 }}>iNr&apos;Search transforme automatiquement les informations déjà enregistrées dans iNrCy en une page professionnelle publique, conçue pour les internautes, Google, Bing et les moteurs de réponse IA.</p>
+            <p className={`${styles.smallMuted} ${localStyles.muted}`} style={{ marginTop: 12 }}>iNr&apos;Search transforme automatiquement les informations déjà enregistrées dans iNrCy en une page professionnelle publique, conçue pour les internautes, Google, Bing et les moteurs de réponse IA.</p>
             <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
-              {[ ["Référencement", "Titre, description, adresse et données structurées."], ["Moteurs IA", "Synthèse factuelle et source publique dédiée."], ["Activité", "Métier, prestations, clientèle et zones d’intervention."], ["Preuves", "Logo, photos, réalisations et publications disponibles."], ["iNr’Guide", "Réponses générées à partir des informations confirmées."], ["Conversion", "Téléphone, email, site, réseaux et formulaire de contact."] ].map(([title, text]) => <div key={title} style={{ border: "1px solid rgba(255,255,255,.10)", borderRadius: 12, padding: 12, background: "rgba(15,23,42,.64)", display: "grid", gap: 4 }}><strong>{title}</strong><span className={styles.smallMuted}>{text}</span></div>)}
+              {[ ["Référencement", "Titre, description, adresse et données structurées."], ["Moteurs IA", "Synthèse factuelle et source publique dédiée."], ["Activité", "Métier, prestations, clientèle et zones d’intervention."], ["Preuves", "Logo, photos, réalisations et publications disponibles."], ["iNr’Guide", "Réponses générées à partir des informations confirmées."], ["Conversion", "Téléphone, email, site, réseaux et formulaire de contact."] ].map(([title, text]) => <div key={title} style={{ border: "1px solid rgba(255,255,255,.10)", borderRadius: 12, padding: 12, background: "rgba(15,23,42,.64)", display: "grid", gap: 4 }}><strong>{title}</strong><span className={`${styles.smallMuted} ${localStyles.muted}`}>{text}</span></div>)}
             </div>
-            <p className={styles.smallMuted} style={{ marginBottom: 0, marginTop: 14 }}>Aucune rubrique n’est à recopier : la page évolue lorsque les informations du profil, de l’activité, des médias ou des publications évoluent.</p>
+            <p className={`${styles.smallMuted} ${localStyles.muted}`} style={{ marginBottom: 0, marginTop: 14 }}>Aucune rubrique n’est à recopier : la page évolue lorsque les informations du profil, de l’activité, des médias ou des publications évoluent.</p>
           </div>
         </div>
       ) : null}
@@ -413,7 +418,7 @@ export default function InrSearchSettingsContent({
         <div role="dialog" aria-modal="true" aria-labelledby="inrsearch-disconnect-title" style={{ position: "fixed", inset: 0, zIndex: 10051, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.78)" }}>
           <div style={{ width: "min(520px, 100%)", border: "1px solid rgba(248,113,113,.38)", borderRadius: 18, padding: 20, background: "#11131b", boxShadow: "0 30px 80px rgba(0,0,0,.48)" }}>
             <div id="inrsearch-disconnect-title" className={styles.blockTitle}>Déconnecter votre page iNr&apos;Search ?</div>
-            <p className={styles.smallMuted} style={{ lineHeight: 1.6 }}>Votre page sera retirée de l’annuaire public et sa désindexation sera demandée progressivement à Google, Bing et aux moteurs de recherche IA. Le référencement et les signaux de visibilité obtenus pourront être perdus. Une reconnexion ne garantit pas un retour immédiat dans les résultats.</p>
+            <p className={`${styles.smallMuted} ${localStyles.muted}`} style={{ lineHeight: 1.6 }}>Votre page sera retirée de l’annuaire public et sa désindexation sera demandée progressivement à Google, Bing et aux moteurs de recherche IA. Le référencement et les signaux de visibilité obtenus pourront être perdus. Une reconnexion ne garantit pas un retour immédiat dans les résultats.</p>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}><button className={styles.ghostBtn} type="button" onClick={() => setDisconnectConfirmOpen(false)}>Annuler</button><button className={`${styles.actionBtn} ${styles.disconnectBtn}`} type="button" onClick={() => { setDisconnectConfirmOpen(false); void performAction("disconnect"); }}>Déconnecter quand même</button></div>
           </div>
         </div>

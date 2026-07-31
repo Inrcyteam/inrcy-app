@@ -870,8 +870,14 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
   }>;
 
   return (
-    <main
-      className={styles.page}
+    <>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: "html,body{background:#050b2b!important;color-scheme:dark;overscroll-behavior:none}",
+        }}
+      />
+      <main
+        className={styles.page}
       data-inrsearch-page
       data-visual-theme={visualTheme}
       data-motion="full"
@@ -1211,6 +1217,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
         ) : null}
       </div>
 
-    </main>
+      </main>
+    </>
   );
 }

@@ -80,7 +80,11 @@ const trackingApi = read("app/api/inr-search/track/route.ts");
 const provisioningLib = read("lib/inrSearchProvisioning.ts");
 const eligibilityLib = read("lib/inrSearchEligibility.ts");
 const settingsUi = read("app/dashboard/settings/_components/InrSearchSettingsContent.tsx");
-const statsClient = read("app/dashboard/stats/StatsClient.tsx");
+const statsClient = [
+  read("app/dashboard/stats/StatsClient.tsx"),
+  read("app/dashboard/stats/stats.client-foundations.ts"),
+  read("app/dashboard/stats/stats.client-hooks.ts"),
+].join("\n");
 const seoLib = read("lib/inrSearchSeo.ts");
 const templates = read("lib/messageTemplates.ts");
 const sitemap = read("app/sitemap.ts");

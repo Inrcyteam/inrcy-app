@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+const modal = read("app/dashboard/mails/_components/MailboxDetailsModal.tsx");
+const foundations = read("app/dashboard/mails/_lib/mailboxDetails.foundations.ts");
+
+test("MailboxDetailsModal delegates pure contracts to its foundations module", () => {
+  assert.match(modal, /from "\.\.\/_lib\/mailboxDetails\.foundations"/);
+  assert.doesNotMatch(modal, /function getTiktokStatusMeta\(/);
+  assert.doesNotMatch(modal, /type MailboxDetailsModalProps =/);
+  assert.match(foundations, /export function getTiktokStatusMeta\(/);
+  assert.match(foundations, /export type MailboxDetailsModalProps =/);
+});
+
+test("mailbox details foundations stay free of component and network side effects", () => {
+  assert.match(foundations, /export function isCampaignFinishedStatus\(/);
+  assert.match(foundations, /export function getYoutubeShortsPublicationUrl\(/);
+  assert.doesNotMatch(foundations, /\bfetch\s*\(/);
+  assert.doesNotMatch(foundations, /createClient\s*\(/);
+  assert.doesNotMatch(foundations, /\bsupabase\b/i);
+  assert.doesNotMatch(foundations, /\buse(?:State|Effect|Memo|Callback|Ref)\b/);
+});
