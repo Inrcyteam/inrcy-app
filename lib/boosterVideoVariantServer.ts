@@ -26,7 +26,7 @@ const BOOSTER_BUCKET = "booster";
 const MAX_VARIANTS_PER_REQUEST = 8;
 const OUTPUT_CONTENT_TYPE = "video/mp4";
 const FFMPEG_TRANSFORM_TIMEOUT_MS = 90000;
-const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 2;
+const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 3;
 
 type CachedVideoVariantRow = {
   id: string;
@@ -231,8 +231,9 @@ function buildFilter(plan: BoosterVideoTransformVariantPlan) {
     return `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,format=yuv420p[v]`;
   }
   return [
-    `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fg]`,
-    `color=c=0x0f172a:s=${w}x${h}:r=30[bg]`,
+    `[0:v]split=2[bgsrc][fgsrc]`,
+    `[bgsrc]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=20:2,eq=brightness=-0.08:saturation=0.90,setsar=1[bg]`,
+    `[fgsrc]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fg]`,
     `[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[v]`,
   ].join(";");
 }

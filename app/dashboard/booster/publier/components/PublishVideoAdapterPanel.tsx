@@ -3,7 +3,6 @@ import BoosterVideoFormatManager, {
   type BoosterVideoPreparationState,
 } from "./BoosterVideoFormatManager";
 import {
-  getRecommendedVideoFormatForSource,
   type BoosterVideoSourceMetadata,
   type ChannelKey,
   type ChannelMediaMode,
@@ -70,8 +69,7 @@ export default function PublishVideoAdapterPanel({
   }
 
   const currentFormat =
-    videoFormatByChannel[activeChannel] ||
-    getRecommendedVideoFormatForSource(activeChannel, videoSourceMetadata);
+    videoFormatByChannel[activeChannel] || "original";
   const adaptationMode = videoAdaptationModeByChannel[activeChannel] || "safe_blur";
   const preparationState = videoVariantPreparationByChannel[activeChannel] || null;
 

@@ -777,7 +777,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             type: activeVideoDisplayAttachment.type || "video/mp4",
                             size: activeVideoDisplayAttachment.size || null,
                             duration: (activeVideoDisplayAttachment as any).duration || null,
-                            aspectRatio: activeVideoSettings ? getVideoPreviewAspectRatio(activeVideoSettings.format as any) : null,
+                            aspectRatio: activeVideoSettings
+                              ? getVideoPreviewAspectRatio(activeVideoSettings.format as any, activeVideoSourceMetadata as any)
+                              : null,
                             fitMode: activeVideoSettings ? getVideoPreviewFitMode(activeVideoSettings.adaptationMode as any) : null,
                           }
                         : null,

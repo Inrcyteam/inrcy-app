@@ -142,9 +142,11 @@ export default function BoosterVideoFormatManager({
   const aspectRatio = getVideoPreviewAspectRatio(currentFormat, videoSourceMetadata);
   const signature = buildVideoTransformSignature(currentFormat, adaptationMode);
   const exactPreparedVariant = videoTransformedVariants.find((variant) => variant.signature === signature);
-  const channelPreparedVariant = videoTransformedVariants.find((variant) => variant.channel === channel);
   const preparedVariant = exactPreparedVariant || null;
-  const appliedFormat = exactPreparedVariant?.format || channelPreparedVariant?.format || smartRecommendedFormat;
+  // An old variant for the same channel is not proof that the pro selected it
+  // for this publication. Original remains active until an exact applied
+  // signature exists.
+  const appliedFormat = exactPreparedVariant?.format || "original";
   const hasPendingFormat = currentFormat !== appliedFormat;
   const displayUrl = String(preparedVariant?.publicUrl || preparedVariant?.url || "").trim() || videoDisplayUrl;
   const isApplied = Boolean(preparedVariant?.publicUrl || preparedVariant?.url);

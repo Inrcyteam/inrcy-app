@@ -684,9 +684,12 @@ export default function PublishImagesPanel({
                         zoom: 1,
                         offsetX: 0,
                         offsetY: 0,
-                        blurBackground: false,
-                        backgroundMode: "color" as const,
-                        backgroundColor: "#ffffff",
+                        blurBackground: displayPlan.automaticFit === "contain",
+                        backgroundMode:
+                          displayPlan.automaticFit === "contain"
+                            ? ("blur" as const)
+                            : ("black" as const),
+                        backgroundColor: undefined,
                       };
                     }
                     return {

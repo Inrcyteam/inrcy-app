@@ -37,7 +37,7 @@ export const VIDEO_FORMAT_ASPECT_RATIOS: Record<VideoFormat, string> = {
 };
 
 export const VIDEO_ADAPTATION_MODE_LABELS: Record<VideoAdaptationMode, string> = {
-  safe_blur: "Cadre sobre sécurisé",
+  safe_blur: "Fond flouté sécurisé",
   cover_crop: "Recadrer plein écran",
 };
 
@@ -75,7 +75,8 @@ export function normalizeVideoFormat(channel: BoosterVideoChannelKey, value: unk
   const raw = String(value || "").trim() as VideoFormat;
   const allowed = VIDEO_FORMAT_OPTIONS_BY_CHANNEL[channel] || [];
   if (allowed.includes(raw)) return raw;
-  return VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL[channel] || "original";
+  // Missing/invalid settings must never trigger an implicit reframe.
+  return "original";
 }
 
 export function normalizeVideoAdaptationMode(value: unknown): VideoAdaptationMode {
@@ -119,9 +120,16 @@ export function getVideoFormatLabel(channel: BoosterVideoChannelKey, format: Vid
   return normalized === recommended ? `${label} recommandé` : label;
 }
 
-export function getDefaultChannelVideoSettings(channel: BoosterVideoChannelKey, sourceMetadata?: VideoSourceMetadataLike): ChannelVideoSettings {
+export function getDefaultChannelVideoSettings(
+  channel: BoosterVideoChannelKey,
+  sourceMetadata?: VideoSourceMetadataLike,
+): ChannelVideoSettings {
+  // Original-first: recommendations remain visible in the Adapter, but no
+  // transform is selected until the pro explicitly chooses and applies one.
+  void channel;
+  void sourceMetadata;
   return {
-    format: getRecommendedVideoFormatForSource(channel, sourceMetadata),
+    format: "original",
     adaptationMode: "safe_blur",
   };
 }
@@ -138,9 +146,8 @@ export function normalizeChannelVideoSettings(
   sourceMetadata?: VideoSourceMetadataLike,
 ): ChannelVideoSettings {
   const node = readChannelSettingNode(value);
-  const recommendedFormat = getRecommendedVideoFormatForSource(channel, sourceMetadata);
   return {
-    format: normalizeVideoFormat(channel, node?.format ?? fallbackFormat ?? recommendedFormat),
+    format: normalizeVideoFormat(channel, node?.format ?? fallbackFormat ?? "original"),
     adaptationMode: normalizeVideoAdaptationMode(node?.adaptationMode ?? node?.fitMode ?? fallbackAdaptationMode),
   };
 }
@@ -187,8 +194,17 @@ export function splitVideoSettingsByChannel(settings: VideoSettingsByChannel): {
   );
 }
 
-export function getVideoPreviewAspectRatio(format: VideoFormat | null | undefined): string {
-  return VIDEO_FORMAT_ASPECT_RATIOS[format || "original"] || VIDEO_FORMAT_ASPECT_RATIOS.original;
+export function getVideoPreviewAspectRatio(
+  format: VideoFormat | null | undefined,
+  sourceMetadata?: VideoSourceMetadataLike,
+): string {
+  const normalized = format || "original";
+  const width = Number(sourceMetadata?.width || 0);
+  const height = Number(sourceMetadata?.height || 0);
+  if (normalized === "original" && Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return `${width} / ${height}`;
+  }
+  return VIDEO_FORMAT_ASPECT_RATIOS[normalized] || VIDEO_FORMAT_ASPECT_RATIOS.original;
 }
 
 export function getVideoPreviewFitMode(mode: VideoAdaptationMode | null | undefined): "contain" | "cover" {

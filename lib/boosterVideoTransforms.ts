@@ -6,8 +6,8 @@ import {
   type BoosterVideoChannelKey,
   type VideoAdaptationMode,
   type VideoFormat,
-} from "@/lib/boosterVideoSettings";
-import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
+} from "./boosterVideoSettings.ts";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "./mediaRules.ts";
 
 export type BoosterVideoTransformTarget = {
   format: VideoFormat;
@@ -250,10 +250,16 @@ export function getVariantForChannel(
   adaptationMode: VideoAdaptationMode,
 ) {
   const signature = buildVideoTransformSignature(format, adaptationMode);
+  const exact = (variants || []).find(
+    (variant) => variant.signature === signature,
+  );
+  if (exact) return exact;
+  // Never reuse an old channel-specific crop when the requested policy is
+  // Original. Legacy fallback is allowed only for unsigned adapted variants.
+  if (format === "original") return null;
   return (
     (variants || []).find(
-      (variant) =>
-        variant.signature === signature || variant.channel === channel,
+      (variant) => !variant.signature && variant.channel === channel,
     ) || null
   );
 }

@@ -8,6 +8,7 @@ import { saveWorkflowCampaignState } from "@/app/dashboard/_lib/workflowCampaign
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -129,6 +130,19 @@ import {
 } from "./_lib/mailboxPhase1";
 
 import {
+  MAILBOX_HISTORY_PREFETCH_CONCURRENCY,
+  buildMailboxHistoryPreloadPlan,
+  isMailboxHistorySnapshotFresh,
+  mailboxHistoryContextKey,
+  mailboxHistoryGroupKey,
+  mailboxHistoryPageCount,
+  mailboxHistoryPageKey,
+  normalizeMailboxHistoryQuery,
+  type MailboxHistoryContext,
+  type MailboxHistorySnapshot,
+} from "./_lib/mailboxHistoryPreload";
+
+import {
   MAILBOX_FILE_INPUT_ID,
   PUBLICATION_EDIT_FILE_INPUT_ID,
   itemMailAccountId,
@@ -153,7 +167,6 @@ import {
   BOOSTER_MAX_VIDEO_MB_LABEL,
   uploadBoosterVideo,
   VIDEO_ADAPTATION_MODE_LABELS,
-  getRecommendedVideoFormatForSource,
   getVideoFormatLabel,
   isUnsupportedBrowserImageFile,
   unsupportedBrowserImageMessage,
@@ -232,6 +245,21 @@ export default function MailboxClient() {
   const [draftFolderCounts, setDraftFolderCounts] = useState<FolderCounts>(() =>
     initialHistorySnapshot?.draftFolderCounts ?? emptyFolderCounts(),
   );
+  const historyCacheRef = useRef<Map<string, MailboxHistorySnapshot<OutboxItem>>>(new Map());
+  const historyInFlightRef = useRef<Map<string, Promise<MailboxHistorySnapshot<OutboxItem> | null>>>(new Map());
+  const historyDisplayedContextKeyRef = useRef(
+    initialHistorySnapshot
+      ? mailboxHistoryContextKey({
+          folder: "publications",
+          boxView: "sent",
+          filterAccountId: "",
+          query: "",
+        })
+      : "",
+  );
+  const historyPreloadGenerationRef = useRef(0);
+  const historyPreloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialHistoryRefreshDoneRef = useRef(false);
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -544,6 +572,52 @@ export default function MailboxClient() {
   const [historyQuery, setHistoryQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const historySearchRef = useRef<HTMLInputElement | null>(null);
+
+  const activeHistoryContext = useMemo<MailboxHistoryContext>(() => ({
+    folder,
+    boxView,
+    filterAccountId,
+    query: normalizeMailboxHistoryQuery(historyQuery),
+  }), [boxView, filterAccountId, folder, historyQuery]);
+  const activeHistoryContextKey = useMemo(
+    () => mailboxHistoryContextKey(activeHistoryContext),
+    [activeHistoryContext],
+  );
+  const activeHistoryContextKeyRef = useRef(activeHistoryContextKey);
+
+  useLayoutEffect(() => {
+    activeHistoryContextKeyRef.current = activeHistoryContextKey;
+  }, [activeHistoryContextKey]);
+
+  useEffect(() => {
+    if (!initialHistorySnapshot) return;
+    const initialContext: MailboxHistoryContext = {
+      folder: "publications",
+      boxView: "sent",
+      filterAccountId: "",
+      query: "",
+    };
+    historyCacheRef.current.set(
+      mailboxHistoryPageKey(initialContext, initialHistorySnapshot.page),
+      {
+        items: initialHistorySnapshot.items,
+        page: initialHistorySnapshot.page,
+        total: initialHistorySnapshot.total,
+        hasMore: initialHistorySnapshot.hasMore,
+        folderCounts: initialHistorySnapshot.folderCounts,
+        draftFolderCounts: initialHistorySnapshot.draftFolderCounts,
+        fetchedAt: Date.now(),
+      },
+    );
+  }, [initialHistorySnapshot]);
+
+  useEffect(() => () => {
+    historyPreloadGenerationRef.current += 1;
+    if (historyPreloadTimerRef.current) {
+      clearTimeout(historyPreloadTimerRef.current);
+      historyPreloadTimerRef.current = null;
+    }
+  }, []);
 
   const filteredContacts = useMemo(() => {
     const q = crmFilter.trim().toLowerCase();
@@ -1063,31 +1137,77 @@ export default function MailboxClient() {
     }
   }
 
-  const loadHistory = useCallback(
-    async (options?: { page?: number; silent?: boolean }) => {
-      const targetPage = Math.max(
-        1,
-        options?.page ?? historyPageRef.current ?? 1,
-      );
+  const applyHistorySnapshot = useCallback((
+    context: MailboxHistoryContext,
+    snapshot: MailboxHistorySnapshot<OutboxItem>,
+  ) => {
+    const contextKey = mailboxHistoryContextKey(context);
+    if (activeHistoryContextKeyRef.current !== contextKey) return false;
 
-      if (!options?.silent) setLoading(true);
+    setItems(snapshot.items);
+    setHistoryPage(snapshot.page);
+    setHistoryHasMorePotential(snapshot.hasMore);
+    setHistoryTotalCount(snapshot.total);
+    if (snapshot.folderCounts) setFolderCounts(snapshot.folderCounts);
+    if (snapshot.draftFolderCounts) setDraftFolderCounts(snapshot.draftFolderCounts);
+    setSelectedId((previous) =>
+      snapshot.items.some((item) => item.id === previous)
+        ? previous
+        : (snapshot.items[0]?.id ?? null),
+    );
+    historyDisplayedContextKeyRef.current = contextKey;
+
+    const isDefaultSnapshot =
+      snapshot.page === 1 &&
+      context.folder === "publications" &&
+      context.boxView === "sent" &&
+      !context.filterAccountId &&
+      !context.query;
+    if (isDefaultSnapshot && snapshot.folderCounts && snapshot.draftFolderCounts) {
+      writeModuleSnapshot<InrSendDefaultSnapshot>(MODULE_SNAPSHOT_KEYS.inrSendDefault, {
+        items: snapshot.items,
+        page: snapshot.page,
+        total: snapshot.total,
+        hasMore: snapshot.hasMore,
+        folderCounts: snapshot.folderCounts,
+        draftFolderCounts: snapshot.draftFolderCounts,
+      });
+    }
+
+    return true;
+  }, []);
+
+  const fetchHistoryPage = useCallback(async (options: {
+    context: MailboxHistoryContext;
+    page: number;
+    includeCounts: boolean;
+    totalHint?: number | null;
+    folderCountsHint?: FolderCounts;
+    draftFolderCountsHint?: FolderCounts;
+  }): Promise<MailboxHistorySnapshot<OutboxItem> | null> => {
+    const targetPage = Math.max(1, Math.floor(options.page || 1));
+    const pageKey = mailboxHistoryPageKey(options.context, targetPage);
+    const requestKey = `${pageKey}|counts=${options.includeCounts ? "1" : "0"}`;
+    const existingRequest = historyInFlightRef.current.get(requestKey);
+    if (existingRequest) return existingRequest;
+
+    const request = (async () => {
       try {
         const params = new URLSearchParams();
         params.set("page", String(targetPage));
         params.set("pageSize", String(MAILBOX_PAGE_SIZE));
-        params.set("folder", folder);
-        params.set("boxView", boxView);
-        if (filterAccountId) params.set("filterAccountId", filterAccountId);
-        const trimmedQuery = historyQuery.trim();
-        if (trimmedQuery) params.set("q", trimmedQuery);
+        params.set("folder", options.context.folder);
+        params.set("boxView", options.context.boxView);
+        if (options.context.filterAccountId) {
+          params.set("filterAccountId", options.context.filterAccountId);
+        }
+        if (options.context.query) params.set("q", options.context.query);
+        if (!options.includeCounts) params.set("includeCounts", "0");
 
-        const response = await fetch(
-          `/api/inrsend/history?${params.toString()}`,
-          {
-            method: "GET",
-            cache: "no-store",
-          },
-        );
+        const response = await fetch(`/api/inrsend/history?${params.toString()}`, {
+          method: "GET",
+          cache: "no-store",
+        });
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
           throw new Error(
@@ -1098,57 +1218,183 @@ export default function MailboxClient() {
         const nextItems = Array.isArray(payload?.items)
           ? (payload.items as OutboxItem[])
           : [];
-        const nextTotal =
-          typeof payload?.total === "number"
-            ? Math.max(0, Number(payload.total))
+        const nextPage = typeof payload?.page === "number"
+          ? Math.max(1, Number(payload.page))
+          : targetPage;
+        const nextFolderCounts = payload?.folderCounts
+          ? normalizeFolderCounts(payload.folderCounts)
+          : options.folderCountsHint;
+        const nextDraftFolderCounts = payload?.draftFolderCounts
+          ? normalizeFolderCounts(payload.draftFolderCounts)
+          : options.draftFolderCountsHint;
+        const nextTotal = typeof payload?.total === "number"
+          ? Math.max(0, Number(payload.total))
+          : typeof options.totalHint === "number"
+            ? Math.max(0, Number(options.totalHint))
             : null;
-        const nextPage =
-          typeof payload?.page === "number"
-            ? Math.max(1, Number(payload.page))
-            : targetPage;
-        const nextCounts = normalizeFolderCounts(payload?.folderCounts);
-        const nextDraftCounts = normalizeFolderCounts(
-          payload?.draftFolderCounts,
-        );
+        const nextHasMore = nextTotal != null
+          ? nextPage < mailboxHistoryPageCount(nextTotal, MAILBOX_PAGE_SIZE)
+          : Boolean(payload?.hasMore);
 
-        setItems(nextItems);
-        setHistoryPage(nextPage);
-        setHistoryHasMorePotential(Boolean(payload?.hasMore));
-        setHistoryTotalCount(nextTotal);
-        setFolderCounts(nextCounts);
-        setDraftFolderCounts(nextDraftCounts);
-        setSelectedId((prev) =>
-          nextItems.some((item) => item.id === prev)
-            ? prev
-            : (nextItems[0]?.id ?? null),
-        );
-
-        const isDefaultSnapshot =
-          targetPage === 1 &&
-          folder === "publications" &&
-          boxView === "sent" &&
-          !filterAccountId &&
-          !trimmedQuery;
-        if (isDefaultSnapshot) {
-          writeModuleSnapshot<InrSendDefaultSnapshot>(MODULE_SNAPSHOT_KEYS.inrSendDefault, {
-            items: nextItems,
-            page: nextPage,
-            total: nextTotal,
-            hasMore: Boolean(payload?.hasMore),
-            folderCounts: nextCounts,
-            draftFolderCounts: nextDraftCounts,
-          });
-        }
-
-        return {
+        const snapshot: MailboxHistorySnapshot<OutboxItem> = {
           items: nextItems,
           page: nextPage,
           total: nextTotal,
-          hasMore: Boolean(payload?.hasMore),
+          hasMore: nextHasMore,
+          folderCounts: nextFolderCounts,
+          draftFolderCounts: nextDraftFolderCounts,
+          fetchedAt: Date.now(),
         };
+        historyCacheRef.current.set(pageKey, snapshot);
+        return snapshot;
       } catch (error) {
         console.error(error);
-        if (!options?.silent && !initialHistorySnapshot) {
+        return null;
+      } finally {
+        historyInFlightRef.current.delete(requestKey);
+      }
+    })();
+
+    historyInFlightRef.current.set(requestKey, request);
+    return request;
+  }, []);
+
+  const scheduleHistoryPreload = useCallback((
+    context: MailboxHistoryContext,
+    snapshot: MailboxHistorySnapshot<OutboxItem>,
+  ) => {
+    const availableFolderCounts = snapshot.folderCounts;
+    const availableDraftFolderCounts = snapshot.draftFolderCounts;
+    if (!availableFolderCounts || !availableDraftFolderCounts) return;
+
+    historyPreloadGenerationRef.current += 1;
+    const generation = historyPreloadGenerationRef.current;
+    if (historyPreloadTimerRef.current) {
+      clearTimeout(historyPreloadTimerRef.current);
+      historyPreloadTimerRef.current = null;
+    }
+
+    const activeCounts = context.boxView === "drafts"
+      ? availableDraftFolderCounts
+      : availableFolderCounts;
+
+    // Empty tabs are cached too, so opening them is instant and does not flash.
+    for (const targetFolder of ALL_FOLDERS) {
+      const total = Math.max(0, Number(activeCounts[targetFolder] || 0));
+      if (total !== 0) continue;
+      const emptyContext = { ...context, folder: targetFolder };
+      const emptyPageKey = mailboxHistoryPageKey(emptyContext, 1);
+      historyCacheRef.current.set(emptyPageKey, {
+        items: [],
+        page: 1,
+        total: 0,
+        hasMore: false,
+        folderCounts: availableFolderCounts,
+        draftFolderCounts: availableDraftFolderCounts,
+        fetchedAt: Date.now(),
+      });
+    }
+
+    const plan = buildMailboxHistoryPreloadPlan({
+      folders: ALL_FOLDERS,
+      currentContext: context,
+      currentPage: snapshot.page,
+      pageSize: MAILBOX_PAGE_SIZE,
+      folderCounts: availableFolderCounts,
+      draftFolderCounts: availableDraftFolderCounts,
+      // Search typing can create many short-lived contexts. The active result
+      // is still fully prefetched, but sibling tabs are warmed only without a query.
+      includeSiblingFolders: !context.query,
+    }).filter((job) => {
+      const cached = historyCacheRef.current.get(
+        mailboxHistoryPageKey(job.context, job.page),
+      );
+      return !isMailboxHistorySnapshotFresh(cached);
+    });
+
+    if (!plan.length) return;
+
+    historyPreloadTimerRef.current = setTimeout(() => {
+      historyPreloadTimerRef.current = null;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < plan.length && generation === historyPreloadGenerationRef.current) {
+          const job = plan[cursor];
+          cursor += 1;
+          const pageKey = mailboxHistoryPageKey(job.context, job.page);
+          if (isMailboxHistorySnapshotFresh(historyCacheRef.current.get(pageKey))) {
+            continue;
+          }
+          await fetchHistoryPage({
+            context: job.context,
+            page: job.page,
+            includeCounts: false,
+            totalHint: job.total,
+            folderCountsHint: availableFolderCounts,
+            draftFolderCountsHint: availableDraftFolderCounts,
+          });
+        }
+      };
+
+      void Promise.all(
+        Array.from(
+          { length: Math.min(MAILBOX_HISTORY_PREFETCH_CONCURRENCY, plan.length) },
+          () => worker(),
+        ),
+      );
+    }, 120);
+  }, [fetchHistoryPage]);
+
+  const loadHistory = useCallback(
+    async (options?: { page?: number; silent?: boolean; force?: boolean }) => {
+      const context = activeHistoryContext;
+      const contextKey = mailboxHistoryContextKey(context);
+      const targetPage = Math.max(
+        1,
+        options?.page ?? historyPageRef.current ?? 1,
+      );
+      // Calls without options come from refresh buttons, mutations or external
+      // version events. They deliberately bypass the cache.
+      const force = options?.force ?? options === undefined;
+
+      if (force) {
+        historyPreloadGenerationRef.current += 1;
+        const groupPrefix = `${mailboxHistoryGroupKey(context)}|`;
+        for (const key of historyCacheRef.current.keys()) {
+          if (key.startsWith(groupPrefix)) historyCacheRef.current.delete(key);
+        }
+      }
+
+      const pageKey = mailboxHistoryPageKey(context, targetPage);
+      const cached = force ? null : historyCacheRef.current.get(pageKey);
+      if (isMailboxHistorySnapshotFresh(cached)) {
+        applyHistorySnapshot(context, cached);
+        setHistoryLoadedOnce(true);
+        setLoading(false);
+        scheduleHistoryPreload(context, cached);
+        return cached;
+      }
+
+      const contextChanged =
+        Boolean(historyDisplayedContextKeyRef.current) &&
+        historyDisplayedContextKeyRef.current !== contextKey;
+      if (contextChanged) {
+        setItems([]);
+        setSelectedId(null);
+      }
+      if (!options?.silent || contextChanged) setLoading(true);
+
+      const snapshot = await fetchHistoryPage({
+        context,
+        page: targetPage,
+        includeCounts: true,
+      });
+
+      if (snapshot) {
+        applyHistorySnapshot(context, snapshot);
+        scheduleHistoryPreload(context, snapshot);
+      } else if (activeHistoryContextKeyRef.current === contextKey) {
+        if (contextChanged || !initialHistorySnapshot) {
           setItems([]);
           setHistoryPage(targetPage);
           setHistoryHasMorePotential(false);
@@ -1157,13 +1403,21 @@ export default function MailboxClient() {
           setDraftFolderCounts(emptyFolderCounts());
           setSelectedId(null);
         }
-        return null;
-      } finally {
+      }
+
+      if (activeHistoryContextKeyRef.current === contextKey) {
         setHistoryLoadedOnce(true);
         setLoading(false);
       }
+      return snapshot;
     },
-    [boxView, filterAccountId, folder, historyQuery, initialHistorySnapshot],
+    [
+      activeHistoryContext,
+      applyHistorySnapshot,
+      fetchHistoryPage,
+      initialHistorySnapshot,
+      scheduleHistoryPreload,
+    ],
   );
 
   const filteredItems = items;
@@ -1666,10 +1920,7 @@ export default function MailboxClient() {
         attachmentToVideoPayload(parts.sourceVideo) || finalVideo;
       const sourceMetadata =
         sourceVideo.sourceMetadata || finalVideo.sourceMetadata || null;
-      const defaultFormat = getRecommendedVideoFormatForSource(
-        channel,
-        sourceMetadata,
-      );
+      const defaultFormat: VideoFormat = "original";
       const format = (settings.format ||
         parts.videoFormat ||
         defaultFormat) as VideoFormat;
@@ -1860,7 +2111,14 @@ export default function MailboxClient() {
 
   // refresh des changements de filtres / recherche
   useEffect(() => {
-    void loadHistory({ page: 1, silent: Boolean(initialHistorySnapshot) });
+    const shouldRefreshInitialSnapshot =
+      Boolean(initialHistorySnapshot) && !initialHistoryRefreshDoneRef.current;
+    initialHistoryRefreshDoneRef.current = true;
+    void loadHistory({
+      page: 1,
+      silent: Boolean(initialHistorySnapshot),
+      force: shouldRefreshInitialSnapshot,
+    });
   }, [initialHistorySnapshot, loadHistory]);
 
   useEffect(() => {
@@ -3393,10 +3651,7 @@ export default function MailboxClient() {
           ? fallbackMeta
           : await readPublicationVideoMetadata(file, previewUrl);
       const videoChannel = normalizeBoosterChannelKeyForVideo(channel);
-      const defaultFormat = getRecommendedVideoFormatForSource(
-        videoChannel,
-        sourceMetadata,
-      );
+      const defaultFormat: VideoFormat = "original";
       setDetailsActionError(null);
       setPublicationEditVideoByChannel((prev) => ({
         ...prev,
@@ -3553,10 +3808,7 @@ export default function MailboxClient() {
     }
     const previewUrl = URL.createObjectURL(file);
     const sourceMetadata = await readPublicationVideoMetadata(file, previewUrl);
-    const defaultFormat = getRecommendedVideoFormatForSource(
-      channel,
-      sourceMetadata,
-    );
+    const defaultFormat: VideoFormat = "original";
     setDetailsActionError(null);
     setPublicationEditVideoByChannel((prev) => ({
       ...prev,
@@ -3602,7 +3854,7 @@ export default function MailboxClient() {
             sourceMetadata: null,
             sourceVideo: null,
             transformedVariants: [],
-            format: getRecommendedVideoFormatForSource(channel, null),
+            format: "original",
             adaptationMode: "safe_blur",
           }),
           file: null,
@@ -3710,14 +3962,11 @@ export default function MailboxClient() {
       return;
     }
 
-    const format =
-      current.format ||
-      getRecommendedVideoFormatForSource(channel, current.sourceMetadata);
+    const format = current.format || "original";
     const adaptationMode = current.adaptationMode || "safe_blur";
     const signature = buildVideoTransformSignature(format, adaptationMode);
     const existing = current.transformedVariants.find(
-      (variant: any) =>
-        variant.signature === signature || variant.channel === channel,
+      (variant: any) => variant.signature === signature,
     );
     if (existing?.publicUrl || existing?.url) {
       setPublicationEditVideoByChannel((prev) => ({
@@ -3778,8 +4027,7 @@ export default function MailboxClient() {
         ...(Array.isArray(response.variants) ? response.variants : []),
       ];
       const found = variants.find(
-        (variant: any) =>
-          variant.signature === signature || variant.channel === channel,
+        (variant: any) => variant.signature === signature,
       );
       if (!found?.publicUrl && !found?.url) {
         setPublicationEditVideoByChannel((prev) => ({
@@ -3884,21 +4132,14 @@ export default function MailboxClient() {
           boosterChannel,
           editVideo,
         );
-        const format =
-          editVideo.format ||
-          getRecommendedVideoFormatForSource(
-            boosterChannel,
-            editVideo.sourceMetadata,
-          );
+        const format = editVideo.format || "original";
         const adaptationMode = editVideo.adaptationMode || "safe_blur";
         const signature = buildVideoTransformSignature(format, adaptationMode);
         let transformedVariants = Array.isArray(editVideo.transformedVariants)
           ? [...editVideo.transformedVariants]
           : [];
         let finalVariant = transformedVariants.find(
-          (variant: any) =>
-            variant.signature === signature ||
-            variant.channel === boosterChannel,
+          (variant: any) => variant.signature === signature,
         );
         // Sécurité prod : l’enregistrement d’une publication ne doit pas lancer
         // une adaptation vidéo implicite. On utilise uniquement une variante déjà
@@ -4361,6 +4602,7 @@ export default function MailboxClient() {
               historyHasMorePotential={historyHasMorePotential}
               historyPageCount={historyPageCount}
               loadHistory={loadHistory}
+              refreshHistory={() => loadHistory()}
               historyQuery={historyQuery}
             />
           </div>

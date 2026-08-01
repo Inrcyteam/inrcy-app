@@ -36,6 +36,7 @@ type Props = {
   historyHasMorePotential: boolean;
   historyPageCount: number;
   loadHistory: (opts?: { page?: number }) => Promise<unknown> | void;
+  refreshHistory: () => Promise<unknown> | void;
   historyQuery: string;
 };
 
@@ -175,13 +176,29 @@ export default function MailboxList(props: Props) {
     historyHasMorePotential,
     historyPageCount,
     loadHistory,
+    refreshHistory,
     historyQuery,
   } = props;
+
+  const historyPageTotalLabel = historyTotalCount != null
+    ? String(historyPageCount)
+    : historyHasMorePotential
+      ? "…"
+      : String(historyPageCount);
+  const historyRangeLabel = (() => {
+    if (filteredItemsLength <= 0) {
+      return `0 / ${historyTotalCount ?? 0}`;
+    }
+    const start = (historyPage - 1) * MAILBOX_PAGE_SIZE + 1;
+    const end = start + filteredItemsLength - 1;
+    return `${start} – ${end} / ${historyTotalCount ?? "…"}`;
+  })();
+  const showInitialLoading = loading && visibleItems.length === 0;
 
   return (
     <>
       <div className={styles.scrollArea}>
-        {loading ? (
+        {showInitialLoading ? (
           <div style={{ padding: 14, color: "rgba(255,255,255,0.75)" }}>Chargement…</div>
         ) : (
           <div className={styles.list}>
@@ -311,51 +328,54 @@ export default function MailboxList(props: Props) {
         )}
       </div>
       <div className={styles.listFooter}>
-        <div className={styles.listFooterMeta}>
-          <div>
-            {filteredItemsLength > 0
-              ? (() => {
-                  const start = (historyPage - 1) * MAILBOX_PAGE_SIZE + 1;
-                  const end = start + filteredItemsLength - 1;
-                  if (historyTotalCount != null) {
-                    return `Affichage ${start}–${end} sur ${historyTotalCount}`;
-                  }
-                  return historyHasMorePotential
-                    ? `Affichage ${start}–${end} (autres éléments disponibles)`
-                    : `Affichage ${start}–${end}`;
-                })()
-              : historyEmptyState(folder, boxView, historyQuery)}
+        <div className={styles.listFooterPagerRow}>
+          <button
+            type="button"
+            className={styles.listFooterArrowButton}
+            onClick={() => {
+              const prevPage = Math.max(1, historyPage - 1);
+              void loadHistory({ page: prevPage });
+            }}
+            disabled={historyPage <= 1 || loading}
+            aria-label="Page précédente"
+            title="Page précédente"
+          >
+            {"<"}
+          </button>
+          <div className={styles.listFooterPageText} aria-live="polite">
+            {historyPage} / {historyPageTotalLabel}
           </div>
-          {loading ? <div style={{ color: "rgba(125,211,252,0.92)" }}>Actualisation de la liste…</div> : null}
+          <button
+            type="button"
+            className={styles.listFooterArrowButton}
+            onClick={() => {
+              const nextPage = historyPage + 1;
+              void loadHistory({ page: nextPage });
+            }}
+            disabled={!historyHasMorePotential || loading}
+            aria-label="Page suivante"
+            title="Page suivante"
+          >
+            {">"}
+          </button>
         </div>
-        <div className={styles.listFooterPager}>
-          <div className={styles.listFooterPagerRow}>
-            <button
-              type="button"
-              className={styles.btnGhost}
-              onClick={() => {
-                const prevPage = Math.max(1, historyPage - 1);
-                void loadHistory({ page: prevPage });
-              }}
-              disabled={historyPage <= 1 || loading}
+        <div className={styles.listFooterMetaRow}>
+          <span>{historyRangeLabel}</span>
+          <button
+            type="button"
+            className={styles.listFooterRefreshButton}
+            onClick={() => void refreshHistory()}
+            disabled={loading}
+            aria-label={loading ? "Actualisation en cours" : "Actualiser la liste"}
+            title={loading ? "Actualisation en cours" : "Actualiser la liste"}
+          >
+            <span
+              className={loading ? styles.listFooterRefreshIconActive : styles.listFooterRefreshIcon}
+              aria-hidden="true"
             >
-              ← Précédent
-            </button>
-            <div className={styles.listFooterPageText}>
-              Page {historyPage}{historyTotalCount != null ? ` / ${historyPageCount}` : historyHasMorePotential ? " / …" : ""}
-            </div>
-            <button
-              type="button"
-              className={styles.btnGhost}
-              onClick={() => {
-                const nextPage = historyPage + 1;
-                void loadHistory({ page: nextPage });
-              }}
-              disabled={!historyHasMorePotential || loading}
-            >
-              Suivant →
-            </button>
-          </div>
+              ↻
+            </span>
+          </button>
         </div>
       </div>
     </>

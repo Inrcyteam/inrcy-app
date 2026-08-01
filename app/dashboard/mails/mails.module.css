@@ -640,40 +640,106 @@
 
 .listFooter {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px 14px;
-  flex-wrap: wrap;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px 12px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(10, 14, 33, 0.74);
   backdrop-filter: blur(10px);
 }
 
-.listFooterMeta {
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 12px;
-  display: grid;
-  gap: 4px;
-}
-
-.listFooterPager {
-  display: grid;
-  gap: 10px;
-  justify-items: end;
-}
-
 .listFooterPagerRow {
-  display: flex;
+  width: min(100%, 250px);
+  display: grid;
+  grid-template-columns: 42px minmax(64px, 1fr) 42px;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  flex-wrap: wrap;
+}
+
+.listFooterArrowButton,
+.listFooterRefreshButton {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.94);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.listFooterArrowButton {
+  width: 42px;
+  height: 38px;
+  border-radius: 13px;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.listFooterArrowButton:hover:not(:disabled),
+.listFooterRefreshButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(125, 211, 252, 0.34);
+}
+
+.listFooterArrowButton:active:not(:disabled),
+.listFooterRefreshButton:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.listFooterArrowButton:disabled,
+.listFooterRefreshButton:disabled {
+  cursor: default;
+  opacity: 0.42;
 }
 
 .listFooterPageText {
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.listFooterMetaRow {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.66);
   font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.listFooterRefreshButton {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.listFooterRefreshIcon,
+.listFooterRefreshIconActive {
+  display: inline-block;
+  transform-origin: center;
+}
+
+.listFooterRefreshIconActive {
+  animation: inrsendFooterRefreshSpin 800ms linear infinite;
+}
+
+@keyframes inrsendFooterRefreshSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ✅ NOUVEAU : zone “Charger plus” fixe en bas du cadre */
@@ -5410,7 +5476,7 @@
   .listFooter {
     position: relative;
     z-index: 2;
-    padding-bottom: 10px;
+    padding: 7px 10px 8px;
   }
 }
 

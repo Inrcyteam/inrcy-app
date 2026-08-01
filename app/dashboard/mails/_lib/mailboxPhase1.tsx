@@ -470,13 +470,15 @@ export type PublicationPreviewLayout = {
 };
 
 export const PUBLICATION_CHANNEL_PRESETS: Record<string, PublicationImageRenderPreset> = {
-  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  inr_search: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true },
-  facebook: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
-  instagram: { width: 1080, height: 1350, defaultFit: "cover", defaultBlurBackground: false },
-  linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
+  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: false },
+  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: false },
+  inr_search: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: false },
+  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: false },
+  facebook: { width: 1200, height: 1200, defaultFit: "contain", defaultBlurBackground: false },
+  instagram: { width: 1080, height: 1350, defaultFit: "contain", defaultBlurBackground: false },
+  linkedin: { width: 1200, height: 1200, defaultFit: "contain", defaultBlurBackground: false },
+  tiktok: { width: 1080, height: 1920, defaultFit: "contain", defaultBlurBackground: false },
+  pinterest: { width: 1000, height: 1500, defaultFit: "contain", defaultBlurBackground: false },
 };
 
 export function publicationClamp(value: number, min: number, max: number) {
@@ -489,7 +491,7 @@ export function getPublicationEffectiveZoom(transform: Pick<PublicationImageTran
 }
 
 export function getPublicationChannelPreset(channel: string): PublicationImageRenderPreset {
-  return PUBLICATION_CHANNEL_PRESETS[normalizeChannelKey(channel)] || { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true };
+  return PUBLICATION_CHANNEL_PRESETS[normalizeChannelKey(channel)] || { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: false };
 }
 
 export function buildPublicationDefaultTransform(channel: string): PublicationImageTransform {
@@ -500,7 +502,7 @@ export function buildPublicationDefaultTransform(channel: string): PublicationIm
     offsetX: 0,
     offsetY: 0,
     blurBackground: preset.defaultBlurBackground,
-    backgroundMode: preset.defaultBlurBackground ? "blur" : "black",
+    backgroundMode: preset.defaultBlurBackground ? "blur" : "color",
     backgroundColor: "#ffffff",
   };
 }

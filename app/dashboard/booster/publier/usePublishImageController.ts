@@ -736,31 +736,14 @@ export default function usePublishImageController({
   };
 
   const setContainMode = (channel: ChannelKey, imageKey: string) => {
-    const current =
-      channelImageEditors[channel]?.transforms?.[imageKey] ||
-      getOptimizedTransform(channel, imageMetaByKey[imageKey]);
-    const backgroundMode =
-      current.fit === "contain"
-        ? getBackgroundMode(current)
-        : channel === "inrcy_site" ||
-            channel === "site_web" ||
-            channel === "gmb"
-          ? "color"
-          : "white";
-    const backgroundColor =
-      current.backgroundColor ||
-      (channel === "inrcy_site" || channel === "site_web" || channel === "gmb"
-        ? "#ffffff"
-        : "#ffffff");
     updateChannelTransform(channel, imageKey, {
       fit: "contain",
       zoom: 1,
       offsetX: 0,
       offsetY: 0,
-      backgroundMode:
-        backgroundMode === "transparent" ? "transparent" : "color",
-      backgroundColor,
-      blurBackground: false,
+      backgroundMode: "blur",
+      backgroundColor: undefined,
+      blurBackground: true,
     });
   };
 
@@ -1205,10 +1188,10 @@ export default function usePublishImageController({
             zoom: 1,
             offsetX: 0,
             offsetY: 0,
-            blurBackground: false,
+            blurBackground: displayPlan.automaticFit === "contain",
             backgroundMode:
-              displayPlan.automaticFit === "contain" ? "color" : "black",
-            backgroundColor: "#ffffff",
+              displayPlan.automaticFit === "contain" ? "blur" : "black",
+            backgroundColor: undefined,
           };
         } else {
           transforms[imageKey] = { ...currentTransform };
@@ -1313,10 +1296,10 @@ export default function usePublishImageController({
             zoom: 1,
             offsetX: 0,
             offsetY: 0,
-            blurBackground: false,
+            blurBackground: displayPlan.automaticFit === "contain",
             backgroundMode:
-              displayPlan.automaticFit === "contain" ? "color" : "black",
-            backgroundColor: "#ffffff",
+              displayPlan.automaticFit === "contain" ? "blur" : "black",
+            backgroundColor: undefined,
           };
           payload = await renderChannelImage({
             file,

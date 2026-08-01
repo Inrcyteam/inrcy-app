@@ -5,7 +5,6 @@ import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
 import {
   buildVideoSettingsByChannel,
-  getRecommendedVideoFormatForSource,
   getVideoFormatLabel,
   normalizeVideoAdaptationMode,
   normalizeVideoFormat,
@@ -780,8 +779,9 @@ export default function usePublishVideoController({
     setVideoFormatByChannel((prev) => {
       const next: Partial<Record<ChannelKey, VideoFormat>> = { ...prev };
       for (const channel of selectedChannels.length ? selectedChannels : allChannels) {
-        next[channel] = getRecommendedVideoFormatForSource(channel, sourceMetadata);
+        next[channel] = "original";
       }
+      void sourceMetadata;
       return next;
     });
     setVideoAdaptationModeByChannel((prev) => {

@@ -252,19 +252,17 @@ function normalizeTransformNumber(value: unknown, fallback = 0) {
 
 function normalizeBackgroundMode(transform?: ComparableImageTransform | null) {
   if (!transform) return "";
-  if (transform.backgroundMode === "blur") {
-    return transform.backgroundColor ? "color" : "brand";
+  if (transform.backgroundMode === "blur" || transform.blurBackground) {
+    return "blur";
   }
   if (transform.backgroundMode) return transform.backgroundMode;
-  if (transform.blurBackground) {
-    return transform.backgroundColor ? "color" : "brand";
-  }
   return transform.backgroundColor ? "color" : "black";
 }
 
 /**
- * Visual equivalence helper used to detect a real user customization without
- * relying on the mere opening of the Adapter modal.
+ * Visual equivalence helper used by the Adapter UI to decide whether the pro
+ * has really changed a setting. Publication itself never infers provenance
+ * from a transform delta: only the explicit customized flag is authoritative.
  */
 export function areBoosterImageTransformsEquivalent(
   a?: ComparableImageTransform | null,
@@ -331,12 +329,12 @@ export function getBoosterImageDecision(params: {
     };
   }
 
-  const hasTransformCustomization = Boolean(
-    currentTransform &&
-      automaticTransform &&
-      !areBoosterImageTransformsEquivalent(currentTransform, automaticTransform),
-  );
-  if (customized || hasTransformCustomization) {
+  // Original-first invariant: stale/default transform objects must never turn
+  // an untouched source into a personalized canvas. The Adapter persists an
+  // explicit customized provenance when the pro actually validates a change.
+  void currentTransform;
+  void automaticTransform;
+  if (customized) {
     return {
       ...base,
       mode: "customized",

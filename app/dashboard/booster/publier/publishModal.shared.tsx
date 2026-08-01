@@ -1674,11 +1674,10 @@ export function normalizeContainTransform(
 }
 
 export function getBackgroundMode(transform: ImageTransform): BackgroundMode {
-  if (transform.backgroundMode === "blur")
-    return transform.backgroundColor ? "color" : "brand";
+  if (transform.backgroundMode === "blur" || transform.blurBackground) {
+    return "blur";
+  }
   if (transform.backgroundMode) return transform.backgroundMode;
-  if (transform.blurBackground)
-    return transform.backgroundColor ? "color" : "brand";
   return transform.backgroundColor ? "color" : "black";
 }
 
@@ -1686,16 +1685,12 @@ export function withBackgroundMode(
   transform: ImageTransform,
   backgroundMode: BackgroundMode,
 ): ImageTransform {
-  const normalizedMode =
-    backgroundMode === "blur"
-      ? transform.backgroundColor
-        ? "color"
-        : "brand"
-      : backgroundMode;
   return {
     ...transform,
-    backgroundMode: normalizedMode,
-    blurBackground: false,
+    backgroundMode,
+    backgroundColor:
+      backgroundMode === "blur" ? undefined : transform.backgroundColor,
+    blurBackground: backgroundMode === "blur",
   };
 }
 
@@ -2368,7 +2363,19 @@ export async function renderChannelImage(params: {
     const backgroundColor = googleBusinessSafeBackground
       ? "#ffffff"
       : transform.backgroundColor;
-    if (backgroundMode !== "transparent") {
+    if (backgroundMode === "blur" && transform.fit === "contain") {
+      const blurScale = Math.max(cw / iw, ch / ih);
+      const blurW = iw * blurScale;
+      const blurH = ih * blurScale;
+      const blurX = (cw - blurW) / 2;
+      const blurY = (ch - blurH) / 2;
+      ctx.save();
+      ctx.filter = "blur(28px) saturate(0.9) brightness(0.78)";
+      ctx.drawImage(img, blurX, blurY, blurW, blurH);
+      ctx.restore();
+      ctx.fillStyle = "rgba(8, 12, 24, 0.18)";
+      ctx.fillRect(0, 0, cw, ch);
+    } else if (backgroundMode !== "transparent") {
       ctx.fillStyle = getBackgroundFill(backgroundMode, backgroundColor);
       ctx.fillRect(0, 0, cw, ch);
     }
@@ -2418,10 +2425,10 @@ export function getOptimizedTransform(
         zoom: 1,
         offsetX: 0,
         offsetY: 0,
-        blurBackground: false,
-        backgroundColor: "#ffffff",
+        blurBackground: fit === "contain",
+        backgroundColor: undefined,
       },
-      fit === "contain" ? "color" : "black",
+      fit === "contain" ? "blur" : "black",
     );
   }
 

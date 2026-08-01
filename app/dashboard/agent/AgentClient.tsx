@@ -1648,7 +1648,7 @@ export default function AgentClient() {
         detail: `${getVideoFormatLabel(
           publishBoosterChannel,
           publishVideoFormat,
-        )} · ${publishVideoAdaptationMode === "cover_crop" ? "Recadrer plein écran" : "Cadre sobre sécurisé"}`,
+        )} · ${publishVideoAdaptationMode === "cover_crop" ? "Recadrer plein écran" : "Fond flouté sécurisé"}`,
       });
       if (response.errors?.length && !generatedVariants.length) {
         showNotice(
@@ -5398,9 +5398,9 @@ export default function AgentClient() {
               zoom: 1,
               offsetX: 0,
               offsetY: 0,
-              backgroundMode: "color",
-              backgroundColor: "#ffffff",
-              blurBackground: false,
+              backgroundMode: "blur",
+              backgroundColor: undefined,
+              blurBackground: true,
             })
           }
           onCover={() =>
@@ -5422,16 +5422,27 @@ export default function AgentClient() {
           isolationNote="Ce réglage utilise l’outil Adapter image existant de Booster et remplacera le média iNrAgent par la version adaptée."
           onBackgroundModeChange={(mode) =>
             updatePublishImageAdapterTransform(
-              mode === "transparent"
+              mode === "blur"
                 ? {
-                    backgroundMode: "transparent",
-                    blurBackground: false,
+                    backgroundMode: "blur",
+                    backgroundColor: undefined,
+                    blurBackground: true,
                     fit: "contain",
                     zoom: 1,
                     offsetX: 0,
                     offsetY: 0,
                   }
-                : {
+                : mode === "transparent"
+                  ? {
+                      backgroundMode: "transparent",
+                      backgroundColor: undefined,
+                      blurBackground: false,
+                      fit: "contain",
+                      zoom: 1,
+                      offsetX: 0,
+                      offsetY: 0,
+                    }
+                  : {
                     backgroundMode: "color",
                     backgroundColor:
                       publishImageAdapterTransformSafe.backgroundColor ||

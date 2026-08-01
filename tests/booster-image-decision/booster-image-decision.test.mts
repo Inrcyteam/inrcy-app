@@ -76,7 +76,7 @@ test("Pinterest only adapts images taller than 2:3", () => {
   );
 });
 
-test("A real transform delta is classified as customized", () => {
+test("A transform delta without explicit Adapter provenance stays original", () => {
   const automaticTransform = {
     fit: "contain" as const,
     zoom: 1,
@@ -95,7 +95,7 @@ test("A real transform delta is classified as customized", () => {
       currentTransform,
       automaticTransform,
     }).mode,
-    "customized",
+    "original",
   );
   assert.equal(
     areBoosterImageTransformsEquivalent(
@@ -167,7 +167,7 @@ test("Booster preview applies the 8% curtain for Adaptée", () => {
   assert.equal(slightlyWide.automaticFit, "cover");
 });
 
-test("Booster preview exposes Personnalisée only for a real Adapter delta", () => {
+test("Booster preview ignores stale transform deltas without Adapter provenance", () => {
   const automaticTransform = {
     fit: "contain" as const,
     zoom: 1,
@@ -183,8 +183,8 @@ test("Booster preview exposes Personnalisée only for a real Adapter delta", () 
     currentTransform: { ...automaticTransform, offsetX: 12 },
   });
 
-  assert.equal(plan.decision.label, "Personnalisée");
-  assert.equal(plan.previewRatio, null);
+  assert.equal(plan.decision.label, "Originale");
+  assert.equal(plan.previewRatio, 16 / 9);
 });
 
 
@@ -245,6 +245,7 @@ test("Manual customization stays stronger than an automatic carousel target", ()
   const decision = getBoosterImageDecision({
     channel: "instagram",
     meta: { width: 1000, height: 1000 },
+    customized: true,
     automaticTransform,
     currentTransform: { ...automaticTransform, zoom: 1.15 },
     requiredTargetRatio: 16 / 9,

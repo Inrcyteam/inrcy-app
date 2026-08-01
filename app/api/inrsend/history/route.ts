@@ -1472,11 +1472,15 @@ export async function GET(req: Request) {
     const boxView = normalizeBoxView(url.searchParams.get("boxView"));
     const filterAccountId = cleanString(url.searchParams.get("filterAccountId"));
     const query = cleanString(url.searchParams.get("q")).toLowerCase();
+    const includeCounts = url.searchParams.get("includeCounts") !== "0";
     const folderCutoffIso = getInrSendRetentionCutoffIso(folder);
     const eventSourceCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "propulsions", "informations", "suivis", "enquetes", "fidelisations"]);
-    const targetVisibleCount = page * pageSize;
+    // Background preloading only needs one extra visible item to know whether
+    // another page exists. Full counter calculation is reserved for foreground
+    // loads and explicit refreshes.
+    const targetVisibleCount = page * pageSize + (includeCounts ? 0 : 1);
 
-    if (boxView !== "drafts" && shouldQueryEvents(folder, boxView)) {
+    if (includeCounts && boxView !== "drafts" && shouldQueryEvents(folder, boxView)) {
       await reconcilePendingAsyncPublications(activeUserId);
     }
 
@@ -1718,6 +1722,18 @@ export async function GET(req: Request) {
 
     await withStatsReportContentUrls(items);
 
+    if (!includeCounts) {
+      return NextResponse.json({
+        items,
+        page,
+        pageSize,
+        hasMore: filtered.length > end,
+        total: null,
+        totalKnown: false,
+        countsIncluded: false,
+      });
+    }
+
     const [folderCounts, draftFolderCounts] = await Promise.all([
       computeFolderCounts(supabase, activeUserId, "sent", filterAccountId, query),
       computeFolderCounts(supabase, activeUserId, "drafts", filterAccountId, query),
@@ -1733,6 +1749,7 @@ export async function GET(req: Request) {
       hasMore,
       total: exactTotal,
       totalKnown: true,
+      countsIncluded: true,
       folderCounts,
       draftFolderCounts,
     });

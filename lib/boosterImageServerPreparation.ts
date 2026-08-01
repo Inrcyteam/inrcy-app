@@ -73,7 +73,7 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
   pinterest: { width: 1000, height: 1500 },
 };
 
-const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 2;
+const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 3;
 const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
 
 type ChannelImageVariantRow = {
@@ -292,30 +292,59 @@ function extensionFromMime(mime: string) {
 }
 
 async function resolveImageBuffer(image: BoosterServerImagePayload) {
+  // Always rebuild from the canonical original when one is available. This
+  // prevents an old channel canvas (white bars/crop) from becoming the source
+  // of a new publication after the media-pipeline cutover.
+  const bucket = String(image.bucket || "booster").trim() || "booster";
+  const storageCandidates = Array.from(
+    new Set(
+      [image.originalStoragePath, image.storagePath]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+  for (const storagePath of storageCandidates) {
+    const downloaded = await supabaseAdmin.storage.from(bucket).download(storagePath);
+    if (!downloaded.error && downloaded.data) {
+      return {
+        mime:
+          downloaded.data.type ||
+          image.originalType ||
+          image.type ||
+          "application/octet-stream",
+        buffer: Buffer.from(await downloaded.data.arrayBuffer()),
+      };
+    }
+  }
+
   const parsed = image.dataUrl ? parseDataUrl(image.dataUrl) : null;
   if (parsed) return parsed;
 
-  const storagePath = String(image.storagePath || "").trim();
-  if (storagePath) {
-    const bucket = String(image.bucket || "booster").trim() || "booster";
-    const downloaded = await supabaseAdmin.storage.from(bucket).download(storagePath);
-    if (downloaded.error || !downloaded.data) {
-      throw new Error(downloaded.error?.message || "image_storage_download_failed");
-    }
+  const urlCandidates = Array.from(
+    new Set(
+      [
+        image.originalPublicUrl,
+        image.originalUrl,
+        image.publicUrl,
+        image.renderedUrl,
+      ]
+        .map((value) => String(value || "").trim())
+        .filter((value) => /^https?:\/\//i.test(value)),
+    ),
+  );
+  for (const url of urlCandidates) {
+    const response = await fetch(url);
+    if (!response.ok) continue;
     return {
-      mime: downloaded.data.type || image.type || "application/octet-stream",
-      buffer: Buffer.from(await downloaded.data.arrayBuffer()),
+      mime:
+        response.headers.get("content-type") ||
+        image.originalType ||
+        image.type ||
+        "application/octet-stream",
+      buffer: Buffer.from(await response.arrayBuffer()),
     };
   }
-
-  const url = String(image.publicUrl || image.renderedUrl || image.originalPublicUrl || image.originalUrl || "").trim();
-  if (!/^https?:\/\//i.test(url)) return null;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`image_download_${response.status}`);
-  return {
-    mime: response.headers.get("content-type") || image.type || "application/octet-stream",
-    buffer: Buffer.from(await response.arrayBuffer()),
-  };
+  return null;
 }
 
 function getOrientedDimensions(meta: { width?: number; height?: number; orientation?: number }) {
@@ -439,6 +468,20 @@ function backgroundRgba(transform: ServerImageTransform, forceOpaque = false) {
   return { r: 13, g: 19, b: 32, alpha: 1 };
 }
 
+function originalReferenceTransform(): ServerImageTransform {
+  // Must stay visually equivalent to getOptimizedTransform() on the client.
+  // It is metadata only: original publication never renders a fixed canvas.
+  return {
+    fit: "contain",
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    blurBackground: false,
+    backgroundMode: "color",
+    backgroundColor: "#ffffff",
+  };
+}
+
 function automaticTransformForDecision(params: {
   sourceRatio: number;
   targetRatio: number;
@@ -451,9 +494,10 @@ function automaticTransformForDecision(params: {
     zoom: 1,
     offsetX: 0,
     offsetY: 0,
-    blurBackground: false,
-    backgroundMode: fit === "contain" ? "color" : "black",
-    backgroundColor: "#ffffff",
+    blurBackground: fit === "contain",
+    // A hard channel ratio with a large mismatch keeps the whole image over a
+    // blurred fill instead of generating ugly white/black bars.
+    backgroundMode: fit === "contain" ? "blur" : "black",
   };
 }
 
@@ -527,14 +571,33 @@ async function renderImageTransform(params: {
   const requestedMode = params.transform.backgroundMode || "black";
   const transparent = requestedMode === "transparent" && params.channel !== "gmb";
   const background = backgroundRgba(params.transform, params.channel === "gmb");
-  const canvas = sharp({
-    create: {
-      width: dimensions.width,
-      height: dimensions.height,
-      channels: 4,
-      background,
-    },
-  }).composite([{ input: overlay, left: destinationLeft, top: destinationTop }]);
+  const foreground = { input: overlay, left: destinationLeft, top: destinationTop };
+
+  const blurredBackground =
+    requestedMode === "blur"
+      ? await sharp(params.buffer, { failOn: "none" })
+          .rotate()
+          .resize({
+            width: dimensions.width,
+            height: dimensions.height,
+            fit: "cover",
+          })
+          .blur(28)
+          .modulate({ brightness: 0.78, saturation: 0.9 })
+          .png()
+          .toBuffer()
+      : null;
+
+  const canvas = blurredBackground
+    ? sharp(blurredBackground).composite([foreground])
+    : sharp({
+        create: {
+          width: dimensions.width,
+          height: dimensions.height,
+          channels: 4,
+          background,
+        },
+      }).composite([foreground]);
 
   if (transparent) {
     return {
@@ -690,17 +753,12 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
         if (initialDecision.mode === "unsupported") continue;
         const sourceRatio = Number(initialDecision.sourceRatio || entry.meta.ratio || 0);
         const targetRatio = Number(initialDecision.targetRatio || sourceRatio || 0);
-        const automaticTransform = sourceRatio > 0 && targetRatio > 0
-          ? automaticTransformForDecision({ sourceRatio, targetRatio })
-          : {
-              fit: "contain" as const,
-              zoom: 1,
-              offsetX: 0,
-              offsetY: 0,
-              blurBackground: false,
-              backgroundMode: "color",
-              backgroundColor: "#ffffff",
-            };
+        const automaticTransform =
+          initialDecision.mode === "original"
+            ? originalReferenceTransform()
+            : sourceRatio > 0 && targetRatio > 0
+              ? automaticTransformForDecision({ sourceRatio, targetRatio })
+              : originalReferenceTransform();
         const currentTransform = normalizeTransform(
           requestedSettings.transforms[entry.imageKey],
           automaticTransform,

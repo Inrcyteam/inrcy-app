@@ -71,7 +71,6 @@ import {
   getWebsiteUrlForChannel,
   getImageFitLabel,
   getOptimizedTransform,
-  getRecommendedVideoFormatForSource,
   getVideoFormatLabel,
   VIDEO_ADAPTATION_MODE_LABELS,
   VIDEO_FORMAT_ASPECT_RATIOS,
@@ -3085,10 +3084,7 @@ export default function PublishModal({
       for (const channel of selectedChannels.length
         ? selectedChannels
         : CHANNEL_KEYS) {
-        next[channel] = getRecommendedVideoFormatForSource(
-          channel,
-          sourceMetadata,
-        );
+        next[channel] = "original";
       }
       return next;
     });
@@ -3347,8 +3343,7 @@ export default function PublishModal({
     const post = getDisplayPost(displayKey);
     const selectedVideoFormat = normalizeVideoFormat(
       channel,
-      videoFormatByChannel[channel] ||
-        getRecommendedVideoFormatForSource(channel, videoSourceMetadata),
+      videoFormatByChannel[channel] || "original",
     );
     const selectedVideoAdaptation = normalizeVideoAdaptationMode(
       videoAdaptationModeByChannel[channel],
@@ -3385,7 +3380,11 @@ export default function PublishModal({
             duration: preparedVariant?.duration ?? videoDurationSeconds,
             sourceMetadata: videoSourceMetadata,
             aspectRatio:
-              VIDEO_FORMAT_ASPECT_RATIOS[selectedVideoFormat] || "16 / 9",
+              selectedVideoFormat === "original" &&
+              videoSourceMetadata?.width &&
+              videoSourceMetadata?.height
+                ? `${videoSourceMetadata.width} / ${videoSourceMetadata.height}`
+                : VIDEO_FORMAT_ASPECT_RATIOS[selectedVideoFormat] || "16 / 9",
             fitMode: preparedPreviewUrl
               ? "contain"
               : selectedVideoAdaptation === "cover_crop"
@@ -5331,16 +5330,27 @@ export default function PublishModal({
           updateChannelTransform(
             activeImageChannel,
             activeEditorImageKey,
-            mode === "transparent"
+            mode === "blur"
               ? {
-                  backgroundMode: "transparent",
-                  blurBackground: false,
+                  backgroundMode: "blur",
+                  backgroundColor: undefined,
+                  blurBackground: true,
                   fit: "contain",
                   zoom: 1,
                   offsetX: 0,
                   offsetY: 0,
                 }
-              : {
+              : mode === "transparent"
+                ? {
+                    backgroundMode: "transparent",
+                    backgroundColor: undefined,
+                    blurBackground: false,
+                    fit: "contain",
+                    zoom: 1,
+                    offsetX: 0,
+                    offsetY: 0,
+                  }
+                : {
                   backgroundMode: "color",
                   backgroundColor:
                     activeEditorTransform.backgroundColor ||

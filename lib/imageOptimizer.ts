@@ -18,6 +18,7 @@ const SOCIAL_FEED_NATIVE_MAX_SIDE = 1600;
 const SITE_CARD_MAX_BYTES = 8 * 1024 * 1024;
 const SITE_CARD_WIDTH = 1440;
 const SITE_CARD_HEIGHT = 900;
+const SITE_CARD_NATIVE_MAX_SIDE = 1800;
 const GMB_MAX_BYTES = 5 * 1024 * 1024;
 const GMB_WIDTH = 1200;
 const GMB_HEIGHT = 900;
@@ -304,17 +305,47 @@ async function createSmartJpeg(params: {
 
   let quality = startQuality;
 
+  let blurredBackground: Buffer | null = null;
+  let containedForeground: Buffer | null = null;
+  if (!useCover) {
+    [blurredBackground, containedForeground] = await Promise.all([
+      sharp(inputBuffer, { failOn: "none" })
+        .rotate()
+        .resize({ width, height, fit: "cover", position: "centre" })
+        .blur(28)
+        .modulate({ brightness: 0.78, saturation: 0.9 })
+        .png()
+        .toBuffer(),
+      sharp(inputBuffer, { failOn: "none" })
+        .rotate()
+        .resize({
+          width,
+          height,
+          fit: "contain",
+          position: "centre",
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .png()
+        .toBuffer(),
+    ]);
+  }
+
   async function render(q: number) {
-    return sharp(inputBuffer, { failOn: "none" })
-      .rotate()
-      .resize({
-        width,
-        height,
-        fit: useCover ? "cover" : "contain",
-        position: "centre",
-        withoutEnlargement: false,
-        background: useCover ? undefined : background,
-      })
+    const pipeline = useCover
+      ? sharp(inputBuffer, { failOn: "none" })
+          .rotate()
+          .resize({
+            width,
+            height,
+            fit: "cover",
+            position: "centre",
+            withoutEnlargement: false,
+          })
+      : sharp(blurredBackground as Buffer).composite([
+          { input: containedForeground as Buffer, gravity: "centre" },
+        ]);
+
+    return pipeline
       .flatten({ background })
       .jpeg({
         quality: q,
@@ -418,7 +449,7 @@ export async function optimizeForSocialFeed(
   inputBuffer: Buffer,
   options?: { nativeFirst?: boolean },
 ): Promise<OptimizeResult> {
-  if (options?.nativeFirst) {
+  if (options?.nativeFirst !== false) {
     const native = await createNativeJpeg({
       inputBuffer,
       maxBytes: SOCIAL_FEED_MAX_BYTES,
@@ -436,6 +467,16 @@ export async function optimizeForSocialFeed(
 export async function optimizeForSiteCard(
   inputBuffer: Buffer,
 ): Promise<OptimizeResult> {
+  const native = await createNativeJpeg({
+    inputBuffer,
+    maxBytes: SITE_CARD_MAX_BYTES,
+    startQuality: 88,
+    minQuality: 50,
+    maxSide: SITE_CARD_NATIVE_MAX_SIDE,
+  }).catch(() => null);
+
+  if (native) return native;
+
   let result = await createSmartJpeg({
     inputBuffer,
     width: SITE_CARD_WIDTH,
