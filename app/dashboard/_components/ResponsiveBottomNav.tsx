@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import styles from "./ResponsiveBottomNav.module.css";
@@ -26,6 +26,8 @@ import {
 } from "@/lib/mobileShortcuts";
 import { APP_LANGUAGE_OPTIONS, getAppLanguageOption, type AppLanguageCode } from "@/lib/appLanguage";
 import { isDashboardRequiredSetupProtectedDestination } from "@/lib/dashboardRequiredSetupAccess";
+import { requestDashboardToolWarmup } from "./DashboardToolWarmup";
+import { useDelayedPendingAction } from "@/hooks/useDelayedPendingAction";
 
 
 type DashboardPanelName =
@@ -44,6 +46,37 @@ type DashboardPanelName =
   | "notifications";
 
 const MOBILE_QUERY = "(max-width: 1100px)";
+
+
+type SearchParamsReader = {
+  entries: () => IterableIterator<[string, string]>;
+};
+
+type MobileHrefDestination =
+  | { key: string; kind: "href"; href: string }
+  | { key: string; kind: "publish"; href: string };
+
+type MobilePendingDestination =
+  | MobileHrefDestination
+  | { key: string; kind: "panel"; panel: DashboardPanelName };
+
+function dashboardHrefIsActive(
+  href: string,
+  pathname: string,
+  searchParams: SearchParamsReader,
+) {
+  const target = new URL(href, "https://inrcy.local");
+  if (pathname !== target.pathname) return false;
+
+  const targetEntries = [...target.searchParams.entries()].sort();
+  const currentEntries = [...searchParams.entries()].sort();
+  if (targetEntries.length !== currentEntries.length) return false;
+
+  return targetEntries.every(([key, value], index) => {
+    const current = currentEntries[index];
+    return current?.[0] === key && current[1] === value;
+  });
+}
 
 function HomeIcon() {
   return (
@@ -73,6 +106,40 @@ function compactLabels(locale: string) {
   return { home: "Accueil", publish: "Publier", shortcuts: "Raccourcis", general: "Général", language: "Langue", gps: "GPS d’utilisation" };
 }
 
+type MobileMenuActionButtonProps = {
+  label: string;
+  loading: boolean;
+  onClick: () => void;
+  warning?: boolean;
+};
+
+function MobileMenuActionButton({
+  label,
+  loading,
+  onClick,
+  warning = false,
+}: MobileMenuActionButtonProps) {
+  return (
+    <button
+      className={styles.menuItem}
+      type="button"
+      role="menuitem"
+      aria-busy={loading || undefined}
+      aria-disabled={loading || undefined}
+      onClick={onClick}
+    >
+      <span className={styles.menuItemText}>
+        {loading ? "Chargement…" : label}
+      </span>
+      {warning && !loading ? (
+        <span className={styles.menuItemWarning} aria-hidden="true">
+          ⚠️
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function ResponsiveBottomNavMobile() {
   const router = useRouter();
   const pathname = usePathname();
@@ -92,6 +159,13 @@ function ResponsiveBottomNavMobile() {
   const requiredSetupLocked = completionCheckReady && requiredSetupIncomplete;
   const requiredSetupLockMessage = t.modules.requiredSetupLocked;
   const notificationsApi = useDashboardNotifications();
+  const {
+    pendingKey,
+    beginAction,
+    completeAction,
+    isVisible,
+  } = useDelayedPendingAction<string>();
+  const pendingDestinationRef = useRef<MobilePendingDestination | null>(null);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
@@ -269,41 +343,133 @@ function ResponsiveBottomNavMobile() {
     setNotificationMenuOpen(false);
   }, [hidden]);
 
+  const closeMobileOverlays = useCallback(() => {
+    setMenuOpen(false);
+    setLanguageOpen(false);
+    setNotificationMenuOpen(false);
+  }, []);
+
+  const resolveHrefDestination = useCallback(
+    (href: string): MobileHrefDestination => {
+      let targetHref = href;
+
+      if (
+        isDashboardRequiredSetupProtectedDestination(href) &&
+        !requiredSetupAccessAllowed
+      ) {
+        const panel = profileIncomplete
+          ? "profil"
+          : activityIncomplete
+            ? "activite"
+            : "profil";
+        targetHref = `/dashboard?panel=${encodeURIComponent(panel)}`;
+      }
+
+      if (targetHref === "/dashboard?action=publish") {
+        return { key: "modal:publish", kind: "publish", href: targetHref };
+      }
+
+      return { key: `route:${targetHref}`, kind: "href", href: targetHref };
+    },
+    [activityIncomplete, profileIncomplete, requiredSetupAccessAllowed],
+  );
+
+  const destinationIsReached = useCallback((destination: MobilePendingDestination) => {
+    if (destination.kind === "panel") {
+      return pathname === "/dashboard" && searchParams.get("panel") === destination.panel;
+    }
+    if (destination.kind === "publish") {
+      return publishModalOpen;
+    }
+    if (/^https?:\/\//i.test(destination.href)) return false;
+    return dashboardHrefIsActive(destination.href, pathname, searchParams);
+  }, [pathname, publishModalOpen, searchParams]);
+
+  useEffect(() => {
+    const destination = pendingDestinationRef.current;
+    if (!destination || pendingKey !== destination.key) return;
+    if (!destinationIsReached(destination)) return;
+
+    pendingDestinationRef.current = null;
+    completeAction(destination.key);
+    closeMobileOverlays();
+  }, [closeMobileOverlays, completeAction, destinationIsReached, pendingKey]);
+
+  useEffect(() => {
+    if (pendingKey !== null) return;
+    pendingDestinationRef.current = null;
+  }, [pendingKey]);
+
+  const runDelayedNavigation = useCallback(async (
+    destination: MobilePendingDestination,
+    action: () => void | Promise<void>,
+  ) => {
+    if (!beginAction(destination.key)) return false;
+    pendingDestinationRef.current = destination;
+
+    try {
+      const allowed = await requestNavigation(action);
+      if (!allowed) {
+        pendingDestinationRef.current = null;
+        completeAction(destination.key);
+      }
+      return allowed;
+    } catch (error) {
+      pendingDestinationRef.current = null;
+      completeAction(destination.key);
+      console.error("Erreur navigation mobile iNrCy:", error);
+      return false;
+    }
+  }, [beginAction, completeAction, requestNavigation]);
+
   const navigate = useCallback((href: string) => {
-    if (isDashboardRequiredSetupProtectedDestination(href) && !requiredSetupAccessAllowed) {
-      const panel = profileIncomplete ? "profil" : activityIncomplete ? "activite" : "profil";
-      try {
-        sessionStorage.setItem("inrcy_panel_explicit_open", "1");
-        sessionStorage.setItem("inrcy_last_panel", panel);
-      } catch {}
-      setMenuOpen(false);
-      setLanguageOpen(false);
-      setNotificationMenuOpen(false);
-      router.push(`/dashboard?panel=${encodeURIComponent(panel)}`, { scroll: false });
+    const destination = resolveHrefDestination(href);
+
+    if (destinationIsReached(destination)) {
+      closeMobileOverlays();
       return;
     }
 
-    void requestNavigation(() => {
-      setMenuOpen(false);
-      setLanguageOpen(false);
-      setNotificationMenuOpen(false);
-      if (/^https?:\/\//i.test(href)) window.location.assign(href);
-      else router.push(href);
+    if (!/^https?:\/\//i.test(destination.href)) {
+      requestDashboardToolWarmup(destination.href);
+    }
+
+    void runDelayedNavigation(destination, () => {
+      if (destination.href !== href) {
+        const panel = new URL(destination.href, "https://inrcy.local").searchParams.get("panel");
+        if (panel) {
+          try {
+            sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+            sessionStorage.setItem("inrcy_last_panel", panel);
+          } catch {}
+        }
+      }
+
+      if (/^https?:\/\//i.test(destination.href)) window.location.assign(destination.href);
+      else router.push(destination.href, { scroll: false });
     });
-  }, [activityIncomplete, profileIncomplete, requestNavigation, requiredSetupAccessAllowed, router]);
+  }, [closeMobileOverlays, destinationIsReached, resolveHrefDestination, router, runDelayedNavigation]);
 
   const openDashboardPanel = useCallback((panel: DashboardPanelName) => {
-    void requestNavigation(() => {
+    const destination: MobilePendingDestination = {
+      key: `panel:${panel}`,
+      kind: "panel",
+      panel,
+    };
+
+    if (destinationIsReached(destination)) {
+      closeMobileOverlays();
+      return;
+    }
+
+    void runDelayedNavigation(destination, () => {
       try {
         sessionStorage.setItem("inrcy_panel_explicit_open", "1");
         sessionStorage.setItem("inrcy_last_panel", panel);
       } catch {}
-      setMenuOpen(false);
-      setLanguageOpen(false);
-      setNotificationMenuOpen(false);
       router.push(`/dashboard?panel=${encodeURIComponent(panel)}`, { scroll: false });
     });
-  }, [requestNavigation, router]);
+  }, [closeMobileOverlays, destinationIsReached, router, runDelayedNavigation]);
 
   const handleLogout = useCallback(async () => {
     await requestNavigation(async () => {
@@ -326,6 +492,11 @@ function ResponsiveBottomNavMobile() {
     publishModalOpen ||
     (pathname === "/dashboard" && searchParams.get("action") === "publish");
   const hasMenuWarning = profileIncomplete || activityIncomplete;
+  const publishActionKey = resolveHrefDestination("/dashboard?action=publish").key;
+  const mediaActionKey = resolveHrefDestination("/dashboard/mediatheque").key;
+  const gpsActionKey = resolveHrefDestination("/dashboard/gps").key;
+  const adminActionKey = resolveHrefDestination("/dashboard/admin").key;
+  const publishLoadingVisible = isVisible(publishActionKey);
 
   return (
     <>
@@ -341,9 +512,13 @@ function ResponsiveBottomNavMobile() {
             type="button"
             className={styles.menuBackdrop}
             aria-label={t.drawer.close}
-            onClick={() => { setMenuOpen(false); setLanguageOpen(false); }}
+            onClick={() => {
+              if (pendingKey !== null) return;
+              setMenuOpen(false);
+              setLanguageOpen(false);
+            }}
           />
-          <div className={styles.menuPanel} role="menu" aria-label={t.topbar.menu}>
+          <div className={styles.menuPanel} role="menu" aria-label={t.topbar.menu} data-disable-pull-refresh="true">
             <section className={styles.menuSection} aria-label={labels.shortcuts}>
               <div className={styles.menuSectionTitle}>{labels.shortcuts}</div>
               <div className={styles.shortcutGrid}>
@@ -351,19 +526,23 @@ function ResponsiveBottomNavMobile() {
                   const option = getMobileShortcutOption(id);
                   const label = getMobileShortcutLabel(id, t.locale);
                   const shortcutLocked = requiredSetupLocked && isDashboardRequiredSetupProtectedDestination(option.href);
+                  const shortcutActionKey = resolveHrefDestination(option.href).key;
+                  const shortcutLoadingVisible = isVisible(shortcutActionKey);
                   return (
                     <button
                       key={id}
                       className={`${styles.shortcutItem} ${shortcutLocked ? styles.shortcutItemLocked : ""}`}
                       type="button"
                       role="menuitem"
+                      aria-busy={shortcutLoadingVisible || undefined}
+                      aria-disabled={shortcutLoadingVisible || undefined}
                       onClick={() => navigate(option.href)}
                     >
                       <span className={styles.shortcutIconSlot} aria-hidden="true">
                         {option.iconSrc ? <img src={option.iconSrc} alt="" className={styles.shortcutIconImage} loading="eager" decoding="async" /> : <span className={styles.shortcutIconText}>{option.iconText}</span>}
                         {id === "agent" && pendingInrAgentCount > 0 ? <span className={styles.shortcutBadge}>{pendingLabel}</span> : null}
                       </span>
-                      <span className={styles.shortcutLabel}>{label}</span>
+                      <span className={styles.shortcutLabel}>{shortcutLoadingVisible ? "Chargement…" : label}</span>
                       {shortcutLocked ? (
                         <RequiredSetupLock
                           message={requiredSetupLockMessage}
@@ -382,25 +561,99 @@ function ResponsiveBottomNavMobile() {
             <section className={styles.menuSection} aria-label={labels.general}>
               <div className={styles.menuSectionTitle}>{labels.general}</div>
               <div className={styles.menuGrid}>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("contact")}><span className={styles.menuItemText}>{t.topbar.contact}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("compte")}><span className={styles.menuItemText}>{t.userMenu.account}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("profil")}><span className={styles.menuItemText}>{t.userMenu.profile}</span>{profileIncomplete ? <span className={styles.menuItemWarning} aria-hidden="true">⚠️</span> : null}</button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("activite")}><span className={styles.menuItemText}>{t.userMenu.activity}</span>{activityIncomplete ? <span className={styles.menuItemWarning} aria-hidden="true">⚠️</span> : null}</button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("preferences")}><span className={styles.menuItemText}>{t.userMenu.preferences}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("ia")}><span className={styles.menuItemText}>{t.userMenu.ai}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => navigate("/dashboard/mediatheque")}><span className={styles.menuItemText}>{t.userMenu.media}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("abonnement")}><span className={styles.menuItemText}>{t.userMenu.subscription}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("inertie")}><span className={styles.menuItemText}>{t.userMenu.inertia}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("boutique")}><span className={styles.menuItemText}>{t.userMenu.shop}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("parrainage")}><span className={styles.menuItemText}>{t.userMenu.referral}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => navigate("/dashboard/gps")}><span className={styles.menuItemText}>{labels.gps}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" aria-expanded={languageOpen} onClick={() => setLanguageOpen((open) => !open)}>
+                <MobileMenuActionButton
+                  label={t.topbar.contact}
+                  loading={isVisible("panel:contact")}
+                  onClick={() => openDashboardPanel("contact")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.account}
+                  loading={isVisible("panel:compte")}
+                  onClick={() => openDashboardPanel("compte")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.profile}
+                  loading={isVisible("panel:profil")}
+                  onClick={() => openDashboardPanel("profil")}
+                  warning={profileIncomplete}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.activity}
+                  loading={isVisible("panel:activite")}
+                  onClick={() => openDashboardPanel("activite")}
+                  warning={activityIncomplete}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.preferences}
+                  loading={isVisible("panel:preferences")}
+                  onClick={() => openDashboardPanel("preferences")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.ai}
+                  loading={isVisible("panel:ia")}
+                  onClick={() => openDashboardPanel("ia")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.media}
+                  loading={isVisible(mediaActionKey)}
+                  onClick={() => navigate("/dashboard/mediatheque")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.subscription}
+                  loading={isVisible("panel:abonnement")}
+                  onClick={() => openDashboardPanel("abonnement")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.inertia}
+                  loading={isVisible("panel:inertie")}
+                  onClick={() => openDashboardPanel("inertie")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.shop}
+                  loading={isVisible("panel:boutique")}
+                  onClick={() => openDashboardPanel("boutique")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.referral}
+                  loading={isVisible("panel:parrainage")}
+                  onClick={() => openDashboardPanel("parrainage")}
+                />
+                <MobileMenuActionButton
+                  label={labels.gps}
+                  loading={isVisible(gpsActionKey)}
+                  onClick={() => navigate("/dashboard/gps")}
+                />
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  role="menuitem"
+                  aria-expanded={languageOpen}
+                  onClick={() => setLanguageOpen((open) => !open)}
+                >
                   <span className={styles.menuItemText}>{labels.language}</span>
-                  <img className={styles.menuLanguageFlag} src={currentLanguage.flagSrc} alt={currentLanguage.flag} />
+                  <img
+                    className={styles.menuLanguageFlag}
+                    src={currentLanguage.flagSrc}
+                    alt={currentLanguage.flag}
+                  />
                 </button>
-                {isAdmin ? <button className={styles.menuItem} type="button" role="menuitem" onClick={() => navigate("/dashboard/admin")}><span className={styles.menuItemText}>{t.topbar.admin}</span></button> : null}
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("legal")}><span className={styles.menuItemText}>{t.userMenu.legal}</span></button>
-                <button className={styles.menuItem} type="button" role="menuitem" onClick={() => openDashboardPanel("rgpd")}><span className={styles.menuItemText}>{t.userMenu.rgpd}</span></button>
+                {isAdmin ? (
+                  <MobileMenuActionButton
+                    label={t.topbar.admin}
+                    loading={isVisible(adminActionKey)}
+                    onClick={() => navigate("/dashboard/admin")}
+                  />
+                ) : null}
+                <MobileMenuActionButton
+                  label={t.userMenu.legal}
+                  loading={isVisible("panel:legal")}
+                  onClick={() => openDashboardPanel("legal")}
+                />
+                <MobileMenuActionButton
+                  label={t.userMenu.rgpd}
+                  loading={isVisible("panel:rgpd")}
+                  onClick={() => openDashboardPanel("rgpd")}
+                />
               </div>
 
               {languageOpen ? (
@@ -454,13 +707,14 @@ function ResponsiveBottomNavMobile() {
             className={`${styles.publishItem} ${publishActive ? styles.publishItemActive : ""}`}
             aria-label={labels.publish}
             aria-current={publishActive ? "page" : undefined}
-            aria-disabled={publishActive ? "true" : undefined}
+            aria-busy={publishLoadingVisible || undefined}
+            aria-disabled={publishActive || publishLoadingVisible ? "true" : undefined}
             disabled={publishActive}
             onClick={() => {
               navigate("/dashboard?action=publish");
             }}
           >
-            <span className={styles.publishButton}>{labels.publish}</span>
+            <span className={styles.publishButton}>{publishLoadingVisible ? "Chargement…" : labels.publish}</span>
             {requiredSetupLocked ? (
               <RequiredSetupLock
                 message={requiredSetupLockMessage}

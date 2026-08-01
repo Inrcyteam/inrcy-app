@@ -15,6 +15,7 @@ import { resolveInrcyAccountScopeForUser } from "@/lib/multicompte/server";
 import ActiveAccountTabSync from "./_components/ActiveAccountTabSync";
 import ResponsiveBottomNav from "./_components/ResponsiveBottomNav";
 import DashboardUnsavedNavigationProvider from "./_components/DashboardUnsavedNavigationProvider";
+import DashboardPullToRefresh from "./_components/DashboardPullToRefresh";
 import SentryUserContext from "./_components/SentryUserContext";
 import ClientAuthSessionGuard from "./_components/ClientAuthSessionGuard";
 import DashboardRequiredSetupGate from "./_components/DashboardRequiredSetupGate";
@@ -135,6 +136,7 @@ export default async function DashboardLayout({
 
       <DashboardRequiredSetupBypassProvider enabled={bypassRequiredSetup}>
         <DashboardUnsavedNavigationProvider>
+          <DashboardPullToRefresh />
           <DashboardRequiredSetupGate>
             <div className={styles.mobileViewport}>
               {children}

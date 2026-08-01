@@ -49,7 +49,7 @@ export default function RootLayout({
         <OrientationGuard />
         <CookieConsentBanner />
         <InrcyDialogProvider />
-        <PullToRefresh />
+        <PullToRefresh disabledOnDashboard />
         {children}
       </body>
     </html>

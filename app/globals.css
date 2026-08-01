@@ -82,7 +82,7 @@ svg {
 }
 
 
-/* Pull-to-refresh global mobile/iPhone */
+/* Pull-to-refresh global for touch phones and tablets */
 .globalPullRefreshIndicator{
   position: fixed;
   top: -54px;
@@ -109,8 +109,7 @@ svg {
   opacity: 1;
 }
 
-@media (min-width: 769px){
-  .globalPullRefreshIndicator{
-    display: none;
-  }
+html[data-inrcy-pull-refresh-enabled="1"],
+html[data-inrcy-pull-refresh-enabled="1"] body {
+  overscroll-behavior-y: none;
 }

@@ -27,8 +27,9 @@ test("dashboard tool, modal and configure buttons share the delayed loading beha
   const actionButton = read("app/dashboard/_components/DashboardActionButton.tsx");
   const modules = read("app/dashboard/_components/DashboardModulesCard.tsx");
   const bubble = read("app/dashboard/_components/DashboardFluxBubble.tsx");
+  const mobileNavigation = read("app/dashboard/_components/ResponsiveBottomNav.tsx");
 
-  for (const source of [actionButton, modules, bubble]) {
+  for (const source of [actionButton, modules, bubble, mobileNavigation]) {
     assert.match(source, /useDelayedPendingAction/);
     assert.match(source, /aria-busy=/);
     assert.match(source, /Chargement…/);
@@ -41,6 +42,8 @@ test("dashboard tool, modal and configure buttons share the delayed loading beha
   assert.match(modules, /route:/);
   assert.match(bubble, /configureLoadingVisible \? "Chargement…"/);
   assert.match(bubble, /data-dashboard-prefetch=/);
+  assert.match(mobileNavigation, /modal:publish/);
+  assert.match(mobileNavigation, /shortcutLoadingVisible/);
 });
 
 test("bubble logos use immutable static assets and stay mounted in the dashboard layout", () => {
