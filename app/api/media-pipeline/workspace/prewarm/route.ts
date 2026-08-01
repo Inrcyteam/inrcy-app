@@ -134,7 +134,7 @@ export async function POST(request: Request) {
         60 * 60,
       );
       const requestedVariants = selectedChannels.map((channel) => ({
-        key: `${channel}-${settings[channel]?.format || "original"}-${settings[channel]?.adaptationMode || "safe_blur"}`,
+        key: `${channel}-${settings[channel]?.format || "original"}-${settings[channel]?.adaptationMode || "safe_frame"}`,
         channel,
         format: settings[channel]?.format,
         adaptationMode: settings[channel]?.adaptationMode,
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
           requestedVariants.map((variant) =>
             buildVideoTransformSignature(
               variant.format || "original",
-              variant.adaptationMode || "safe_blur",
+              variant.adaptationMode || "safe_frame",
             ),
           ),
         ),
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
       const invalidChannels = requestedVariants.flatMap((request) => {
         const signature = buildVideoTransformSignature(
           request.format || "original",
-          request.adaptationMode || "safe_blur",
+          request.adaptationMode || "safe_frame",
         );
         const variant = prepared.variants.find(
           (candidate) => candidate.signature === signature,
@@ -227,7 +227,7 @@ export async function POST(request: Request) {
             .filter((request) => {
               const signature = buildVideoTransformSignature(
                 request.format || "original",
-                request.adaptationMode || "safe_blur",
+                request.adaptationMode || "safe_frame",
               );
               const variant = prepared.variants.find(
                 (candidate) => candidate.signature === signature,

@@ -1,6 +1,9 @@
 import type { CSSProperties } from "react";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
-import { getBoosterImageDisplayPlan } from "@/lib/boosterImageDecision";
+import {
+  getBoosterImageDisplayPlan,
+  getBoosterImageSafetyBackgroundMode,
+} from "@/lib/boosterImageDecision";
 import {
   INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS,
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
@@ -74,7 +77,6 @@ export type ThemeKey =
 export type StyleKey = "sobre" | "equilibre" | "dynamique";
 export type FitMode = "contain" | "cover";
 export type BackgroundMode =
-  | "blur"
   | "transparent"
   | "color"
   | "white"
@@ -1673,11 +1675,17 @@ export function normalizeContainTransform(
   };
 }
 
+export function getChannelSafetyBackgroundMode(
+  channel: ChannelKey,
+): BackgroundMode {
+  return getBoosterImageSafetyBackgroundMode(channel);
+}
+
 export function getBackgroundMode(transform: ImageTransform): BackgroundMode {
-  if (transform.backgroundMode === "blur" || transform.blurBackground) {
-    return "blur";
-  }
-  if (transform.backgroundMode) return transform.backgroundMode;
+  const rawMode = String(transform.backgroundMode || "").trim().toLowerCase();
+  // Legacy persisted blur settings are converted to a sober solid background.
+  if (rawMode === "blur" || transform.blurBackground) return "black";
+  if (rawMode) return rawMode as BackgroundMode;
   return transform.backgroundColor ? "color" : "black";
 }
 
@@ -1688,9 +1696,7 @@ export function withBackgroundMode(
   return {
     ...transform,
     backgroundMode,
-    backgroundColor:
-      backgroundMode === "blur" ? undefined : transform.backgroundColor,
-    blurBackground: backgroundMode === "blur",
+    blurBackground: false,
   };
 }
 
@@ -2363,19 +2369,7 @@ export async function renderChannelImage(params: {
     const backgroundColor = googleBusinessSafeBackground
       ? "#ffffff"
       : transform.backgroundColor;
-    if (backgroundMode === "blur" && transform.fit === "contain") {
-      const blurScale = Math.max(cw / iw, ch / ih);
-      const blurW = iw * blurScale;
-      const blurH = ih * blurScale;
-      const blurX = (cw - blurW) / 2;
-      const blurY = (ch - blurH) / 2;
-      ctx.save();
-      ctx.filter = "blur(28px) saturate(0.9) brightness(0.78)";
-      ctx.drawImage(img, blurX, blurY, blurW, blurH);
-      ctx.restore();
-      ctx.fillStyle = "rgba(8, 12, 24, 0.18)";
-      ctx.fillRect(0, 0, cw, ch);
-    } else if (backgroundMode !== "transparent") {
+    if (backgroundMode !== "transparent") {
       ctx.fillStyle = getBackgroundFill(backgroundMode, backgroundColor);
       ctx.fillRect(0, 0, cw, ch);
     }
@@ -2405,7 +2399,10 @@ export function getDefaultTransform(channel: ChannelKey): ImageTransform {
     offsetX: 0,
     offsetY: 0,
     blurBackground: false,
-    backgroundMode: preset.defaultFit === "contain" ? "brand" : "black",
+    backgroundMode:
+      preset.defaultFit === "contain"
+        ? getBoosterImageSafetyBackgroundMode(channel)
+        : "black",
   };
 }
 
@@ -2425,10 +2422,12 @@ export function getOptimizedTransform(
         zoom: 1,
         offsetX: 0,
         offsetY: 0,
-        blurBackground: fit === "contain",
+        blurBackground: false,
         backgroundColor: undefined,
       },
-      fit === "contain" ? "blur" : "black",
+      fit === "contain"
+        ? getBoosterImageSafetyBackgroundMode(channel)
+        : "black",
     );
   }
 

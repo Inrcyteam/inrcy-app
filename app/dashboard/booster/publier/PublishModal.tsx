@@ -70,6 +70,7 @@ import {
   getPublicationMediaLabel,
   getWebsiteUrlForChannel,
   getImageFitLabel,
+  getChannelSafetyBackgroundMode,
   getOptimizedTransform,
   getVideoFormatLabel,
   VIDEO_ADAPTATION_MODE_LABELS,
@@ -3096,7 +3097,7 @@ export default function PublishModal({
         ? selectedChannels
         : CHANNEL_KEYS) {
         next[channel] = normalizeVideoAdaptationMode(
-          next[channel] || "safe_blur",
+          next[channel] || "safe_frame",
         );
       }
       return next;
@@ -5330,35 +5331,27 @@ export default function PublishModal({
           updateChannelTransform(
             activeImageChannel,
             activeEditorImageKey,
-            mode === "blur"
+            mode === "transparent"
               ? {
-                  backgroundMode: "blur",
+                  backgroundMode: "transparent",
                   backgroundColor: undefined,
-                  blurBackground: true,
+                  blurBackground: false,
                   fit: "contain",
                   zoom: 1,
                   offsetX: 0,
                   offsetY: 0,
                 }
-              : mode === "transparent"
-                ? {
-                    backgroundMode: "transparent",
-                    backgroundColor: undefined,
-                    blurBackground: false,
-                    fit: "contain",
-                    zoom: 1,
-                    offsetX: 0,
-                    offsetY: 0,
-                  }
-                : {
-                  backgroundMode: "color",
+              : {
+                  backgroundMode: mode,
                   backgroundColor:
-                    activeEditorTransform.backgroundColor ||
-                    (activeImageChannel === "inrcy_site" ||
-                    activeImageChannel === "site_web" ||
-                    activeImageChannel === "gmb"
-                      ? "#ffffff"
-                      : "#ffffff"),
+                    mode === "black"
+                      ? "#0d1320"
+                      : mode === "white"
+                        ? "#ffffff"
+                        : activeEditorTransform.backgroundColor ||
+                          (getChannelSafetyBackgroundMode(activeImageChannel) === "black"
+                            ? "#0d1320"
+                            : "#ffffff"),
                   blurBackground: false,
                   fit: "contain",
                   zoom: 1,

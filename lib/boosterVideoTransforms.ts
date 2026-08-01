@@ -199,7 +199,7 @@ export function normalizeVideoTransformVariant(
     ? getDefaultChannelVideoSettings(channel)
     : {
         format: "original" as VideoFormat,
-        adaptationMode: "safe_blur" as VideoAdaptationMode,
+        adaptationMode: "safe_frame" as VideoAdaptationMode,
       };
   const format = channel
     ? normalizeVideoFormat(channel, raw.format || channelDefaults.format)

@@ -52,25 +52,10 @@ export function FinalImageFrame({
     };
   })();
 
-  const coverLayout = (() => {
-    if (!imageWidth || !imageHeight) return null;
-    const scale = Math.max(canvasWidth / imageWidth, canvasHeight / imageHeight);
-    const drawW = imageWidth * scale;
-    const drawH = imageHeight * scale;
-    return {
-      left: `${(((canvasWidth - drawW) / 2) / canvasWidth) * 100}%`,
-      top: `${(((canvasHeight - drawH) / 2) / canvasHeight) * 100}%`,
-      width: `${(drawW / canvasWidth) * 100}%`,
-      height: `${(drawH / canvasHeight) * 100}%`,
-    };
-  })();
+
 
   return (
     <div style={{ position: "relative", borderRadius: "inherit", overflow: "hidden", aspectRatio, ...previewBackgroundStyle(mode, backgroundColor), border: "1px solid rgba(255,255,255,0.08)" }}>
-      {src && mode === "blur" && coverLayout ? (
-        <img src={src} alt="" aria-hidden="true" draggable={false} style={{ position: "absolute", ...coverLayout, objectFit: "fill", filter: "blur(18px) saturate(1.05)", transform: "scale(1.06)", opacity: 0.9 }} />
-      ) : null}
-      {src && mode === "blur" ? <div style={{ position: "absolute", inset: 0, background: "rgba(8,12,24,0.24)" }} /> : null}
       {src && layout ? (
         <img src={src} alt="preview" draggable={false} style={{ position: "absolute", ...layout, objectFit: "fill", display: "block", maxWidth: "none", userSelect: "none", pointerEvents: "none" }} />
       ) : src ? (

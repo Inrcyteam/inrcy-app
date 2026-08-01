@@ -72,6 +72,7 @@ import {
   getCtaModeHelp,
   getDefaultTransform,
   getEffectiveTransformZoom,
+  getChannelSafetyBackgroundMode,
   getOptimizedTransform,
   getPreferredCtaChoiceFromPost,
   getVideoFormatLabel,
@@ -414,7 +415,7 @@ export default function AgentClient() {
   const [publishVideoFormat, setPublishVideoFormat] =
     useState<VideoFormat>("original");
   const [publishVideoAdaptationMode, setPublishVideoAdaptationMode] =
-    useState<VideoAdaptationMode>("safe_blur");
+    useState<VideoAdaptationMode>("safe_frame");
   const [publishVideoPreparationState, setPublishVideoPreparationState] =
     useState<BoosterVideoPreparationState | null>(null);
   const [publishVideoAdapterSaving, setPublishVideoAdapterSaving] =
@@ -1648,7 +1649,7 @@ export default function AgentClient() {
         detail: `${getVideoFormatLabel(
           publishBoosterChannel,
           publishVideoFormat,
-        )} · ${publishVideoAdaptationMode === "cover_crop" ? "Recadrer plein écran" : "Fond flouté sécurisé"}`,
+        )} · ${publishVideoAdaptationMode === "cover_crop" ? "Recadrer plein écran" : "Vidéo entière sur fond sobre"}`,
       });
       if (response.errors?.length && !generatedVariants.length) {
         showNotice(
@@ -5398,9 +5399,9 @@ export default function AgentClient() {
               zoom: 1,
               offsetX: 0,
               offsetY: 0,
-              backgroundMode: "blur",
+              backgroundMode: getChannelSafetyBackgroundMode(publishBoosterChannel),
               backgroundColor: undefined,
-              blurBackground: true,
+              blurBackground: false,
             })
           }
           onCover={() =>
@@ -5422,31 +5423,27 @@ export default function AgentClient() {
           isolationNote="Ce réglage utilise l’outil Adapter image existant de Booster et remplacera le média iNrAgent par la version adaptée."
           onBackgroundModeChange={(mode) =>
             updatePublishImageAdapterTransform(
-              mode === "blur"
+              mode === "transparent"
                 ? {
-                    backgroundMode: "blur",
+                    backgroundMode: "transparent",
                     backgroundColor: undefined,
-                    blurBackground: true,
+                    blurBackground: false,
                     fit: "contain",
                     zoom: 1,
                     offsetX: 0,
                     offsetY: 0,
                   }
-                : mode === "transparent"
-                  ? {
-                      backgroundMode: "transparent",
-                      backgroundColor: undefined,
-                      blurBackground: false,
-                      fit: "contain",
-                      zoom: 1,
-                      offsetX: 0,
-                      offsetY: 0,
-                    }
-                  : {
-                    backgroundMode: "color",
+                : {
+                    backgroundMode: mode,
                     backgroundColor:
-                      publishImageAdapterTransformSafe.backgroundColor ||
-                      "#ffffff",
+                      mode === "black"
+                        ? "#0d1320"
+                        : mode === "white"
+                          ? "#ffffff"
+                          : publishImageAdapterTransformSafe.backgroundColor ||
+                            (getChannelSafetyBackgroundMode(publishBoosterChannel) === "black"
+                              ? "#0d1320"
+                              : "#ffffff"),
                     blurBackground: false,
                     fit: "contain",
                     zoom: 1,

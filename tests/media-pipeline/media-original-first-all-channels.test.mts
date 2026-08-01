@@ -3,12 +3,14 @@ import test from "node:test";
 
 import {
   getBoosterImageDecision,
+  getBoosterImageSafetyBackgroundMode,
   type BoosterImageChannel,
 } from "../../lib/boosterImageDecision.ts";
 import {
   buildVideoSettingsByChannel,
   getDefaultChannelVideoSettings,
   getVideoPreviewAspectRatio,
+  normalizeVideoAdaptationMode,
   type BoosterVideoChannelKey,
 } from "../../lib/boosterVideoSettings.ts";
 import { getVariantForChannel } from "../../lib/boosterVideoTransforms.ts";
@@ -61,6 +63,15 @@ test("Instagram and Pinterest preserve every ratio they accept and adapt only ha
   );
 });
 
+
+test("safety backgrounds are solid or transparent, never blurred", () => {
+  assert.equal(getBoosterImageSafetyBackgroundMode("inrcy_site"), "transparent");
+  assert.equal(getBoosterImageSafetyBackgroundMode("site_web"), "transparent");
+  assert.equal(getBoosterImageSafetyBackgroundMode("gmb"), "white");
+  assert.equal(getBoosterImageSafetyBackgroundMode("instagram"), "black");
+  assert.equal(getBoosterImageSafetyBackgroundMode("pinterest"), "black");
+});
+
 test("stale transforms cannot personalize an image without explicit provenance", () => {
   const decision = getBoosterImageDecision({
     channel: "facebook",
@@ -92,9 +103,14 @@ test("Original video previews keep the source ratio instead of forcing 16:9", ()
 test("an old channel crop is never reused for an Original request", () => {
   const oldVariant = {
     key: "facebook-16-9", channel: "facebook" as const, format: "16_9" as const,
-    adaptationMode: "safe_blur" as const, target: { format: "16_9" as const, width: 1280, height: 720, aspectRatio: "16:9", label: "16:9" },
-    signature: "16_9:safe_blur", storagePath: "old.mp4", publicUrl: "https://example.test/old.mp4",
+    adaptationMode: "safe_frame" as const, target: { format: "16_9" as const, width: 1280, height: 720, aspectRatio: "16:9", label: "16:9" },
+    signature: "16_9:safe_frame", storagePath: "old.mp4", publicUrl: "https://example.test/old.mp4",
     contentType: "video/mp4", size: 100, duration: 10, generatedAt: new Date(0).toISOString(),
   };
-  assert.equal(getVariantForChannel([oldVariant], "facebook", "original", "safe_blur"), null);
+  assert.equal(getVariantForChannel([oldVariant], "facebook", "original", "safe_frame"), null);
+});
+
+test("legacy blurred video settings are migrated to a solid safe frame", () => {
+  assert.equal(normalizeVideoAdaptationMode("safe_blur"), "safe_frame");
+  assert.equal(normalizeVideoAdaptationMode(undefined), "safe_frame");
 });

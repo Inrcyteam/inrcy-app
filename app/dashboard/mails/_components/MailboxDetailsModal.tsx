@@ -1789,7 +1789,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     videoDurationSeconds={detailsEditMode ? (activePublicationEditVideo?.duration || activeVideoDisplayAttachment?.duration || null) : (activeVideoDisplayAttachment?.duration || null)}
                                     videoSourceMetadata={detailsEditMode ? (activePublicationEditVideo?.sourceMetadata || null) : null}
                                     currentFormat={(detailsEditMode ? (activePublicationEditVideo?.format || activeVideoSettings?.format || "original") : (activeVideoSettings?.format || "original")) as VideoFormat}
-                                    adaptationMode={(detailsEditMode ? (activePublicationEditVideo?.adaptationMode || activeVideoSettings?.adaptationMode || "safe_blur") : (activeVideoSettings?.adaptationMode || "safe_blur")) as VideoAdaptationMode}
+                                    adaptationMode={(detailsEditMode ? (activePublicationEditVideo?.adaptationMode || activeVideoSettings?.adaptationMode || "safe_frame") : (activeVideoSettings?.adaptationMode || "safe_frame")) as VideoAdaptationMode}
                                     videoTransformedVariants={[]}
                                     preparationState={detailsEditMode ? (activePublicationEditVideo?.preparation || null) : null}
                                     preparing={detailsEditMode ? Boolean(activePublicationEditVideo?.preparing) : false}

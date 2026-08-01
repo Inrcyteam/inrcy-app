@@ -27,6 +27,7 @@ const FINAL_GEOMETRY_SCALE_STEPS = [1, 0.85, 0.7, 0.55, 0.4, 0.3, 0.2] as const;
 const FINAL_GEOMETRY_RATIO_EPSILON = 0.005;
 
 const DEFAULT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 };
+const DARK_BACKGROUND = { r: 13, g: 19, b: 32, alpha: 1 };
 
 export type OptimizeResult = {
   buffer: Buffer;
@@ -305,18 +306,8 @@ async function createSmartJpeg(params: {
 
   let quality = startQuality;
 
-  let blurredBackground: Buffer | null = null;
-  let containedForeground: Buffer | null = null;
-  if (!useCover) {
-    [blurredBackground, containedForeground] = await Promise.all([
-      sharp(inputBuffer, { failOn: "none" })
-        .rotate()
-        .resize({ width, height, fit: "cover", position: "centre" })
-        .blur(28)
-        .modulate({ brightness: 0.78, saturation: 0.9 })
-        .png()
-        .toBuffer(),
-      sharp(inputBuffer, { failOn: "none" })
+  const containedForeground = !useCover
+    ? await sharp(inputBuffer, { failOn: "none" })
         .rotate()
         .resize({
           width,
@@ -326,9 +317,8 @@ async function createSmartJpeg(params: {
           background: { r: 0, g: 0, b: 0, alpha: 0 },
         })
         .png()
-        .toBuffer(),
-    ]);
-  }
+        .toBuffer()
+    : null;
 
   async function render(q: number) {
     const pipeline = useCover
@@ -341,7 +331,14 @@ async function createSmartJpeg(params: {
             position: "centre",
             withoutEnlargement: false,
           })
-      : sharp(blurredBackground as Buffer).composite([
+      : sharp({
+          create: {
+            width,
+            height,
+            channels: 4,
+            background,
+          },
+        }).composite([
           { input: containedForeground as Buffer, gravity: "centre" },
         ]);
 
@@ -385,6 +382,7 @@ async function optimizeForInstagramSafeFrame(
     maxBytes: INSTAGRAM_MAX_BYTES,
     startQuality: 86,
     minQuality: 52,
+    background: DARK_BACKGROUND,
   });
 
   if (result.size > INSTAGRAM_MAX_BYTES) {
@@ -395,6 +393,7 @@ async function optimizeForInstagramSafeFrame(
       maxBytes: INSTAGRAM_MAX_BYTES,
       startQuality: 78,
       minQuality: 48,
+      background: DARK_BACKGROUND,
     });
   }
 
@@ -429,6 +428,7 @@ async function optimizeForSocialFeedSafeFrame(
     maxBytes: SOCIAL_FEED_MAX_BYTES,
     startQuality: 88,
     minQuality: 56,
+    background: DARK_BACKGROUND,
   });
 
   if (result.size > SOCIAL_FEED_MAX_BYTES) {
@@ -439,6 +439,7 @@ async function optimizeForSocialFeedSafeFrame(
       maxBytes: SOCIAL_FEED_MAX_BYTES,
       startQuality: 80,
       minQuality: 50,
+      background: DARK_BACKGROUND,
     });
   }
 

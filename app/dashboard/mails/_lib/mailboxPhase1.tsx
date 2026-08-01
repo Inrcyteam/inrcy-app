@@ -9,6 +9,10 @@ import {
   normalizeChannelVideoSettings,
   type ChannelVideoSettings,
 } from "@/lib/boosterVideoSettings";
+import {
+  getBoosterImageSafetyBackgroundMode,
+  type BoosterImageChannel,
+} from "@/lib/boosterImageDecision";
 
 export const MAILBOX_PAGE_SIZE = 20;
 export const MAILBOX_RECIPIENTS_PAGE_SIZE = 20;
@@ -421,7 +425,7 @@ export type PublicationEditForm = {
 export type EditablePublicationAttachment = PublicationAttachment;
 
 export type PublicationImageFitMode = "contain" | "cover";
-export type PublicationImageBackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
+export type PublicationImageBackgroundMode = "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
 
 export type PublicationImageTransform = {
   fit: PublicationImageFitMode;
@@ -481,6 +485,13 @@ export const PUBLICATION_CHANNEL_PRESETS: Record<string, PublicationImageRenderP
   pinterest: { width: 1000, height: 1500, defaultFit: "contain", defaultBlurBackground: false },
 };
 
+export function getPublicationSafetyBackgroundMode(
+  channel: string,
+): PublicationImageBackgroundMode {
+  const normalized = normalizeChannelKey(channel) as BoosterImageChannel;
+  return getBoosterImageSafetyBackgroundMode(normalized);
+}
+
 export function publicationClamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -496,27 +507,38 @@ export function getPublicationChannelPreset(channel: string): PublicationImageRe
 
 export function buildPublicationDefaultTransform(channel: string): PublicationImageTransform {
   const preset = getPublicationChannelPreset(channel);
+  const backgroundMode =
+    preset.defaultFit === "contain"
+      ? getPublicationSafetyBackgroundMode(channel)
+      : "black";
   return {
     fit: preset.defaultFit,
     zoom: 1,
     offsetX: 0,
     offsetY: 0,
-    blurBackground: preset.defaultBlurBackground,
-    backgroundMode: preset.defaultBlurBackground ? "blur" : "color",
-    backgroundColor: "#ffffff",
+    blurBackground: false,
+    backgroundMode,
+    backgroundColor:
+      backgroundMode === "white"
+        ? "#ffffff"
+        : backgroundMode === "black"
+          ? "#0d1320"
+          : undefined,
   };
 }
 
 export function getPublicationBackgroundMode(transform: PublicationImageTransform): PublicationImageBackgroundMode {
-  if (transform.backgroundMode) return transform.backgroundMode;
-  return transform.blurBackground ? "blur" : "black";
+  const rawMode = String(transform.backgroundMode || "").trim().toLowerCase();
+  if (rawMode === "blur" || transform.blurBackground) return "black";
+  if (rawMode) return rawMode as PublicationImageBackgroundMode;
+  return "black";
 }
 
 export function withPublicationBackgroundMode(transform: PublicationImageTransform, backgroundMode: PublicationImageBackgroundMode): PublicationImageTransform {
   return {
     ...transform,
     backgroundMode,
-    blurBackground: backgroundMode === "blur",
+    blurBackground: false,
   };
 }
 
@@ -643,23 +665,9 @@ export async function renderPublicationImageAsset(params: {
     ctx.clearRect(0, 0, cw, ch);
 
     const backgroundMode = getPublicationBackgroundMode(transform);
-    if (transform.fit === "contain") {
-      if (backgroundMode !== "blur" && backgroundMode !== "transparent") {
-        ctx.fillStyle = getPublicationBackgroundFill(backgroundMode, transform.backgroundColor);
-        ctx.fillRect(0, 0, cw, ch);
-      } else if (backgroundMode === "blur") {
-        const blurScale = Math.max(cw / iw, ch / ih);
-        const blurW = iw * blurScale;
-        const blurH = ih * blurScale;
-        const blurX = (cw - blurW) / 2;
-        const blurY = (ch - blurH) / 2;
-        ctx.save();
-        ctx.filter = "blur(28px) saturate(1.05)";
-        ctx.drawImage(img, blurX, blurY, blurW, blurH);
-        ctx.restore();
-        ctx.fillStyle = "rgba(8, 12, 24, 0.24)";
-        ctx.fillRect(0, 0, cw, ch);
-      }
+    if (transform.fit === "contain" && backgroundMode !== "transparent") {
+      ctx.fillStyle = getPublicationBackgroundFill(backgroundMode, transform.backgroundColor);
+      ctx.fillRect(0, 0, cw, ch);
     }
 
     ctx.drawImage(img, dx, dy, drawW, drawH);

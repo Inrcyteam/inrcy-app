@@ -17,7 +17,7 @@ Entrée minimale :
     "sourceMetadata": { "width": 1920, "height": 1080, "duration": 24 }
   },
   "variants": [
-    { "key": "tiktok-9-16", "channel": "tiktok", "format": "9_16", "adaptationMode": "safe_blur" },
+    { "key": "tiktok-9-16", "channel": "tiktok", "format": "9_16", "adaptationMode": "safe_frame" },
     { "key": "linkedin-1-1", "channel": "linkedin", "format": "1_1", "adaptationMode": "cover_crop" }
   ]
 }
@@ -32,7 +32,7 @@ Entrée minimale :
 
 ## Modes
 
-- `safe_blur` : fond flouté sécurisé, aucune zone utile coupée.
+- `safe_frame` : vidéo entière sur fond uni sobre, aucune zone utile coupée.
 - `cover_crop` : recadrage plein écran, rendu plus immersif mais peut couper les bords.
 
 ## Important

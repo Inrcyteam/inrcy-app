@@ -154,7 +154,7 @@ export default function BoosterVideoFormatManager({
   const isVerticalDestination = currentFormat === "9_16";
   const isTikTokHorizontalRecommended = (channel === "tiktok" || channel === "youtube_shorts") && isHorizontalSource && smartRecommendedFormat === "16_9";
   const frameWidth = getVideoFrameWidth({ format: currentFormat, metadata: videoSourceMetadata, isMobile });
-  const usesSafeFramePreview = !isApplied && adaptationMode === "safe_blur" && currentFormat !== "original";
+  const usesSafeFramePreview = !isApplied && adaptationMode === "safe_frame" && currentFormat !== "original";
   const targetRatio = VIDEO_FORMAT_ASPECT_RATIOS[currentFormat] || "16 / 9";
   const [targetWidth, targetHeight] = targetRatio
     .split("/")
@@ -419,7 +419,7 @@ export default function BoosterVideoFormatManager({
         <div style={{ display: "grid", gap: 7, width: "100%", minWidth: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(226,232,240,0.78)" }}>Adaptation</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "center" : "flex-start" }}>
-            {(["safe_blur", "cover_crop"] as const).map((mode) => {
+            {(["safe_frame", "cover_crop"] as const).map((mode) => {
               const active = adaptationMode === mode;
               return (
                 <button

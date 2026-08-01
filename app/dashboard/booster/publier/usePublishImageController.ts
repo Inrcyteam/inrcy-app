@@ -14,6 +14,7 @@ import {
   areBoosterImageTransformsEquivalent,
   getBoosterImageDisplayPlan,
   getBoosterImageRenderDimensions,
+  getBoosterImageSafetyBackgroundMode,
   getBoosterImageSequenceTargetRatio,
 } from "@/lib/boosterImageDecision";
 import {
@@ -741,9 +742,9 @@ export default function usePublishImageController({
       zoom: 1,
       offsetX: 0,
       offsetY: 0,
-      backgroundMode: "blur",
+      backgroundMode: getBoosterImageSafetyBackgroundMode(channel),
       backgroundColor: undefined,
-      blurBackground: true,
+      blurBackground: false,
     });
   };
 
@@ -1188,9 +1189,11 @@ export default function usePublishImageController({
             zoom: 1,
             offsetX: 0,
             offsetY: 0,
-            blurBackground: displayPlan.automaticFit === "contain",
+            blurBackground: false,
             backgroundMode:
-              displayPlan.automaticFit === "contain" ? "blur" : "black",
+              displayPlan.automaticFit === "contain"
+                ? getBoosterImageSafetyBackgroundMode(channel)
+                : "black",
             backgroundColor: undefined,
           };
         } else {
@@ -1296,9 +1299,11 @@ export default function usePublishImageController({
             zoom: 1,
             offsetX: 0,
             offsetY: 0,
-            blurBackground: displayPlan.automaticFit === "contain",
+            blurBackground: false,
             backgroundMode:
-              displayPlan.automaticFit === "contain" ? "blur" : "black",
+              displayPlan.automaticFit === "contain"
+                ? getBoosterImageSafetyBackgroundMode(channel)
+                : "black",
             backgroundColor: undefined,
           };
           payload = await renderChannelImage({

@@ -1,7 +1,7 @@
 import type React from "react";
 
 
-export type BackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
+export type BackgroundMode = "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
 
 export type ChannelTab = { key: string; label: string; count?: number; tone?: "ready" | "warning" | "blocked" | "empty" };
 

@@ -12,7 +12,7 @@ Pour chaque canal vidéo :
 
 - canal actif ;
 - format final utilisé : 9:16, 1:1, 16:9 ou Original ;
-- mode d'adaptation : fond flouté sécurisé ou recadrage plein écran ;
+- mode d'adaptation : cadre sobre sans flou ou recadrage plein écran ;
 - nom du fichier vidéo final ;
 - poids et durée quand disponibles ;
 - chemin de stockage quand disponible ;

@@ -512,7 +512,7 @@ async function publishNowHandler(req: Request) {
       const videoVariantRequest = selected
         .filter((channel) => mediaModeByChannel[channel] === "video")
         .map((channel) => ({
-          key: `${channel}-${videoSettingsByChannel[channel]?.format || "original"}-${videoSettingsByChannel[channel]?.adaptationMode || "safe_blur"}`,
+          key: `${channel}-${videoSettingsByChannel[channel]?.format || "original"}-${videoSettingsByChannel[channel]?.adaptationMode || "safe_frame"}`,
           channel: channel as any,
           format: videoSettingsByChannel[channel]?.format,
           adaptationMode: videoSettingsByChannel[channel]?.adaptationMode,
@@ -541,7 +541,7 @@ async function publishNowHandler(req: Request) {
       const invalidVideoChannels = videoVariantRequest.flatMap((request) => {
         const signature = buildVideoTransformSignature(
           request.format || "original",
-          request.adaptationMode || "safe_blur",
+          request.adaptationMode || "safe_frame",
         );
         const variant = variantResult.variants.find(
           (candidate) => candidate.signature === signature,

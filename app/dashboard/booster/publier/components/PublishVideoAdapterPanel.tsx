@@ -70,7 +70,7 @@ export default function PublishVideoAdapterPanel({
 
   const currentFormat =
     videoFormatByChannel[activeChannel] || "original";
-  const adaptationMode = videoAdaptationModeByChannel[activeChannel] || "safe_blur";
+  const adaptationMode = videoAdaptationModeByChannel[activeChannel] || "safe_frame";
   const preparationState = videoVariantPreparationByChannel[activeChannel] || null;
 
   return (

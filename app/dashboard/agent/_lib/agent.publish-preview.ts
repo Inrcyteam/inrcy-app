@@ -406,7 +406,7 @@ export function publishChannelVideo(
   const settings = publishChannelVideoSettings(action, channelKey);
   const signature = settings
     ? `${String(settings.format || "original")}:${String(
-        settings.adaptationMode || settings.adaptation_mode || "safe_blur",
+        settings.adaptationMode || settings.adaptation_mode || "safe_frame",
       )}`
     : "";
   const selectedVariant =

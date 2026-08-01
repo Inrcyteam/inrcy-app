@@ -25,6 +25,7 @@ import {
   channelSupportsTextOnly,
   getUnavailableMediaModeMessage,
   getBackgroundMode,
+  getChannelSafetyBackgroundMode,
   getOptimizedTransform,
   type ChannelImageEditorState,
   type ChannelKey,
@@ -684,10 +685,10 @@ export default function PublishImagesPanel({
                         zoom: 1,
                         offsetX: 0,
                         offsetY: 0,
-                        blurBackground: displayPlan.automaticFit === "contain",
+                        blurBackground: false,
                         backgroundMode:
                           displayPlan.automaticFit === "contain"
-                            ? ("blur" as const)
+                            ? getChannelSafetyBackgroundMode(activeImageChannel)
                             : ("black" as const),
                         backgroundColor: undefined,
                       };
@@ -699,8 +700,8 @@ export default function PublishImagesPanel({
                       offsetX: 0,
                       offsetY: 0,
                       blurBackground: false,
-                      backgroundMode: "color" as const,
-                      backgroundColor: "#ffffff",
+                      backgroundMode: getChannelSafetyBackgroundMode(activeImageChannel),
+                      backgroundColor: undefined,
                     };
                   })();
 

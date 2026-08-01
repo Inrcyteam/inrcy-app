@@ -148,28 +148,6 @@ export function ChannelImageAdapterModal({
                 onDoubleClick={onDoubleClick}
                 style={{ position: "relative", width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio, borderRadius: isMobile ? 16 : 22, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)", ...previewBg, cursor: isDragging ? "grabbing" : "grab", touchAction: "none", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)" }}
               >
-                {!showBefore && normalizedBgMode === "blur" ? (
-                  <>
-                    <img
-                      src={previewSrc}
-                      alt=""
-                      aria-hidden="true"
-                      draggable={false}
-                      style={{
-                        position: "absolute",
-                        inset: -24,
-                        width: "calc(100% + 48px)",
-                        height: "calc(100% + 48px)",
-                        objectFit: "cover",
-                        filter: "blur(28px) saturate(0.9) brightness(0.78)",
-                        transform: "scale(1.08)",
-                        pointerEvents: "none",
-                        userSelect: "none",
-                      }}
-                    />
-                    <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "rgba(8,12,24,0.18)", pointerEvents: "none" }} />
-                  </>
-                ) : null}
                 {showBefore ? (
                   <img src={previewSrc} alt="aperçu avant" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", userSelect: "none", pointerEvents: "none", background: "rgba(255,255,255,0.04)" }} />
                 ) : hasLayout && previewLayout ? (
@@ -208,9 +186,10 @@ export function ChannelImageAdapterModal({
             <div style={{ display: "grid", gap: 10, padding: isMobile ? 12 : 14, borderRadius: 20, minWidth: 0, width: "100%", boxSizing: "border-box", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
               <div style={{ fontSize: 12, opacity: 0.82 }}>Arrière-plan</div>
               <select value={bgMode} onChange={(e) => onBackgroundModeChange(e.target.value as BackgroundMode)} style={{ width: "100%", minHeight: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "#ffffff", color: "#111827", padding: "0 12px" }}>
-                <option value="blur" style={{ background: "#ffffff", color: "#111827" }}>Fond flouté</option>
                 <option value="transparent" style={{ background: "#ffffff", color: "#111827" }}>Transparent</option>
-                <option value="color" style={{ background: "#ffffff", color: "#111827" }}>Fond uni</option>
+                <option value="white" style={{ background: "#ffffff", color: "#111827" }}>Blanc</option>
+                <option value="black" style={{ background: "#ffffff", color: "#111827" }}>Noir</option>
+                <option value="color" style={{ background: "#ffffff", color: "#111827" }}>Couleur personnalisée</option>
               </select>
               {bgMode === "color" ? (
                 <label style={{ display: "grid", gap: 6, fontSize: 12, opacity: 0.82 }}>

@@ -18,6 +18,34 @@ export type BoosterImageChannel =
   | "youtube_shorts"
   | "pinterest";
 
+
+export type BoosterImageSafetyBackgroundMode = "transparent" | "white" | "black";
+
+const BOOSTER_IMAGE_SAFETY_BACKGROUND_BY_CHANNEL: Readonly<
+  Record<BoosterImageChannel, BoosterImageSafetyBackgroundMode>
+> = Object.freeze({
+  inrcy_site: "transparent",
+  site_web: "transparent",
+  inr_search: "transparent",
+  gmb: "white",
+  facebook: "black",
+  instagram: "black",
+  linkedin: "black",
+  tiktok: "black",
+  youtube_shorts: "black",
+  pinterest: "black",
+});
+
+/**
+ * Last-resort canvas policy. This is used only when a channel imposes a hard
+ * ratio and a light crop would remove too much content. It never uses blur.
+ */
+export function getBoosterImageSafetyBackgroundMode(
+  channel: BoosterImageChannel,
+): BoosterImageSafetyBackgroundMode {
+  return BOOSTER_IMAGE_SAFETY_BACKGROUND_BY_CHANNEL[channel] || "black";
+}
+
 export type BoosterImageDecisionMode =
   | "original"
   | "adapted"
@@ -252,10 +280,11 @@ function normalizeTransformNumber(value: unknown, fallback = 0) {
 
 function normalizeBackgroundMode(transform?: ComparableImageTransform | null) {
   if (!transform) return "";
-  if (transform.backgroundMode === "blur" || transform.blurBackground) {
-    return "blur";
-  }
-  if (transform.backgroundMode) return transform.backgroundMode;
+  const rawMode = String(transform.backgroundMode || "").trim().toLowerCase();
+  // Legacy blur settings are intentionally downgraded to a sober solid frame.
+  // They must never recreate a blurred background after the Original First fix.
+  if (rawMode === "blur" || transform.blurBackground) return "black";
+  if (rawMode) return rawMode;
   return transform.backgroundColor ? "color" : "black";
 }
 

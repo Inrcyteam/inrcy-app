@@ -8,6 +8,7 @@ import {
   getPublicationBackgroundMode,
   getPublicationChannelPreset,
   getPublicationEffectiveZoom,
+  getPublicationSafetyBackgroundMode,
   offsetFromPublicationDrawPosition,
   publicationClamp,
   withPublicationBackgroundMode,
@@ -158,7 +159,29 @@ export default function MailboxPublicationImageAdapterModal(props: MailboxPublic
               onApplyToChannelImages={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.selected ? { ...asset, transform: { ...transform } } : asset))}
               onResetChannel={() => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.selected ? { ...asset, transform: buildPublicationDefaultTransform(channel) } : asset))}
               isolationNote={`Ce réglage concerne uniquement ${formatChannelLabel(channel)}. Les autres canaux restent indépendants.`}
-              onBackgroundModeChange={(mode) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: mode === "blur" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "blur") : mode === "transparent" ? withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "transparent") : { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "color"), backgroundColor: asset.transform.backgroundColor || "#ffffff" } } : asset))}
+              onBackgroundModeChange={(mode) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? {
+                ...asset,
+                transform: mode === "transparent"
+                  ? withPublicationBackgroundMode(
+                      { ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0, backgroundColor: undefined },
+                      "transparent",
+                    )
+                  : {
+                      ...withPublicationBackgroundMode(
+                        { ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 },
+                        mode,
+                      ),
+                      backgroundColor:
+                        mode === "black"
+                          ? "#0d1320"
+                          : mode === "white"
+                            ? "#ffffff"
+                            : asset.transform.backgroundColor ||
+                              (getPublicationSafetyBackgroundMode(channel) === "black"
+                                ? "#0d1320"
+                                : "#ffffff"),
+                    },
+              } : asset))}
               onBackgroundColorChange={(color) => updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === publicationImageAdapterAsset.key ? { ...asset, transform: { ...withPublicationBackgroundMode({ ...asset.transform, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0 }, "color"), backgroundColor: color } } : asset))}
               pillButtonStyle={pillBtn}
               pillButtonActiveStyle={pillBtnActive}

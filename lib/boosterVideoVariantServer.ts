@@ -26,7 +26,7 @@ const BOOSTER_BUCKET = "booster";
 const MAX_VARIANTS_PER_REQUEST = 8;
 const OUTPUT_CONTENT_TYPE = "video/mp4";
 const FFMPEG_TRANSFORM_TIMEOUT_MS = 90000;
-const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 3;
+const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 4;
 
 type CachedVideoVariantRow = {
   id: string;
@@ -222,6 +222,17 @@ async function probeDurationSeconds(filePath: string): Promise<number | null> {
   return null;
 }
 
+function getVideoSafetyBackgroundColor(
+  channel: BoosterVideoTransformVariantPlan["channel"],
+) {
+  return channel === "inrcy_site" ||
+    channel === "site_web" ||
+    channel === "inr_search" ||
+    channel === "gmb"
+    ? "white"
+    : "black";
+}
+
 function buildFilter(plan: BoosterVideoTransformVariantPlan) {
   const { format, adaptationMode, target } = plan;
   if (format === "original" || !target.width || !target.height) return null;
@@ -230,12 +241,9 @@ function buildFilter(plan: BoosterVideoTransformVariantPlan) {
   if (adaptationMode === "cover_crop") {
     return `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,format=yuv420p[v]`;
   }
-  return [
-    `[0:v]split=2[bgsrc][fgsrc]`,
-    `[bgsrc]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=20:2,eq=brightness=-0.08:saturation=0.90,setsar=1[bg]`,
-    `[fgsrc]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fg]`,
-    `[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[v]`,
-  ].join(";");
+
+  const background = getVideoSafetyBackgroundColor(plan.channel);
+  return `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${background},setsar=1,format=yuv420p[v]`;
 }
 
 async function runFfmpegVariant(

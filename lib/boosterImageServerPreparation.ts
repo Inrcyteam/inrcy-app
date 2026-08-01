@@ -7,6 +7,7 @@ import {
   getBoosterImageDecision,
   getBoosterImageDisplayPlan,
   getBoosterImageRenderDimensions,
+  getBoosterImageSafetyBackgroundMode,
   getBoosterImageSequenceTargetRatio,
   type BoosterImageChannel,
   type BoosterImageMetaLike,
@@ -73,7 +74,7 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
   pinterest: { width: 1000, height: 1500 },
 };
 
-const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 3;
+const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 4;
 const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
 
 type ChannelImageVariantRow = {
@@ -404,13 +405,20 @@ function clamp(value: unknown, min: number, max: number, fallback = 0) {
 function normalizeTransform(value: unknown, fallback: ServerImageTransform): ServerImageTransform {
   const raw = asObject(value);
   const fit = raw.fit === "cover" ? "cover" : raw.fit === "contain" ? "contain" : fallback.fit;
+  const rawBackgroundMode = String(raw.backgroundMode || "").trim().toLowerCase();
+  const backgroundMode =
+    rawBackgroundMode === "blur" || raw.blurBackground === true
+      ? String(fallback.backgroundMode || "black")
+      : rawBackgroundMode || String(fallback.backgroundMode || "black");
   return {
     fit,
     zoom: clamp(raw.zoom, 0.4, fit === "cover" ? 3 : 1, fallback.zoom),
     offsetX: clamp(raw.offsetX, -100, 100, fallback.offsetX),
     offsetY: clamp(raw.offsetY, -100, 100, fallback.offsetY),
-    blurBackground: raw.blurBackground === true,
-    backgroundMode: String(raw.backgroundMode || fallback.backgroundMode || "").trim() || undefined,
+    // Kept in the persisted shape for backward compatibility, but blur is
+    // deliberately disabled everywhere in the publication pipeline.
+    blurBackground: false,
+    backgroundMode,
     backgroundColor: String(raw.backgroundColor || fallback.backgroundColor || "").trim() || undefined,
   };
 }
@@ -444,9 +452,7 @@ function normalizeChannelSettings(value: unknown): ChannelSettings {
 }
 
 function backgroundRgba(transform: ServerImageTransform, forceOpaque = false) {
-  const mode = transform.backgroundMode === "blur"
-    ? transform.backgroundColor ? "color" : "brand"
-    : transform.backgroundMode || (transform.backgroundColor ? "color" : "black");
+  const mode = transform.backgroundMode || (transform.backgroundColor ? "color" : "black");
   if (mode === "transparent" && !forceOpaque) {
     return { r: 0, g: 0, b: 0, alpha: 0 };
   }
@@ -483,6 +489,7 @@ function originalReferenceTransform(): ServerImageTransform {
 }
 
 function automaticTransformForDecision(params: {
+  channel: BoosterImageChannel;
   sourceRatio: number;
   targetRatio: number;
 }): ServerImageTransform {
@@ -494,10 +501,12 @@ function automaticTransformForDecision(params: {
     zoom: 1,
     offsetX: 0,
     offsetY: 0,
-    blurBackground: fit === "contain",
-    // A hard channel ratio with a large mismatch keeps the whole image over a
-    // blurred fill instead of generating ugly white/black bars.
-    backgroundMode: fit === "contain" ? "blur" : "black",
+    blurBackground: false,
+    // Last-resort safety frame only. No blur is ever generated.
+    backgroundMode:
+      fit === "contain"
+        ? getBoosterImageSafetyBackgroundMode(params.channel)
+        : "black",
   };
 }
 
@@ -568,36 +577,28 @@ async function renderImageTransform(params: {
     .png()
     .toBuffer();
 
-  const requestedMode = params.transform.backgroundMode || "black";
+  const rawRequestedMode = String(params.transform.backgroundMode || "black").toLowerCase();
+  const requestedMode =
+    rawRequestedMode === "blur"
+      ? getBoosterImageSafetyBackgroundMode(params.channel)
+      : rawRequestedMode;
   const transparent = requestedMode === "transparent" && params.channel !== "gmb";
-  const background = backgroundRgba(params.transform, params.channel === "gmb");
+  const normalizedTransform = {
+    ...params.transform,
+    blurBackground: false,
+    backgroundMode: requestedMode,
+  };
+  const background = backgroundRgba(normalizedTransform, params.channel === "gmb");
   const foreground = { input: overlay, left: destinationLeft, top: destinationTop };
 
-  const blurredBackground =
-    requestedMode === "blur"
-      ? await sharp(params.buffer, { failOn: "none" })
-          .rotate()
-          .resize({
-            width: dimensions.width,
-            height: dimensions.height,
-            fit: "cover",
-          })
-          .blur(28)
-          .modulate({ brightness: 0.78, saturation: 0.9 })
-          .png()
-          .toBuffer()
-      : null;
-
-  const canvas = blurredBackground
-    ? sharp(blurredBackground).composite([foreground])
-    : sharp({
-        create: {
-          width: dimensions.width,
-          height: dimensions.height,
-          channels: 4,
-          background,
-        },
-      }).composite([foreground]);
+  const canvas = sharp({
+    create: {
+      width: dimensions.width,
+      height: dimensions.height,
+      channels: 4,
+      background,
+    },
+  }).composite([foreground]);
 
   if (transparent) {
     return {
@@ -626,7 +627,11 @@ async function renderAutomaticAdaptation(params: {
   sourceRatio: number;
   targetRatio: number;
 }) {
-  const transform = automaticTransformForDecision(params);
+  const transform = automaticTransformForDecision({
+    channel: params.channel,
+    sourceRatio: params.sourceRatio,
+    targetRatio: params.targetRatio,
+  });
   const rendered = await renderImageTransform({
     buffer: params.buffer,
     channel: params.channel,
@@ -757,7 +762,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           initialDecision.mode === "original"
             ? originalReferenceTransform()
             : sourceRatio > 0 && targetRatio > 0
-              ? automaticTransformForDecision({ sourceRatio, targetRatio })
+              ? automaticTransformForDecision({ channel, sourceRatio, targetRatio })
               : originalReferenceTransform();
         const currentTransform = normalizeTransform(
           requestedSettings.transforms[entry.imageKey],
@@ -927,6 +932,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
             throw new Error("missing_ratio_for_adaptation");
           }
           const transform = automaticTransformForDecision({
+            channel,
             sourceRatio,
             targetRatio: adaptedTargetRatio,
           });

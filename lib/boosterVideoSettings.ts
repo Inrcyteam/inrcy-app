@@ -11,7 +11,7 @@ export type BoosterVideoChannelKey =
   | "pinterest";
 
 export type VideoFormat = "original" | "9_16" | "1_1" | "16_9";
-export type VideoAdaptationMode = "safe_blur" | "cover_crop";
+export type VideoAdaptationMode = "safe_frame" | "cover_crop";
 
 export type ChannelVideoSettings = {
   format: VideoFormat;
@@ -37,7 +37,7 @@ export const VIDEO_FORMAT_ASPECT_RATIOS: Record<VideoFormat, string> = {
 };
 
 export const VIDEO_ADAPTATION_MODE_LABELS: Record<VideoAdaptationMode, string> = {
-  safe_blur: "Fond flouté sécurisé",
+  safe_frame: "Vidéo entière sur fond sobre",
   cover_crop: "Recadrer plein écran",
 };
 
@@ -80,7 +80,8 @@ export function normalizeVideoFormat(channel: BoosterVideoChannelKey, value: unk
 }
 
 export function normalizeVideoAdaptationMode(value: unknown): VideoAdaptationMode {
-  return value === "cover_crop" ? "cover_crop" : "safe_blur";
+  // Legacy `safe_blur` values are deliberately migrated to a non-blurred frame.
+  return value === "cover_crop" ? "cover_crop" : "safe_frame";
 }
 
 type VideoSourceMetadataLike = {
@@ -130,7 +131,7 @@ export function getDefaultChannelVideoSettings(
   void sourceMetadata;
   return {
     format: "original",
-    adaptationMode: "safe_blur",
+    adaptationMode: "safe_frame",
   };
 }
 

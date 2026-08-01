@@ -26,9 +26,12 @@ export function legacyColorFromMode(mode: BackgroundMode, backgroundColor?: stri
   }
 }
 
-export function normalizedMode(mode: BackgroundMode): "blur" | "transparent" | "color" {
+export function normalizedMode(
+  mode: BackgroundMode,
+): "transparent" | "white" | "black" | "color" {
   if (mode === "transparent") return "transparent";
-  if (mode === "blur") return "blur";
+  if (mode === "white") return "white";
+  if (mode === "black") return "black";
   return "color";
 }
 
@@ -42,7 +45,6 @@ export function previewBackgroundStyle(mode: BackgroundMode, backgroundColor?: s
       backgroundPosition: "0 0, 12px 12px",
     };
   }
-  if (normalized === "blur") return { background: "#101827" };
   return { background: legacyColorFromMode(mode, backgroundColor) };
 }
 
@@ -76,8 +78,9 @@ export function renderSafeSiteInlineHtml(value: string) {
 }
 
 export function getTransformBackgroundMode(transform?: RenderTransform, fallbackMode?: BackgroundMode): BackgroundMode {
-  if (transform?.backgroundMode) return transform.backgroundMode;
-  if (transform?.blurBackground) return "blur";
+  const rawMode = String(transform?.backgroundMode || "").trim().toLowerCase();
+  if (rawMode === "blur" || transform?.blurBackground) return fallbackMode || "black";
+  if (rawMode) return rawMode as BackgroundMode;
   return fallbackMode || "black";
 }
 

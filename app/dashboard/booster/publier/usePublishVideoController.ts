@@ -787,7 +787,7 @@ export default function usePublishVideoController({
     setVideoAdaptationModeByChannel((prev) => {
       const next: Partial<Record<ChannelKey, VideoAdaptationMode>> = { ...prev };
       for (const channel of selectedChannels.length ? selectedChannels : allChannels) {
-        next[channel] = normalizeVideoAdaptationMode(next[channel] || "safe_blur");
+        next[channel] = normalizeVideoAdaptationMode(next[channel] || "safe_frame");
       }
       return next;
     });

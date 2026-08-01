@@ -8,7 +8,7 @@ Objectif : lorsqu'une publication contient une vidéo, Booster prépare uniqueme
 2. Booster lit les canaux en mode vidéo.
 3. Booster déduplique les variantes par signature :
    - format (`9_16`, `1_1`, `16_9`, `original`)
-   - adaptation (`safe_blur`, `cover_crop`)
+   - adaptation (`safe_frame`, `cover_crop`)
 4. L'API interne `/api/booster/video-transform` génère uniquement les variantes uniques.
 5. Chaque canal reçoit ensuite la variante correspondant à son format/adaptation.
 6. iNrSend conserve la vidéo réellement utilisée par canal.

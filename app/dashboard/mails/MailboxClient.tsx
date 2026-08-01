@@ -1926,7 +1926,7 @@ export default function MailboxClient() {
         defaultFormat) as VideoFormat;
       const adaptationMode = (settings.adaptationMode ||
         parts.videoAdaptationMode ||
-        "safe_blur") as VideoAdaptationMode;
+        "safe_frame") as VideoAdaptationMode;
       const signature = buildVideoTransformSignature(format, adaptationMode);
       const syntheticFinalVariant =
         finalVideo.publicUrl || finalVideo.url
@@ -3669,7 +3669,7 @@ export default function MailboxClient() {
           sourceVideo: null,
           transformedVariants: [],
           format: defaultFormat,
-          adaptationMode: prev[videoChannel]?.adaptationMode || "safe_blur",
+          adaptationMode: prev[videoChannel]?.adaptationMode || "safe_frame",
           preparation: {
             status: "idle",
             label: "Vidéo ajoutée depuis la Médiathèque",
@@ -3823,7 +3823,7 @@ export default function MailboxClient() {
         sourceVideo: null,
         transformedVariants: [],
         format: defaultFormat,
-        adaptationMode: prev[channel]?.adaptationMode || "safe_blur",
+        adaptationMode: prev[channel]?.adaptationMode || "safe_frame",
         preparation: {
           status: "idle",
           label: "Nouvelle vidéo ajoutée",
@@ -3855,7 +3855,7 @@ export default function MailboxClient() {
             sourceVideo: null,
             transformedVariants: [],
             format: "original",
-            adaptationMode: "safe_blur",
+            adaptationMode: "safe_frame",
           }),
           file: null,
           previewUrl: "",
@@ -3963,7 +3963,7 @@ export default function MailboxClient() {
     }
 
     const format = current.format || "original";
-    const adaptationMode = current.adaptationMode || "safe_blur";
+    const adaptationMode = current.adaptationMode || "safe_frame";
     const signature = buildVideoTransformSignature(format, adaptationMode);
     const existing = current.transformedVariants.find(
       (variant: any) => variant.signature === signature,
@@ -4133,7 +4133,7 @@ export default function MailboxClient() {
           editVideo,
         );
         const format = editVideo.format || "original";
-        const adaptationMode = editVideo.adaptationMode || "safe_blur";
+        const adaptationMode = editVideo.adaptationMode || "safe_frame";
         const signature = buildVideoTransformSignature(format, adaptationMode);
         let transformedVariants = Array.isArray(editVideo.transformedVariants)
           ? [...editVideo.transformedVariants]
