@@ -9,11 +9,11 @@ import {
 
 /**
  * A sub-200 ms delay is technically measurable but still feels immediate to a
- * human, especially while Next.js compiles a route in development. 950 ms is
+ * human, especially while Next.js compiles a route in development. 650 ms is
  * long enough to keep normal navigations visually clean while still reassuring
  * the user when a navigation is genuinely slow.
  */
-export const DEFAULT_PENDING_DELAY_MS = 950;
+export const DEFAULT_PENDING_DELAY_MS = 650;
 export const DEFAULT_PENDING_MIN_VISIBLE_MS = 250;
 export const DEFAULT_PENDING_TIMEOUT_MS = 8_000;
 

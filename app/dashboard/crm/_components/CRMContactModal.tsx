@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import styles from "../crm.module.css";
 import type { Category, ContactType, CrmDraft } from "../crm.types";
 import { useUnsavedExitGuard } from "../../_hooks/useUnsavedExitGuard";
@@ -48,17 +48,24 @@ export default function CRMContactModal({
   onNavigatePrevious,
   onNavigateNext,
 }: Props) {
-  const [baseline, setBaseline] = useState("");
+  const contactIdentity = editingId ?? "new-contact";
+  const [baseline, setBaseline] = useState<{ identity: string; snapshot: string } | null>(null);
   const snapshot = useMemo(
     () => JSON.stringify({ draft, deliverySameAsPrimary }),
     [draft, deliverySameAsPrimary],
   );
 
-  useEffect(() => {
-    if (open) setBaseline(snapshot);
-  }, [open]);
+  useLayoutEffect(() => {
+    setBaseline((current) => {
+      if (!open) return null;
+      if (current?.identity === contactIdentity) return current;
+      return { identity: contactIdentity, snapshot };
+    });
+  }, [contactIdentity, open, snapshot]);
 
-  const hasUnsavedChanges = open && Boolean(baseline) && snapshot !== baseline;
+  const hasUnsavedChanges = open
+    && baseline?.identity === contactIdentity
+    && snapshot !== baseline.snapshot;
   const { confirmExit } = useUnsavedExitGuard({
     active: open,
     shouldBlock: hasUnsavedChanges,

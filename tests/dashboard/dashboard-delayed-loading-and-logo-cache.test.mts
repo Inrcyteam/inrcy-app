@@ -7,7 +7,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 test("shared delayed pending hook avoids loading flashes while keeping actions protected", () => {
   const hook = read("hooks/useDelayedPendingAction.ts");
 
-  assert.match(hook, /DEFAULT_PENDING_DELAY_MS = 950/);
+  assert.match(hook, /DEFAULT_PENDING_DELAY_MS = 650/);
   assert.match(hook, /DEFAULT_PENDING_MIN_VISIBLE_MS = 250/);
   assert.match(hook, /pendingKeyRef\.current = key/);
   assert.match(hook, /setPendingKey\(key\)/);

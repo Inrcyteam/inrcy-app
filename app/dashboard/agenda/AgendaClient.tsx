@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./agenda.module.css";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -252,6 +252,78 @@ export default function AgendaClient() {
     if (!rdvRemindersAvailable) setRdvRemindersEnabled(false);
   }, [rdvRemindersAvailable]);
 
+  const rdvFormIdentity = `${rdvMode}:${rdvEventId || "new-event"}`;
+  const rdvFormSnapshot = useMemo(() => stableCompareString({
+    summary: rdvSummary,
+    date: rdvDate,
+    start: rdvStart,
+    end: rdvEnd,
+    location: rdvLocation,
+    notes: rdvNotes,
+    kind: rdvKind,
+    intervention: {
+      type: intType,
+      status: intStatus,
+      reference: intReference,
+    },
+    contactId: rdvContactId,
+    contact: {
+      display_name: rdvNewContactName,
+      email: rdvNewContactEmail,
+      phone: rdvNewContactPhone,
+      address: rdvNewContactAddress,
+      city: rdvNewContactCity,
+      postal_code: rdvNewContactPostal,
+      siren: rdvNewContactSiren,
+      category: rdvNewContactCategory,
+      contact_type: rdvNewContactType,
+      important: rdvNewContactImportant,
+      notes: rdvNewContactNotes,
+    },
+    guests: rdvGuests,
+    reminders: {
+      enabled: rdvRemindersEnabled,
+    },
+  }), [
+    intReference,
+    intStatus,
+    intType,
+    rdvContactId,
+    rdvDate,
+    rdvEnd,
+    rdvGuests,
+    rdvKind,
+    rdvLocation,
+    rdvNewContactAddress,
+    rdvNewContactCategory,
+    rdvNewContactCity,
+    rdvNewContactEmail,
+    rdvNewContactImportant,
+    rdvNewContactName,
+    rdvNewContactNotes,
+    rdvNewContactPhone,
+    rdvNewContactPostal,
+    rdvNewContactSiren,
+    rdvNewContactType,
+    rdvNotes,
+    rdvRemindersEnabled,
+    rdvStart,
+    rdvSummary,
+  ]);
+  const [rdvBaseline, setRdvBaseline] = useState<{ identity: string; snapshot: string } | null>(null);
+
+  useLayoutEffect(() => {
+    setRdvBaseline((current) => {
+      if (!rdvOpen) return null;
+      if (current?.identity === rdvFormIdentity) return current;
+      return { identity: rdvFormIdentity, snapshot: rdvFormSnapshot };
+    });
+  }, [rdvFormIdentity, rdvFormSnapshot, rdvOpen]);
+
+  const rdvHasUnsavedChanges = rdvOpen
+    && rdvBaseline?.identity === rdvFormIdentity
+    && rdvFormSnapshot !== rdvBaseline.snapshot;
+
   const closeRdvModal = useCallback(() => {
     setRdvOpen(false);
     setRdvError(null);
@@ -259,25 +331,29 @@ export default function AgendaClient() {
 
   const requestCloseRdvModal = useCallback(async () => {
     if (!rdvOpen) return;
+    if (!rdvHasUnsavedChanges) {
+      closeRdvModal();
+      return;
+    }
     const ok = await confirmInrcy({
       eyebrow: "Agenda",
       title: rdvMode === "request" ? "Fermer la demande ?" : "Fermer l’évènement ?",
-      message: rdvMode === "request" ? "La demande restera à valider dans iNr’Calendar." : "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
+      message: rdvMode === "request" ? "La demande restera à valider dans iNr’Calendar." : "Vous avez modifié cet évènement. Si vous fermez maintenant, les modifications seront perdues.",
       confirmLabel: "Fermer sans enregistrer",
       cancelLabel: "Continuer l’édition",
       variant: "warning",
     });
     if (!ok) return;
     closeRdvModal();
-  }, [closeRdvModal, rdvMode, rdvOpen]);
+  }, [closeRdvModal, rdvHasUnsavedChanges, rdvMode, rdvOpen]);
 
   useUnsavedExitGuard({
     active: rdvOpen,
-    shouldBlock: rdvOpen && !rdvSaving,
+    shouldBlock: rdvHasUnsavedChanges && !rdvSaving,
     onConfirmExit: closeRdvModal,
     eyebrow: "Agenda",
     title: rdvMode === "request" ? "Fermer la demande ?" : "Fermer l’évènement ?",
-    message: rdvMode === "request" ? "La demande restera à valider dans iNr’Calendar." : "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
+    message: rdvMode === "request" ? "La demande restera à valider dans iNr’Calendar." : "Vous avez modifié cet évènement. Si vous fermez maintenant, les modifications seront perdues.",
     confirmLabel: "Fermer sans enregistrer",
     cancelLabel: "Continuer l’édition",
     variant: "warning",
@@ -1320,17 +1396,19 @@ export default function AgendaClient() {
     if (rdvMode !== "edit" || navigableEventIndex < 0) return;
     const target = navigableEvents[navigableEventIndex + direction];
     if (!target) return;
-    const ok = await confirmInrcy({
-      eyebrow: "Agenda",
-      title: "Changer d’évènement ?",
-      message: "Les modifications non enregistrées de l’évènement actuel seront perdues.",
-      confirmLabel: "Changer d’évènement",
-      cancelLabel: "Continuer l’édition",
-      variant: "warning",
-    });
-    if (!ok) return;
+    if (rdvHasUnsavedChanges) {
+      const ok = await confirmInrcy({
+        eyebrow: "Agenda",
+        title: "Changer d’évènement ?",
+        message: "Les modifications non enregistrées de l’évènement actuel seront perdues.",
+        confirmLabel: "Changer d’évènement",
+        cancelLabel: "Continuer l’édition",
+        variant: "warning",
+      });
+      if (!ok) return;
+    }
     openEditRdv(target);
-  }, [navigableEventIndex, navigableEvents, rdvMode]);
+  }, [navigableEventIndex, navigableEvents, rdvHasUnsavedChanges, rdvMode]);
 
   const todayKey = useMemo(() => keyOf(new Date()), []);
 

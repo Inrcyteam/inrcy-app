@@ -58,20 +58,20 @@ function createFakeScheduler() {
   return { scheduler, flushFrames, advance };
 }
 
-test("the loading label cannot appear before the real 950 ms threshold", () => {
+test("the loading label cannot appear before the real 650 ms threshold", () => {
   const fake = createFakeScheduler();
   let pending = true;
   let reveals = 0;
 
   scheduleDelayedReveal({
     scheduler: fake.scheduler,
-    delayMs: 950,
+    delayMs: 650,
     isStillPending: () => pending,
     onReveal: () => { reveals += 1; },
   });
 
   fake.flushFrames();
-  fake.advance(949);
+  fake.advance(649);
   fake.flushFrames();
   assert.equal(reveals, 0);
 
@@ -90,7 +90,7 @@ test("a route that commits before the reveal frame never flashes Chargement", ()
 
   scheduleDelayedReveal({
     scheduler: fake.scheduler,
-    delayMs: 950,
+    delayMs: 650,
     isStillPending: () => pending,
     onReveal: () => { reveals += 1; },
   });
@@ -109,7 +109,7 @@ test("cancelling an action removes every pending reveal", () => {
 
   const handle = scheduleDelayedReveal({
     scheduler: fake.scheduler,
-    delayMs: 950,
+    delayMs: 650,
     isStillPending: () => true,
     onReveal: () => { reveals += 1; },
   });

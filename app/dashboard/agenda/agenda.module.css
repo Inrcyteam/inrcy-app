@@ -405,6 +405,8 @@
 
 .chip {
   font-size: 12px;
+  cursor: pointer;
+  user-select: none;
   line-height: 1.2;
   padding: 7px 8px;
   border-radius: 12px;
@@ -464,6 +466,8 @@
 
 .eventRow {
   border-radius: 16px;
+  cursor: pointer;
+  user-select: none;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.06);
   padding: 10px 12px;
