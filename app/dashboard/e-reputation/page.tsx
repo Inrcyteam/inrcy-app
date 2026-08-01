@@ -1,39 +1,11 @@
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
-import { createSupabaseServer } from "@/lib/supabaseServer";
-import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
-import { getChannelConnectionStates } from "@/lib/channelConnectionState";
-import { getGmbToken } from "@/lib/googleBusiness";
-import { getGmbReviewTargetFromRow, gmbListReviews, type NormalizedGmbReview } from "@/lib/googleBusinessReviews";
-import EReputationReviewsClient, { type EReputationReviewItem, type EReputationReviewsPlatform } from "./EReputationReviewsClient";
+import EReputationReviewsClient, {
+  type EReputationReviewItem,
+  type EReputationReviewsPlatform,
+} from "./EReputationReviewsClient";
 import styles from "./eReputation.module.css";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-type GoogleBusinessStatus = {
-  accountConnected?: boolean;
-  connected?: boolean;
-  configured?: boolean;
-  requiresUpdate?: boolean;
-  resource_label?: string | null;
-  url?: string | null;
-  email?: string | null;
-} | null;
-
-type ReviewListItem = EReputationReviewItem;
-
-type ReviewsLoadResult = {
-  ready: boolean;
-  error: string | null;
-  locationTitle: string | null;
-  averageRating: number | null;
-  totalReviewCount: number;
-  nextPageToken: string | null;
-  reviews: NormalizedGmbReview[];
-};
-
-const previewGoogleReviews: ReviewListItem[] = [
+const previewGoogleReviews: EReputationReviewItem[] = [
   {
     id: "google:preview-1",
     platform: "google",
@@ -67,115 +39,8 @@ const previewGoogleReviews: ReviewListItem[] = [
   },
 ];
 
-async function loadGoogleBusinessStatus(): Promise<GoogleBusinessStatus> {
-  noStore();
-  try {
-    const supabase = await createSupabaseServer();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return null;
-    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
-    const states = await getChannelConnectionStates(supabase, activeUserId);
-    return states.gmb ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadGoogleReviews(): Promise<ReviewsLoadResult> {
-  noStore();
-  try {
-    const token = await getGmbToken();
-    if (!token?.accessToken) {
-      return { ready: false, error: null, locationTitle: null, averageRating: null, totalReviewCount: 0, nextPageToken: null, reviews: [] };
-    }
-
-    const target = getGmbReviewTargetFromRow(token.row);
-    if (!target.accountName || !target.locationName) {
-      return { ready: false, error: null, locationTitle: target.locationTitle, averageRating: null, totalReviewCount: 0, nextPageToken: null, reviews: [] };
-    }
-
-    const payload = await gmbListReviews(token.accessToken, target.accountName, target.locationName, { pageSize: 50, orderBy: "updateTime desc" });
-    return {
-      ready: true,
-      error: null,
-      locationTitle: target.locationTitle,
-      averageRating: payload.averageRating,
-      totalReviewCount: payload.totalReviewCount,
-      nextPageToken: payload.nextPageToken,
-      reviews: payload.reviews,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Impossible de charger les avis Google pour le moment.";
-    return { ready: false, error: message, locationTitle: null, averageRating: null, totalReviewCount: 0, nextPageToken: null, reviews: [] };
-  }
-}
-
-function formatReviewDate(value: string | null) {
-  if (!value) return "Date non précisée";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Date non précisée";
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function formatAverageRating(value: number | null) {
-  if (!Number.isFinite(Number(value))) return "—";
-  return Number(value).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-function toGoogleReviewListItem(review: NormalizedGmbReview): ReviewListItem {
-  const hasReply = review.replyStatus === "answered";
-  const rating = review.starRating || 0;
-  return {
-    id: `google:${review.name || review.reviewId}`,
-    platform: "google",
-    reviewName: review.name || null,
-    name: review.reviewerName || "Client Google",
-    rating,
-    date: formatReviewDate(review.updateTime || review.createTime),
-    status: hasReply ? "Répondu" : rating > 0 && rating <= 3 ? "À traiter" : "À répondre",
-    comment: review.originalComment || review.comment || "Avis sans commentaire écrit.",
-    originalComment: review.originalComment || review.comment || null,
-    translatedComment: review.translatedComment || null,
-    reply: review.reply?.comment || null,
-    live: true,
-    replyable: true,
-  };
-}
-
-export default async function EReputationPage() {
-  const [gmb, googleReviewsData] = await Promise.all([
-    loadGoogleBusinessStatus(),
-    loadGoogleReviews(),
-  ]);
-
-  const gmbReady = Boolean(gmb?.connected && !gmb?.requiresUpdate);
-  const gmbNeedsUpdate = Boolean(gmb?.requiresUpdate);
-  const gmbAccountOnly = Boolean(gmb?.accountConnected && !gmb?.connected && !gmbNeedsUpdate);
-  const googleLiveReviews = googleReviewsData.reviews.map(toGoogleReviewListItem);
-  const googleDisplayedReviews = googleReviewsData.ready ? googleLiveReviews : previewGoogleReviews;
-  const locationLabel = String(googleReviewsData.locationTitle || gmb?.resource_label || "Fiche Google Business").trim();
-  const statusLabel = gmbNeedsUpdate
-    ? "Connexion à actualiser"
-    : gmbReady
-      ? googleReviewsData.ready
-        ? "Avis Google chargés"
-        : "Fiche connectée"
-      : gmbAccountOnly
-        ? "Établissement à choisir"
-        : "Google Business à connecter";
-
-  const connectHref = `/api/integrations/google-business/start?returnTo=${encodeURIComponent("/dashboard/e-reputation")}`;
+export default function EReputationPage() {
   const askReviewsHref = "/dashboard/propulser?action=recolter";
-  const primaryAction = gmbReady
-    ? { href: gmb?.url || "/dashboard?panel=gmb", label: "Voir la fiche", external: Boolean(gmb?.url) }
-    : gmbNeedsUpdate
-      ? { href: connectHref, label: "Actualiser Google", external: false }
-      : gmbAccountOnly
-        ? { href: "/dashboard?panel=gmb", label: "Choisir la fiche", external: false }
-        : { href: connectHref, label: "Connecter Google", external: false };
-
   const platforms: EReputationReviewsPlatform[] = [
     {
       id: "google",
@@ -184,18 +49,18 @@ export default async function EReputationPage() {
       iconSrc: "/icons/google.jpg",
       modalKicker: "Avis Google",
       replyLabel: "Réponse Google",
-      reviews: googleDisplayedReviews,
-      reviewsReady: googleReviewsData.ready,
-      reviewsError: googleReviewsData.error,
-      initialNextPageToken: googleReviewsData.nextPageToken,
-      totalReviewCount: googleReviewsData.totalReviewCount,
-      averageRatingLabel: googleReviewsData.ready ? formatAverageRating(googleReviewsData.averageRating) : "—",
-      locationLabel,
-      statusLabel,
-      connected: gmbReady,
-      canReply: gmbReady,
-      reportUrl: gmb?.url || null,
-      profileUrl: gmb?.url || null,
+      reviews: previewGoogleReviews,
+      reviewsReady: false,
+      reviewsError: null,
+      initialNextPageToken: null,
+      totalReviewCount: 0,
+      averageRatingLabel: "—",
+      locationLabel: "Fiche Google Business",
+      statusLabel: "Synchronisation Google…",
+      connected: false,
+      canReply: false,
+      reportUrl: null,
+      profileUrl: null,
       inviteUrl: askReviewsHref,
     },
   ];
@@ -228,13 +93,7 @@ export default async function EReputationPage() {
           </div>
 
           <div className={styles.actions}>
-            {primaryAction.external ? (
-              <a className={styles.btnPrimary} href={primaryAction.href} target="_blank" rel="noreferrer">{primaryAction.label}</a>
-            ) : primaryAction.href.startsWith("/api/integrations/google-business/start") ? (
-              <a className={styles.btnPrimary} href={primaryAction.href}>{primaryAction.label}</a>
-            ) : (
-              <Link className={styles.btnPrimary} href={primaryAction.href}>{primaryAction.label}</Link>
-            )}
+            <Link className={styles.btnPrimary} href="/dashboard?panel=gmb">Gérer Google</Link>
             <Link className={styles.btnGhost} href={askReviewsHref}>Réclamez des avis</Link>
             <Link className={`${styles.btnGhost} ${styles.headerCloseButton}`} href="/dashboard" aria-label="Fermer">
               <span className={styles.closeDesktopLabel}>Fermer</span>
@@ -244,16 +103,16 @@ export default async function EReputationPage() {
         </header>
 
         <EReputationReviewsClient
-          reviews={googleDisplayedReviews}
-          reviewsReady={googleReviewsData.ready}
-          reviewsError={googleReviewsData.error}
-          initialNextPageToken={googleReviewsData.nextPageToken}
-          totalReviewCount={googleReviewsData.totalReviewCount}
-          locationLabel={locationLabel}
-          statusLabel={statusLabel}
-          gmbReady={gmbReady}
-          averageRatingLabel={googleReviewsData.ready ? formatAverageRating(googleReviewsData.averageRating) : "—"}
-          reportGoogleUrl={gmb?.url || null}
+          reviews={previewGoogleReviews}
+          reviewsReady={false}
+          reviewsError={null}
+          initialNextPageToken={null}
+          totalReviewCount={0}
+          locationLabel="Fiche Google Business"
+          statusLabel="Synchronisation Google…"
+          gmbReady={false}
+          averageRatingLabel="—"
+          reportGoogleUrl={null}
           platforms={platforms}
         />
       </div>

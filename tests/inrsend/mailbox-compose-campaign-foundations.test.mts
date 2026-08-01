@@ -11,6 +11,10 @@ import {
   serializeComposeAttachments,
   workflowDraftTargetFromSendItem,
 } from "../../app/dashboard/mails/_lib/mailboxComposeCampaign.foundations.ts";
+import type {
+  ComposeAttachmentRef,
+  OutboxItem,
+} from "../../app/dashboard/mails/_lib/mailboxPhase1.tsx";
 
 const client = readFileSync("app/dashboard/mails/MailboxClient.tsx", "utf8");
 const foundations = readFileSync(
@@ -40,7 +44,7 @@ test("compose attachment normalization preserves valid uploaded references", () 
     serializeComposeAttachments([
       { bucket: " files ", path: "a/b.pdf", name: "", type: "application/pdf", size: 42 },
       { bucket: "", path: "ignored", name: "ignored", type: null, size: null },
-    ] as any),
+    ] satisfies ComposeAttachmentRef[]),
     [
       {
         bucket: "files",
@@ -68,18 +72,25 @@ test("CRM department helpers keep metropolitan and overseas rules", () => {
 });
 
 test("campaign history helpers keep legacy routing contracts", () => {
+  const raw = { track_type: "promo_mail" };
   const item = {
+    id: "campaign-1",
     source: "mail_campaigns",
-    module: "",
     folder: "offres",
-    raw: { track_type: "promo_mail" },
-  } as any;
+    provider: null,
+    status: "sent",
+    created_at: "2026-08-01T00:00:00.000Z",
+    title: "Campagne promotionnelle",
+    target: "Contacts CRM",
+    preview: "Aperçu",
+    raw,
+  } satisfies OutboxItem;
   assert.deepEqual(inferTrackFromCampaign(item), {
     kind: "propulser",
     type: "promo_mail",
     payload: {},
   });
-  assert.deepEqual(workflowDraftTargetFromSendItem(item, item.raw), {
+  assert.deepEqual(workflowDraftTargetFromSendItem(item, raw), {
     kind: "propulser",
     action: "promo",
     folder: "propulsions",

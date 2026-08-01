@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import styles from "../dashboard.module.css";
 import BaseModal from "./WorkflowBaseModal";
 import RequiredSetupLock from "./RequiredSetupLock";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
+import { requestDashboardToolWarmup } from "./DashboardToolWarmup";
+import { useDelayedPendingAction } from "@/hooks/useDelayedPendingAction";
 
 type DashboardPanelName =
   | "contact"
@@ -45,10 +47,55 @@ type DashboardModulesCardProps = {
 export default function DashboardModulesCard({ goToModule, openPanel, requiredSetupAccessAllowed, requiredSetupLockVisible, onRequiredSetupBlocked, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
   const t = useDashboardI18n();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [cashModalOpen, setCashModalOpen] = useState(false);
+  const {
+    pendingKey,
+    beginAction,
+    completeAction,
+    isVisible,
+  } = useDelayedPendingAction<string>();
   const requiredSetupLocked = requiredSetupLockVisible;
   const requiredSetupLockMessage = t.modules.requiredSetupLocked;
+
+  useEffect(() => {
+    if (!pendingKey) return;
+
+    if (pendingKey.startsWith("route:")) {
+      const href = pendingKey.slice("route:".length);
+      const target = new URL(href, "https://inrcy.local");
+      const queryMatches = Array.from(target.searchParams.entries()).every(
+        ([key, value]) => searchParams.get(key) === value,
+      );
+      if (pathname === target.pathname && queryMatches) {
+        completeAction(pendingKey);
+        return;
+      }
+      // A destination protected by the mandatory setup can legitimately open
+      // the profile/activity panel instead of the requested route. In that
+      // case the click has completed too and must not leave the button pending.
+      if (searchParams.get("panel")) completeAction(pendingKey);
+      return;
+    }
+
+    if (pendingKey.startsWith("panel:")) {
+      const panel = pendingKey.slice("panel:".length);
+      if (searchParams.get("panel") === panel) completeAction(pendingKey);
+      return;
+    }
+
+    if (pendingKey === "modal:cash" && cashModalOpen) {
+      completeAction(pendingKey);
+      return;
+    }
+
+    if (pendingKey === "modal:publish") {
+      if (searchParams.get("action") === "publish" || searchParams.get("panel")) {
+        completeAction(pendingKey);
+      }
+    }
+  }, [cashModalOpen, completeAction, pathname, pendingKey, searchParams]);
 
   useEffect(() => {
     if (searchParams.get("action") === "cash" && requiredSetupAccessAllowed) {
@@ -65,13 +112,40 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
     }
   };
 
-  const openStats = () => {
-    if (onOpenStats) {
-      onOpenStats();
-      return;
-    }
-    goToModule("/dashboard/stats");
+  const startModuleNavigation = (path: string, action?: () => void) => {
+    const key = `route:${path}`;
+    if (!beginAction(key)) return;
+    requestDashboardToolWarmup(path);
+    action?.();
+    if (!action) goToModule(path);
   };
+
+  const startPanelOpening = (panel: DashboardPanelName) => {
+    const key = `panel:${panel}`;
+    if (!beginAction(key)) return;
+    openPanel(panel);
+  };
+
+  const openCashModal = () => {
+    if (!beginAction("modal:cash")) return;
+    setCashModalOpen(true);
+  };
+
+  const openPublishModal = () => {
+    if (!beginAction("modal:publish")) return;
+    if (onOpenBoosterPublish) onOpenBoosterPublish();
+    else goToModule("/dashboard?action=publish");
+  };
+
+  const openStats = () => {
+    startModuleNavigation("/dashboard/stats", onOpenStats);
+  };
+
+  const routeKey = (path: string) => `route:${path}`;
+  const isModulePending = (path: string) => pendingKey === routeKey(path);
+  const isModuleLoadingVisible = (path: string) => isVisible(routeKey(path));
+  const isPanelPending = (panel: DashboardPanelName) => pendingKey === `panel:${panel}`;
+  const isPanelLoadingVisible = (panel: DashboardPanelName) => isVisible(`panel:${panel}`);
 
   const renderGearTitle = (title: string) => (
     <div className={styles.gearTitleRow}>
@@ -169,8 +243,15 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
       </div>
       <div className={styles.loopSub}>{t.modules.statsSub}</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={openStats}>
-          iNr'Stats →
+        <button
+          className={`${styles.actionBtn} ${styles.connectBtn}`}
+          type="button"
+          data-dashboard-prefetch="/dashboard/stats"
+          onClick={openStats}
+          disabled={isModuleLoadingVisible("/dashboard/stats")}
+          aria-busy={isModuleLoadingVisible("/dashboard/stats") || undefined}
+        >
+          {isModuleLoadingVisible("/dashboard/stats") ? "Chargement…" : "iNr'Stats →"}
         </button>
       </div>
     </div>
@@ -197,9 +278,10 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
   title={t.notifications.settings}
   onClick={() => {
     if (requiredSetupLocked) return;
-    openPanel("mails");
+    startPanelOpening("mails");
   }}
-  disabled={requiredSetupLocked}
+  disabled={requiredSetupLocked || isPanelLoadingVisible("mails")}
+  aria-busy={isPanelLoadingVisible("mails") || undefined}
 >
   <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
   <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
@@ -212,9 +294,12 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
   type="button"
-  onClick={() => goToModule("/dashboard/mails")}
+  data-dashboard-prefetch="/dashboard/mails"
+  onClick={() => startModuleNavigation("/dashboard/mails")}
+  disabled={isModuleLoadingVisible("/dashboard/mails")}
+  aria-busy={isModuleLoadingVisible("/dashboard/mails") || undefined}
 >
-  iNr'Send →
+  {isModuleLoadingVisible("/dashboard/mails") ? "Chargement…" : "iNr'Send →"}
 </button>
       </div>
     </div>
@@ -231,7 +316,9 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
   type="button"
   aria-label={t.modules.agendaSettingsAria}
   title={t.notifications.settings}
-  onClick={() => openPanel("agenda")}
+  onClick={() => startPanelOpening("agenda")}
+  disabled={isPanelLoadingVisible("agenda")}
+  aria-busy={isPanelLoadingVisible("agenda") || undefined}
 >
   <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
     <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
@@ -244,9 +331,12 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
   type="button"
-  onClick={() => goToModule("/dashboard/agenda")}
+  data-dashboard-prefetch="/dashboard/agenda"
+  onClick={() => startModuleNavigation("/dashboard/agenda")}
+  disabled={isModuleLoadingVisible("/dashboard/agenda")}
+  aria-busy={isModuleLoadingVisible("/dashboard/agenda") || undefined}
 >
-  iNr'Calendar →
+  {isModuleLoadingVisible("/dashboard/agenda") ? "Chargement…" : "iNr'Calendar →"}
 </button>
       </div>
     </div>
@@ -262,9 +352,12 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
         <button
           className={`${styles.actionBtn} ${styles.connectBtn}`}
           type="button"
-          onClick={() => goToModule("/dashboard/crm")}
+          data-dashboard-prefetch="/dashboard/crm"
+          onClick={() => startModuleNavigation("/dashboard/crm")}
+          disabled={isModuleLoadingVisible("/dashboard/crm")}
+          aria-busy={isModuleLoadingVisible("/dashboard/crm") || undefined}
         >
-          iNr'CRM →
+          {isModuleLoadingVisible("/dashboard/crm") ? "Chargement…" : "iNr'CRM →"}
         </button>
       </div>
     </div>
@@ -296,10 +389,9 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                 <button
                   type="button"
                   className={`${styles.gearCapsule} ${styles.gear_cyan}`}
-                  onClick={() => {
-                    if (onOpenBoosterPublish) onOpenBoosterPublish();
-                    else goToModule("/dashboard?action=publish");
-                  }}
+                  onClick={openPublishModal}
+                  disabled={isVisible("modal:publish")}
+                  aria-busy={isVisible("modal:publish") || undefined}
                 >
                   <span
                     className={`${styles.gearSettingsBtn} ${styles.gearStatsBtn}`}
@@ -326,43 +418,51 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                   <div className={styles.gearInner}>
                     {renderGearTitle(t.modules.publishTitle)}
                     <div className={styles.gearSub}>{t.modules.boosterSub}</div>
-                    <div className={styles.gearBtn}>{t.modules.publishCta}</div>
+                    <div className={styles.gearBtn}>{isVisible("modal:publish") ? "Chargement…" : t.modules.publishCta}</div>
                   </div>
                 </button>
 
                 <button
                   type="button"
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
-                  onClick={() => goToModule("/dashboard/propulser")}
+                  data-dashboard-prefetch="/dashboard/propulser"
+                  onClick={() => startModuleNavigation("/dashboard/propulser")}
+                  disabled={isModuleLoadingVisible("/dashboard/propulser")}
+                  aria-busy={isModuleLoadingVisible("/dashboard/propulser") || undefined}
                 >
                   <div className={styles.gearInner}>
                     {renderGearTitle(t.modules.propulserTitle)}
                     <div className={styles.gearSub}>{t.modules.propulserSub}</div>
-                    <div className={styles.gearBtn}>{t.modules.propulserCta}</div>
+                    <div className={styles.gearBtn}>{isModuleLoadingVisible("/dashboard/propulser") ? "Chargement…" : t.modules.propulserCta}</div>
                   </div>
                 </button>
 
                 <button
                   type="button"
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
-                  onClick={() => goToModule("/dashboard/fideliser")}
+                  data-dashboard-prefetch="/dashboard/fideliser"
+                  onClick={() => startModuleNavigation("/dashboard/fideliser")}
+                  disabled={isModuleLoadingVisible("/dashboard/fideliser")}
+                  aria-busy={isModuleLoadingVisible("/dashboard/fideliser") || undefined}
                 >
                   <div className={styles.gearInner}>
                     {renderGearTitle(t.modules.fideliserTitle)}
                     <div className={styles.gearSub}>{t.modules.fideliserSub}</div>
-                    <div className={styles.gearBtn}>{t.modules.fideliserCta}</div>
+                    <div className={styles.gearBtn}>{isModuleLoadingVisible("/dashboard/fideliser") ? "Chargement…" : t.modules.fideliserCta}</div>
                   </div>
                 </button>
 
                 <button
                   className={`${styles.gearCapsule} ${styles.gear_orange}`}
                   type="button"
+                  disabled={isVisible("modal:cash")}
+                  aria-busy={isVisible("modal:cash") || undefined}
                   onClick={() => {
                     if (!requiredSetupAccessAllowed) {
                       onRequiredSetupBlocked();
                       return;
                     }
-                    setCashModalOpen(true);
+                    openCashModal();
                   }}
                 >
                   <span
@@ -371,23 +471,27 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                     tabIndex={0}
                     title={t.modules.cashSettingsTitle}
                     aria-label={t.modules.cashSettingsTitle}
+                    aria-busy={isPanelLoadingVisible("documents") || undefined}
+                    aria-disabled={isPanelLoadingVisible("documents") || undefined}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (isPanelPending("documents")) return;
                       if (requiredSetupLocked) {
                         onRequiredSetupBlocked();
                         return;
                       }
-                      openPanel("documents");
+                      startPanelOpening("documents");
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         event.stopPropagation();
+                        if (isPanelPending("documents")) return;
                         if (requiredSetupLocked) {
                           onRequiredSetupBlocked();
                           return;
                         }
-                        openPanel("documents");
+                        startPanelOpening("documents");
                       }
                     }}
                   >
@@ -396,19 +500,22 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                   <div className={styles.gearInner}>
                     {renderGearTitle(t.modules.cashTitle)}
                     <div className={styles.gearSub}>{t.modules.cashSub}</div>
-                    <div className={styles.gearBtn}>{t.modules.cashCta}</div>
+                    <div className={styles.gearBtn}>{isVisible("modal:cash") ? "Chargement…" : t.modules.cashCta}</div>
                   </div>
                 </button>
 
                 <button
                   type="button"
                   className={`${styles.gearCapsule} ${styles.gear_pink}`}
-                  onClick={() => goToModule("/dashboard/e-reputation")}
+                  data-dashboard-prefetch="/dashboard/e-reputation"
+                  onClick={() => startModuleNavigation("/dashboard/e-reputation")}
+                  disabled={isModuleLoadingVisible("/dashboard/e-reputation")}
+                  aria-busy={isModuleLoadingVisible("/dashboard/e-reputation") || undefined}
                 >
                   <div className={styles.gearInner}>
                     {renderGearTitle(t.modules.reputationTitle)}
                     <div className={styles.gearSub}>{t.modules.reputationSub}</div>
-                    <div className={styles.gearBtn}>{t.modules.reputationCta}</div>
+                    <div className={styles.gearBtn}>{isModuleLoadingVisible("/dashboard/e-reputation") ? "Chargement…" : t.modules.reputationCta}</div>
                   </div>
                 </button>
               </div>
@@ -428,10 +535,12 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
               <button
                 type="button"
                 className={styles.ghostBtn}
-                onClick={() => openPanel("documents")}
+                onClick={() => startPanelOpening("documents")}
                 title={t.modules.cashSettingsTitle}
+                disabled={isPanelLoadingVisible("documents")}
+                aria-busy={isPanelLoadingVisible("documents") || undefined}
               >
-                {t.modules.cashModalSettings}
+                {isPanelLoadingVisible("documents") ? "Chargement…" : t.modules.cashModalSettings}
               </button>
             }
           >
@@ -445,7 +554,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                 className={`${styles.cashChoiceCard} ${styles.cashChoiceInvoice}`}
                 onClick={() => {
                   setCashModalOpen(false);
-                  goToModule("/dashboard/factures/new");
+                  startModuleNavigation("/dashboard/factures/new");
                 }}
               >
                 <span className={styles.cashChoiceEyebrow}>{t.modules.invoiceEyebrow}</span>
@@ -459,7 +568,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                 className={`${styles.cashChoiceCard} ${styles.cashChoiceQuote}`}
                 onClick={() => {
                   setCashModalOpen(false);
-                  goToModule("/dashboard/devis/new");
+                  startModuleNavigation("/dashboard/devis/new");
                 }}
               >
                 <span className={styles.cashChoiceEyebrow}>{t.modules.quoteEyebrow}</span>

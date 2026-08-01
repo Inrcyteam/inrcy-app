@@ -4,15 +4,24 @@ import { existsSync, readFileSync } from "node:fs";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
-test("dashboard tool routes are prefetched and completion checks no longer swallow clicks while loading", () => {
+test("dashboard tools use progressive intent-first warmup and immediate click feedback", () => {
   const dashboard = read("app/dashboard/DashboardClient.tsx");
   const bottomNav = read("app/dashboard/_components/ResponsiveBottomNav.tsx");
+  const modules = read("app/dashboard/_components/DashboardModulesCard.tsx");
+  const actionButton = read("app/dashboard/_components/DashboardActionButton.tsx");
   const warmup = read("app/dashboard/_components/DashboardToolWarmup.tsx");
+
   assert.match(dashboard, /!completionCheckReady \|\| requiredSetupCompleted/);
   assert.match(bottomNav, /!completionCheckReady \|\| requiredSetupCompleted/);
-  assert.match(warmup, /ROUTES_TO_PREFETCH\.forEach\(\(route\) => router\.prefetch\(route\)\)/);
+  assert.match(warmup, /MAX_CONCURRENT_WARMUPS = 2/);
+  assert.match(warmup, /pointerover/);
+  assert.match(warmup, /focusin/);
+  assert.match(warmup, /pointerdown/);
+  assert.match(warmup, /requestIdleCallback/);
+  assert.match(warmup, /prefetchRoute\(path, 100\)/);
+  assert.doesNotMatch(warmup, /visibilitychange/);
+
   for (const route of [
-    "/dashboard?action=publish",
     "/dashboard/crm",
     "/dashboard/agenda",
     "/dashboard/mails",
@@ -26,8 +35,14 @@ test("dashboard tool routes are prefetched and completion checks no longer swall
     "/dashboard/agent",
     "/dashboard/mediatheque",
   ]) {
-    assert.ok(warmup.includes(route), `${route} doit être préchargée`);
+    assert.ok(warmup.includes(route), `${route} doit rester dans la file progressive`);
   }
+
+  assert.match(modules, /Chargement…/);
+  assert.match(modules, /aria-busy=/);
+  assert.match(modules, /data-dashboard-prefetch=/);
+  assert.match(actionButton, /Chargement…/);
+  assert.match(actionButton, /event\.preventDefault\(\)/);
   assert.doesNotMatch(dashboard, /if \(!requiredSetupAccessAllowed\) return/);
   assert.doesNotMatch(bottomNav, /&& !requiredSetupAccessAllowed\) return/);
 });

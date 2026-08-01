@@ -68,6 +68,7 @@ import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { isDashboardRequiredSetupProtectedDestination, isDashboardRequiredSetupProtectedLocation } from "@/lib/dashboardRequiredSetupAccess";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { reportHandledClientError } from "@/lib/clientExpectedErrors";
+import { fetchSharedDashboardRefreshJson } from "@/lib/dashboardRefreshOrchestrator";
 
 
 import {
@@ -2286,21 +2287,20 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     const job = (async (): Promise<ChannelStatsRefreshResult> => {
       lastStatsChannelRefreshAtRef.current[channel] = Date.now();
 
-      const res = await fetch("/api/stats/channel-refresh", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ channel }),
-        cache: "no-store",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        throw new Error(`Channel refresh failed: ${res.status}`);
-      }
-
-      const json = await res.json().catch(() => null) as {
+      const json = await fetchSharedDashboardRefreshJson<{
         periods?: Partial<Record<string, { block?: InrstatsChannelBlock; overview?: unknown; syncedAt?: number; snapshotDate?: string | null }>>;
-      } | null;
+      } | null>(
+        `stats-channel:${channel}`,
+        "/api/stats/channel-refresh",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ channel }),
+          cache: "no-store",
+          credentials: "include",
+        },
+        { reuseMs: options?.force ? 1_500 : dedupeMs },
+      );
 
       const applied = applyChannelRefreshPayload(channel, json, fallbackSyncAt);
       lastStatsChannelRefreshAtRef.current[channel] = Number.isFinite(Number(applied.syncAt)) ? Number(applied.syncAt) : Date.now();
@@ -2400,19 +2400,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     const job = (async (): Promise<GeneratorChannelRefreshResult> => {
       lastGeneratorChannelRefreshAtRef.current[channel] = Date.now();
 
-      const res = await fetch("/api/metrics/channel-refresh", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ channel }),
-        cache: "no-store",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        throw new Error(`Generator channel refresh failed: ${res.status}`);
-      }
-
-      const json = await res.json().catch(() => null) as {
+      const json = await fetchSharedDashboardRefreshJson<{
         syncAt?: number;
         generator?: {
           block?: {
@@ -2428,7 +2416,18 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           details?: { profile?: unknown };
           meta?: { snapshotDate?: string | null; live?: boolean };
         };
-      } | null;
+      } | null>(
+        `metrics-channel:${channel}`,
+        "/api/metrics/channel-refresh",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ channel }),
+          cache: "no-store",
+          credentials: "include",
+        },
+        { reuseMs: options?.force ? 1_500 : dedupeMs },
+      );
 
       const applied = applyGeneratorChannelRefreshPayload(channel, json, fallbackSyncAt);
       lastGeneratorChannelRefreshAtRef.current[channel] = Number.isFinite(Number(applied.syncAt)) ? Number(applied.syncAt) : Date.now();
@@ -3116,23 +3115,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   useEffect(() => {
     if (!dailyBootReady) return;
+    // Une seule vérification légère au démarrage. Les changements réels de
+    // connexion et les événements temps réel déclenchent ensuite les refreshs
+    // ciblés ; le focus et visibilitychange ne reconstruisent plus les stats.
     void latestSyncFromServerCacheIfNeededRef.current?.(false);
-
-    const handleFocus = () => {
-      void latestSyncFromServerCacheIfNeededRef.current?.(false);
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void latestSyncFromServerCacheIfNeededRef.current?.(false);
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
   }, [dailyBootReady]);
 
   const refreshMailChannelStatus = useCallback(async () => {

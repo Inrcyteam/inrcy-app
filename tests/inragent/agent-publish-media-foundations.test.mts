@@ -6,6 +6,7 @@ import {
   mediaPatchFromLibraryItem,
   readAgentApiJson,
 } from "../../app/dashboard/agent/_lib/agent.publish-media-foundations.ts";
+import type { AgentMediaLibraryItem } from "../../app/dashboard/agent/_lib/agent.types.ts";
 
 const client = readFileSync("app/dashboard/agent/AgentClient.tsx", "utf8");
 const foundations = readFileSync(
@@ -41,7 +42,8 @@ test("media library mapping keeps all compatibility aliases", () => {
     height: 1920,
     duration_seconds: 12.5,
     media_type: "video",
-  } as any);
+    tags: null,
+  } satisfies AgentMediaLibraryItem);
   assert.equal(patch.bucket, "bucket");
   assert.equal(patch.bucketName, "bucket");
   assert.equal(patch.path, "folder/video.mp4");

@@ -93,6 +93,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
   const copy = getDashboardTranslations(language);
 
   return fluxModules.flatMap((m) => {
+    const moduleIcon = MODULE_ICONS[m.key] ?? MODULE_ICONS.site_inrcy;
     const bubbleKey = normalizeAppBubbleKey(m.key);
     const accessEnabled = bubbleKey ? isBubbleEnabled(bubbleAccessMap, bubbleKey) : true;
     const displayAccessEnabled = m.key === "site_inrcy" && !siteInrcyAccessReady
@@ -229,6 +230,10 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                         ? Boolean(inrSearchConnected && inrSearchUrl)
                         : undefined;
 
+    const configureDestination = m.key === "inr_agent"
+      ? ({ kind: "path", value: "/dashboard/agent" } as const)
+      : ({ kind: "panel", value: m.key } as const);
+
     const onConfigure = () => {
       if (!accessEnabled) return;
       if (m.key === "site_inrcy") {
@@ -273,8 +278,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       name: moduleCopy?.name || m.name,
       description: moduleCopy?.description || m.description,
       accent: m.accent,
-      logoSrc: MODULE_ICONS[m.key]?.src,
-      logoAlt: MODULE_ICONS[m.key]?.alt,
+      logoSrc: moduleIcon.src,
+      logoAlt: moduleIcon.alt,
       bubbleStatus,
       bubbleStatusText,
       helpKind: m.key === "site_inrcy" ? "site_inrcy" : m.key === "site_web" ? "site_web" : undefined,
@@ -286,6 +291,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       onSpecialView: accessEnabled && m.key === "inrbadge" ? onOpenInrBadgeModal : undefined,
       viewAction: accessEnabled && !(specialViewHref || m.key === "inrbadge") ? viewAction : undefined,
       onConfigure,
+      configureDestination,
       configureDisabled:
         !accessEnabled ||
         (m.key === "site_inrcy" ? !canConfigureSite : false) ||

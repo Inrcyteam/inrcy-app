@@ -522,7 +522,17 @@ export default function DashboardChannelsSection({
                         aria-pressed={i === activeDot}
                         title={item.name}
                       >
-                        <img className={styles.carouselIconImg} src={item.logoSrc} alt="" aria-hidden />
+                        <img
+                          className={styles.carouselIconImg}
+                          src={item.logoSrc}
+                          alt=""
+                          aria-hidden
+                          width={48}
+                          height={48}
+                          loading="eager"
+                          decoding="sync"
+                          fetchPriority="high"
+                        />
                       </button>
                     );
                   })}

@@ -7,42 +7,52 @@ import {
   readFreshModuleSnapshot,
   writeModuleSnapshot,
 } from "@/lib/browserModuleSnapshotCache";
-import { fetchDocRecords } from "../_documents/docSaveStore";
-import { warmAgentRuntimeSnapshot } from "../agent/_hooks/useAgentRuntimeData";
 import { ACTIVE_INRCY_ACCOUNT_EVENT } from "@/lib/multicompte/constants";
 
+export const DASHBOARD_TOOL_WARMUP_EVENT = "inrcy:dashboard-tool-warmup";
+export const DASHBOARD_PREFETCH_ATTRIBUTE = "data-dashboard-prefetch";
+
 const ROUTES_TO_PREFETCH = [
-  "/dashboard",
-  "/dashboard?action=publish",
-  "/dashboard?stats=1",
-  "/dashboard?panel=documents",
-  "/dashboard/booster",
+  "/dashboard/stats",
   "/dashboard/propulser",
-  "/dashboard/propulser?action=recolter",
   "/dashboard/fideliser",
+  "/dashboard/e-reputation",
   "/dashboard/mails",
-  "/dashboard/mails?folder=publications",
-  "/dashboard/mails?folder=propulsions",
-  "/dashboard/mails?folder=fidelisations",
-  "/dashboard/mails?folder=mails",
   "/dashboard/crm",
   "/dashboard/agenda",
-  "/dashboard/factures",
-  "/dashboard/factures/new",
-  "/dashboard/devis",
-  "/dashboard/devis/new",
-  "/dashboard/stats",
-  "/dashboard/e-reputation",
-  "/dashboard/gps",
   "/dashboard/agent",
   "/dashboard/mediatheque",
+  "/dashboard/gps",
+  "/dashboard/factures",
+  "/dashboard/devis",
 ] as const;
 
 const SNAPSHOT_FRESHNESS_MS = 2 * 60 * 1000;
-let activeWarmup: Promise<void> | null = null;
+const MAX_CONCURRENT_WARMUPS = 2;
+
+type WarmupTask = {
+  key: string;
+  priority: number;
+  run: () => Promise<void> | void;
+};
+
+type WarmupEventDetail = { path?: string };
+
+export function requestDashboardToolWarmup(path: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<WarmupEventDetail>(DASHBOARD_TOOL_WARMUP_EVENT, {
+      detail: { path },
+    }),
+  );
+}
 
 async function fetchJson(url: string) {
-  const response = await fetch(url, { method: "GET", cache: "no-store" });
+  const response = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+    credentials: "include",
+  });
   if (!response.ok) return null;
   return response.json().catch(() => null);
 }
@@ -69,118 +79,12 @@ function currentAgendaRange() {
   };
 }
 
-async function warmDefaultSnapshotsInternal() {
-  const agendaRange = currentAgendaRange();
-  const jobs: Array<Promise<void>> = [];
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.crmDefault, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      fetchJson("/api/crm/contacts?page=1&pageSize=20").then((data) => {
-        if (data) writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.crmDefault, data);
-      }),
-    );
+function normalizedPath(path: string) {
+  try {
+    return new URL(path, window.location.origin).pathname;
+  } catch {
+    return path.split("?")[0] || path;
   }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.inrSendDefault, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      fetchJson("/api/inrsend/history?page=1&pageSize=20&folder=publications&boxView=sent").then((data) => {
-        if (data) writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.inrSendDefault, data);
-      }),
-    );
-  }
-
-  const agendaKey = MODULE_SNAPSHOT_KEYS.agendaMonth(agendaRange.year, agendaRange.monthIndex);
-  if (!readFreshModuleSnapshot(agendaKey, SNAPSHOT_FRESHNESS_MS)) {
-    const params = new URLSearchParams({ timeMin: agendaRange.timeMin, timeMax: agendaRange.timeMax });
-    jobs.push(
-      fetchJson(`/api/calendar/events?${params.toString()}`).then((data) => {
-        if (data?.ok) writeModuleSnapshot(agendaKey, data);
-      }),
-    );
-  }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.agendaContacts, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      fetchJson("/api/crm/contacts?all=1&pageSize=200").then((data) => {
-        if (data) writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.agendaContacts, data);
-      }),
-    );
-  }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.agendaSettings, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      fetchJson("/api/calendar/settings").then((data) => {
-        if (data) writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.agendaSettings, data);
-      }),
-    );
-  }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.propulserMetrics, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      Promise.all([
-        fetchJson("/api/propulser/metrics?days=30"),
-        fetchJson("/api/loyalty/weekly-summary"),
-      ]).then(([metrics, weeklySummary]) => {
-        if (metrics || weeklySummary) {
-          writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.propulserMetrics, { metrics, weeklySummary });
-        }
-      }),
-    );
-  }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.fideliserMetrics, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      Promise.all([
-        fetchJson("/api/fideliser/metrics?days=30"),
-        fetchJson("/api/loyalty/weekly-summary"),
-      ]).then(([metrics, weeklySummary]) => {
-        if (metrics || weeklySummary) {
-          writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.fideliserMetrics, { metrics, weeklySummary });
-        }
-      }),
-    );
-  }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.facturesList, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      fetchDocRecords("facture").then((docs) => {
-        writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.facturesList, { docs, storageMode: "supabase" as const });
-      }).catch(() => undefined),
-    );
-  }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.devisList, SNAPSHOT_FRESHNESS_MS)) {
-    jobs.push(
-      fetchDocRecords("devis").then((docs) => {
-        writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.devisList, { docs, storageMode: "supabase" as const });
-      }).catch(() => undefined),
-    );
-  }
-
-  if (!readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.mediaLibraryDefault, 90 * 1000)) {
-    jobs.push(
-      fetchJson("/api/media-library/items?limit=180&type=all&active=active").then((data) => {
-        if (Array.isArray(data?.items)) {
-          writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.mediaLibraryDefault, {
-            items: data.items,
-            stats: data.stats ?? { total: data.items.length, images: 0, videos: 0, total_bytes: 0 },
-          });
-        }
-      }),
-    );
-  }
-
-  jobs.push(warmAgentRuntimeSnapshot());
-
-  await Promise.allSettled(jobs);
-}
-
-function warmDefaultSnapshots() {
-  if (activeWarmup) return activeWarmup;
-  activeWarmup = warmDefaultSnapshotsInternal().finally(() => {
-    activeWarmup = null;
-  });
-  return activeWarmup;
 }
 
 export default function DashboardToolWarmup() {
@@ -188,27 +92,262 @@ export default function DashboardToolWarmup() {
 
   useEffect(() => {
     let cancelled = false;
+    let activeCount = 0;
+    let idleTimer: number | null = null;
+    let idleCallbackId: number | null = null;
+    const queued = new Map<string, WarmupTask>();
+    const completed = new Set<string>();
 
-    // Next prépare immédiatement les bundles des outils : le premier clic ne
-    // reste plus sans réponse pendant le chargement de la route.
-    ROUTES_TO_PREFETCH.forEach((route) => router.prefetch(route));
-
-    const runWarmup = () => {
+    const pump = () => {
       if (cancelled) return;
-      void warmDefaultSnapshots();
+      while (activeCount < MAX_CONCURRENT_WARMUPS && queued.size > 0) {
+        const next = Array.from(queued.values()).sort(
+          (left, right) => right.priority - left.priority,
+        )[0];
+        queued.delete(next.key);
+        if (completed.has(next.key)) continue;
+        activeCount += 1;
+        void Promise.resolve()
+          .then(next.run)
+          .catch(() => undefined)
+          .finally(() => {
+            activeCount -= 1;
+            completed.add(next.key);
+            pump();
+          });
+      }
     };
 
-    runWarmup();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") runWarmup();
+    const enqueue = (task: WarmupTask) => {
+      if (cancelled || completed.has(task.key)) return;
+      const existing = queued.get(task.key);
+      if (!existing || task.priority > existing.priority) queued.set(task.key, task);
+      pump();
     };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, runWarmup);
+
+    const prefetchRoute = (path: string, priority = 10) => {
+      enqueue({
+        key: `route:${path}`,
+        priority,
+        run: () => router.prefetch(path),
+      });
+    };
+
+    const agendaRange = currentAgendaRange();
+    const agendaKey = MODULE_SNAPSHOT_KEYS.agendaMonth(
+      agendaRange.year,
+      agendaRange.monthIndex,
+    );
+
+    const enqueueSnapshotForPath = (path: string, priority = 20) => {
+      const pathname = normalizedPath(path);
+
+      if (pathname === "/dashboard/crm") {
+        enqueue({
+          key: "snapshot:crm",
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.crmDefault, SNAPSHOT_FRESHNESS_MS)) return;
+            const data = await fetchJson("/api/crm/contacts?page=1&pageSize=20");
+            if (data) writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.crmDefault, data);
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/mails") {
+        enqueue({
+          key: "snapshot:inrsend",
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.inrSendDefault, SNAPSHOT_FRESHNESS_MS)) return;
+            const data = await fetchJson("/api/inrsend/history?page=1&pageSize=20&folder=publications&boxView=sent");
+            if (data) writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.inrSendDefault, data);
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/agenda") {
+        enqueue({
+          key: "snapshot:agenda-month",
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(agendaKey, SNAPSHOT_FRESHNESS_MS)) return;
+            const params = new URLSearchParams({
+              timeMin: agendaRange.timeMin,
+              timeMax: agendaRange.timeMax,
+            });
+            const data = await fetchJson(`/api/calendar/events?${params.toString()}`);
+            if (data?.ok) writeModuleSnapshot(agendaKey, data);
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/propulser") {
+        enqueue({
+          key: "snapshot:propulser",
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.propulserMetrics, SNAPSHOT_FRESHNESS_MS)) return;
+            const [metrics, weeklySummary] = await Promise.all([
+              fetchJson("/api/propulser/metrics?days=30"),
+              fetchJson("/api/loyalty/weekly-summary"),
+            ]);
+            if (metrics || weeklySummary) {
+              writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.propulserMetrics, { metrics, weeklySummary });
+            }
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/fideliser") {
+        enqueue({
+          key: "snapshot:fideliser",
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.fideliserMetrics, SNAPSHOT_FRESHNESS_MS)) return;
+            const [metrics, weeklySummary] = await Promise.all([
+              fetchJson("/api/fideliser/metrics?days=30"),
+              fetchJson("/api/loyalty/weekly-summary"),
+            ]);
+            if (metrics || weeklySummary) {
+              writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.fideliserMetrics, { metrics, weeklySummary });
+            }
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/e-reputation") {
+        enqueue({
+          key: "snapshot:e-reputation",
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.eReputationGoogle, 60_000)) return;
+            const data = await fetchJson("/api/e-reputation/google/reviews?pageSize=50");
+            if (data) writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.eReputationGoogle, data);
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/mediatheque") {
+        enqueue({
+          key: "snapshot:media-library",
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(MODULE_SNAPSHOT_KEYS.mediaLibraryDefault, 90_000)) return;
+            const data = await fetchJson("/api/media-library/items?limit=180&type=all&active=active");
+            if (Array.isArray(data?.items)) {
+              writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.mediaLibraryDefault, {
+                items: data.items,
+                stats: data.stats ?? {
+                  total: data.items.length,
+                  images: 0,
+                  videos: 0,
+                  total_bytes: 0,
+                },
+              });
+            }
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/agent") {
+        enqueue({
+          key: "snapshot:agent",
+          priority,
+          run: async () => {
+            const { warmAgentRuntimeSnapshot } = await import("../agent/_hooks/useAgentRuntimeData");
+            await warmAgentRuntimeSnapshot();
+          },
+        });
+      }
+
+      if (pathname === "/dashboard/factures" || pathname === "/dashboard/devis") {
+        const type = pathname.endsWith("factures") ? "facture" : "devis";
+        const key = type === "facture" ? MODULE_SNAPSHOT_KEYS.facturesList : MODULE_SNAPSHOT_KEYS.devisList;
+        enqueue({
+          key: `snapshot:${type}`,
+          priority,
+          run: async () => {
+            if (readFreshModuleSnapshot(key, SNAPSHOT_FRESHNESS_MS)) return;
+            const { fetchDocRecords } = await import("../_documents/docSaveStore");
+            const docs = await fetchDocRecords(type);
+            writeModuleSnapshot(key, { docs, storageMode: "supabase" as const });
+          },
+        });
+      }
+    };
+
+    const prioritize = (path: string) => {
+      if (!path || !path.startsWith("/dashboard")) return;
+      prefetchRoute(path, 100);
+      enqueueSnapshotForPath(path, 90);
+    };
+
+    const routeFromTarget = (target: EventTarget | null) => {
+      const element = target instanceof Element ? target : null;
+      return element?.closest<HTMLElement>(`[${DASHBOARD_PREFETCH_ATTRIBUTE}]`)?.getAttribute(DASHBOARD_PREFETCH_ATTRIBUTE) || "";
+    };
+
+    const onIntent = (event: Event) => {
+      const path = routeFromTarget(event.target);
+      if (path) prioritize(path);
+    };
+    const onExplicitWarmup = (event: Event) => {
+      const path = (event as CustomEvent<WarmupEventDetail>).detail?.path;
+      if (path) prioritize(path);
+    };
+
+    document.addEventListener("pointerover", onIntent, true);
+    document.addEventListener("focusin", onIntent, true);
+    document.addEventListener("pointerdown", onIntent, true);
+    window.addEventListener(DASHBOARD_TOOL_WARMUP_EVENT, onExplicitWarmup as EventListener);
+
+    const startProgressiveWarmup = () => {
+      ROUTES_TO_PREFETCH.forEach((route, index) => {
+        prefetchRoute(route, 20 - Math.floor(index / 2));
+      });
+      [
+        "/dashboard/propulser",
+        "/dashboard/fideliser",
+        "/dashboard/e-reputation",
+        "/dashboard/mails",
+        "/dashboard/crm",
+        "/dashboard/agenda",
+      ].forEach((route, index) => enqueueSnapshotForPath(route, 8 - index));
+    };
+
+    const scheduleProgressiveWarmup = () => {
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        if ("requestIdleCallback" in window) {
+          idleCallbackId = window.requestIdleCallback(startProgressiveWarmup, { timeout: 2_500 });
+        } else {
+          startProgressiveWarmup();
+        }
+      }, 800);
+    };
+
+    const handleAccountChange = () => {
+      completed.clear();
+      queued.clear();
+      scheduleProgressiveWarmup();
+    };
+
+    scheduleProgressiveWarmup();
+    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleAccountChange);
 
     return () => {
       cancelled = true;
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, runWarmup);
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      if (idleCallbackId !== null && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleCallbackId);
+      }
+      queued.clear();
+      document.removeEventListener("pointerover", onIntent, true);
+      document.removeEventListener("focusin", onIntent, true);
+      document.removeEventListener("pointerdown", onIntent, true);
+      window.removeEventListener(DASHBOARD_TOOL_WARMUP_EVENT, onExplicitWarmup as EventListener);
+      window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleAccountChange);
     };
   }, [router]);
 

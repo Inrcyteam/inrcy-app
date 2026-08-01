@@ -1,20 +1,36 @@
+import inrcyBubbleIcon from "../../public/icons/inrcy.png";
+import siteWebBubbleIcon from "../../public/icons/site-web.jpg";
+import facebookBubbleIcon from "../../public/icons/facebook.png";
+import googleBusinessBubbleIcon from "../../public/icons/google.jpg";
+import inrSearchBubbleIcon from "../../public/icons/inr-search-bubble-128.png";
+import instagramBubbleIcon from "../../public/icons/instagram.jpg";
+import linkedinBubbleIcon from "../../public/icons/linkedin.png";
+import mailsBubbleIcon from "../../public/icons/mails-inrcy-dashboard-v2.png";
+import tiktokBubbleIcon from "../../public/icons/tiktok.png";
+import youtubeBubbleIcon from "../../public/icons/youtube-shorts.png";
+import pinterestBubbleIcon from "../../public/icons/pinterest-logo-128.png";
+import inrAgentBubbleIcon from "../../public/icons/inr-agent.png";
+import inrBadgeBubbleIcon from "../../public/icons/inrbadge-dashboard.png";
+
 import type { Module, GoogleSource } from "./dashboard.types";
 
 export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
-  site_inrcy: { src: "/icons/inrcy.png", alt: "iNrCy" },
-  site_web: { src: "/icons/site-web.jpg", alt: "Site web" },
-  facebook: { src: "/icons/facebook.png", alt: "Facebook" },
-  gmb: { src: "/icons/google.jpg", alt: "Google Business" },
-  inr_search: { src: "/icons/inr-search-bubble-128.png", alt: "iNr'Search" },
-  instagram: { src: "/icons/instagram.jpg", alt: "Instagram" },
-  linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
-  mails: { src: "/icons/mails-inrcy-dashboard-v2.png", alt: "Mails iNrCy" },
-  tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
-  youtube_shorts: { src: "/icons/youtube-shorts.png", alt: "YouTube" },
-  pinterest: { src: "/icons/pinterest-logo-128.png", alt: "Pinterest" },
-  inr_agent: { src: "/icons/inr-agent.png", alt: "iNr'Agent" },
-  inrbadge: { src: "/icons/inrbadge-dashboard.png", alt: "iNr'Badge" },
+  site_inrcy: { src: inrcyBubbleIcon.src, alt: "iNrCy" },
+  site_web: { src: siteWebBubbleIcon.src, alt: "Site web" },
+  facebook: { src: facebookBubbleIcon.src, alt: "Facebook" },
+  gmb: { src: googleBusinessBubbleIcon.src, alt: "Google Business" },
+  inr_search: { src: inrSearchBubbleIcon.src, alt: "iNr'Search" },
+  instagram: { src: instagramBubbleIcon.src, alt: "Instagram" },
+  linkedin: { src: linkedinBubbleIcon.src, alt: "LinkedIn" },
+  mails: { src: mailsBubbleIcon.src, alt: "Mails iNrCy" },
+  tiktok: { src: tiktokBubbleIcon.src, alt: "TikTok" },
+  youtube_shorts: { src: youtubeBubbleIcon.src, alt: "YouTube" },
+  pinterest: { src: pinterestBubbleIcon.src, alt: "Pinterest" },
+  inr_agent: { src: inrAgentBubbleIcon.src, alt: "iNr'Agent" },
+  inrbadge: { src: inrBadgeBubbleIcon.src, alt: "iNr'Badge" },
 };
+
+export const DASHBOARD_BUBBLE_ICON_PRELOADS = Object.values(MODULE_ICONS).map((icon) => icon.src);
 
 export const fluxModules: Module[] = [
   {

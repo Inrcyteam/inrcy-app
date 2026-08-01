@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "../booster/booster.module.css";
 import BaseModal from "../_components/WorkflowBaseModal";
 import DetailSequenceNavigation from "../_components/DetailSequenceNavigation";
-import ValoriserModal from "./components/valoriser/ValoriserModal";
-import RecolterModal from "./components/recolter/RecolterModal";
-import OffrirModal from "./components/offrir/OffrirModal";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
@@ -19,6 +17,20 @@ import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
+
+
+const ValoriserModal = dynamic(() => import("./components/valoriser/ValoriserModal"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 24, textAlign: "center" }}>Chargement de l’éditeur…</div>,
+});
+const RecolterModal = dynamic(() => import("./components/recolter/RecolterModal"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 24, textAlign: "center" }}>Chargement de l’éditeur…</div>,
+});
+const OffrirModal = dynamic(() => import("./components/offrir/OffrirModal"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 24, textAlign: "center" }}>Chargement de l’éditeur…</div>,
+});
 
 type ActiveModal = null | "valorize" | "reviews" | "promo";
 

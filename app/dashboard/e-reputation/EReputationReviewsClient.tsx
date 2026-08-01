@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import EmojiPickerButton from "@/app/dashboard/_components/EmojiPickerButton";
 import PublishAiConfigurationDrawer from "@/app/dashboard/booster/publier/components/PublishAiConfigurationDrawer";
+import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 import styles from "./eReputation.module.css";
 
 export type EReputationPlatformId = "google";
@@ -105,6 +106,11 @@ type ApiReview = {
 type ReviewsResponse = {
   error?: string;
   user_message?: string;
+  connected?: boolean;
+  configured?: boolean;
+  locationTitle?: string | null;
+  reportUrl?: string | null;
+  averageRating?: number | null;
   nextPageToken?: string | null;
   totalReviewCount?: number;
   reviews?: ApiReview[];
@@ -392,21 +398,70 @@ function apiBaseFor(_platform: EReputationPlatformId) {
   return "/api/e-reputation/google";
 }
 
+function formatAverageRating(value: number | null | undefined) {
+  if (!Number.isFinite(Number(value))) return "—";
+  return Number(value).toLocaleString("fr-FR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
+function platformFromSnapshot(
+  platform: EReputationReviewsPlatform,
+  snapshot: ReviewsResponse | null,
+): EReputationReviewsPlatform {
+  if (!snapshot) return platform;
+  const connected = Boolean(snapshot.connected);
+  const configured = Boolean(snapshot.configured);
+  const ready = connected && configured;
+  const cachedReviews = Array.isArray(snapshot.reviews)
+    ? snapshot.reviews.map((review) => toReviewItem(review, platform.id))
+    : [];
+
+  return normalizePlatform({
+    ...platform,
+    reviews: ready ? cachedReviews : platform.reviews,
+    reviewsReady: ready,
+    reviewsError: null,
+    initialNextPageToken: snapshot.nextPageToken || null,
+    totalReviewCount: Number.isFinite(Number(snapshot.totalReviewCount))
+      ? Number(snapshot.totalReviewCount)
+      : cachedReviews.length,
+    averageRatingLabel: ready ? formatAverageRating(snapshot.averageRating) : "—",
+    locationLabel: String(snapshot.locationTitle || platform.locationLabel || "Fiche Google Business"),
+    statusLabel: ready
+      ? "Avis Google chargés"
+      : connected
+        ? "Établissement à choisir"
+        : "Google Business à connecter",
+    connected,
+    canReply: ready,
+    reportUrl: snapshot.reportUrl || platform.reportUrl || null,
+    profileUrl: snapshot.reportUrl || platform.profileUrl || null,
+  });
+}
+
 export default function EReputationReviewsClient(props: Props) {
   const normalizedPlatforms = useMemo(() => {
     const source = props.platforms?.length ? props.platforms : [buildDefaultPlatform(props)];
     return source.map(normalizePlatform);
   }, [props.platforms, props.reviews, props.reviewsReady, props.reviewsError, props.initialNextPageToken, props.totalReviewCount, props.averageRatingLabel, props.locationLabel, props.statusLabel, props.gmbReady, props.reportGoogleUrl]);
 
-  const [platformData, setPlatformData] = useState<EReputationReviewsPlatform[]>(normalizedPlatforms);
-  const [activePlatformId, setActivePlatformId] = useState<EReputationPlatformId>(normalizedPlatforms.find((platform) => platform.connected)?.id || normalizedPlatforms[0]?.id || "google");
+  const [platformData, setPlatformData] = useState<EReputationReviewsPlatform[]>(() => {
+    const snapshot = readModuleSnapshot<ReviewsResponse>(MODULE_SNAPSHOT_KEYS.eReputationGoogle)?.data ?? null;
+    return normalizedPlatforms.map((platform) => platform.id === "google" ? platformFromSnapshot(platform, snapshot) : platform);
+  });
+  const [activePlatformId, setActivePlatformId] = useState<EReputationPlatformId>(() => {
+    const initial = platformData.find((platform) => platform.connected) || platformData[0];
+    return initial?.id || "google";
+  });
   const [filter, setFilter] = useState<"all" | "todo" | "answered">("all");
   const [starFilter, setStarFilter] = useState<"all" | "5" | "4" | "3" | "2" | "1">("all");
   const [query, setQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedId, setSelectedId] = useState(normalizedPlatforms[0]?.reviews[0]?.id || "");
+  const [selectedId, setSelectedId] = useState(platformData[0]?.reviews[0]?.id || "");
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [replyText, setReplyText] = useState(defaultReplyFor(normalizedPlatforms[0]?.reviews[0] || null));
+  const [replyText, setReplyText] = useState(defaultReplyFor(platformData[0]?.reviews[0] || null));
   const [publishing, setPublishing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -418,6 +473,8 @@ export default function EReputationReviewsClient(props: Props) {
   const [isMobile, setIsMobile] = useState(false);
   const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const replySelectionRef = useRef<{ start: number; end: number } | null>(null);
+  const backgroundRefreshRef = useRef<(silent?: boolean) => Promise<void>>(async () => undefined);
+  const refreshedPlatformRef = useRef<EReputationPlatformId | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -427,11 +484,6 @@ export default function EReputationReviewsClient(props: Props) {
     mediaQuery.addEventListener?.("change", update);
     return () => mediaQuery.removeEventListener?.("change", update);
   }, []);
-
-  useEffect(() => {
-    setPlatformData(normalizedPlatforms);
-    setActivePlatformId((current) => normalizedPlatforms.some((platform) => platform.id === current) ? current : normalizedPlatforms.find((platform) => platform.connected)?.id || normalizedPlatforms[0]?.id || "google");
-  }, [normalizedPlatforms]);
 
   const activePlatform = platformData.find((platform) => platform.id === activePlatformId) || platformData[0] || normalizePlatform(buildDefaultPlatform(props));
   const items = activePlatform.reviews;
@@ -526,6 +578,13 @@ export default function EReputationReviewsClient(props: Props) {
   }, [filter, query, starFilter, activePlatform.id]);
 
   useEffect(() => {
+    if (filteredReviews.length === 0) return;
+    if (!filteredReviews.some((review) => review.id === selectedId)) {
+      setSelectedId(filteredReviews[0].id);
+    }
+  }, [filteredReviews, selectedId]);
+
+  useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
@@ -534,15 +593,6 @@ export default function EReputationReviewsClient(props: Props) {
     replySelectionRef.current = null;
     setNotice(null);
   }, [selectedReview?.id]);
-
-  useEffect(() => {
-    if (!detailsOpen) return;
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDetailsOpen(false);
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [detailsOpen]);
 
   useEffect(() => {
     if (!detailsOpen) return;
@@ -566,6 +616,21 @@ export default function EReputationReviewsClient(props: Props) {
   const summaryStatusShortLabel = reviewsReady ? "Chargés" : activePlatform.statusLabel || platformShortLabel;
   const averageRatingLabel = activePlatform.averageRatingLabel || "—";
   const locationLabel = activePlatform.locationLabel || platformLabel;
+  const selectedFilteredIndex = selectedReview
+    ? filteredReviews.findIndex((review) => review.id === selectedReview.id)
+    : -1;
+  const detailTotalReviews = hasLocalFilter
+    ? filteredReviews.length
+    : Math.max(totalReviewCount, filteredReviews.length);
+  const detailPosition = selectedFilteredIndex >= 0 ? selectedFilteredIndex + 1 : 0;
+  const canGoToPreviousReview = selectedFilteredIndex > 0;
+  const canGoToNextReview = selectedFilteredIndex >= 0 && (
+    selectedFilteredIndex < filteredReviews.length - 1 ||
+    (!hasLocalFilter && Boolean(nextPageToken))
+  );
+  const replyHasUnsavedChanges = Boolean(
+    selectedReview && replyText.trim() !== defaultReplyFor(selectedReview).trim(),
+  );
 
   function openDetails(review: EReputationReviewItem) {
     setSelectedId(review.id);
@@ -574,6 +639,98 @@ export default function EReputationReviewsClient(props: Props) {
     setNotice(null);
     setDetailsOpen(true);
   }
+
+  async function confirmReviewChange() {
+    if (!replyHasUnsavedChanges) return true;
+    return confirmInrcy({
+      eyebrow: "Réponse non publiée",
+      title: "Changer d’avis ?",
+      message: "La réponse préparée pour cet avis n’a pas été publiée. Elle sera perdue si vous continuez.",
+      cancelLabel: "Continuer l’édition",
+      confirmLabel: "Changer d’avis",
+      variant: "warning",
+    });
+  }
+
+  function selectReviewFromSequence(review: EReputationReviewItem, index: number) {
+    setSelectedId(review.id);
+    setReplyText(defaultReplyFor(review));
+    setCurrentPage(Math.floor(Math.max(0, index) / REVIEWS_PAGE_SIZE) + 1);
+    replySelectionRef.current = null;
+    setNotice(null);
+  }
+
+  async function requestCloseDetails() {
+    if (!(await confirmReviewChange())) return;
+    setDetailsOpen(false);
+  }
+
+  async function navigateReview(direction: "previous" | "next") {
+    if (!selectedReview || loadingMore || publishing || generating || deleting) return;
+    if (!(await confirmReviewChange())) return;
+
+    const currentIndex = filteredReviews.findIndex((review) => review.id === selectedReview.id);
+    if (currentIndex < 0) return;
+    const targetIndex = direction === "previous" ? currentIndex - 1 : currentIndex + 1;
+
+    if (targetIndex >= 0 && targetIndex < filteredReviews.length) {
+      selectReviewFromSequence(filteredReviews[targetIndex], targetIndex);
+      return;
+    }
+
+    if (direction !== "next" || hasLocalFilter || !nextPageToken) return;
+
+    setLoadingMore(true);
+    setListNotice(null);
+    try {
+      const payload = await requestReviews(nextPageToken);
+      const mergedItems = mergeReviews(items, payload.incoming);
+      updateActivePlatform((platform) => ({
+        ...platform,
+        reviews: mergedItems,
+        initialNextPageToken: payload.nextToken,
+        totalReviewCount: payload.total,
+        reviewsReady: payload.ready,
+        connected: payload.ready,
+        canReply: payload.ready,
+        locationLabel: payload.locationLabel,
+        averageRatingLabel: payload.averageRatingLabel,
+        statusLabel: payload.ready ? "Avis Google chargés" : platform.statusLabel,
+      }));
+      const nextReview = mergedItems[currentIndex + 1];
+      if (nextReview) selectReviewFromSequence(nextReview, currentIndex + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Impossible de charger l’avis suivant.";
+      setListNotice({ type: "error", text: message });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!detailsOpen) return;
+    const handleKey = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const editingText = Boolean(
+        target?.isContentEditable ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "INPUT",
+      );
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void requestCloseDetails();
+      } else if (!editingText && event.key === "ArrowLeft" && canGoToPreviousReview) {
+        event.preventDefault();
+        void navigateReview("previous");
+      } else if (!editingText && event.key === "ArrowRight" && canGoToNextReview) {
+        event.preventDefault();
+        void navigateReview("next");
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [canGoToNextReview, canGoToPreviousReview, detailsOpen, replyHasUnsavedChanges, selectedReview?.id]);
 
   function saveReplySelection() {
     const textarea = replyTextareaRef.current;
@@ -623,42 +780,88 @@ export default function EReputationReviewsClient(props: Props) {
       throw new Error(getErrorMessage(payload, `Impossible de charger les avis ${platformLabel} pour le moment.`));
     }
 
+    // Le snapshot d'ouverture doit toujours rester la première page complète.
+    // Un chargement "Suivant" ne doit pas remplacer le cache par un lot isolé.
+    if (!pageToken) {
+      writeModuleSnapshot(MODULE_SNAPSHOT_KEYS.eReputationGoogle, payload);
+    }
+    const connected = Boolean(payload.connected);
+    const configured = Boolean(payload.configured);
+
     return {
       incoming: Array.isArray(payload.reviews) ? payload.reviews.map((review) => toReviewItem(review, activePlatform.id)) : [],
       nextToken: payload.nextPageToken || null,
       total: Number.isFinite(Number(payload.totalReviewCount)) ? Number(payload.totalReviewCount) : activePlatform.totalReviewCount || 0,
+      connected,
+      configured,
+      ready: connected && configured,
+      locationLabel: String(payload.locationTitle || activePlatform.locationLabel || "Fiche Google Business"),
+      averageRatingLabel: connected && configured ? formatAverageRating(payload.averageRating) : "—",
+      reportUrl: payload.reportUrl || null,
     };
   }
 
   async function fetchReviews({ pageToken, replace }: { pageToken?: string | null; replace?: boolean } = {}) {
-    const { incoming, nextToken, total } = await requestReviews(pageToken);
-    setItems((current) => (replace ? incoming : mergeReviews(current, incoming)));
-    setNextPageToken(nextToken);
-    updateActivePlatform((platform) => ({ ...platform, totalReviewCount: total }));
+    const payload = await requestReviews(pageToken);
+    updateActivePlatform((platform) => ({
+      ...platform,
+      reviews: payload.ready
+        ? (replace ? payload.incoming : mergeReviews(platform.reviews, payload.incoming))
+        : platform.reviews,
+      initialNextPageToken: payload.nextToken,
+      totalReviewCount: payload.total,
+      reviewsReady: payload.ready,
+      reviewsError: null,
+      connected: payload.connected,
+      canReply: payload.ready,
+      locationLabel: payload.locationLabel,
+      averageRatingLabel: payload.averageRatingLabel,
+      reportUrl: payload.reportUrl || platform.reportUrl || null,
+      profileUrl: payload.reportUrl || platform.profileUrl || null,
+      statusLabel: payload.ready
+        ? "Avis Google chargés"
+        : payload.connected
+          ? "Établissement à choisir"
+          : "Google Business à connecter",
+    }));
     setSelectedId((current) => {
       if (!replace && current) return current;
-      return incoming[0]?.id || "";
+      return payload.incoming[0]?.id || current;
     });
-    return incoming.length;
+    return payload.incoming.length;
   }
 
-  async function refreshReviews() {
-    if (!reviewsReady) return;
-    setRefreshing(true);
-    setListNotice(null);
+  async function refreshReviews(silent = false) {
+    if (!silent) {
+      setRefreshing(true);
+      setListNotice(null);
+    }
     try {
       const count = await fetchReviews({ replace: true });
-      setListNotice({
-        type: "success",
-        text: count > 0 ? `Avis ${platformLabel} actualisés.` : `Aucun avis ${platformLabel} n’a été retourné.`,
-      });
+      if (!silent) {
+        setListNotice({
+          type: "success",
+          text: count > 0 ? `Avis ${platformLabel} actualisés.` : `Aucun avis ${platformLabel} n’a été retourné.`,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : `Impossible d’actualiser les avis ${platformLabel} pour le moment.`;
-      setListNotice({ type: "error", text: message });
+      if (!silent) setListNotice({ type: "error", text: message });
+      updateActivePlatform((platform) => ({ ...platform, reviewsError: message }));
     } finally {
-      setRefreshing(false);
+      if (!silent) setRefreshing(false);
     }
   }
+
+  useEffect(() => {
+    backgroundRefreshRef.current = refreshReviews;
+  });
+
+  useEffect(() => {
+    if (refreshedPlatformRef.current === activePlatform.id) return;
+    refreshedPlatformRef.current = activePlatform.id;
+    void backgroundRefreshRef.current(true);
+  }, [activePlatform.id]);
 
   async function loadMoreReviews() {
     if (!nextPageToken || !reviewsReady) return;
@@ -884,8 +1087,8 @@ export default function EReputationReviewsClient(props: Props) {
             <button
               type="button"
               className={`${styles.btnGhostSmall} ${styles.refreshButton}`}
-              onClick={refreshReviews}
-              disabled={!reviewsReady || busy}
+              onClick={() => void refreshReviews()}
+              disabled={busy}
               aria-label={refreshing ? "Actualisation des avis" : "Actualiser les avis"}
               title={refreshing ? "Actualisation..." : "Actualiser"}
             >
@@ -987,12 +1190,51 @@ export default function EReputationReviewsClient(props: Props) {
 
       {detailsOpen && selectedReview && typeof document !== "undefined"
         ? createPortal(
-            <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setDetailsOpen(false)}>
+            <div
+              className={styles.modalBackdrop}
+              role="presentation"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) void requestCloseDetails();
+              }}
+            >
               <section className={styles.detailsModal} role="dialog" aria-modal="true" aria-labelledby="review-details-title" onMouseDown={(event) => event.stopPropagation()}>
                 <header className={styles.modalHeader}>
                   <span className={styles.modalKicker}>{activePlatform.modalKicker}</span>
                   <h2 id="review-details-title">Détails de l’avis</h2>
-                  <button type="button" className={styles.modalClose} onClick={() => setDetailsOpen(false)} aria-label="Fermer">Fermer</button>
+                  <div className={styles.reviewSequenceControls} aria-label="Navigation entre les avis">
+                    <button
+                      type="button"
+                      className={styles.reviewSequenceButton}
+                      onClick={() => void navigateReview("previous")}
+                      disabled={!canGoToPreviousReview || busy}
+                      aria-label="Avis précédent"
+                      title="Avis précédent"
+                    >
+                      ‹
+                    </button>
+                    <span className={styles.reviewSequenceCounter} aria-live="polite">
+                      {detailPosition.toLocaleString("fr-FR")} / {detailTotalReviews.toLocaleString("fr-FR")}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.reviewSequenceButton}
+                      onClick={() => void navigateReview("next")}
+                      disabled={!canGoToNextReview || busy}
+                      aria-label="Avis suivant"
+                      title="Avis suivant"
+                    >
+                      ›
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.modalClose} ${styles.modalCloseIcon}`}
+                      onClick={() => void requestCloseDetails()}
+                      aria-label="Fermer"
+                      title="Fermer"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </header>
 
                 <div className={styles.modalBody}>

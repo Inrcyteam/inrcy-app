@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./fideliser.module.css";
 import BaseModal from "../_components/WorkflowBaseModal";
 import DetailSequenceNavigation from "../_components/DetailSequenceNavigation";
-import InformerModal from "./components/informer/InformerModal";
-import SuivreModal from "./components/suivre/SuivreModal";
-import EnqueterModal from "./components/enqueter/EnqueterModal";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
@@ -19,6 +17,20 @@ import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
+
+
+const InformerModal = dynamic(() => import("./components/informer/InformerModal"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 24, textAlign: "center" }}>Chargement de l’éditeur…</div>,
+});
+const SuivreModal = dynamic(() => import("./components/suivre/SuivreModal"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 24, textAlign: "center" }}>Chargement de l’éditeur…</div>,
+});
+const EnqueterModal = dynamic(() => import("./components/enqueter/EnqueterModal"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 24, textAlign: "center" }}>Chargement de l’éditeur…</div>,
+});
 
 type ActiveModal = null | "inform" | "thanks" | "satisfaction";
 const FIDELISER_THEMES = ["inform", "thanks", "satisfaction"] as const;

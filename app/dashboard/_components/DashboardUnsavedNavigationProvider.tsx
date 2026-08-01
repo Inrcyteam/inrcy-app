@@ -107,20 +107,18 @@ export default function DashboardUnsavedNavigationProvider({
         (a, b) => b.sequence - a.sequence,
       );
       const blockingGuards: StoredGuard[] = [];
-      const passiveGuards: StoredGuard[] = [];
 
       for (const guard of activeGuards) {
         try {
-          (guard.shouldBlock() ? blockingGuards : passiveGuards).push(guard);
+          if (guard.shouldBlock()) blockingGuards.push(guard);
         } catch {
-          passiveGuards.push(guard);
+          // Un guard défaillant ou passif ne doit jamais ralentir la navigation.
         }
       }
 
-      // On demande d'abord toutes les confirmations réellement nécessaires.
-      // Les surfaces sans changement ne sont fermées qu'après validation, afin
-      // qu'un clic annulé ne ferme jamais un autre outil ouvert.
-      for (const guard of [...blockingGuards, ...passiveGuards]) {
+      // Seules les vraies modifications non enregistrées peuvent retarder la
+      // navigation. Les guards passifs seront naturellement démontés avec la page.
+      for (const guard of blockingGuards) {
         let allowed = false;
         try {
           allowed = await guard.confirmExit();

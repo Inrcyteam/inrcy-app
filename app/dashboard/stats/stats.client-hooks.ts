@@ -6,6 +6,7 @@ import {
   getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage,
 } from "@/lib/userFacingErrors";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import { fetchSharedDashboardRefreshJson } from "@/lib/dashboardRefreshOrchestrator";
 import { type DashboardChannelKey, isDashboardChannelKey } from "@/lib/dashboardChannels";
 import {
   markDailyStatsRefreshBootstrapChecked,
@@ -346,17 +347,18 @@ export function useStatsDataController({
   }, [period]);
 
   const refreshChannelFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number) => {
-    const res = await fetch("/api/stats/channel-refresh", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ channel }),
-      cache: "no-store",
-      credentials: "include",
-    });
-    if (!res.ok) {
-      throw new Error(await getSimpleFrenchApiError(res));
-    }
-    const json = await res.json().catch(() => null) as ChannelRefreshResponse | null;
+    const json = await fetchSharedDashboardRefreshJson<ChannelRefreshResponse | null>(
+      `stats-channel:${channel}`,
+      "/api/stats/channel-refresh",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel }),
+        cache: "no-store",
+        credentials: "include",
+      },
+      { reuseMs: 15_000 },
+    );
     return applyChannelRefreshPayload(channel, json, fallbackSyncAt);
   }, [applyChannelRefreshPayload]);
 
@@ -1003,23 +1005,9 @@ export function useStatsDataController({
 
   useEffect(() => {
     if (!dailyBootReady) return;
+    // Le cache est vérifié une fois à l'ouverture. Les événements métier et le
+    // bouton de rafraîchissement restent les seuls déclencheurs suivants.
     void syncFromServerCacheIfNeeded(false);
-
-    const handleFocus = () => {
-      void syncFromServerCacheIfNeeded(false);
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void syncFromServerCacheIfNeeded(false);
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
   }, [dailyBootReady, syncFromServerCacheIfNeeded]);
 
   return { handleSharedStatsRefresh };

@@ -21,6 +21,8 @@ import DashboardRequiredSetupGate from "./_components/DashboardRequiredSetupGate
 import DashboardToolWarmup from "./_components/DashboardToolWarmup";
 import { DashboardRequiredSetupBypassProvider } from "./_components/DashboardRequiredSetupBypassProvider";
 import { isRequiredSetupE2EBypassEnabled } from "@/lib/e2eServerFlags";
+import { DASHBOARD_BUBBLE_ICON_PRELOADS } from "./dashboard.constants";
+import DashboardPersistentImageCache from "./_components/DashboardPersistentImageCache";
 
 
 type SubscriptionGateRow = {
@@ -59,23 +61,10 @@ function hasDashboardAccess(subscription?: SubscriptionGateRow | null) {
   return status === "active" || isTrialStillValid(subscription);
 }
 
-const DASHBOARD_CRITICAL_IMAGE_PRELOADS = [
+const DASHBOARD_SECONDARY_IMAGE_PRELOADS = [
   "/logo-inrcy.png",
-  "/icons/inrbadge-dashboard.png",
-  "/icons/mails-inrcy-dashboard-v2.png",
-  "/icons/inrcy.png",
-  "/icons/site-web.jpg",
-  "/icons/google.jpg",
-  "/icons/facebook.png",
-  "/icons/instagram.jpg",
-  "/icons/linkedin.png",
-  "/icons/tiktok.png",
-  "/icons/youtube-shorts.png",
-  "/icons/inr-search-bubble-128.png",
-  "/icons/pinterest-logo-128.png",
   "/agent/inr-agent-robot-cutout.webp",
   "/icons/inr-agent-header.png",
-  "/icons/inr-agent.png",
   "/inrcalendar-logo.png",
   "/inrstats-logo.png",
   "/inrcrm-logo.png",
@@ -128,9 +117,13 @@ export default async function DashboardLayout({
 
   return (
     <div className={`${styles.shell} inrcy-dashboard-shell`}>
-      {DASHBOARD_CRITICAL_IMAGE_PRELOADS.map((src) => (
+      {DASHBOARD_BUBBLE_ICON_PRELOADS.map((src) => (
+        <link key={src} rel="preload" as="image" href={src} fetchPriority="high" />
+      ))}
+      {DASHBOARD_SECONDARY_IMAGE_PRELOADS.map((src) => (
         <link key={src} rel="preload" as="image" href={src} />
       ))}
+      <DashboardPersistentImageCache />
       <div className={styles.bg} />
       <div className={styles.noise} />
       <ActiveAccountTabSync />

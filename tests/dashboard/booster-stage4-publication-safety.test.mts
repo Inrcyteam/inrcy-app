@@ -11,7 +11,6 @@ const modalLayer = read("app/dashboard/_components/DashboardBoosterModalLayer.ts
 const resultModal = read("app/dashboard/_components/PublishExecutionResultModal.tsx");
 const bottomNav = read("app/dashboard/_components/ResponsiveBottomNav.tsx");
 const bottomNavCss = read("app/dashboard/_components/ResponsiveBottomNav.module.css");
-const publishRoute = read("app/api/booster/publish-now/route.ts");
 const publishNowFoundations = read(
   "app/api/booster/publish-now/publishNow.foundations.ts",
 );

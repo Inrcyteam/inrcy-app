@@ -42,7 +42,6 @@ test("Step 4 keeps manual Instagram carousel framing inside the shared sequence 
 
 test("Step 4 keeps Adapter provenance in drafts, scheduled payloads and editable attachments", async () => {
   const controller = await read("app/dashboard/booster/publier/usePublishImageController.ts");
-  const route = await read("app/api/booster/publish-now/route.ts");
   const foundations = await read(
     "app/api/booster/publish-now/publishNow.foundations.ts",
   );

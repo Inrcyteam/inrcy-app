@@ -50,6 +50,7 @@ export const MODULE_SNAPSHOT_KEYS = {
   agendaSettings: "agenda:settings",
   propulserMetrics: "propulser:metrics",
   fideliserMetrics: "fideliser:metrics",
+  eReputationGoogle: "e-reputation:google",
   facturesList: "documents:factures:list",
   devisList: "documents:devis:list",
   mediaLibraryDefault: "media-library:default",

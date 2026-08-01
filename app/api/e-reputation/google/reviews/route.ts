@@ -3,9 +3,19 @@ import { getGmbToken } from "@/lib/googleBusiness";
 import { getGmbReviewTargetFromRow, gmbListReviews } from "@/lib/googleBusinessReviews";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
+import { asRecord, asString } from "@/lib/tsSafe";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+function resolveGoogleBusinessUrl(row: unknown, locationTitle: string | null) {
+  const metaUrl = asString(asRecord(asRecord(row).meta).url);
+  if (metaUrl) return metaUrl;
+  const cleanTitle = String(locationTitle || "").trim();
+  return cleanTitle
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanTitle)}`
+    : null;
+}
 
 export async function GET(req: Request) {
   try {
@@ -20,6 +30,7 @@ export async function GET(req: Request) {
         accountName: null,
         locationName: null,
         locationTitle: null,
+        reportUrl: null,
         averageRating: null,
         totalReviewCount: 0,
         nextPageToken: null,
@@ -35,6 +46,7 @@ export async function GET(req: Request) {
         accountName: target.accountName,
         locationName: target.locationName,
         locationTitle: target.locationTitle,
+        reportUrl: resolveGoogleBusinessUrl(token.row, target.locationTitle),
         averageRating: null,
         totalReviewCount: 0,
         nextPageToken: null,
@@ -54,7 +66,13 @@ export async function GET(req: Request) {
       orderBy,
     });
 
-    return NextResponse.json({ ...payload, locationTitle: target.locationTitle });
+    return NextResponse.json({
+      ...payload,
+      connected: true,
+      configured: true,
+      locationTitle: target.locationTitle,
+      reportUrl: resolveGoogleBusinessUrl(token.row, target.locationTitle),
+    });
   } catch (error) {
     return jsonUserFacingError(error, {
       status: 500,

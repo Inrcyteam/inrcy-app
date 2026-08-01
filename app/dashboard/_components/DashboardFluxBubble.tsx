@@ -1,16 +1,25 @@
+"use client";
+
+import { useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import styles from "../dashboard.module.css";
 import bubbleStyles from "./DashboardChannelBubble.module.css";
 import DashboardActionButton from "./DashboardActionButton";
 import RequiredSetupLock from "./RequiredSetupLock";
 import type { ModuleAction, ModuleStatus } from "../dashboard.types";
+import { useDelayedPendingAction } from "@/hooks/useDelayedPendingAction";
+
+export type DashboardConfigureDestination =
+  | { kind: "panel"; value: string }
+  | { kind: "path"; value: string };
 
 export type DashboardFluxBubbleData = {
   key: string;
   name: string;
   description: string;
   accent: string;
-  logoSrc?: string;
-  logoAlt?: string;
+  logoSrc: string;
+  logoAlt: string;
   bubbleStatus: ModuleStatus;
   bubbleStatusText: string;
   helpKind?: "site_inrcy" | "site_web";
@@ -22,6 +31,7 @@ export type DashboardFluxBubbleData = {
   onSpecialView?: () => void;
   viewAction?: ModuleAction;
   onConfigure: () => void;
+  configureDestination?: DashboardConfigureDestination;
   configureDisabled?: boolean;
   configureTitle?: string;
   configureLabel?: string;
@@ -36,9 +46,30 @@ type Props = {
 };
 
 export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked = false, requiredSetupLockMessage = "" }: Props) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const {
+    pendingKey,
+    beginAction,
+    completeAction,
+    isVisible,
+  } = useDelayedPendingAction<string>();
   const isComingSoon = item.bubbleStatus === "coming";
   const isAvailableToConnect = item.bubbleStatus === "available" && !requiredSetupLocked;
   const shouldHighlightConfigure = isAvailableToConnect && !item.configureDisabled;
+  const configureActionKey = `configure:${item.key}`;
+  const configurePending = pendingKey === configureActionKey;
+  const configureLoadingVisible = isVisible(configureActionKey);
+
+  useEffect(() => {
+    if (!configurePending || !item.configureDestination) return;
+    const destinationReached = item.configureDestination.kind === "panel"
+      ? searchParams.get("panel") === item.configureDestination.value
+      : pathname === item.configureDestination.value;
+
+    if (destinationReached) completeAction(configureActionKey);
+  }, [completeAction, configureActionKey, configurePending, item.configureDestination, pathname, searchParams]);
+
   return (
     <article
       key={itemKey ?? item.key}
@@ -123,11 +154,16 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
           <button
             className={`${bubbleStyles.action} ${bubbleStyles.actionMain} ${shouldHighlightConfigure ? bubbleStyles.actionMainAvailable : ""}`}
             type="button"
-            onClick={requiredSetupLocked ? undefined : item.onConfigure}
-            disabled={requiredSetupLocked || item.configureDisabled}
+            data-dashboard-prefetch={item.configureDestination?.kind === "path" ? item.configureDestination.value : undefined}
+            onClick={requiredSetupLocked ? undefined : () => {
+              if (!beginAction(configureActionKey)) return;
+              item.onConfigure();
+            }}
+            disabled={requiredSetupLocked || item.configureDisabled || configureLoadingVisible}
+            aria-busy={configureLoadingVisible || undefined}
             title={requiredSetupLocked ? requiredSetupLockMessage : item.configureTitle}
           >
-            {item.configureLabel || "Configurer"}
+            {configureLoadingVisible ? "Chargement…" : item.configureLabel || "Configurer"}
           </button>
         </div>
       </div>
