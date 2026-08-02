@@ -9,6 +9,7 @@ import { buildBoosterPublicationDispatchPlan } from "../../lib/boosterPublicatio
 import {
   classifyBoosterPublicationResult,
   isPendingPublicationResult,
+  mergePreflightFailuresIntoPublicationSummary,
 } from "../../lib/boosterPublicationOutcome.ts";
 import {
   BoosterPublishError,
@@ -20,6 +21,7 @@ import {
 } from "../../lib/boosterVideoTransforms.ts";
 import {
   getVideoPublicationPolicy,
+  PINTEREST_VIDEO_TOO_LONG_MESSAGE,
   validateVideoPublicationForChannel,
 } from "../../lib/videoPublicationPolicy.ts";
 import { getBoosterOriginalPublicationExtension } from "../../lib/boosterImageOutputPolicy.ts";
@@ -54,6 +56,25 @@ test("la limite TikTok générique reste dynamique et ne réintroduit pas 10 min
   assert.equal(validation.ok, true);
 });
 
+test("une vidéo Pinterest de 10 min 36 est refusée avec le motif métier explicite", () => {
+  assert.equal(getVideoPublicationPolicy("pinterest").maxDurationSeconds, 300);
+  const validation = validateVideoPublicationForChannel({
+    channel: "pinterest",
+    name: "video-10m36.mp4",
+    type: "video/mp4",
+    storagePath: "video-10m36.mp4",
+    sizeBytes: 50 * 1024 * 1024,
+    durationSeconds: 636,
+    width: 1920,
+    height: 1080,
+  });
+
+  assert.equal(validation.ok, false);
+  if (validation.ok) return;
+  assert.equal(validation.reason, "video_duration_too_long");
+  assert.equal(validation.message, PINTEREST_VIDEO_TOO_LONG_MESSAGE);
+});
+
 test("un préflight TikTok invalide terminalise TikTok mais garde Site et iNrSearch dispatchables", () => {
   const channels = ["site_web", "inr_search", "tiktok"] as const;
   const plan = buildBoosterPublicationDispatchPlan(channels, {
@@ -75,6 +96,68 @@ test("un préflight TikTok invalide terminalise TikTok mais garde Site et iNrSea
       { channel: "tiktok", status: "failed" },
     ],
   );
+});
+
+test("un préflight Pinterest invalide garde Site, iNrSearch et TikTok dispatchables", () => {
+  const channels = ["site_web", "inr_search", "tiktok", "pinterest"] as const;
+  const plan = buildBoosterPublicationDispatchPlan(channels, {
+    pinterest: {
+      ok: false,
+      code: "video_duration_too_long",
+      error: PINTEREST_VIDEO_TOO_LONG_MESSAGE,
+      retryable: false,
+    },
+  });
+
+  assert.deepEqual(plan.dispatchableChannels, [
+    "site_web",
+    "inr_search",
+    "tiktok",
+  ]);
+  assert.deepEqual(plan.failedChannels, ["pinterest"]);
+});
+
+test("le bilan transforme le blocage Pinterest avant envoi en échec explicite", () => {
+  const summary = mergePreflightFailuresIntoPublicationSummary(
+    {
+      total: 3,
+      successCount: 3,
+      failureCount: 0,
+      allSucceeded: true,
+      allFailed: false,
+      entries: [
+        { channel: "site_web", label: "Site web", ok: true, status: "published" },
+        { channel: "inr_search", label: "iNr'Search", ok: true, status: "published" },
+        { channel: "tiktok", label: "TikTok", ok: true, status: "published" },
+      ],
+      failedChannels: [],
+    },
+    [
+      {
+        channel: "pinterest",
+        label: "Pinterest",
+        code: "video_duration_too_long",
+        blockers: [PINTEREST_VIDEO_TOO_LONG_MESSAGE],
+      },
+    ],
+  );
+
+  assert.equal(summary.total, 4);
+  assert.equal(summary.successCount, 3);
+  assert.equal(summary.failureCount, 1);
+  assert.equal(summary.allSucceeded, false);
+  assert.equal(summary.allFailed, false);
+  assert.deepEqual(summary.failedChannels, ["pinterest"]);
+  assert.deepEqual(summary.entries.at(-1), {
+    channel: "pinterest",
+    label: "Pinterest",
+    ok: false,
+    status: "failed",
+    code: "video_duration_too_long",
+    retryable: false,
+    error: PINTEREST_VIDEO_TOO_LONG_MESSAGE,
+    blockers: [PINTEREST_VIDEO_TOO_LONG_MESSAGE],
+  });
 });
 
 test("la désélection d'image survit aux synchronisations de métadonnées", () => {

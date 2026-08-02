@@ -34,6 +34,10 @@ import {
 } from "@/lib/boosterCta";
 import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
 import {
+  PINTEREST_VIDEO_MAX_DURATION_SECONDS,
+  PINTEREST_VIDEO_TOO_LONG_MESSAGE,
+} from "@/lib/videoPublicationPolicy";
+import {
   isUniversalMediaUploadEnabled,
   uploadUniversalMediaFile,
 } from "@/lib/universalMediaUploadClient";
@@ -667,9 +671,16 @@ export function getChannelPublicationRequirements({
     }
 
     if (channel === "pinterest" && hasVideo) {
-      warnings.push(
-        "Pinterest publiera la vidéo avec une image de couverture générée automatiquement si nécessaire.",
-      );
+      if (
+        videoDurationSeconds != null &&
+        videoDurationSeconds > PINTEREST_VIDEO_MAX_DURATION_SECONDS
+      ) {
+        blockers.push(PINTEREST_VIDEO_TOO_LONG_MESSAGE);
+      } else {
+        warnings.push(
+          "Pinterest publiera la vidéo avec une image de couverture générée automatiquement si nécessaire.",
+        );
+      }
     }
 
     if (channel === "linkedin") {

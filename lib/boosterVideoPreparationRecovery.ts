@@ -1,6 +1,14 @@
 export type VideoPreparationIssue = {
+  channel?: unknown;
   reason?: unknown;
   message?: unknown;
+};
+
+type VideoPreparationResult = {
+  ok?: unknown;
+  status?: unknown;
+  invalidSignatures?: unknown;
+  invalidChannels?: unknown;
 };
 
 const NON_RECOVERABLE_VIDEO_REASONS = new Set([
@@ -22,4 +30,39 @@ export function shouldRetryVideoVariantGeneration(
     const reason = String(issue?.reason || "").trim();
     return !NON_RECOVERABLE_VIDEO_REASONS.has(reason);
   });
+}
+
+export function isVideoPreparationReady(value: unknown) {
+  const result = (value || {}) as VideoPreparationResult;
+  return Boolean(
+    value &&
+      result.ok !== false &&
+      result.status === "ready" &&
+      (!Array.isArray(result.invalidSignatures) ||
+        result.invalidSignatures.length === 0),
+  );
+}
+
+/**
+ * A partial prewarm response is safe to continue only when every reported
+ * problem belongs to an identified channel. The publish endpoint can then
+ * terminalise those channels independently while dispatching the valid ones.
+ */
+export function canContinueWithIsolatedVideoPreparationFailures(
+  value: unknown,
+) {
+  const result = (value || {}) as VideoPreparationResult;
+  if (result.status !== "partial" || !Array.isArray(result.invalidChannels)) {
+    return false;
+  }
+  return (
+    result.invalidChannels.length > 0 &&
+    result.invalidChannels.every((issue) =>
+      Boolean(
+        issue &&
+          typeof issue === "object" &&
+          String((issue as VideoPreparationIssue).channel || "").trim(),
+      ),
+    )
+  );
 }

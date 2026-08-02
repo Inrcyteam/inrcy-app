@@ -162,7 +162,12 @@ import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
-import { shouldRetryVideoVariantGeneration } from "@/lib/boosterVideoPreparationRecovery";
+import { PINTEREST_VIDEO_TOO_LONG_MESSAGE } from "@/lib/videoPublicationPolicy";
+import {
+  canContinueWithIsolatedVideoPreparationFailures,
+  isVideoPreparationReady,
+  shouldRetryVideoVariantGeneration,
+} from "@/lib/boosterVideoPreparationRecovery";
 import {
   loadMediaPublicationWorkspace,
   prepareMediaPublicationWorkspace,
@@ -1559,6 +1564,7 @@ export default function PublishModal({
     options?: {
       generateMissingVideoVariants?: boolean;
       allowOriginalVideoFallback?: boolean;
+      allowPartialChannelFailures?: boolean;
     },
   ) {
     if (!mediaPipelineCutoverEnabled || !channels.length) return null;
@@ -1577,22 +1583,13 @@ export default function PublishModal({
       allowOriginalVideoFallback:
         options?.allowOriginalVideoFallback === true,
     });
-    const isReady = (candidate: any) =>
-      Boolean(
-        candidate &&
-          candidate.ok !== false &&
-          candidate.status === "ready" &&
-          (!Array.isArray(candidate.invalidSignatures) ||
-            candidate.invalidSignatures.length === 0),
-      );
-
     // Fast path first: use an existing optimized variant or the original when
     // the channel accepts it. If cache v6 invalidated an older variant, a MOV
     // needs conversion, or metadata must be probed, regenerate exactly once.
     // This keeps normal publications instant without ever blocking a valid
     // publication merely because a derived variant is absent.
     if (
-      !isReady(result) &&
+      !isVideoPreparationReady(result) &&
       options?.generateMissingVideoVariants === false &&
       shouldRetryVideoVariantGeneration(
         Array.isArray(result?.invalidChannels) ? result.invalidChannels : [],
@@ -1611,7 +1608,13 @@ export default function PublishModal({
       });
     }
 
-    if (!isReady(result)) {
+    if (!isVideoPreparationReady(result)) {
+      if (
+        options?.allowPartialChannelFailures === true &&
+        canContinueWithIsolatedVideoPreparationFailures(result)
+      ) {
+        return result;
+      }
       throw new Error(getCutoverVideoPreparationError(result));
     }
     return result;
@@ -3602,12 +3605,17 @@ export default function PublishModal({
     const publishableChannels = reviewItems
       .filter((item) => item.blockers.length === 0)
       .map((item) => item.channel);
-    const skippedChannels = reviewItems
+    const preflightFailedChannels = reviewItems
       .filter((item) => item.blockers.length > 0)
       .map((item) => ({
         channel: item.channel,
         label: item.label,
         blockers: item.blockers,
+        code:
+          item.channel === "pinterest" &&
+          item.blockers.includes(PINTEREST_VIDEO_TOO_LONG_MESSAGE)
+            ? "video_duration_too_long"
+            : "prepublish_validation_failed",
       }));
 
     if (!publishableChannels.length) {
@@ -3720,16 +3728,21 @@ export default function PublishModal({
         setPublishProgressLabel(
           "Vérification de la vidéo pour les réseaux...",
         );
-        await ensureCutoverVideoVariantsReady(
+        const videoPreparation = await ensureCutoverVideoVariantsReady(
           videoChannels,
           videoSettingsByChannel,
           {
             generateMissingVideoVariants: false,
             allowOriginalVideoFallback: true,
+            allowPartialChannelFailures: true,
           },
         );
         setPublishProgress((current) => Math.max(current, 57));
-        setPublishProgressLabel("Vidéo compatible et prête à publier.");
+        setPublishProgressLabel(
+          canContinueWithIsolatedVideoPreparationFailures(videoPreparation)
+            ? "Vidéo vérifiée : les canaux incompatibles seront isolés."
+            : "Vidéo compatible et prête à publier.",
+        );
       }
 
       const emptyChannelImages = {} as ChannelImagePayload;
@@ -4045,7 +4058,7 @@ export default function PublishModal({
         onPublishSuccess?.({
           ...result,
           channelLinks,
-          skippedChannels,
+          preflightFailedChannels,
           retryFailedChannels,
           retryFailed,
         });
@@ -4383,16 +4396,21 @@ export default function PublishModal({
         setPublishProgressLabel(
           "Vérification de la vidéo pour la programmation...",
         );
-        await ensureCutoverVideoVariantsReady(
+        const videoPreparation = await ensureCutoverVideoVariantsReady(
           videoChannels,
           videoSettingsByChannel,
           {
             generateMissingVideoVariants: false,
             allowOriginalVideoFallback: true,
+            allowPartialChannelFailures: true,
           },
         );
         setPublishProgress((current) => Math.max(current, 57));
-        setPublishProgressLabel("Vidéo compatible et prête à programmer.");
+        setPublishProgressLabel(
+          canContinueWithIsolatedVideoPreparationFailures(videoPreparation)
+            ? "Vidéo vérifiée : les canaux incompatibles seront isolés."
+            : "Vidéo compatible et prête à programmer.",
+        );
       }
 
       const emptyChannelImages = {} as ChannelImagePayload;

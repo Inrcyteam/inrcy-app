@@ -12,6 +12,13 @@ export type BoosterPublicationWarningKind =
 
 type JsonRecord = Record<string, unknown>;
 
+export type BoosterPreflightFailedChannel = {
+  channel?: unknown;
+  label?: unknown;
+  code?: unknown;
+  blockers?: readonly unknown[] | null;
+};
+
 const MEDIA_WARNING_CODES = new Set([
   "published_without_image",
   "published_without_video",
@@ -40,6 +47,101 @@ function asRecord(value: unknown): JsonRecord {
 
 function cleanString(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function nonNegativeNumber(value: unknown, fallback: number) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
+/**
+ * Adds client-side validation failures to the server summary as real failures.
+ * Those channels were deliberately not dispatched, while every valid channel
+ * keeps its own server result.
+ */
+export function mergePreflightFailuresIntoPublicationSummary(
+  summaryValue: unknown,
+  failedChannelsValue:
+    | readonly BoosterPreflightFailedChannel[]
+    | null
+    | undefined,
+) {
+  const summary = asRecord(summaryValue);
+  const entries = Array.isArray(summary.entries)
+    ? summary.entries
+        .filter(
+          (entry): entry is JsonRecord =>
+            Boolean(entry && typeof entry === "object" && !Array.isArray(entry)),
+        )
+        .map((entry) => ({ ...entry }))
+    : [];
+  const existingChannels = new Set(
+    entries.map((entry) => cleanString(entry.channel)).filter(Boolean),
+  );
+  const preflightFailureEntries: JsonRecord[] = [];
+
+  for (const candidate of failedChannelsValue || []) {
+    const channel = cleanString(candidate?.channel);
+    if (!channel || existingChannels.has(channel)) continue;
+    existingChannels.add(channel);
+    const blockers = Array.from(
+      new Set(
+        (Array.isArray(candidate?.blockers) ? candidate.blockers : [])
+          .map(cleanString)
+          .filter(Boolean),
+      ),
+    );
+    const label = cleanString(candidate?.label) || channel;
+    preflightFailureEntries.push({
+      channel,
+      label,
+      ok: false,
+      status: "failed",
+      code: cleanString(candidate?.code) || "prepublish_validation_failed",
+      retryable: false,
+      error:
+        blockers.join(" · ") ||
+        `${label} n'est pas compatible avec cette publication.`,
+      blockers,
+    });
+  }
+
+  const mergedEntries = [...entries, ...preflightFailureEntries];
+  const baseSuccessCount = nonNegativeNumber(
+    summary.successCount,
+    entries.filter((entry) => entry.ok !== false).length,
+  );
+  const baseFailureCount = nonNegativeNumber(
+    summary.failureCount,
+    entries.filter((entry) => entry.ok === false).length,
+  );
+  const failureCount = baseFailureCount + preflightFailureEntries.length;
+  const failedChannels = Array.from(
+    new Set([
+      ...(Array.isArray(summary.failedChannels)
+        ? summary.failedChannels.map(cleanString).filter(Boolean)
+        : entries
+            .filter((entry) => entry.ok === false)
+            .map((entry) => cleanString(entry.channel))
+            .filter(Boolean)),
+      ...preflightFailureEntries
+        .map((entry) => cleanString(entry.channel))
+        .filter(Boolean),
+    ]),
+  );
+
+  return {
+    ...summary,
+    total:
+      nonNegativeNumber(summary.total, entries.length) +
+      preflightFailureEntries.length,
+    successCount: baseSuccessCount,
+    failureCount,
+    allSucceeded: failureCount === 0,
+    allFailed: failureCount > 0 && baseSuccessCount === 0,
+    entries: mergedEntries,
+    failedChannels,
+  };
 }
 
 function appendRecoveryGuidance(message: string, mediaLabel: string) {

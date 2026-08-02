@@ -12,6 +12,7 @@ import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { postBoosterPublication } from "@/lib/boosterPublishClient";
+import { mergePreflightFailuresIntoPublicationSummary } from "@/lib/boosterPublicationOutcome";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import PublishModal from "../booster/publier/PublishModal";
 import PublishExecutionResultModal from "./PublishExecutionResultModal";
@@ -439,29 +440,17 @@ export default function DashboardBoosterModalLayer({
                 typeof result?.retryFailed === "function"
                   ? result.retryFailed
                   : null;
-              const skippedChannels = Array.isArray(result?.skippedChannels)
-                ? result.skippedChannels
+              const preflightFailedChannels = Array.isArray(
+                result?.preflightFailedChannels,
+              )
+                ? result.preflightFailedChannels
                 : [];
-              const skippedEntries = skippedChannels.map((entry: any) => ({
-                channel: String(entry?.channel || ""),
-                label: String(entry?.label || entry?.channel || "Canal"),
-                ok: true,
-                status: "skipped",
-                retryable: false,
-                blockers: Array.isArray(entry?.blockers)
-                  ? entry.blockers.map((value: unknown) => String(value))
-                  : [],
-              }));
               const summary = result?.summary
                 ? {
-                    ...result.summary,
-                    entries: [
-                      ...(Array.isArray(result.summary.entries)
-                        ? result.summary.entries
-                        : []),
-                      ...skippedEntries,
-                    ],
-                    skippedCount: skippedEntries.length,
+                    ...mergePreflightFailuresIntoPublicationSummary(
+                      result.summary,
+                      preflightFailedChannels,
+                    ),
                     channelLinks: result?.channelLinks || {},
                     retryableFailureCount: Array.isArray(
                       result?.retryFailedChannels,

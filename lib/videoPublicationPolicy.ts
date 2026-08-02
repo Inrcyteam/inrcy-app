@@ -59,6 +59,10 @@ const DEFAULT_POLICY = {
   requiresMp4: true,
 } as const;
 
+export const PINTEREST_VIDEO_MAX_DURATION_SECONDS = 5 * 60;
+export const PINTEREST_VIDEO_TOO_LONG_MESSAGE =
+  "Vidéo de plus de 5 minutes non autorisée sur Pinterest.";
+
 /**
  * La source iNrCy reste acceptée jusqu'à 300 Mo. Google Business reçoit une
  * variante dédiée avec une marge de sécurité sous sa limite officielle.
@@ -112,7 +116,7 @@ export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
     channel: "pinterest",
     ...DEFAULT_POLICY,
     minDurationSeconds: 4,
-    maxDurationSeconds: 5 * 60,
+    maxDurationSeconds: PINTEREST_VIDEO_MAX_DURATION_SECONDS,
   },
 };
 
@@ -217,7 +221,10 @@ export function validateVideoPublicationForChannel(input: {
         ok: false,
         policy,
         reason: "video_duration_too_long",
-        message: `La vidéo ${label} dépasse la durée maximale de ${formatDuration(policy.maxDurationSeconds)}.`,
+        message:
+          input.channel === "pinterest"
+            ? PINTEREST_VIDEO_TOO_LONG_MESSAGE
+            : `La vidéo ${label} dépasse la durée maximale de ${formatDuration(policy.maxDurationSeconds)}.`,
       };
     }
   }

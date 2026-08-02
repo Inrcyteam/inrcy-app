@@ -151,7 +151,14 @@ test("la préparation réseau et la validation par canal précèdent la publicat
   assert.match(publish, /buildBoosterPublicationDispatchPlan/);
   assert.match(publish, /validateVideoPublicationForChannel/);
   assert.match(policy, /maxDurationSeconds:\s*null/);
-  assert.match(policy, /maxDurationSeconds:\s*5\s*\*\s*60/);
+  assert.match(
+    policy,
+    /PINTEREST_VIDEO_MAX_DURATION_SECONDS\s*=\s*5\s*\*\s*60/,
+  );
+  assert.match(
+    policy,
+    /maxDurationSeconds:\s*PINTEREST_VIDEO_MAX_DURATION_SECONDS/,
+  );
   assert.match(
     variants,
     /ok:\s*false,[\s\S]{0,140}fallbackToOriginal:\s*sourceCanPublishDirectly/,

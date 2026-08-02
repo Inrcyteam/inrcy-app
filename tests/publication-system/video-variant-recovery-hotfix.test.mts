@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { shouldRetryVideoVariantGeneration } from "../../lib/boosterVideoPreparationRecovery.ts";
+import {
+  canContinueWithIsolatedVideoPreparationFailures,
+  isVideoPreparationReady,
+  shouldRetryVideoVariantGeneration,
+} from "../../lib/boosterVideoPreparationRecovery.ts";
 
 const ROOT = new URL("../../", import.meta.url);
 
@@ -42,6 +46,43 @@ test("hard duration constraints are not transcoded pointlessly", () => {
   );
 });
 
+test("a partial preparation can continue only when failures are isolated by channel", () => {
+  assert.equal(
+    isVideoPreparationReady({
+      ok: true,
+      status: "ready",
+      invalidSignatures: [],
+    }),
+    true,
+  );
+  assert.equal(
+    canContinueWithIsolatedVideoPreparationFailures({
+      ok: false,
+      status: "partial",
+      invalidChannels: [
+        { channel: "pinterest", reason: "video_duration_too_long" },
+      ],
+    }),
+    true,
+  );
+  assert.equal(
+    canContinueWithIsolatedVideoPreparationFailures({
+      ok: false,
+      status: "partial",
+      invalidChannels: [{ reason: "video_duration_too_long" }],
+    }),
+    false,
+  );
+  assert.equal(
+    canContinueWithIsolatedVideoPreparationFailures({
+      ok: false,
+      status: "failed",
+      invalidChannels: [{ channel: "pinterest" }],
+    }),
+    false,
+  );
+});
+
 test("the client performs a fast check then one recovery generation", async () => {
   const modal = await read("app/dashboard/booster/publier/PublishModal.tsx");
   assert.match(modal, /options\?\.generateMissingVideoVariants === false/);
@@ -50,7 +91,29 @@ test("the client performs a fast check then one recovery generation", async () =
     /shouldRetryVideoVariantGeneration[\s\S]*generateMissingVideoVariants:\s*true/,
   );
   assert.match(modal, /generateMissingVideoVariants:\s*false/);
+  assert.match(modal, /allowPartialChannelFailures:\s*true/);
+  assert.match(modal, /canContinueWithIsolatedVideoPreparationFailures/);
   assert.match(modal, /Préparation de la variante vidéo nécessaire/);
+});
+
+test("Pinterest turns red before dispatch and is reported as a failed channel", async () => {
+  const shared = await read(
+    "app/dashboard/booster/publier/publishModal.shared.tsx",
+  );
+  const modal = await read("app/dashboard/booster/publier/PublishModal.tsx");
+  const layer = await read(
+    "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
+  );
+
+  assert.match(
+    shared,
+    /videoDurationSeconds\s*>\s*PINTEREST_VIDEO_MAX_DURATION_SECONDS/,
+  );
+  assert.match(shared, /blockers\.push\(PINTEREST_VIDEO_TOO_LONG_MESSAGE\)/);
+  assert.match(modal, /const preflightFailedChannels = reviewItems/);
+  assert.match(modal, /code:[\s\S]*video_duration_too_long/);
+  assert.match(layer, /mergePreflightFailuresIntoPublicationSummary/);
+  assert.doesNotMatch(layer, /status:\s*"skipped"/);
 });
 
 test("publish-now stays cache/source-only and isolates a missing variant per channel", async () => {
