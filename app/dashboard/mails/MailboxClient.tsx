@@ -18,7 +18,10 @@ import styles from "./mails.module.css";
 import { createClient } from "@/lib/supabaseClient";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
-import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import {
+  buildVideoTransformSignature,
+  getVideoPublicationProfileForChannel,
+} from "@/lib/boosterVideoTransforms";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   PROFILE_VERSION_EVENT,
@@ -1927,7 +1930,13 @@ export default function MailboxClient() {
       const adaptationMode = (settings.adaptationMode ||
         parts.videoAdaptationMode ||
         "safe_frame") as VideoAdaptationMode;
-      const signature = buildVideoTransformSignature(format, adaptationMode);
+      const signature = buildVideoTransformSignature(
+        format,
+        adaptationMode,
+        getVideoPublicationProfileForChannel(
+          normalizeBoosterChannelKeyForVideo(channel),
+        ),
+      );
       const syntheticFinalVariant =
         finalVideo.publicUrl || finalVideo.url
           ? {
@@ -3964,7 +3973,11 @@ export default function MailboxClient() {
 
     const format = current.format || "original";
     const adaptationMode = current.adaptationMode || "safe_frame";
-    const signature = buildVideoTransformSignature(format, adaptationMode);
+    const signature = buildVideoTransformSignature(
+      format,
+      adaptationMode,
+      getVideoPublicationProfileForChannel(channel),
+    );
     const existing = current.transformedVariants.find(
       (variant: any) => variant.signature === signature,
     );
@@ -4134,7 +4147,13 @@ export default function MailboxClient() {
         );
         const format = editVideo.format || "original";
         const adaptationMode = editVideo.adaptationMode || "safe_frame";
-        const signature = buildVideoTransformSignature(format, adaptationMode);
+        const signature = buildVideoTransformSignature(
+        format,
+        adaptationMode,
+        getVideoPublicationProfileForChannel(
+          normalizeBoosterChannelKeyForVideo(channel),
+        ),
+      );
         let transformedVariants = Array.isArray(editVideo.transformedVariants)
           ? [...editVideo.transformedVariants]
           : [];

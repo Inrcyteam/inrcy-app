@@ -42,9 +42,9 @@ select
 from public.pro_media_library;
 
 select
-  count(*) as oversized_ready_video_canonicals
+  count(*) as canonicals_above_299_mib
 from public.media_variants
 where purpose = 'canonical'
   and signature = 'inrcy:video:canonical:v1'
   and status = 'ready'
-  and coalesce(size_bytes, 0) > 40894464;
+  and coalesce(size_bytes, 0) > 313524224;

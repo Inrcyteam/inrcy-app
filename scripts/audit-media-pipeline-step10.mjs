@@ -89,9 +89,9 @@ const checks = [
   ],
   [sql.includes("314572800"), "limite stockage 300 Mo"],
   [
-    sql.includes("40894464") &&
+    sql.includes("313524224") &&
       sql.includes("processing_status = 'not_requested'"),
-    "reprise des anciens canons vidéo trop lourds",
+    "reprise des canons vidéo au-dessus de 299 Mio",
   ],
   [sql.includes("'audio/mpeg'"), "artefact audio temporaire autorisé"],
   [

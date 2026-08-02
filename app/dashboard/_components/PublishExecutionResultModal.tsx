@@ -8,15 +8,19 @@ type PublishExecutionSummary = {
   allFailed?: boolean;
   failureCount?: number;
   successCount?: number;
+  warningCount?: number;
+  mediaWarningCount?: number;
+  pendingCount?: number;
   entries?: Array<{
     channel: string;
     label: string;
     ok?: boolean;
-    status?: "published" | "processing" | "failed" | string;
+    status?: "published" | "published_with_warning" | "processing" | "failed" | string;
     code?: string | null;
     retryable?: boolean;
     error?: string | null;
     warning?: string | null;
+    warning_kind?: "media_degraded" | "degraded" | "pending" | string | null;
     warning_message?: string | null;
   }>;
   channelLinks?: Record<string, string>;
@@ -42,7 +46,18 @@ export default function PublishExecutionResultModal({
   const successCount = Number(summary?.successCount || 0);
   const allFailed = Boolean(summary?.allFailed);
   const entries = Array.isArray(summary?.entries) ? summary.entries : [];
-  const pendingCount = entries.filter((entry) => entry.ok && entry.warning).length;
+  const warningCount = Math.max(
+    Number(summary?.warningCount || 0),
+    entries.filter((entry) => entry.status === "published_with_warning").length,
+  );
+  const mediaWarningCount = Math.max(
+    Number(summary?.mediaWarningCount || 0),
+    entries.filter((entry) => entry.warning_kind === "media_degraded").length,
+  );
+  const pendingCount = Math.max(
+    Number(summary?.pendingCount || 0),
+    entries.filter((entry) => entry.status === "processing").length,
+  );
   const retryableFailureCount = Math.max(
     0,
     Number(summary?.retryableFailureCount || 0),
@@ -76,7 +91,7 @@ export default function PublishExecutionResultModal({
           border: `1px solid ${
             allFailed
               ? "rgba(248,113,113,0.34)"
-              : failureCount
+              : failureCount || warningCount
                 ? "rgba(251,191,36,0.28)"
                 : "rgba(34,197,94,0.28)"
           }`,
@@ -100,13 +115,15 @@ export default function PublishExecutionResultModal({
           ✕
         </button>
         <div style={{ fontSize: 42, marginBottom: 8 }}>
-          {allFailed ? "❌" : failureCount ? "✅" : "🎉"}
+          {allFailed ? "❌" : failureCount || warningCount ? "⚠️" : pendingCount ? "⏳" : "🎉"}
         </div>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
           {allFailed
             ? "Publication échouée"
             : failureCount
               ? "Publication envoyée partiellement"
+              : warningCount
+                ? `Publication publiée avec avertissement${warningCount > 1 ? "s" : ""}`
               : pendingCount
                 ? "Envoi accepté, traitement en cours"
                 : "Publication envoyée avec succès"}
@@ -119,18 +136,22 @@ export default function PublishExecutionResultModal({
             ? "Aucun canal n’a pu publier. Vérifiez le détail ci-dessous."
             : failureCount
               ? `Votre publication a été envoyée sur ${successCount} canal(aux). ${failureCount} canal(aux) n'ont pas pu publier.`
+              : warningCount
+                ? `${successCount} canal(aux) ont publié. ${mediaWarningCount || warningCount} publication(s) comportent un avertissement${mediaWarningCount ? " lié au média" : ""}.`
               : pendingCount
                 ? "TikTok a accepté l’envoi. Le traitement final continue côté TikTok et le statut peut être vérifié dans iNrSend."
                 : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
         </div>
         <StatusMessage
-          variant={failureCount ? "error" : "success"}
+          variant={failureCount ? "error" : warningCount || pendingCount ? "warning" : "success"}
           style={{ marginTop: 0, fontSize: 14 }}
         >
           {allFailed
             ? "Échec : vérifiez le détail ci-dessous."
             : failureCount
               ? "Succès partiel : vérifiez le détail ci-dessous."
+              : warningCount
+                ? "La publication est bien en ligne. Vérifiez les canaux signalés ci-dessous."
               : pendingCount
                 ? "Envoi accepté : vérifiez le statut TikTok dans iNrSend."
                 : "C’est parfait, votre publication est lancée."}
@@ -158,7 +179,13 @@ export default function PublishExecutionResultModal({
                     }}
                   >
                     <strong>
-                      {entry.ok ? "✅" : "❌"} {entry.label}
+                      {entry.ok
+                        ? entry.status === "published_with_warning"
+                          ? "⚠️"
+                          : entry.status === "processing"
+                            ? "⏳"
+                            : "✅"
+                        : "❌"} {entry.label}
                     </strong>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       {channelHref ? (
@@ -180,7 +207,13 @@ export default function PublishExecutionResultModal({
                         </a>
                       ) : null}
                       <span style={{ fontSize: 12, opacity: 0.75 }}>
-                        {entry.ok ? (entry.warning ? "En traitement" : "Publié") : "Échec"}
+                        {entry.ok
+                          ? entry.status === "processing"
+                            ? "En traitement"
+                            : entry.status === "published_with_warning"
+                              ? "Publié avec avertissement"
+                              : "Publié"
+                          : "Échec"}
                       </span>
                     </span>
                   </div>

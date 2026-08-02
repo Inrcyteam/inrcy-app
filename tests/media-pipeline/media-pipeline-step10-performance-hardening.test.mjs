@@ -101,7 +101,7 @@ test("le canon vidéo reste publiable et les incidents temporaires sont rejoués
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
   assert.match(
     policy,
-    /VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*-\s*1\s*\*\s*1024\s*\*\s*1024/,
+    /VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES/,
   );
   const terminalBlock =
     worker.match(/const terminal\s*=([\s\S]*?);\s*[\r\n]+\s*return new VideoNormalizationError/)?.[1] ||
@@ -183,7 +183,7 @@ test("le durcissement SQL aligne Storage et ferme les écritures directes", () =
   assert.match(sql, /file_size_limit\s*=\s*314572800/);
   assert.match(
     sql,
-    /signature\s*=\s*'inrcy:video:canonical:v1'[\s\S]*coalesce\(size_bytes,\s*0\)\s*>\s*40894464/,
+    /signature\s*=\s*'inrcy:video:canonical:v1'[\s\S]*coalesce\(size_bytes,\s*0\)\s*>\s*313524224/,
   );
   assert.match(sql, /processing_status\s*=\s*'not_requested'/);
   assert.match(sql, /job\.job_type\s*=\s*'video_normalize_v1'/);

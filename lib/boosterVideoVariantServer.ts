@@ -20,13 +20,21 @@ import {
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "@/lib/mediaRules";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import {
+  getVideoCanonicalOptimizationProfile,
+} from "@/lib/mediaVideoNormalizationPolicy";
+import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
+import {
+  GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
+  GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
+} from "@/lib/googleBusinessMediaPolicy";
 
 const execFileAsync = promisify(execFile);
 const BOOSTER_BUCKET = "booster";
 const MAX_VARIANTS_PER_REQUEST = 8;
 const OUTPUT_CONTENT_TYPE = "video/mp4";
-const FFMPEG_TRANSFORM_TIMEOUT_MS = 90000;
-const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 4;
+const FFMPEG_TRANSFORM_TIMEOUT_MS = 150000;
+const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6;
 
 type CachedVideoVariantRow = {
   id: string;
@@ -37,6 +45,8 @@ type CachedVideoVariantRow = {
   mime_type: string | null;
   size_bytes: number | null;
   duration_seconds: number | null;
+  width: number | null;
+  height: number | null;
   variant_metadata: Record<string, unknown> | null;
 };
 
@@ -49,6 +59,8 @@ export type BoosterVideoVariantServerResult = {
     publicUrl: string | null;
     size: number;
     duration: number | null;
+    width: number | null;
+    height: number | null;
   };
   variants: BoosterVideoTransformedVariant[];
   errors: Array<{
@@ -194,7 +206,13 @@ async function ensureFfmpegAvailable() {
   );
 }
 
-async function probeDurationSeconds(filePath: string): Promise<number | null> {
+type ProbedVideoMetadata = {
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+};
+
+async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata> {
   const candidates = [process.env.FFPROBE_PATH, "ffprobe"]
     .map((value) => String(value || "").trim())
     .filter(Boolean);
@@ -205,21 +223,34 @@ async function probeDurationSeconds(filePath: string): Promise<number | null> {
         [
           "-v",
           "error",
+          "-select_streams",
+          "v:0",
           "-show_entries",
-          "format=duration",
+          "stream=width,height:format=duration",
           "-of",
-          "default=noprint_wrappers=1:nokey=1",
+          "json",
           filePath,
         ],
-        { timeout: 10000, maxBuffer: 1024 * 1024 },
+        { timeout: 12000, maxBuffer: 1024 * 1024 },
       );
-      const value = Number(String(stdout || "").trim());
-      if (Number.isFinite(value) && value > 0) return value;
+      const parsed = JSON.parse(String(stdout || "{}")) as {
+        streams?: Array<{ width?: number; height?: number }>;
+        format?: { duration?: string | number };
+      };
+      const stream = parsed.streams?.[0] || {};
+      const duration = Number(parsed.format?.duration || 0);
+      const width = Number(stream.width || 0);
+      const height = Number(stream.height || 0);
+      return {
+        duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+        width: Number.isFinite(width) && width > 0 ? width : null,
+        height: Number.isFinite(height) && height > 0 ? height : null,
+      };
     } catch {
-      // On conserve la durée fournie par le registre si ffprobe est absent.
+      // On essaie le candidat suivant.
     }
   }
-  return null;
+  return { duration: null, width: null, height: null };
 }
 
 function getVideoSafetyBackgroundColor(
@@ -235,6 +266,9 @@ function getVideoSafetyBackgroundColor(
 
 function buildFilter(plan: BoosterVideoTransformVariantPlan) {
   const { format, adaptationMode, target } = plan;
+  if (plan.publicationProfile === "google_business" && format === "original") {
+    return `[0:v]scale='if(gte(iw,ih),-2,${GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE})':'if(gte(iw,ih),${GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE},-2)',setsar=1,format=yuv420p[v]`;
+  }
   if (format === "original" || !target.width || !target.height) return null;
   const w = target.width;
   const h = target.height;
@@ -253,16 +287,14 @@ async function runFfmpegVariant(
   plan: BoosterVideoTransformVariantPlan,
 ) {
   const filter = buildFilter(plan);
-  const quality = getVideoTransformQualityProfile(plan.format);
+  const quality = getVideoTransformQualityProfile(plan.format, plan.publicationProfile);
   const commonOutputArgs = [
     "-c:v",
     "libx264",
     "-preset",
-    "ultrafast",
+    quality.preset,
     "-crf",
     String(quality.crf),
-    "-b:v",
-    quality.videoBitrate,
     "-maxrate",
     quality.maxrate,
     "-bufsize",
@@ -338,7 +370,7 @@ async function loadCachedVideoVariants(params: {
   const result = await supabaseAdmin
     .from("media_variants")
     .select(
-      "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+      "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,width,height,variant_metadata",
     )
     .eq("account_id", params.accountId)
     .eq("workspace_id", params.workspaceId)
@@ -378,8 +410,10 @@ function cachedRowToVideoVariant(
       Number(row.duration_seconds) >= 0
         ? Number(row.duration_seconds)
         : null,
+    width: Number.isFinite(Number(row.width)) && Number(row.width) > 0 ? Number(row.width) : null,
+    height: Number.isFinite(Number(row.height)) && Number(row.height) > 0 ? Number(row.height) : null,
     generatedAt: String(metadata.generatedAt || new Date().toISOString()),
-    quality: getVideoTransformQualityProfile(plan.format),
+    quality: getVideoTransformQualityProfile(plan.format, plan.publicationProfile),
   };
 }
 
@@ -391,10 +425,12 @@ async function persistVideoVariant(params: {
   storagePath: string;
   outputSize: number;
   duration: number | null;
+  width: number | null;
+  height: number | null;
   generatedAt: string;
 }) {
   const signature = buildPersistentSignature(params.plan);
-  const quality = getVideoTransformQualityProfile(params.plan.format);
+  const quality = getVideoTransformQualityProfile(params.plan.format, params.plan.publicationProfile);
   const record = {
     account_id: params.accountId,
     media_id: params.mediaId,
@@ -407,14 +443,15 @@ async function persistVideoVariant(params: {
     storage_path: params.storagePath,
     mime_type: OUTPUT_CONTENT_TYPE,
     size_bytes: params.outputSize,
-    width: params.plan.target.width,
-    height: params.plan.target.height,
+    width: params.width,
+    height: params.height,
     duration_seconds: params.duration,
     pipeline_version: CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION,
     transform_spec: {
       format: params.plan.format,
       adaptationMode: params.plan.adaptationMode,
       target: params.plan.target,
+      publicationProfile: params.plan.publicationProfile,
     },
     variant_metadata: {
       generatedAt: params.generatedAt,
@@ -441,21 +478,21 @@ async function persistVideoVariant(params: {
         .update(record)
         .eq("id", existing.data.id)
         .select(
-          "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+          "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,width,height,variant_metadata",
         )
         .single()
     : await supabaseAdmin
         .from("media_variants")
         .insert(record)
         .select(
-          "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+          "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,width,height,variant_metadata",
         )
         .single();
   if (saved.error?.code === "23505") {
     const winner = await supabaseAdmin
       .from("media_variants")
       .select(
-        "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+        "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,width,height,variant_metadata",
       )
       .eq("account_id", params.accountId)
       .eq("workspace_id", params.workspaceId)
@@ -494,6 +531,8 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       typeof params.source.duration === "number"
         ? params.source.duration
         : (params.source.sourceMetadata?.duration ?? null),
+    width: Number(params.source.sourceMetadata?.width || 0) || null,
+    height: Number(params.source.sourceMetadata?.height || 0) || null,
   };
   const sourceCanPublishDirectly =
     Boolean(sourcePath && sourceUrl) &&
@@ -504,6 +543,13 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       sizeBytes: params.source.size,
       maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
     });
+  const sourceOptimizationProfile = getVideoCanonicalOptimizationProfile({
+    width: emptySource.width || 1920,
+    height: emptySource.height || 1080,
+    durationSeconds: emptySource.duration || 0,
+    sourceSizeBytes: Number(params.source.size || 0),
+    hasAudio: true,
+  });
 
   if (!plan.length) {
     return {
@@ -523,10 +569,28 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
   const readyVariants: BoosterVideoTransformedVariant[] = [];
   const missingPlan: BoosterVideoTransformVariantPlan[] = [];
   for (const variant of plan) {
+    const directValidation = variant.channel
+      ? validateVideoPublicationForChannel({
+          channel: variant.channel,
+          name: params.source.name,
+          type: params.source.type,
+          storagePath: sourcePath,
+          sizeBytes: params.source.size,
+          durationSeconds: emptySource.duration,
+          width: emptySource.width,
+          height: emptySource.height,
+        })
+      : null;
+    const requiresSocialOptimization =
+      variant.publicationProfile === "default" &&
+      variant.format === "original" &&
+      sourceOptimizationProfile.shouldOptimize;
     if (
       variant.format === "original" &&
       Number(params.source.size || 0) > 0 &&
-      sourceCanPublishDirectly
+      sourceCanPublishDirectly &&
+      !requiresSocialOptimization &&
+      (!directValidation || directValidation.ok)
     ) {
       readyVariants.push({
         ...variant,
@@ -535,8 +599,10 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         contentType: OUTPUT_CONTENT_TYPE,
         size: Number(params.source.size || 0),
         duration: emptySource.duration,
+        width: emptySource.width,
+        height: emptySource.height,
         generatedAt: new Date().toISOString(),
-        quality: getVideoTransformQualityProfile("original"),
+        quality: getVideoTransformQualityProfile("original", variant.publicationProfile),
       });
       continue;
     }
@@ -596,11 +662,15 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       `source.${getSourceExtension(params.source)}`,
     );
     await writeFile(inputPath, downloaded.buffer);
-    const fallbackDuration =
-      typeof params.source.duration === "number"
-        ? params.source.duration
-        : (params.source.sourceMetadata?.duration ?? null);
-    const duration = fallbackDuration || (await probeDurationSeconds(inputPath));
+    const probedSource = await probeVideoMetadata(inputPath);
+    const duration =
+      (typeof params.source.duration === "number" ? params.source.duration : null) ||
+      params.source.sourceMetadata?.duration ||
+      probedSource.duration;
+    const sourceWidth =
+      Number(params.source.sourceMetadata?.width || 0) || probedSource.width;
+    const sourceHeight =
+      Number(params.source.sourceMetadata?.height || 0) || probedSource.height;
     const generated: BoosterVideoTransformedVariant[] = [];
     const errors: BoosterVideoVariantServerResult["errors"] = [];
     const generatedAt = new Date().toISOString();
@@ -610,13 +680,36 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
     ) => {
       const outputPath = path.join(tempDir, `${variant.key}.mp4`);
       try {
+        if (
+          variant.channel === "gmb" &&
+          duration !== null &&
+          duration > GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS
+        ) {
+          throw new Error(
+            "Google Business refuse les vidéos de plus de 30 secondes. La vidéo n’a pas été coupée automatiquement.",
+          );
+        }
         await runFfmpegVariant(ffmpegPath, inputPath, outputPath, variant);
         const outputBuffer = await readFile(outputPath);
-        const quality = getVideoTransformQualityProfile(variant.format);
+        const quality = getVideoTransformQualityProfile(variant.format, variant.publicationProfile);
+        const outputMetadata = await probeVideoMetadata(outputPath);
         if (outputBuffer.length > quality.maxOutputBytes) {
           throw new Error(
             `La variante ${variant.target.label} reste trop lourde après compression (${Math.ceil(outputBuffer.length / 1024 / 1024)} Mo).`,
           );
+        }
+        if (variant.channel) {
+          const validation = validateVideoPublicationForChannel({
+            channel: variant.channel,
+            name: `${variant.key}.mp4`,
+            type: OUTPUT_CONTENT_TYPE,
+            storagePath: `${variant.key}.mp4`,
+            sizeBytes: outputBuffer.length,
+            durationSeconds: outputMetadata.duration || duration,
+            width: outputMetadata.width,
+            height: outputMetadata.height,
+          });
+          if (!validation.ok) throw new Error(validation.message);
         }
         const storagePath = buildOutputStoragePath(
           params.accountId,
@@ -646,7 +739,9 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
             plan: variant,
             storagePath,
             outputSize: outputBuffer.length,
-            duration,
+            duration: outputMetadata.duration || duration,
+            width: outputMetadata.width,
+            height: outputMetadata.height,
             generatedAt,
           });
           cached.set(buildPersistentSignature(variant), saved);
@@ -657,7 +752,9 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
           publicUrl,
           contentType: OUTPUT_CONTENT_TYPE,
           size: outputBuffer.length,
-          duration,
+          duration: outputMetadata.duration || duration,
+          width: outputMetadata.width,
+          height: outputMetadata.height,
           generatedAt,
           quality,
         });
@@ -685,6 +782,8 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         publicUrl: downloaded.publicUrl,
         size: downloaded.buffer.length,
         duration,
+        width: sourceWidth,
+        height: sourceHeight,
       },
       variants: [...readyVariants, ...generated],
       errors,

@@ -27,7 +27,10 @@ import {
   readPinterestBoardUiCache,
   writePinterestBoardUiCache,
 } from "@/lib/pinterestUiSessionCache";
-import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import {
+  buildVideoTransformSignature,
+  getVideoPublicationProfileForChannel,
+} from "@/lib/boosterVideoTransforms";
 import { extractVideoAudioForTranscription } from "@/lib/boosterVideoAudioClient";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import {
@@ -3352,6 +3355,7 @@ export default function PublishModal({
     const signature = buildVideoTransformSignature(
       selectedVideoFormat,
       selectedVideoAdaptation,
+      getVideoPublicationProfileForChannel(channel),
     );
     const preparedVariant = videoTransformedVariants.find(
       (variant) => variant.signature === signature,
@@ -3925,6 +3929,15 @@ export default function PublishModal({
         0,
         Number(result?.summary?.failureCount || retryFailedChannels.length),
       );
+      const warningCount = Math.max(
+        0,
+        Number(
+          result?.summary?.warningCount ||
+            resultEntries.filter(
+              (entry: any) => entry?.status === "published_with_warning",
+            ).length,
+        ),
+      );
       const publicationComplete = failureCount === 0;
 
       setPublishProgress(100);
@@ -3932,7 +3945,9 @@ export default function PublishModal({
         result?.summary?.allFailed
           ? "Échec"
           : publicationComplete
-            ? "Publié"
+            ? warningCount > 0
+              ? "Publié avec avertissement"
+              : "Publié"
             : "Publication partielle",
       );
       await sleep(220);

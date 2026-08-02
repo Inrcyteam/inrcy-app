@@ -53,10 +53,12 @@ import {
   getCampaignRecipientStatusLabel,
   getChannelIndicatorMeta,
   getFailedChannelMessage,
+  getWarningChannelMessage,
   getPublicationBackgroundMode,
   arePublicationTransformsEquivalent,
   isDeletedChannelResult,
   isFailedChannelResult,
+  isWarningChannelResult,
   isImageAttachment,
   isRetryableCampaignItem,
   isVideoAttachment,
@@ -669,6 +671,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
                   const activePublicationFailed = isFailedChannelResult(activePublicationResult);
                   const activePublicationFailureMessage = getFailedChannelMessage(activePublicationResult);
+                  const activePublicationWarning = isWarningChannelResult(activePublicationResult);
+                  const activePublicationWarningMessage = getWarningChannelMessage(activePublicationResult);
                   const isTiktokPublicationEntry = activePublicationEntry?.key === "tiktok";
                   const isYoutubeShortsPublicationEntry = activePublicationEntry?.key === "youtube_shorts";
                   const isExternalVideoPublicationEntry = isTiktokPublicationEntry || isYoutubeShortsPublicationEntry;
@@ -1282,6 +1286,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           {detailsItem.source === "app_events" && activePublicationFailed && activePublicationFailureMessage ? (
                             <div className={styles.detailsError}>
                               <b>Détail :</b> {activePublicationFailureMessage}
+                            </div>
+                          ) : null}
+
+                          {detailsItem.source === "app_events" && activePublicationWarning ? (
+                            <div className={styles.detailsWarning}>
+                              <b>Statut :</b> Publiée avec avertissement
+                              {activePublicationWarningMessage ? ` — ${activePublicationWarningMessage}` : ""}
                             </div>
                           ) : null}
 

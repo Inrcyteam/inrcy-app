@@ -3,6 +3,7 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { probeGoogleBusinessMediaUrl } from "@/lib/googleBusinessMediaProbe";
 import {
   optimizeFinalImageGeometry,
   optimizeForGoogleBusiness,
@@ -172,6 +173,16 @@ export async function normalizeVideoPayload(
   const durationRaw = Number(raw["duration"] || 0);
   const duration =
     Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
+  const sourceMetadataRaw = asRecord(
+    raw["sourceMetadata"] || raw["source_metadata"],
+  );
+  const sourceMetadata = {
+    ...sourceMetadataRaw,
+    width: Number(sourceMetadataRaw["width"] || 0) || null,
+    height: Number(sourceMetadataRaw["height"] || 0) || null,
+    duration:
+      Number(sourceMetadataRaw["duration"] || duration || 0) || null,
+  };
   const transformedVariants = Array.isArray(raw["transformedVariants"])
     ? (raw["transformedVariants"] as BoosterVideoTransformedVariant[]).filter(
         (variant: any) =>
@@ -197,48 +208,26 @@ export async function normalizeVideoPayload(
       thumbnailUrl: thumbnailUrl || null,
       thumbnailStoragePath: thumbnailStoragePath || null,
       thumbnailBucket: thumbnailBucket || null,
+      sourceMetadata,
       transformedVariants,
     },
   };
-}
-
-async function canGoogleFetchImageUrl(url: string): Promise<boolean> {
-  const target = String(url || "").trim();
-  if (!target) return false;
-
-  const attempts: Array<"HEAD" | "GET"> = ["HEAD", "GET"];
-  for (const method of attempts) {
-    try {
-      const response = await fetch(target, {
-        method,
-        redirect: "follow",
-        cache: "no-store",
-      });
-      if (!response.ok) continue;
-      const contentType = String(
-        response.headers.get("content-type") || "",
-      ).toLowerCase();
-      if (contentType.startsWith("image/")) return true;
-      if (method === "GET") return false;
-    } catch {
-      // Ignore and try the next strategy.
-    }
-  }
-
-  return false;
 }
 
 async function getGoogleBusinessPublishableUrl(
   path: string,
 ): Promise<string | null> {
   const urls = await buildUrlsFromStoragePath(path);
-  if (urls.publicUrl && (await canGoogleFetchImageUrl(urls.publicUrl))) {
-    return urls.publicUrl;
+  for (const candidate of [urls.publicUrl, urls.signedUrl]) {
+    if (!candidate) continue;
+    const probe = await probeGoogleBusinessMediaUrl({
+      url: candidate,
+      kind: "image",
+      attempts: 3,
+    });
+    if (probe.ok) return candidate;
   }
-  if (urls.signedUrl && (await canGoogleFetchImageUrl(urls.signedUrl))) {
-    return urls.signedUrl;
-  }
-  return urls.publicUrl || urls.signedUrl || null;
+  return null;
 }
 
 export function isGoogleBusinessImageError(error: unknown) {

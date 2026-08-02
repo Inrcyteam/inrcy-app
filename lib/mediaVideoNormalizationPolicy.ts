@@ -1,6 +1,6 @@
 import path from "node:path";
 import {
-  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+  INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "./mediaRules.ts";
@@ -24,7 +24,20 @@ export const VIDEO_AI_PREVIEW_FPS = 15;
 // Le canonique doit rester sous le plafond technique iNrCy. Les limites de
 // durée et de format sont ensuite contrôlées séparément pour chaque canal.
 export const VIDEO_CANONICAL_MAX_BYTES =
-  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES - 1 * 1024 * 1024;
+  INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES;
+
+// Politique qualité/poids du canonique social. Le plafond 299 Mio reste un
+// garde-fou technique, jamais une cible. Le worker conserve le remux rapide
+// uniquement pour les sources déjà efficaces, sinon il encode en CRF pour
+// réduire fortement le poids sans imposer une taille arbitraire.
+export const VIDEO_CANONICAL_QUALITY_CRF = 21;
+export const VIDEO_CANONICAL_ENCODER_PRESET = "veryfast" as const;
+export const VIDEO_CANONICAL_AUDIO_BITRATE_KBPS = 128;
+export const VIDEO_CANONICAL_MIN_SAVINGS_RATIO = 0.08;
+export const VIDEO_CANONICAL_BITRATE_HEADROOM_RATIO = 1.12;
+export const VIDEO_CANONICAL_UNKNOWN_DURATION_OPTIMIZE_BYTES =
+  80 * 1024 * 1024;
+
 export const VIDEO_AI_PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 export const VIDEO_AUDIO_TRACK_MAX_BYTES = 40 * 1024 * 1024;
 export const VIDEO_FRAME_MAX_BYTES = 5 * 1024 * 1024;
@@ -175,6 +188,110 @@ export function fitVideoWithinMaxSide(params: {
   return {
     width: evenDimension(width * ratio),
     height: evenDimension(height * ratio),
+  };
+}
+
+export type VideoCanonicalOptimizationProfile = {
+  outputWidth: number;
+  outputHeight: number;
+  sourceAverageBitrateKbps: number | null;
+  targetMaxVideoKbps: number;
+  targetTotalBitrateKbps: number;
+  expectedTargetBytes: number | null;
+  expectedSavingsRatio: number | null;
+  shouldOptimize: boolean;
+  reason:
+    | "already_efficient"
+    | "meaningful_savings"
+    | "large_unknown_duration"
+    | "insufficient_metadata";
+};
+
+export function getVideoAverageBitrateKbps(params: {
+  sizeBytes: number;
+  durationSeconds: number;
+}) {
+  const sizeBytes = Math.max(0, Number(params.sizeBytes || 0));
+  const durationSeconds = Number(params.durationSeconds || 0);
+  if (!sizeBytes || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return null;
+  }
+  return Math.round((sizeBytes * 8) / durationSeconds / 1000);
+}
+
+function getVideoCanonicalMaxVideoKbps(params: {
+  width: number;
+  height: number;
+}) {
+  const pixels = Math.max(1, params.width) * Math.max(1, params.height);
+  if (pixels >= 1_500_000) return 5_500;
+  if (pixels >= 700_000) return 3_500;
+  if (pixels >= 300_000) return 2_200;
+  return 1_400;
+}
+
+export function getVideoCanonicalOptimizationProfile(params: {
+  width: number;
+  height: number;
+  durationSeconds: number;
+  sourceSizeBytes: number;
+  hasAudio?: boolean;
+}): VideoCanonicalOptimizationProfile {
+  const fitted = fitVideoWithinMaxSide({
+    width: params.width,
+    height: params.height,
+    maxSide: VIDEO_CANONICAL_MAX_SIDE,
+  });
+  const targetMaxVideoKbps = getVideoCanonicalMaxVideoKbps(fitted);
+  const targetTotalBitrateKbps =
+    targetMaxVideoKbps +
+    (params.hasAudio === false ? 0 : VIDEO_CANONICAL_AUDIO_BITRATE_KBPS);
+  const sourceSizeBytes = Math.max(0, Number(params.sourceSizeBytes || 0));
+  const durationSeconds = Number(params.durationSeconds || 0);
+  const sourceAverageBitrateKbps = getVideoAverageBitrateKbps({
+    sizeBytes: sourceSizeBytes,
+    durationSeconds,
+  });
+
+  if (!sourceAverageBitrateKbps || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    const shouldOptimize =
+      sourceSizeBytes >= VIDEO_CANONICAL_UNKNOWN_DURATION_OPTIMIZE_BYTES;
+    return {
+      outputWidth: fitted.width,
+      outputHeight: fitted.height,
+      sourceAverageBitrateKbps,
+      targetMaxVideoKbps,
+      targetTotalBitrateKbps,
+      expectedTargetBytes: null,
+      expectedSavingsRatio: null,
+      shouldOptimize,
+      reason: shouldOptimize
+        ? "large_unknown_duration"
+        : "insufficient_metadata",
+    };
+  }
+
+  const expectedTargetBytes = Math.ceil(
+    (targetTotalBitrateKbps * 1000 * durationSeconds) / 8,
+  );
+  const expectedSavingsRatio = sourceSizeBytes
+    ? Math.max(0, 1 - expectedTargetBytes / sourceSizeBytes)
+    : 0;
+  const alreadyEfficient =
+    sourceAverageBitrateKbps <=
+      targetTotalBitrateKbps * VIDEO_CANONICAL_BITRATE_HEADROOM_RATIO ||
+    expectedSavingsRatio < VIDEO_CANONICAL_MIN_SAVINGS_RATIO;
+
+  return {
+    outputWidth: fitted.width,
+    outputHeight: fitted.height,
+    sourceAverageBitrateKbps,
+    targetMaxVideoKbps,
+    targetTotalBitrateKbps,
+    expectedTargetBytes,
+    expectedSavingsRatio,
+    shouldOptimize: !alreadyEfficient,
+    reason: alreadyEfficient ? "already_efficient" : "meaningful_savings",
   };
 }
 

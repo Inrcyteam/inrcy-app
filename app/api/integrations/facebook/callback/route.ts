@@ -11,6 +11,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
+import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 type TokenResponse = {
   access_token?: string;
   token_type?: string;
@@ -157,7 +158,7 @@ export async function GET(req: Request) {
     if (rlIp) return rlIp;
 
     // 1) Exchange code -> short-lived user access token
-    const tokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({
+    const tokenUrl = `${buildMetaGraphUrl("oauth/access_token")}?${new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
       client_secret: appSecret,
@@ -188,7 +189,7 @@ export async function GET(req: Request) {
     let longUserToken = userAccessToken;
     let longExpiresIn: number | null = null;
     try {
-      const longTokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({
+      const longTokenUrl = `${buildMetaGraphUrl("oauth/access_token")}?${new URLSearchParams({
         grant_type: "fb_exchange_token",
         client_id: appId,
         client_secret: appSecret,
@@ -207,7 +208,7 @@ export async function GET(req: Request) {
     // 3) Basic user profile (email may be empty depending on account)
     let me: FbMe = {};
     try {
-      const meUrl = `https://graph.facebook.com/v20.0/me?${new URLSearchParams({
+      const meUrl = `${buildMetaGraphUrl("me")}?${new URLSearchParams({
         fields: "id,name,email",
         access_token: longUserToken,
       }).toString()}`;
@@ -222,7 +223,7 @@ export async function GET(req: Request) {
     // Le callback OAuth ne connecte que le COMPTE Facebook.
     let pages: FbPage[] = [];
     try {
-      const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
+      const pagesUrl = `${buildMetaGraphUrl("me/accounts")}?${new URLSearchParams({
         fields: "id,name,access_token",
         access_token: longUserToken,
       }).toString()}`;

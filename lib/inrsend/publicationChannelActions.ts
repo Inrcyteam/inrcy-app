@@ -8,6 +8,7 @@ import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/faceboo
 import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, instagramPublishVideoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText, linkedinPublishVideo, linkedinResharePost } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
+import { filterGoogleBusinessMediaUrls } from "@/lib/googleBusinessMediaProbe";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { createHash, randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
@@ -29,8 +30,7 @@ import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/ch
 import { ensureSystemManagedInrSearch, notifyInrSearchIndexing, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { limitBoosterChannelContent } from "@/lib/boosterChannelRules";
-
-const FACEBOOK_GRAPH_VERSION = "v20.0";
+import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 const LINKEDIN_VERSION = "202603";
 const TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE =
   "TikTok ne permet pas la modification ou la suppression réelle depuis iNrCy. Ouvrez TikTok pour gérer cette publication.";
@@ -639,7 +639,7 @@ async function loadPublicationContext(userId: string, publicationId: string) {
 async function deleteFacebookPost(externalId: string, pageAccessToken: string) {
   if (!externalId) return;
   const qs = new URLSearchParams({ access_token: pageAccessToken });
-  const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(externalId)}?${qs.toString()}`, {
+  const res = await fetch(`${buildMetaGraphUrl(encodeURIComponent(externalId))}?${qs.toString()}`, {
     method: "DELETE",
     cache: "no-store",
   });
@@ -652,7 +652,7 @@ async function deleteFacebookPost(externalId: string, pageAccessToken: string) {
 async function updateFacebookPost(externalId: string, pageAccessToken: string, message: string) {
   if (!externalId) throw new Error("Publication Facebook introuvable.");
   const body = new URLSearchParams({ access_token: pageAccessToken, message });
-  const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(externalId)}`, {
+  const res = await fetch(buildMetaGraphUrl(encodeURIComponent(externalId)), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
@@ -674,7 +674,7 @@ async function verifyInstagramMediaId(externalId: string, accessToken: string) {
     fields: "id,media_type,media_product_type,permalink,timestamp,username,children{id,media_type,permalink}",
     access_token: accessToken,
   });
-  const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(externalId)}?${qs.toString()}`, {
+  const res = await fetch(`${buildMetaGraphUrl(encodeURIComponent(externalId))}?${qs.toString()}`, {
     method: "GET",
     cache: "no-store",
   });
@@ -684,7 +684,7 @@ async function verifyInstagramMediaId(externalId: string, accessToken: string) {
 
 async function deleteInstagramMedia(externalId: string, accessToken: string) {
   const qs = new URLSearchParams({ access_token: accessToken });
-  const res = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(externalId)}?${qs.toString()}`, {
+  const res = await fetch(`${buildMetaGraphUrl(encodeURIComponent(externalId))}?${qs.toString()}`, {
     method: "DELETE",
     cache: "no-store",
   });
@@ -1176,13 +1176,36 @@ async function replaceChannelDelivery(params: {
 
     if (isVideoPublication && videoUrl) {
       if (previousExternalId) await deleteFacebookPost(previousExternalId, pageToken);
-      const resp = await facebookPublishVideoToPage({
+      let facebookWarning: { code: string; message: string } | null = null;
+      let resp = await facebookPublishVideoToPage({
         pageId,
         pageAccessToken: pageToken,
         description: canonMessage,
         videoUrl,
         title: nextPost.title || undefined,
       });
+      if (!resp.ok) {
+        const mediaResp = resp;
+        const fallbackResp = await facebookPublishToPage({
+          pageId,
+          pageAccessToken: pageToken,
+          message: canonMessage,
+          imageUrls: [],
+        });
+        if (fallbackResp.ok) {
+          facebookWarning = {
+            code: "published_without_video",
+            message:
+              "Facebook a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+          };
+          resp = {
+            ...fallbackResp,
+            photoErrors: mediaResp.error
+              ? [{ url: videoUrl, error: mediaResp.error }]
+              : undefined,
+          };
+        }
+      }
       if (!resp.ok) {
         const facebookUserError = getPublishChannelUserMessage("facebook", resp.error);
         logPublishChannelFailure({
@@ -1197,7 +1220,13 @@ async function replaceChannelDelivery(params: {
         });
         throw new Error(facebookUserError);
       }
-      return { externalId: resp.postId, status: "delivered", error: null };
+      return {
+        externalId: resp.postId,
+        status: "delivered",
+        error: facebookWarning?.message || null,
+        warning: facebookWarning?.code || null,
+        warningMessage: facebookWarning?.message || null,
+      };
     }
 
     const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
@@ -1229,7 +1258,26 @@ async function replaceChannelDelivery(params: {
       });
       throw new Error(facebookUserError);
     }
-    return { externalId: resp.postId, status: "delivered", error: null };
+    const facebookWarning = socialFeedImageUrls.length > 0 && Number(resp.failedImages || 0) > 0
+      ? Number(resp.uploadedImages || 0) > 0
+        ? {
+            code: "published_with_partial_images",
+            message:
+              "Facebook a publié uniquement les images acceptées. Une ou plusieurs images n'ont pas pu être jointes.",
+          }
+        : {
+            code: "published_without_image",
+            message:
+              "Facebook a publié le texte, mais aucune image n'a pu être jointe cette fois-ci.",
+          }
+      : null;
+    return {
+      externalId: resp.postId,
+      status: "delivered",
+      error: facebookWarning?.message || null,
+      warning: facebookWarning?.code || null,
+      warningMessage: facebookWarning?.message || null,
+    };
   }
 
   if (channel === "instagram") {
@@ -1409,18 +1457,26 @@ async function replaceChannelDelivery(params: {
           ? await linkedinPublishImage({ accessToken, authorUrn, text: canonMessage, imageUrl: linkedInImages[0], title: nextPost.title || undefined })
           : await linkedinPublishText({ accessToken, authorUrn, text: canonMessage });
 
-    if (!resp.ok && isVideoPublication && videoUrl) {
+    if (
+      !resp.ok &&
+      ((isVideoPublication && videoUrl) || linkedInImages.length > 0)
+    ) {
+      const mediaResp = resp;
       const fallbackResp = await linkedinPublishText({ accessToken, authorUrn, text: canonMessage });
       if (fallbackResp.ok) {
         linkedInWarning = {
-          code: "published_without_video",
-          message: "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+          code: isVideoPublication
+            ? "published_without_video"
+            : "published_without_image",
+          message: isVideoPublication
+            ? "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci."
+            : "LinkedIn a publié le texte, mais les images n'ont pas pu être jointes cette fois-ci.",
         };
         resp = {
           ...fallbackResp,
           diagnostics: {
-            mediaPublishError: resp.error,
-            mediaPublishDiagnostics: resp.diagnostics,
+            mediaPublishError: mediaResp.error,
+            mediaPublishDiagnostics: mediaResp.diagnostics,
             fallback: "text_only",
           },
         };
@@ -1518,8 +1574,28 @@ async function replaceChannelDelivery(params: {
       let resp: unknown;
       const gmbSummary = buildBoosterGmbSummary(nextPost, { websiteUrl, phone });
       const gmbCallToAction = getBoosterGmbCallToAction(nextPost, { websiteUrl, phone });
-      const gmbVideoUrls = isVideoPublication && videoUrl ? [videoUrl] : [];
-      const hasMedia = Boolean(gmbImageUrls.length || gmbVideoUrls.length);
+      const rawGmbVideoUrls = isVideoPublication && videoUrl ? [videoUrl] : [];
+      const checkedImages = !isVideoPublication && gmbImageUrls.length
+        ? await filterGoogleBusinessMediaUrls({ urls: gmbImageUrls, kind: "image" })
+        : { acceptedUrls: [] as string[] };
+      const checkedVideos = isVideoPublication && rawGmbVideoUrls.length
+        ? await filterGoogleBusinessMediaUrls({ urls: rawGmbVideoUrls, kind: "video" })
+        : { acceptedUrls: [] as string[] };
+      const safeGmbImageUrls = checkedImages.acceptedUrls.slice(0, 5);
+      const gmbVideoUrls = checkedVideos.acceptedUrls.slice(0, 1);
+      if (!isVideoPublication && gmbImageUrls.length && !safeGmbImageUrls.length) {
+        gmbWarning = {
+          code: "published_without_image",
+          message: "Google Business a publié le texte sans image, car le média n’était plus accessible ou conforme.",
+        };
+      }
+      if (isVideoPublication && rawGmbVideoUrls.length && !gmbVideoUrls.length) {
+        gmbWarning = {
+          code: "published_without_video",
+          message: "Google Business a publié le texte sans vidéo, car le média n’était plus accessible ou conforme.",
+        };
+      }
+      const hasMedia = Boolean(safeGmbImageUrls.length || gmbVideoUrls.length);
 
       const publishGmb = (options?: { withoutMedia?: boolean; withoutCta?: boolean }) =>
         gmbCreateLocalPost({
@@ -1527,7 +1603,7 @@ async function replaceChannelDelivery(params: {
           accountName,
           locationName,
           summary: gmbSummary,
-          imageUrls: !options?.withoutMedia && !isVideoPublication && gmbImageUrls.length ? gmbImageUrls : undefined,
+          imageUrls: !options?.withoutMedia && !isVideoPublication && safeGmbImageUrls.length ? safeGmbImageUrls : undefined,
           videoUrls: !options?.withoutMedia && isVideoPublication && gmbVideoUrls.length ? gmbVideoUrls : undefined,
           languageCode: "fr-FR",
           callToAction: !options?.withoutCta && gmbCallToAction ? gmbCallToAction : undefined,
