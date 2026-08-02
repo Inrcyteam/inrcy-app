@@ -11,10 +11,6 @@ import {
 } from "react";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
-  isBoosterImageExplicitlyCustomized,
-  normalizeBoosterImageCustomizationScope,
-} from "@/lib/boosterImageCustomization";
-import {
   areBoosterImageTransformsEquivalent,
   getBoosterImageDisplayPlan,
   getBoosterImageRenderDimensions,
@@ -318,18 +314,13 @@ export default function usePublishImageController({
     firstImageCustomizedTargetRatio:
       activeImageChannel === "instagram" &&
       activeEditorFirstImageKey &&
-      isBoosterImageExplicitlyCustomized(
-        activeEditor?.customizedImageKeys,
-        activeEditorFirstImageKey,
-      )
+      (activeEditor?.customizedImageKeys || []).includes(activeEditorFirstImageKey)
         ? CHANNEL_PRESETS.instagram.width / CHANNEL_PRESETS.instagram.height
         : null,
   });
-  const activeEditorExplicitlyCustomized =
-    isBoosterImageExplicitlyCustomized(
-      activeEditor?.customizedImageKeys,
-      activeEditorImageKey,
-    );
+  const activeEditorExplicitlyCustomized = (
+    activeEditor?.customizedImageKeys || []
+  ).includes(activeEditorImageKey);
   const activeEditorDisplayPlan = getBoosterImageDisplayPlan({
     channel: activeImageChannel,
     meta: activeEditorMeta,
@@ -1161,15 +1152,7 @@ export default function usePublishImageController({
       }
 
       const editor = getEditorForPublish(channel);
-      const customizationScope = normalizeBoosterImageCustomizationScope<ImageTransform>({
-        availableImageKeys: imageKeys,
-        requestedImageKeys: editor.imageKeys,
-        transforms: editor.transforms,
-        customizedImageKeys: editor.customizedImageKeys,
-        maxImages: BOOSTER_MAX_IMAGE_COUNT,
-        fallbackToAvailableWhenSelectionEmpty: false,
-      });
-      const imageKeysToRender = customizationScope.imageKeys;
+      const imageKeysToRender = editor.imageKeys.slice(0, BOOSTER_MAX_IMAGE_COUNT);
       const firstImageKey = imageKeysToRender[0] || "";
       const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({
         channel,
@@ -1177,10 +1160,7 @@ export default function usePublishImageController({
         firstImageCustomizedTargetRatio:
           channel === "instagram" &&
           firstImageKey &&
-          isBoosterImageExplicitlyCustomized(
-            customizationScope.customizedImageKeys,
-            firstImageKey,
-          )
+          (editor.customizedImageKeys || []).includes(firstImageKey)
             ? CHANNEL_PRESETS.instagram.width / CHANNEL_PRESETS.instagram.height
             : null,
       });
@@ -1190,10 +1170,8 @@ export default function usePublishImageController({
       for (const imageKey of imageKeysToRender) {
         const imageMeta = imageMetaByKey[imageKey];
         const automaticTransform = getOptimizedTransform(channel, imageMeta);
-        const currentTransform =
-          customizationScope.transforms[imageKey] || automaticTransform;
-        const explicitlyCustomized = isBoosterImageExplicitlyCustomized(
-          customizationScope.customizedImageKeys,
+        const currentTransform = editor.transforms[imageKey] || automaticTransform;
+        const explicitlyCustomized = (editor.customizedImageKeys || []).includes(
           imageKey,
         );
         const displayPlan = getBoosterImageDisplayPlan({
@@ -1268,18 +1246,10 @@ export default function usePublishImageController({
       }
 
       const editor = getEditorForPublish(channel);
-      const customizationScope = normalizeBoosterImageCustomizationScope<ImageTransform>({
-        availableImageKeys: imageKeys,
-        requestedImageKeys: editor.imageKeys,
-        transforms: editor.transforms,
-        customizedImageKeys: editor.customizedImageKeys,
-        maxImages: BOOSTER_MAX_IMAGE_COUNT,
-        fallbackToAvailableWhenSelectionEmpty: false,
-      });
       const renderList: ImagePayload[] = [];
       const actualTransforms: Record<string, ImageTransform> = {};
       const actualCustomizedImageKeys: string[] = [];
-      const imageKeysToRender = customizationScope.imageKeys;
+      const imageKeysToRender = editor.imageKeys.slice(0, BOOSTER_MAX_IMAGE_COUNT);
       const firstImageKey = imageKeysToRender[0] || "";
       const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({
         channel,
@@ -1287,10 +1257,7 @@ export default function usePublishImageController({
         firstImageCustomizedTargetRatio:
           channel === "instagram" &&
           firstImageKey &&
-          isBoosterImageExplicitlyCustomized(
-            customizationScope.customizedImageKeys,
-            firstImageKey,
-          )
+          (editor.customizedImageKeys || []).includes(firstImageKey)
             ? CHANNEL_PRESETS.instagram.width / CHANNEL_PRESETS.instagram.height
             : null,
       });
@@ -1302,9 +1269,8 @@ export default function usePublishImageController({
         const imageMeta = imageMetaByKey[imageKey];
         const automaticTransform = getOptimizedTransform(channel, imageMeta);
         const currentTransform =
-          customizationScope.transforms[imageKey] || automaticTransform;
-        const explicitlyCustomized = isBoosterImageExplicitlyCustomized(
-          customizationScope.customizedImageKeys,
+          editor.transforms[imageKey] || automaticTransform;
+        const explicitlyCustomized = (editor.customizedImageKeys || []).includes(
           imageKey,
         );
         const displayPlan = getBoosterImageDisplayPlan({

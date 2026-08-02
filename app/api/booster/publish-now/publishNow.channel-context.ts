@@ -51,8 +51,6 @@ export function createPublishNowVideoContext(params: {
       storagePath: publicationVideo.storagePath,
       sizeBytes: publicationVideo.size,
       durationSeconds: publicationVideo.duration,
-      width: publicationVideo.sourceMetadata?.width,
-      height: publicationVideo.sourceMetadata?.height,
     });
     if (!variant?.publicUrl || !variant?.storagePath) {
       return sourceValidation.ok ? publicationVideo : null;
@@ -64,8 +62,6 @@ export function createPublishNowVideoContext(params: {
       storagePath: variant.storagePath,
       sizeBytes: variant.size,
       durationSeconds: variant.duration ?? publicationVideo.duration,
-      width: variant.width,
-      height: variant.height,
     });
     if (!variantValidation.ok) {
       return sourceValidation.ok ? publicationVideo : null;
@@ -81,12 +77,6 @@ export function createPublishNowVideoContext(params: {
       publicUrl: variant.publicUrl,
       storagePath:
         variant.storagePath || publicationVideo.storagePath || null,
-      sourceMetadata: {
-        ...(publicationVideo.sourceMetadata || {}),
-        duration: variant.duration ?? publicationVideo.duration ?? null,
-        width: variant.width ?? null,
-        height: variant.height ?? null,
-      },
       transformedVariant: variant,
       sourceVideo: {
         ...publicationVideo,

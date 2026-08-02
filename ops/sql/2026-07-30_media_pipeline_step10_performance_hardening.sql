@@ -47,7 +47,7 @@ set file_size_limit = 314572800
 where id = 'booster';
 
 -- Canonical videos created before this step could reach 94 MiB. Requeue the
--- oversized rows so the new worker brings them below the 299 MiB canonical ceiling before publishing.
+-- oversized rows so the new worker brings them below 39 MiB before publishing.
 update public.media_variants
 set
   status = 'pending',
@@ -58,7 +58,7 @@ set
 where purpose = 'canonical'
   and signature = 'inrcy:video:canonical:v1'
   and status = 'ready'
-  and coalesce(size_bytes, 0) > 313524224;
+  and coalesce(size_bytes, 0) > 40894464;
 
 update public.pro_media_library as media
 set
@@ -78,7 +78,7 @@ where media.media_type = 'video'
       and variant.purpose = 'canonical'
       and variant.signature = 'inrcy:video:canonical:v1'
       and variant.status = 'pending'
-      and coalesce(variant.size_bytes, 0) > 313524224
+      and coalesce(variant.size_bytes, 0) > 40894464
   );
 
 update public.media_processing_jobs as job
@@ -104,7 +104,7 @@ where job.job_type = 'video_normalize_v1'
       and variant.purpose = 'canonical'
       and variant.signature = 'inrcy:video:canonical:v1'
       and variant.status = 'pending'
-      and coalesce(variant.size_bytes, 0) > 313524224
+      and coalesce(variant.size_bytes, 0) > 40894464
   );
 
 -- Les clients chargent uniquement à l'aide d'un jeton signé délivré par l'API.

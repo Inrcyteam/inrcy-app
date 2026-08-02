@@ -1,6 +1,4 @@
-import { META_GRAPH_API_BASE_URL } from "@/lib/metaGraphApi";
-
-const GRAPH = META_GRAPH_API_BASE_URL;
+const GRAPH = "https://graph.facebook.com/v20.0";
 
 async function fetchJson(url: string) {
   const res = await fetch(url, { cache: "no-store" });

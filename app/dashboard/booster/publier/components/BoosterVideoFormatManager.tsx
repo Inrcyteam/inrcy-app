@@ -1,8 +1,4 @@
-import {
-  buildVideoTransformSignature,
-  getVideoPublicationProfileForChannel,
-  type BoosterVideoTransformedVariant,
-} from "@/lib/boosterVideoTransforms";
+import { buildVideoTransformSignature, type BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
   VIDEO_ADAPTATION_MODE_LABELS,
   VIDEO_FORMAT_ASPECT_RATIOS,
@@ -144,11 +140,7 @@ export default function BoosterVideoFormatManager({
   const sourceSummary = getVideoSourceSummary(videoSourceMetadata, videoDurationSeconds, videoSize);
   const technicalDetails = getVideoTechnicalDetails(videoSourceMetadata);
   const aspectRatio = getVideoPreviewAspectRatio(currentFormat, videoSourceMetadata);
-  const signature = buildVideoTransformSignature(
-    currentFormat,
-    adaptationMode,
-    getVideoPublicationProfileForChannel(channel),
-  );
+  const signature = buildVideoTransformSignature(currentFormat, adaptationMode);
   const exactPreparedVariant = videoTransformedVariants.find((variant) => variant.signature === signature);
   const preparedVariant = exactPreparedVariant || null;
   // An old variant for the same channel is not proof that the pro selected it

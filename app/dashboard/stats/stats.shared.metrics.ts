@@ -180,26 +180,12 @@ export function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetric
   if (cubeKey === "facebook") {
     if (!ov?.sources?.facebook?.connected) return [];
     const m = ov?.sources?.facebook?.metrics;
-    const views = bestMetricValue(m, [
-      "page_media_view",
-      "post_media_view_sum",
-      "views",
-      // Compatibilité de lecture avec l'historique déjà stocké avant juin 2026.
-      "page_impressions",
-      "post_impressions_sum",
-      "impressions",
-    ]);
-    const uniqueViewers = bestMetricValue(m, [
-      "page_total_media_view_unique",
-      "post_total_media_view_unique_sum",
-      "reach",
-      "page_impressions_unique",
-      "post_impressions_unique_sum",
-    ]);
+    const impressions = sumMetricValues(m, ["page_impressions", "post_impressions_sum", "impressions"]);
+    const reach = bestMetricValue(m, ["page_impressions_unique", "reach", "post_impressions_unique_sum"]);
     const audience = Math.max(safeNum(m?.totals?.fan_count), safeNum(m?.totals?.followers_count));
     const pageViews = safeNum(m?.totals?.page_views_total);
-    pushNumberMetric(items, "Vues", views, { available: metricKeyExists(m, ["page_media_view", "post_media_view_sum", "views", "page_impressions", "post_impressions_sum", "impressions"]) });
-    pushNumberMetric(items, "Spectateurs uniques", uniqueViewers, { available: metricKeyExists(m, ["page_total_media_view_unique", "post_total_media_view_unique_sum", "reach", "page_impressions_unique", "post_impressions_unique_sum"]) });
+    pushNumberMetric(items, "Impressions", impressions, { available: metricKeyExists(m, ["page_impressions", "post_impressions_sum", "impressions"]) });
+    pushNumberMetric(items, "Portée", reach, { available: metricKeyExists(m, ["page_impressions_unique", "reach", "post_impressions_unique_sum"]) });
     pushNumberMetric(items, "Audience", audience, { available: metricKeyExists(m, ["fan_count", "followers_count"]) });
     pushNumberMetric(items, "Vues page", pageViews, { available: metricKeyExists(m, ["page_views_total"]) });
     return firstFour(items);

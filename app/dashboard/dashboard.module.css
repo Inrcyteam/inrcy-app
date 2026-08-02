@@ -3867,17 +3867,6 @@
   color: rgba(220, 252, 231, 0.98);
 }
 
-.statusWarning {
-  color: rgba(254, 243, 199, 0.98);
-  background: rgba(245, 158, 11, 0.16);
-  border-color: rgba(245, 158, 11, 0.34);
-}
-
-.statusWarning .statusMessageIcon {
-  background: rgba(245, 158, 11, 0.24);
-  color: rgba(254, 243, 199, 0.98);
-}
-
 .statusError {
   color: rgba(254, 226, 226, 0.98);
   background: rgba(239, 68, 68, 0.16);

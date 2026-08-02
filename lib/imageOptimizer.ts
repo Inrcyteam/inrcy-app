@@ -3,11 +3,6 @@ import {
   BOOSTER_AUTO_CROP_MAX_LOSS,
   getImageCropLossFraction,
 } from "@/lib/boosterImageDecision";
-import {
-  GOOGLE_BUSINESS_IMAGE_TARGET_MAX_BYTES,
-  GOOGLE_BUSINESS_IMAGE_MIN_BYTES,
-  GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE,
-} from "@/lib/googleBusinessMediaPolicy";
 
 const INSTAGRAM_MAX_BYTES = 8 * 1024 * 1024;
 const INSTAGRAM_WIDTH = 1080;
@@ -24,7 +19,7 @@ const SITE_CARD_MAX_BYTES = 8 * 1024 * 1024;
 const SITE_CARD_WIDTH = 1440;
 const SITE_CARD_HEIGHT = 900;
 const SITE_CARD_NATIVE_MAX_SIDE = 1800;
-const GMB_MAX_BYTES = GOOGLE_BUSINESS_IMAGE_TARGET_MAX_BYTES;
+const GMB_MAX_BYTES = 5 * 1024 * 1024;
 const GMB_WIDTH = 1200;
 const GMB_HEIGHT = 900;
 const GMB_NATIVE_MAX_SIDE = 1600;
@@ -76,65 +71,6 @@ async function getOutputMeta(
   };
 }
 
-
-function padJpegToMinimumBytes(buffer: Buffer, minBytes: number) {
-  if (buffer.byteLength >= minBytes) return buffer;
-  const eoi = buffer.byteLength >= 2 && buffer[buffer.byteLength - 2] === 0xff && buffer[buffer.byteLength - 1] === 0xd9;
-  if (!eoi) return buffer;
-  const payloadLength = Math.min(65_000, Math.max(1, minBytes - buffer.byteLength));
-  const segment = Buffer.alloc(payloadLength + 4, 0x20);
-  segment[0] = 0xff;
-  segment[1] = 0xfe;
-  segment.writeUInt16BE(payloadLength + 2, 2);
-  return Buffer.concat([buffer.subarray(0, -2), segment, buffer.subarray(-2)]);
-}
-
-async function ensureGoogleBusinessImageCompliance(
-  result: OptimizeResult,
-): Promise<OptimizeResult> {
-  let buffer = result.buffer;
-  let width = result.width;
-  let height = result.height;
-  const quality = Math.max(result.quality, 88);
-
-  if (Math.min(width, height) < GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE) {
-    const landscape = width >= height;
-    buffer = await sharp(buffer, { failOn: "none" })
-      .resize({
-        width: landscape ? undefined : GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE,
-        height: landscape ? GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE : undefined,
-        fit: "inside",
-        withoutEnlargement: false,
-      })
-      .jpeg({
-        quality,
-        mozjpeg: true,
-        progressive: true,
-        chromaSubsampling: "4:2:0",
-      })
-      .toBuffer();
-    const meta = await getOutputMeta(buffer, width, height);
-    width = meta.width;
-    height = meta.height;
-  }
-
-  buffer = padJpegToMinimumBytes(buffer, GOOGLE_BUSINESS_IMAGE_MIN_BYTES);
-  if (buffer.byteLength > GOOGLE_BUSINESS_IMAGE_TARGET_MAX_BYTES) {
-    throw new Error("gmb_image_still_too_large");
-  }
-  if (Math.min(width, height) < GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE) {
-    throw new Error("gmb_image_resolution_too_small");
-  }
-
-  return {
-    ...result,
-    buffer,
-    width,
-    height,
-    size: buffer.byteLength,
-    quality,
-  };
-}
 function getOrientedDimensions(meta: {
   width?: number;
   height?: number;
@@ -340,10 +276,7 @@ export async function optimizeFinalImageGeometry(
     }
   }
 
-  const geometryLocked = { ...result, strategy: "geometry-locked" as const };
-  return profile === "gmb"
-    ? ensureGoogleBusinessImageCompliance(geometryLocked)
-    : geometryLocked;
+  return { ...result, strategy: "geometry-locked" };
 }
 
 async function createSmartJpeg(params: {
@@ -605,8 +538,6 @@ export async function optimizeForGoogleBusiness(
     maxSide: GMB_NATIVE_MAX_SIDE,
   }).catch(() => null);
 
-  if (native) return ensureGoogleBusinessImageCompliance(native);
-  return ensureGoogleBusinessImageCompliance(
-    await optimizeForGoogleBusinessSafeFrame(inputBuffer),
-  );
+  if (native) return native;
+  return optimizeForGoogleBusinessSafeFrame(inputBuffer);
 }

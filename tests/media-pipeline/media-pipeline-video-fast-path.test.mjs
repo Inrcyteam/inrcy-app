@@ -6,15 +6,14 @@ import test from "node:test";
 const ROOT = process.cwd();
 const read = (file) => readFileSync(resolve(ROOT, file), "utf8");
 
-test("les MP4 H.264 déjà efficaces évitent le double réencodage complet", () => {
+test("les MP4 H.264 compatibles évitent le double réencodage complet", () => {
   const normalizer = read("lib/mediaVideoNormalizer.ts");
   assert.match(normalizer, /canFastPrepareCanonical/);
   assert.match(normalizer, /codec === "h264" \|\| codec === "avc1"/);
-  assert.match(normalizer, /getVideoCanonicalOptimizationProfile/);
-  assert.match(normalizer, /!optimization\.shouldOptimize/);
+  assert.match(normalizer, /params\.sourceSizeBytes <= VIDEO_CANONICAL_MAX_BYTES/);
   assert.match(normalizer, /"-c:v", "copy"/);
   assert.match(normalizer, /"-movflags",\s*"\+faststart"/);
-  assert.match(normalizer, /const remuxed = await remuxCanonical\(params\)/);
+  assert.match(normalizer, /return await remuxCanonical\(params\)/);
 });
 
 test("la préparation lourde publie une progression et coupe un FFmpeg silencieux", () => {

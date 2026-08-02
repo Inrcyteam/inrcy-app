@@ -1,10 +1,7 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requestBoosterVideoStorageCleanup, requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
-import {
-  buildVideoTransformSignature,
-  getVideoPublicationProfileForChannel,
-} from "@/lib/boosterVideoTransforms";
+import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
 import {
   buildVideoSettingsByChannel,
@@ -28,18 +25,6 @@ export type VideoVariantPreparationState = {
   label: string;
   detail?: string;
 };
-
-function buildChannelVideoSignature(
-  channel: ChannelKey,
-  format: VideoFormat,
-  adaptationMode: VideoAdaptationMode,
-) {
-  return buildVideoTransformSignature(
-    format,
-    adaptationMode,
-    getVideoPublicationProfileForChannel(channel),
-  );
-}
 
 type VideoSettingsByChannel = Partial<
   Record<ChannelKey, { format: VideoFormat; adaptationMode: VideoAdaptationMode }>
@@ -140,8 +125,7 @@ export default function usePublishVideoController({
   const clearPreparedVideoVariantsForChannel = (channel: ChannelKey) => {
     const currentSettings = videoSettingsByChannel[channel];
     if (!currentSettings) return;
-    const signature = buildChannelVideoSignature(
-      channel,
+    const signature = buildVideoTransformSignature(
       currentSettings.format,
       currentSettings.adaptationMode,
     );
@@ -296,12 +280,7 @@ export default function usePublishVideoController({
       if (mediaModeByChannel[channel] !== "video") return [];
       const settings = settingsByChannel[channel];
       if (!settings) return [];
-      const publicationProfile = getVideoPublicationProfileForChannel(channel);
-      const signature = buildVideoTransformSignature(
-        settings.format,
-        settings.adaptationMode,
-        publicationProfile,
-      );
+      const signature = `${settings.format}:${settings.adaptationMode}`;
       if (seen.has(signature)) return [];
       seen.add(signature);
       return [
@@ -310,7 +289,6 @@ export default function usePublishVideoController({
           channel,
           format: settings.format,
           adaptationMode: settings.adaptationMode,
-          publicationProfile,
         },
       ];
     });
@@ -329,11 +307,7 @@ export default function usePublishVideoController({
       if (mediaModeByChannel[channel] !== "video") return acc;
       const settings = settingsByChannel?.[channel] || videoSettingsByChannel[channel];
       if (!settings) return acc;
-      const signature = buildChannelVideoSignature(
-        channel,
-        settings.format,
-        settings.adaptationMode,
-      );
+      const signature = buildVideoTransformSignature(settings.format, settings.adaptationMode);
       const found = variants.find((variant) => variant.signature === signature);
       if (!found?.publicUrl) return acc;
       const formatLabel = getVideoFormatLabel(channel, settings.format, videoSourceMetadata);
@@ -373,11 +347,7 @@ export default function usePublishVideoController({
       variants
         .map((variant) =>
           variant.format && variant.adaptationMode
-            ? buildVideoTransformSignature(
-                variant.format,
-                variant.adaptationMode,
-                variant.publicationProfile,
-              )
+            ? buildVideoTransformSignature(variant.format, variant.adaptationMode)
             : "",
         )
         .filter(Boolean),
@@ -410,11 +380,7 @@ export default function usePublishVideoController({
       (variant) =>
         !existingSignatures.has(
           variant.format && variant.adaptationMode
-            ? buildVideoTransformSignature(
-                variant.format,
-                variant.adaptationMode,
-                variant.publicationProfile,
-              )
+            ? buildVideoTransformSignature(variant.format, variant.adaptationMode)
             : "",
         ),
     );
@@ -463,8 +429,6 @@ export default function usePublishVideoController({
           storagePath: baseVideo.storagePath,
           sizeBytes: baseVideo.size,
           durationSeconds: baseVideo.duration,
-          width: baseVideo.sourceMetadata?.width,
-          height: baseVideo.sourceMetadata?.height,
         }),
       ]),
     ) as Record<ChannelKey, ReturnType<typeof validateVideoPublicationForChannel>>;
@@ -488,8 +452,7 @@ export default function usePublishVideoController({
             ];
           }
 
-          const signature = buildChannelVideoSignature(
-            channel,
+          const signature = buildVideoTransformSignature(
             settings.format,
             settings.adaptationMode,
           );
@@ -505,8 +468,6 @@ export default function usePublishVideoController({
                   storagePath: foundVariant.storagePath,
                   sizeBytes: foundVariant.size,
                   durationSeconds: foundVariant.duration ?? baseVideo.duration,
-                  width: foundVariant.width,
-                  height: foundVariant.height,
                 })
               : null;
           const formatLabel = getVideoFormatLabel(
@@ -620,8 +581,7 @@ export default function usePublishVideoController({
             ];
           }
 
-          const signature = buildChannelVideoSignature(
-            channel,
+          const signature = buildVideoTransformSignature(
             settings.format,
             settings.adaptationMode,
           );
@@ -641,8 +601,6 @@ export default function usePublishVideoController({
                   storagePath: foundVariant.storagePath,
                   sizeBytes: foundVariant.size,
                   durationSeconds: foundVariant.duration ?? baseVideo.duration,
-                  width: foundVariant.width,
-                  height: foundVariant.height,
                 })
               : null;
           if (variantValidation?.ok) {

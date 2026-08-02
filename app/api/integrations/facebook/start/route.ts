@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 import { getCurrentInrcyAccountScope } from "@/lib/multicompte/server";
-import { buildMetaOAuthUrl } from "@/lib/metaGraphApi";
 
 export async function GET(request: Request) {
   const currentAccount = await getCurrentInrcyAccountScope();
@@ -49,7 +48,7 @@ export async function GET(request: Request) {
 
   if (mode === "business" && configId) params.set("config_id", configId);
 
-  const url = `${buildMetaOAuthUrl("dialog/oauth")}?${params.toString()}`;
+  const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
   const res = NextResponse.redirect(url);
   res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,

@@ -91,22 +91,20 @@ async function renderJpeg(params: {
   quality: number;
   sourceMetadata: Record<string, unknown>;
 }) {
-  const providerSafe = params.purpose === "ai_preview";
   const rendered = await createBasePipeline(params.input, params.maxSide)
     .flatten({ background: WHITE_BACKGROUND })
     .jpeg({
       quality: params.quality,
-      // L'aperçu IA reste baseline pour une compatibilité maximale. Les
-      // variantes de publication utilisent MozJPEG afin de gagner du poids
-      // sans modifier les dimensions ni le cadrage.
-      mozjpeg: !providerSafe,
-      progressive: !providerSafe,
+      // JPEG baseline + sRGB est le dénominateur commun le plus fiable pour
+      // les navigateurs, Mistral, OpenAI et les APIs sociales.
+      mozjpeg: false,
+      progressive: false,
       chromaSubsampling: "4:2:0",
       optimiseCoding: true,
-      optimiseScans: !providerSafe,
     })
     .toBuffer({ resolveWithObject: true });
   const sha256 = outputSha256(rendered.data);
+  const providerSafe = params.purpose === "ai_preview";
 
   return {
     purpose: params.purpose,
@@ -127,8 +125,7 @@ async function renderJpeg(params: {
       output: "jpeg",
       quality: params.quality,
       colourspace: "srgb",
-      progressive: !providerSafe,
-      mozjpeg: !providerSafe,
+      progressive: false,
       ...(providerSafe ? { ai_provider_safe_version: 1 } : {}),
       metadata_stripped: true,
     },

@@ -1,6 +1,4 @@
-import { META_GRAPH_API_BASE_URL } from "@/lib/metaGraphApi";
-
-const GRAPH = META_GRAPH_API_BASE_URL;
+const GRAPH = "https://graph.facebook.com/v20.0";
 
 function graphErrorMessage(data: any, status: number) {
   const e = data?.error;
@@ -76,27 +74,19 @@ async function resolvePageAccessToken(userOrPageToken: string, pageId: string): 
 }
 
 const FB_PAGE_INSIGHT_METRICS = [
-  // Graph API v25 / juin 2026 : Media Views et Media Viewers remplacent
-  // les anciennes impressions et portées. Chaque métrique Page est interrogée
-  // séparément pour qu'une métrique indisponible ne bloque jamais tout iNrStats.
-  "page_media_view",
-  "page_total_media_view_unique",
+  // These are commonly available Page insights. Each is queried separately so
+  // one removed/unsupported metric never kills the whole Facebook block.
   "page_post_engagements",
   "page_engaged_users",
   "page_views_total",
   "page_actions_post_reactions_total",
   "page_fans",
   "page_fan_adds",
+  "page_impressions_unique",
+  "page_impressions",
   "page_call_phone_clicks_logged_in_unique",
   "page_get_directions_clicks_logged_in_unique",
   "page_website_clicks_logged_in_unique",
-] as const;
-
-const FB_POST_INSIGHT_METRICS = [
-  "post_media_view",
-  "post_total_media_view_unique",
-  "post_engaged_users",
-  "post_clicks",
 ] as const;
 
 async function fetchPageMetric(token: string, pageId: string, metric: string, since: number, until: number) {
@@ -128,35 +118,6 @@ async function enrichPageFields(token: string, pageId: string, totals: Record<st
   } catch {}
 }
 
-async function fetchPostMetricRowsResilient(
-  token: string,
-  postId: string,
-  metrics: readonly string[],
-): Promise<any[]> {
-  if (!metrics.length) return [];
-  try {
-    const response = await fetchJson(
-      `${GRAPH}/${encodeURIComponent(postId)}/insights?` +
-        new URLSearchParams({
-          metric: metrics.join(","),
-          period: "lifetime",
-          access_token: token,
-        }).toString()
-    );
-    return Array.isArray(response?.data) ? response.data : [];
-  } catch {
-    // Fast path normal : une seule requête pour les quatre métriques.
-    // Fallback uniquement si Meta refuse une métrique précise pendant un rollout.
-    if (metrics.length === 1) return [];
-    const middle = Math.ceil(metrics.length / 2);
-    const [left, right] = await Promise.all([
-      fetchPostMetricRowsResilient(token, postId, metrics.slice(0, middle)),
-      fetchPostMetricRowsResilient(token, postId, metrics.slice(middle)),
-    ]);
-    return [...left, ...right];
-  }
-}
-
 async function enrichPublishedPosts(token: string, pageId: string, totals: Record<string, number>, since: number, until: number) {
   try {
     const posts = await fetchJson(
@@ -173,16 +134,26 @@ async function enrichPublishedPosts(token: string, pageId: string, totals: Recor
     for (const p of arr) {
       const postId = String(p?.id || "");
       if (!postId) continue;
-      const rows = await fetchPostMetricRowsResilient(token, postId, FB_POST_INSIGHT_METRICS);
-      for (const r of rows) {
-        const name = String(r?.name || "");
-        const v = Array.isArray(r?.values) ? r.values[0]?.value : undefined;
-        addNumeric(totals, `${name}_sum`, v);
-        if (name === "post_media_view") addNumeric(totals, "views", v);
-        if (name === "post_total_media_view_unique") addNumeric(totals, "reach", v);
-        if (name === "post_engaged_users") addNumeric(totals, "engagements", v);
-        if (name === "post_clicks") addNumeric(totals, "clicks", v);
-      }
+      try {
+        const ins = await fetchJson(
+          `${GRAPH}/${encodeURIComponent(postId)}/insights?` +
+            new URLSearchParams({
+              metric: "post_impressions,post_impressions_unique,post_engaged_users,post_clicks",
+              period: "lifetime",
+              access_token: token,
+            }).toString()
+        );
+        const rows = Array.isArray(ins?.data) ? ins.data : [];
+        for (const r of rows) {
+          const name = String(r?.name || "");
+          const v = Array.isArray(r?.values) ? r.values[0]?.value : undefined;
+          addNumeric(totals, `${name}_sum`, v);
+          if (name === "post_impressions") addNumeric(totals, "impressions", v);
+          if (name === "post_impressions_unique") addNumeric(totals, "reach", v);
+          if (name === "post_engaged_users") addNumeric(totals, "engagements", v);
+          if (name === "post_clicks") addNumeric(totals, "clicks", v);
+        }
+      } catch {}
     }
   } catch {}
 }

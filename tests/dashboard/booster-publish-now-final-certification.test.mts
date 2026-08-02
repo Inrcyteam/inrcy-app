@@ -271,9 +271,9 @@ test("the certified dispatch loop fingerprint is recorded for future intentional
     "for (const ch of selected)",
     "if (internalAsyncDispatch)",
   );
-  assert.equal(dispatchLoop.length, 61_547);
+  assert.equal(dispatchLoop.length, 56_590);
   assert.equal(
     sha256(dispatchLoop),
-    "28a74ec565e66bc3872794a36c4cc32a97c1b27e0c43e2229bd094fccdbbdec9",
+    "3c13546a773656f1bbeb5a5cbd8aac2656e2c3ba0a34c8bc46eba3067b27d67f",
   );
 });

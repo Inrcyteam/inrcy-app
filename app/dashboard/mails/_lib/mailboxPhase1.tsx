@@ -1192,33 +1192,7 @@ export function isFailedChannelResult(result: any): boolean {
   return status === "failed" || status === "error";
 }
 
-export function isWarningChannelResult(result: any): boolean {
-  if (!result || typeof result !== "object") return false;
-  if (
-    isFailedChannelResult(result) ||
-    isDeletedChannelResult(result) ||
-    isCancelledChannelResult(result)
-  ) {
-    return false;
-  }
-  const warning = String(result.warning || result.code || "").trim();
-  return Boolean(warning || result.warning_message || result.warningMessage);
-}
-
-export function getWarningChannelMessage(result: any): string {
-  if (!isWarningChannelResult(result)) return "";
-  const message =
-    result?.warning_message ??
-    result?.warningMessage ??
-    result?.error ??
-    result?.message ??
-    "Publication publiée avec un avertissement.";
-  return typeof message === "string"
-    ? message.trim()
-    : String(message || "").trim();
-}
-
-export function getChannelIndicatorMeta(result: any): { kind: "failed" | "deleted" | "cancelled" | "warning"; title: string; className: string } | null {
+export function getChannelIndicatorMeta(result: any): { kind: "failed" | "deleted" | "cancelled"; title: string; className: string } | null {
   if (isCancelledChannelResult(result)) {
     return {
       kind: "cancelled",
@@ -1238,13 +1212,6 @@ export function getChannelIndicatorMeta(result: any): { kind: "failed" | "delete
       kind: "failed",
       title: "Échec sur ce canal",
       className: styles.channelFailedDot,
-    };
-  }
-  if (isWarningChannelResult(result)) {
-    return {
-      kind: "warning",
-      title: getWarningChannelMessage(result) || "Publication publiée avec avertissement",
-      className: styles.channelWarningDot,
     };
   }
   return null;
@@ -1272,7 +1239,6 @@ export function getPublicationChannelStatuses(payload: any, fallbackChannels: st
       label: formatChannelLabel(channel),
       failed: indicator?.kind === "failed",
       deleted: indicator?.kind === "deleted",
-      warning: indicator?.kind === "warning",
       indicator,
       result,
     };

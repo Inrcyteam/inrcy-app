@@ -11,7 +11,6 @@ import {
   isBoosterPublishFailureRetryable,
   type BoosterPublicationChannelKey,
 } from "@/lib/boosterPublicationPolicy";
-import { classifyBoosterPublicationResult } from "@/lib/boosterPublicationOutcome";
 
 export type ChannelKey = BoosterPublicationChannelKey;
 
@@ -88,8 +87,7 @@ export function buildResultsSummary(
 ) {
   const entries = selected.map((channel) => {
     const value = results[channel] || {};
-    const outcome = classifyBoosterPublicationResult(value);
-    const ok = outcome.ok;
+    const ok = value?.ok !== false;
     const code = String(value?.code || "").trim() || null;
     const retryable = isBoosterPublishFailureRetryable({
       ok,
@@ -100,32 +98,28 @@ export function buildResultsSummary(
       channel,
       label: CHANNEL_LABELS[channel] || channel,
       ok,
-      status: outcome.status,
+      status: ok
+        ? value?.warning
+          ? "processing"
+          : "published"
+        : "failed",
       code,
       retryable,
       error: !ok ? String(value?.error || "erreur") : null,
-      warning: outcome.warningCode,
-      warning_kind: outcome.warningKind,
-      warning_message: outcome.warningMessage,
+      warning: value?.warning ? String(value.warning) : null,
+      warning_message: value?.warning_message
+        ? String(value.warning_message)
+        : null,
     };
   });
 
   const successes = entries.filter((entry) => entry.ok);
   const failures = entries.filter((entry) => !entry.ok);
-  const warnings = entries.filter(
-    (entry) => entry.status === "published_with_warning",
-  );
-  const pending = entries.filter((entry) => entry.status === "processing");
 
   return {
     total: entries.length,
     successCount: successes.length,
     failureCount: failures.length,
-    warningCount: warnings.length,
-    mediaWarningCount: warnings.filter(
-      (entry) => entry.warning_kind === "media_degraded",
-    ).length,
-    pendingCount: pending.length,
     allSucceeded: failures.length === 0,
     allFailed: successes.length === 0,
     entries,
@@ -199,12 +193,6 @@ export type PersistedVideoAttachment = {
   thumbnailUrl: string | null;
   thumbnailStoragePath: string | null;
   thumbnailBucket: string | null;
-  sourceMetadata?: {
-    width?: number | null;
-    height?: number | null;
-    duration?: number | null;
-    [key: string]: unknown;
-  } | null;
   transformedVariants?: BoosterVideoTransformedVariant[];
   transformedVariant?: BoosterVideoTransformedVariant | null;
   sourceVideo?: PersistedVideoAttachment | null;

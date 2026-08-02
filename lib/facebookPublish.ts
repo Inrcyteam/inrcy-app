@@ -1,5 +1,6 @@
 import { log } from "@/lib/observability/logger";
-import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
+
+const FACEBOOK_GRAPH_VERSION = "v19.0";
 
 type PublishOk = {
   ok: true;
@@ -20,31 +21,6 @@ type PublishKo = {
 };
 
 type PublishResult = PublishOk | PublishKo;
-
-export const FACEBOOK_IMAGE_UPLOAD_CONCURRENCY = 2;
-
-async function mapWithConcurrency<T, R>(
-  values: readonly T[],
-  concurrency: number,
-  mapper: (value: T, index: number) => Promise<R>,
-) {
-  const results = new Array<R>(values.length);
-  let nextIndex = 0;
-  const worker = async () => {
-    while (nextIndex < values.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await mapper(values[index], index);
-    }
-  };
-  await Promise.all(
-    Array.from(
-      { length: Math.min(Math.max(1, concurrency), values.length) },
-      () => worker(),
-    ),
-  );
-  return results;
-}
 
 /**
  * Upload one image to Facebook as an unpublished photo and return its media_fbid.
@@ -88,7 +64,7 @@ async function uploadUnpublishedPhoto(params: {
 
     // IMPORTANT: post explicitly to the Page, not /me
     const uploadRes = await fetch(
-      buildMetaGraphUrl(`${encodeURIComponent(pageId)}/photos`),
+      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/photos`,
       { method: "POST", body: form }
     );
 
@@ -118,21 +94,8 @@ export async function facebookPublishToPage(params: {
     const attachedMedia: any[] = [];
     const photoErrors: Array<{ url: string; error: string }> = [];
 
-    const uploads = await mapWithConcurrency(
-      imageUrls,
-      FACEBOOK_IMAGE_UPLOAD_CONCURRENCY,
-      async (url) => ({
-        url,
-        result: await uploadUnpublishedPhoto({
-          pageId,
-          pageAccessToken,
-          imageUrl: url,
-        }),
-      }),
-    );
-
-    for (const upload of uploads) {
-      const { url, result: up } = upload;
+    for (const url of imageUrls) {
+      const up = await uploadUnpublishedPhoto({ pageId, pageAccessToken, imageUrl: url });
       if (!up.ok) {
         // Continue with remaining images, but keep diagnostics
         log.warn("facebook_image_upload_failed", { error: up.error });
@@ -153,7 +116,7 @@ export async function facebookPublishToPage(params: {
 
     // IMPORTANT: post explicitly to the Page, not /me
     const feedRes = await fetch(
-      buildMetaGraphUrl(`${encodeURIComponent(pageId)}/feed`),
+      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/feed`,
       { method: "POST", body: feedForm }
     );
 
@@ -220,7 +183,7 @@ export async function facebookPublishVideoToPage(params: {
     form.append("source", videoBlob, "video-inrcy.mp4");
 
     const uploadRes = await fetch(
-      buildMetaGraphUrl(`${encodeURIComponent(pageId)}/videos`),
+      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/videos`,
       { method: "POST", body: form }
     );
 
