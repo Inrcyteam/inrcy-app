@@ -278,6 +278,9 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const impressionsTotal =
     getTotalMetric(m, [
       "impressions",
+      "page_media_view",
+      "post_media_view",
+      "post_media_view_sum",
       "post_impressions",
       "postImpressions",
       "post_impressions_sum",

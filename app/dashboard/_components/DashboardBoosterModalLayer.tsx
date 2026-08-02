@@ -439,9 +439,29 @@ export default function DashboardBoosterModalLayer({
                 typeof result?.retryFailed === "function"
                   ? result.retryFailed
                   : null;
+              const skippedChannels = Array.isArray(result?.skippedChannels)
+                ? result.skippedChannels
+                : [];
+              const skippedEntries = skippedChannels.map((entry: any) => ({
+                channel: String(entry?.channel || ""),
+                label: String(entry?.label || entry?.channel || "Canal"),
+                ok: true,
+                status: "skipped",
+                retryable: false,
+                blockers: Array.isArray(entry?.blockers)
+                  ? entry.blockers.map((value: unknown) => String(value))
+                  : [],
+              }));
               const summary = result?.summary
                 ? {
                     ...result.summary,
+                    entries: [
+                      ...(Array.isArray(result.summary.entries)
+                        ? result.summary.entries
+                        : []),
+                      ...skippedEntries,
+                    ],
+                    skippedCount: skippedEntries.length,
                     channelLinks: result?.channelLinks || {},
                     retryableFailureCount: Array.isArray(
                       result?.retryFailedChannels,

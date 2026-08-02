@@ -1,3 +1,5 @@
+import { getProviderCreateFailureSafety } from "@/lib/providerMediaFallbackPolicy";
+
 const LINKEDIN_VERSION = "202603";
 
 type PublishOk = {
@@ -11,6 +13,8 @@ type PublishKo = {
   ok: false;
   error: string;
   diagnostics?: any;
+  safeTextFallback?: boolean;
+  requestMayHaveSucceeded?: boolean;
 };
 
 export type LinkedInPublishResult = PublishOk | PublishKo;
@@ -63,18 +67,33 @@ async function createLinkedInPost(params: {
 }): Promise<LinkedInPublishResult> {
   const { accessToken, payload } = params;
 
-  const res = await fetch("https://api.linkedin.com/rest/posts", {
-    method: "POST",
-    headers: linkedInHeaders(accessToken),
-    body: JSON.stringify(payload),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch("https://api.linkedin.com/rest/posts", {
+      method: "POST",
+      headers: linkedInHeaders(accessToken),
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: error?.message || "Réponse LinkedIn interrompue après l'envoi.",
+      ...getProviderCreateFailureSafety({ requestThrew: true }),
+      diagnostics: { stage: "post_request", payload },
+    };
+  }
 
   const { raw, json } = await parseResponse(res);
 
   if (!res.ok) {
     const errMsg = json?.message || json?.error || raw || "Impossible de publier sur LinkedIn pour le moment.";
-    return { ok: false, error: errMsg, diagnostics: { status: res.status, body: json ?? raw, payload } };
+    return {
+      ok: false,
+      error: errMsg,
+      ...getProviderCreateFailureSafety({ httpStatus: res.status }),
+      diagnostics: { status: res.status, body: json ?? raw, payload },
+    };
   }
 
   const postUrn = res.headers.get("x-restli-id") || json?.id;
@@ -255,7 +274,11 @@ export async function linkedinPublishImage(params: {
       },
     };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Impossible de publier l'image sur LinkedIn pour le moment." };
+    return {
+      ok: false,
+      error: e?.message || "Impossible de publier l'image sur LinkedIn pour le moment.",
+      safeTextFallback: true,
+    };
   }
 }
 
@@ -325,7 +348,11 @@ export async function linkedinPublishMultiImage(params: {
       },
     };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Impossible de publier les images sur LinkedIn pour le moment." };
+    return {
+      ok: false,
+      error: e?.message || "Impossible de publier les images sur LinkedIn pour le moment.",
+      safeTextFallback: true,
+    };
   }
 }
 
@@ -622,6 +649,10 @@ export async function linkedinPublishVideo(params: {
       },
     };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Impossible de publier la vidéo sur LinkedIn pour le moment." };
+    return {
+      ok: false,
+      error: e?.message || "Impossible de publier la vidéo sur LinkedIn pour le moment.",
+      safeTextFallback: true,
+    };
   }
 }

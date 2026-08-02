@@ -60,7 +60,7 @@ test("Booster uses JSON Schema structured output instead of provider-specific lo
 test("AI generation does not retry 429 immediately and Booster stops recovery storms", () => {
   const client = read("lib/aiGatewayClient.ts");
   const booster = read("lib/boosterPublishGeneration.ts");
-  assert.match(client, /retryStatuses:\s*\[404, 408, 500, 502, 503, 504\]/);
+  assert.match(client, /retryStatuses:\s*\[408, 500, 502, 503, 504\]/);
   assert.doesNotMatch(client, /retryStatuses:\s*\[[^\]]*429/);
   assert.match(booster, /shouldAbortAiRecovery/);
   assert.match(booster, /AI Gateway error/);

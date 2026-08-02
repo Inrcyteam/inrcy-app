@@ -74,8 +74,11 @@ const checks = [
     "cache persistant des variantes vidéo",
   ],
   [
-    publishRoute.includes("generateMissing: false"),
-    "publication vidéo sans transcodage tardif",
+    publishRoute.includes("preparePublicationVariants(false)") &&
+      !publishRoute.includes("preparePublicationVariants(true)") &&
+      publishRoute.includes("preflightFailuresByChannel") &&
+      publishRoute.includes("if (sourceValidation.ok) return []"),
+    "publication vidéo rapide avec isolation par canal et génération hors requête",
   ],
   [
     publishRoute.includes("publicationReady === true"),
@@ -91,7 +94,7 @@ const checks = [
   [
     sql.includes("40894464") &&
       sql.includes("processing_status = 'not_requested'"),
-    "reprise des anciens canons vidéo trop lourds",
+    "migration de reprise historique conservée",
   ],
   [sql.includes("'audio/mpeg'"), "artefact audio temporaire autorisé"],
   [
@@ -127,7 +130,7 @@ console.log("iNrCy — audit pipeline média — Étape 10\n");
 console.log("  - HEIC/HEIF hors fonctions Vercel");
 console.log("  - uploads directs et parallèles");
 console.log("  - préparation anticipée et cache persistant par canal");
-console.log("  - publication sans conversion lourde tardive");
+console.log("  - contrôle vidéo rapide puis une seule récupération si nécessaire");
 console.log("  - preuve serveur des uploads et nettoyage différé");
 console.log("  - limites Storage alignées sur le produit");
 console.log("\nAUDIT ÉTAPE 10 OK — pipeline média final durci.");

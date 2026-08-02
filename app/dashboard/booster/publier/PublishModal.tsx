@@ -27,7 +27,10 @@ import {
   readPinterestBoardUiCache,
   writePinterestBoardUiCache,
 } from "@/lib/pinterestUiSessionCache";
-import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import {
+  buildVideoTransformSignature,
+  getVideoPublicationProfileForChannel,
+} from "@/lib/boosterVideoTransforms";
 import { extractVideoAudioForTranscription } from "@/lib/boosterVideoAudioClient";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import {
@@ -159,6 +162,7 @@ import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { shouldRetryVideoVariantGeneration } from "@/lib/boosterVideoPreparationRecovery";
 import {
   loadMediaPublicationWorkspace,
   prepareMediaPublicationWorkspace,
@@ -1565,7 +1569,7 @@ export default function PublishModal({
       throw new Error("L’espace média de cette publication est indisponible.");
     }
 
-    const result = await prewarmPersistentMediaWorkspace({
+    let result = await prewarmPersistentMediaWorkspace({
       selectedChannels: channels,
       videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
       generateMissingVideoVariants:
@@ -1573,13 +1577,41 @@ export default function PublishModal({
       allowOriginalVideoFallback:
         options?.allowOriginalVideoFallback === true,
     });
+    const isReady = (candidate: any) =>
+      Boolean(
+        candidate &&
+          candidate.ok !== false &&
+          candidate.status === "ready" &&
+          (!Array.isArray(candidate.invalidSignatures) ||
+            candidate.invalidSignatures.length === 0),
+      );
+
+    // Fast path first: use an existing optimized variant or the original when
+    // the channel accepts it. If cache v6 invalidated an older variant, a MOV
+    // needs conversion, or metadata must be probed, regenerate exactly once.
+    // This keeps normal publications instant without ever blocking a valid
+    // publication merely because a derived variant is absent.
     if (
-      !result ||
-      result.ok === false ||
-      result.status !== "ready" ||
-      (Array.isArray(result.invalidSignatures) &&
-        result.invalidSignatures.length > 0)
+      !isReady(result) &&
+      options?.generateMissingVideoVariants === false &&
+      shouldRetryVideoVariantGeneration(
+        Array.isArray(result?.invalidChannels) ? result.invalidChannels : [],
+      )
     ) {
+      setPublishProgress((current) => Math.max(current, 46));
+      setPublishProgressLabel(
+        "Préparation de la variante vidéo nécessaire...",
+      );
+      result = await prewarmPersistentMediaWorkspace({
+        selectedChannels: channels,
+        videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
+        generateMissingVideoVariants: true,
+        allowOriginalVideoFallback:
+          options?.allowOriginalVideoFallback === true,
+      });
+    }
+
+    if (!isReady(result)) {
       throw new Error(getCutoverVideoPreparationError(result));
     }
     return result;
@@ -2487,6 +2519,17 @@ export default function PublishModal({
     setChannels((s) => ({ ...s, [key]: !s[key] }));
   };
 
+  const deselectChannel = (key: ChannelKey) => {
+    manuallyControlledChannelsRef.current.add(key);
+    setChannels((current) => ({ ...current, [key]: false }));
+    setChannelInfoOpen((current) => (current === key ? null : current));
+    if (key === "tiktok") {
+      setTiktokSettingsOpen(false);
+      setTiktokSettingsFlow(null);
+      setTiktokPublicationSettings(null);
+    }
+  };
+
   const setAllChannelsSelected = (selected: boolean) => {
     CHANNEL_KEYS.forEach((key) => manuallyControlledChannelsRef.current.add(key));
     setChannels((prev) =>
@@ -3352,6 +3395,7 @@ export default function PublishModal({
     const signature = buildVideoTransformSignature(
       selectedVideoFormat,
       selectedVideoAdaptation,
+      getVideoPublicationProfileForChannel(channel),
     );
     const preparedVariant = videoTransformedVariants.find(
       (variant) => variant.signature === signature,
@@ -3534,7 +3578,9 @@ export default function PublishModal({
     const preparedPostsByChannel =
       options?.preparedPostsByChannel || buildPreparedPostsByChannel();
     const publishTargetChannels = Array.from(
-      new Set(options?.channels?.length ? options.channels : selectedChannels),
+      new Set(
+        options?.channels !== undefined ? options.channels : selectedChannels,
+      ),
     ).filter((channel): channel is ChannelKey => Boolean(channel));
 
     setPublishError("");
@@ -3880,10 +3926,22 @@ export default function PublishModal({
             : undefined,
         mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
         mediaType: hasAnyVideoPublish ? "video" : "images",
-        mediaModeByChannel: publishMediaModeByChannel,
-        videoFormatByChannel,
-        videoAdaptationModeByChannel,
-        videoSettingsByChannel,
+        mediaModeByChannel: buildChannelRecord(
+          publishMediaModeByChannel,
+          publishableChannels,
+        ),
+        videoFormatByChannel: buildChannelRecord(
+          videoFormatByChannel,
+          publishableChannels,
+        ),
+        videoAdaptationModeByChannel: buildChannelRecord(
+          videoAdaptationModeByChannel,
+          publishableChannels,
+        ),
+        videoSettingsByChannel: buildChannelRecord(
+          videoSettingsByChannel,
+          publishableChannels,
+        ),
         video: publicationVideo,
         idea: idea.trim(),
         theme,
@@ -3896,8 +3954,14 @@ export default function PublishModal({
         // which can make the JSON body too large and trigger HTTP 413.
         // The API now rebuilds the fallback/base image set from channel images.
         images: [],
-        imagesByChannel: uploadedChannelImages,
-        imageSettingsByChannel: channelSettings,
+        imagesByChannel: buildChannelRecord(
+          uploadedChannelImages,
+          publishableChannels,
+        ),
+        imageSettingsByChannel: buildChannelRecord(
+          channelSettings,
+          publishableChannels,
+        ),
         tiktokPublicationSettings: publishableChannels.includes("tiktok")
           ? options?.tiktokPublicationSettings || tiktokPublicationSettings
           : null,
@@ -3925,6 +3989,15 @@ export default function PublishModal({
         0,
         Number(result?.summary?.failureCount || retryFailedChannels.length),
       );
+      const warningCount = Math.max(
+        0,
+        Number(
+          result?.summary?.warningCount ||
+            resultEntries.filter(
+              (entry: any) => entry?.status === "published_with_warning",
+            ).length,
+        ),
+      );
       const publicationComplete = failureCount === 0;
 
       setPublishProgress(100);
@@ -3932,7 +4005,9 @@ export default function PublishModal({
         result?.summary?.allFailed
           ? "Échec"
           : publicationComplete
-            ? "Publié"
+            ? warningCount > 0
+              ? "Publié avec avertissement"
+              : "Publié"
             : "Publication partielle",
       );
       await sleep(220);
@@ -4937,6 +5012,17 @@ export default function PublishModal({
     setFinalReviewOpen(true);
   };
 
+  const excludeTiktokAndContinue = () => {
+    const flow = tiktokSettingsFlow;
+    deselectChannel("tiktok");
+    setPendingScheduleRequest(null);
+    if (flow === "schedule") {
+      setScheduleModalOpen(true);
+      return;
+    }
+    setFinalReviewOpen(true);
+  };
+
   const aiDrawerHeight = drawerViewportHeight
     ? `${drawerViewportHeight}px`
     : isMobile
@@ -5048,6 +5134,7 @@ export default function PublishModal({
         previewMediaCount={tiktokSettingsPreviewMediaCount}
         onCancel={closeTiktokSettingsModal}
         onValidate={validateTiktokSettingsModal}
+        onExcludeAndContinue={excludeTiktokAndContinue}
       />
 
       <PublishFinalReviewModal
@@ -5217,6 +5304,7 @@ export default function PublishModal({
               publicationMediaType={publicationMediaType}
               channelMediaModes={channelMediaModes}
               setChannelMediaMode={setChannelMediaMode}
+              onRemoveChannel={deselectChannel}
               videoFormatByChannel={videoFormatByChannel}
               setVideoFormatForChannel={setVideoFormatForChannel}
               videoAdaptationModeByChannel={videoAdaptationModeByChannel}

@@ -104,7 +104,7 @@ test("les aperçus locaux restent affichés pendant la préparation serveur", as
   assert.match(source, /makeImageKey\(currentFile\) !== expectedImageKey/);
 });
 
-test("les vidéos MP4 directes ne déclenchent plus de préchauffage automatique", async () => {
+test("les vidéos MP4 directes évitent le préchauffage de fond et gardent une récupération au clic", async () => {
   const hook = await readSource(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
@@ -122,8 +122,9 @@ test("les vidéos MP4 directes ne déclenchent plus de préchauffage automatique
   assert.match(modal, /async function prepareCutoverVideoVariants/);
   assert.equal(
     (modal.match(/prewarmPersistentMediaWorkspace\(/g) || []).length,
-    1,
+    2,
   );
+  assert.match(modal, /options\?\.generateMissingVideoVariants === false/);
 });
 
 test("un 413 TUS explique la limite globale Supabase à configurer", async () => {

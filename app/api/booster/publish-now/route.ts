@@ -85,7 +85,10 @@ import {
   createPinterestVideoPin,
 } from "@/lib/pinterestPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
-import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import {
+  buildVideoTransformSignature,
+  getVideoPublicationProfileForChannel,
+} from "@/lib/boosterVideoTransforms";
 import { ensureSystemManagedInrSearch, notifyInrSearchIndexing, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { stripSiteTextFormattingPreserveLayout } from "@/lib/boosterFormatting";
@@ -104,6 +107,11 @@ import {
   validateVideoPublicationForChannel,
 } from "@/lib/videoPublicationPolicy";
 import {
+  getGoogleBusinessVideoPreparationDecision,
+  isGoogleBusinessVideoValidationOmittable,
+} from "@/lib/googleBusinessMediaPolicy";
+import { filterGoogleBusinessMediaUrls } from "@/lib/googleBusinessMediaProbe";
+import {
   BOOSTER_ASYNC_CHANNEL_EVENT_TYPE,
   BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS,
   BOOSTER_ASYNC_CHANNEL_SCOPE,
@@ -112,6 +120,7 @@ import {
   updateAsyncChannelEvent,
 } from "@/lib/boosterAsyncPublication";
 import { normalizeBoosterPublicationChannels } from "@/lib/boosterPublicationPolicy";
+import { buildBoosterPublicationDispatchPlan } from "@/lib/boosterPublicationDispatchPlan";
 
 import {
   EMPTY_IMAGE_FORMATS,
@@ -366,6 +375,25 @@ async function publishNowHandler(req: Request) {
         normalizeChannelMediaMode(rawModeByChannel[channel], defaultMediaMode),
       ]),
     ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
+    const preflightFailuresByChannel: Partial<
+      Record<ChannelKey, JsonRecord>
+    > = {};
+    const setPreflightFailure = (
+      channel: ChannelKey,
+      failure: {
+        code: string;
+        error: string;
+        retryable?: boolean;
+        [key: string]: unknown;
+      },
+    ) => {
+      if (preflightFailuresByChannel[channel]) return;
+      preflightFailuresByChannel[channel] = {
+        ok: false,
+        retryable: failure.retryable !== false,
+        ...failure,
+      };
+    };
     const videoSettingsByChannel = buildVideoSettingsByChannel({
       channels: selected,
       videoSettingsByChannel: body.videoSettingsByChannel,
@@ -396,22 +424,23 @@ async function publishNowHandler(req: Request) {
     );
 
     if (strictMediaCutover) {
-      const workspaceMediaMismatch =
-        (hasAnyImageChannel && workspaceConsumption?.mediaType !== "images") ||
-        (hasAnyVideoChannel && workspaceConsumption?.mediaType !== "video");
-      if (workspaceMediaMismatch) {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "workspace_media_mismatch",
-            error:
-              workspaceConsumption?.mediaType === "none"
-                ? "Le média est encore absent du workspace. Réessayez dans quelques instants."
-                : "Le type de média du workspace ne correspond plus aux canaux sélectionnés.",
-          },
-          { status: 409 },
-        );
-      }
+      selected.forEach((channel) => {
+        const expectedMode = mediaModeByChannel[channel];
+        if (
+          expectedMode !== "images" &&
+          expectedMode !== "video"
+        ) {
+          return;
+        }
+        if (workspaceConsumption?.mediaType === expectedMode) return;
+        setPreflightFailure(channel, {
+          code: "workspace_media_mismatch",
+          error:
+            workspaceConsumption?.mediaType === "none"
+              ? "Le média est encore absent du workspace. Réessayez dans quelques instants."
+              : "Le type de média du workspace ne correspond plus à ce canal.",
+        });
+      });
     }
 
     let images = hasAnyImageChannel
@@ -449,21 +478,19 @@ async function publishNowHandler(req: Request) {
       });
       imagesByChannel = serverPreparation.imagesByChannel as ImagesByChannel;
       imageSettingsByChannel = serverPreparation.imageSettingsByChannel;
-      if (
-        imageChannels.some(
-          (channel) => !Array.isArray(imagesByChannel[channel]) || !imagesByChannel[channel]?.length,
-        )
-      ) {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "workspace_image_preparation_failed",
-            error: "Les images du workspace n'ont pas pu être préparées pour tous les canaux.",
-            warnings: serverPreparation.warnings,
-          },
-          { status: 422 },
-        );
-      }
+      imageChannels.forEach((channel) => {
+        if (
+          Array.isArray(imagesByChannel[channel]) &&
+          imagesByChannel[channel]?.length
+        ) {
+          return;
+        }
+        setPreflightFailure(channel, {
+          code: "workspace_image_preparation_failed",
+          error: "Les images du workspace n'ont pas pu être préparées pour ce canal.",
+          warnings: serverPreparation.warnings,
+        });
+      });
     }
 
     const legacyVideoResult = hasAnyVideoChannel && !strictMediaCutover
@@ -508,104 +535,165 @@ async function publishNowHandler(req: Request) {
       }
     }
 
+    const videoMediaWarningsByChannel: Partial<
+      Record<ChannelKey, { code: string; message: string }>
+    > = {};
+
     if (strictMediaCutover && hasAnyVideoChannel && publicationVideo) {
+      const sourceWidth = Number(publicationVideo.sourceMetadata?.width || 0) || null;
+      const sourceHeight = Number(publicationVideo.sourceMetadata?.height || 0) || null;
       const videoVariantRequest = selected
         .filter((channel) => mediaModeByChannel[channel] === "video")
-        .map((channel) => ({
-          key: `${channel}-${videoSettingsByChannel[channel]?.format || "original"}-${videoSettingsByChannel[channel]?.adaptationMode || "safe_frame"}`,
-          channel: channel as any,
-          format: videoSettingsByChannel[channel]?.format,
-          adaptationMode: videoSettingsByChannel[channel]?.adaptationMode,
-        }));
-      const variantResult = await prepareBoosterVideoVariantsOnServer({
-        accountId: userId,
-        workspaceId: mediaWorkspaceId,
-        mediaId: publicationVideo.mediaId || undefined,
-        generateMissing: false,
-        source: {
-          bucket: publicationVideo.bucket || "booster",
-          storagePath: publicationVideo.storagePath,
-          publicUrl: publicationVideo.publicUrl,
-          url: publicationVideo.url,
-          name: publicationVideo.name,
-          type: publicationVideo.type,
-          size: publicationVideo.size,
-          duration: publicationVideo.duration,
-        },
-        variants: videoVariantRequest,
-      });
-      publicationVideo = {
-        ...publicationVideo,
-        transformedVariants: variantResult.variants,
-      };
-      const invalidVideoChannels = videoVariantRequest.flatMap((request) => {
-        const signature = buildVideoTransformSignature(
-          request.format || "original",
-          request.adaptationMode || "safe_frame",
-        );
-        const variant = variantResult.variants.find(
-          (candidate) => candidate.signature === signature,
-        );
-        if (!variant?.publicUrl || !variant?.storagePath) {
+        .flatMap((channel) => {
+          if (channel === "gmb") {
+            const decision = getGoogleBusinessVideoPreparationDecision({
+              name: publicationVideo?.name,
+              type: publicationVideo?.type,
+              storagePath: publicationVideo?.storagePath,
+              sizeBytes: publicationVideo?.size,
+              durationSeconds: publicationVideo?.duration,
+              width: sourceWidth,
+              height: sourceHeight,
+            });
+            if (decision.action === "omit") {
+              videoMediaWarningsByChannel.gmb = {
+                code: decision.warningCode,
+                message: decision.warningMessage,
+              };
+              return [];
+            }
+          }
+          return [{
+            key: `${channel}-${videoSettingsByChannel[channel]?.format || "original"}-${videoSettingsByChannel[channel]?.adaptationMode || "safe_frame"}`,
+            channel: channel as any,
+            format: videoSettingsByChannel[channel]?.format,
+            adaptationMode: videoSettingsByChannel[channel]?.adaptationMode,
+            publicationProfile: getVideoPublicationProfileForChannel(channel as any),
+          }];
+        });
+      const videoSource = publicationVideo;
+      const preparePublicationVariants = async (generateMissing: boolean) =>
+        await prepareBoosterVideoVariantsOnServer({
+          accountId: userId,
+          workspaceId: mediaWorkspaceId,
+          mediaId: videoSource.mediaId || undefined,
+          generateMissing,
+          source: {
+            bucket: videoSource.bucket || "booster",
+            storagePath: videoSource.storagePath,
+            publicUrl: videoSource.publicUrl,
+            url: videoSource.url,
+            name: videoSource.name,
+            type: videoSource.type,
+            size: videoSource.size,
+            duration: videoSource.duration,
+            sourceMetadata: videoSource.sourceMetadata,
+          },
+          variants: videoVariantRequest,
+        });
+
+      const collectInvalidVideoChannels = (
+        candidateResult: Awaited<ReturnType<typeof preparePublicationVariants>>,
+      ) =>
+        videoVariantRequest.flatMap((request) => {
+          const signature = buildVideoTransformSignature(
+            request.format || "original",
+            request.adaptationMode || "safe_frame",
+            request.publicationProfile,
+          );
+          const variant = candidateResult.variants.find(
+            (candidate) => candidate.signature === signature,
+          );
           const sourceValidation = validateVideoPublicationForChannel({
             channel: request.channel,
-            name: publicationVideo?.name || "video.mp4",
-            type: publicationVideo?.type,
-            storagePath: publicationVideo?.storagePath,
-            sizeBytes: publicationVideo?.size,
-            durationSeconds: publicationVideo?.duration,
+            name: videoSource.name || "video.mp4",
+            type: videoSource.type,
+            storagePath: videoSource.storagePath,
+            sizeBytes: videoSource.size,
+            durationSeconds: videoSource.duration,
+            width: videoSource.sourceMetadata?.width,
+            height: videoSource.sourceMetadata?.height,
           });
-          if (sourceValidation.ok) return [];
-          return [
-            {
+          if (!variant?.publicUrl || !variant?.storagePath) {
+            if (sourceValidation.ok) return [];
+            if (
+              request.channel === "gmb" &&
+              isGoogleBusinessVideoValidationOmittable(sourceValidation.reason)
+            ) {
+              videoMediaWarningsByChannel.gmb = {
+                code: sourceValidation.reason,
+                message: `${sourceValidation.message} Google Business publiera le texte sans vidéo.`,
+              };
+              return [];
+            }
+            return [{
               channel: request.channel,
               signature,
               reason: sourceValidation.reason,
               message: sourceValidation.message,
-            },
-          ];
-        }
-        const validation = validateVideoPublicationForChannel({
-          channel: request.channel,
-          name: variant.name || `video-${request.channel}.mp4`,
-          type: variant.contentType,
-          storagePath: variant.storagePath,
-          sizeBytes: variant.size,
-          durationSeconds: variant.duration ?? publicationVideo?.duration,
-        });
-        if (validation.ok) return [];
-        const sourceValidation = validateVideoPublicationForChannel({
-          channel: request.channel,
-          name: publicationVideo?.name || "video.mp4",
-          type: publicationVideo?.type,
-          storagePath: publicationVideo?.storagePath,
-          sizeBytes: publicationVideo?.size,
-          durationSeconds: publicationVideo?.duration,
-        });
-        if (sourceValidation.ok) return [];
-        return [
-          {
+            }];
+          }
+          const validation = validateVideoPublicationForChannel({
+            channel: request.channel,
+            name: variant.name || `video-${request.channel}.mp4`,
+            type: variant.contentType,
+            storagePath: variant.storagePath,
+            sizeBytes: variant.size,
+            durationSeconds: variant.duration ?? videoSource.duration,
+            width: variant.width,
+            height: variant.height,
+          });
+          if (validation.ok) return [];
+          if (sourceValidation.ok) return [];
+          if (
+            request.channel === "gmb" &&
+            isGoogleBusinessVideoValidationOmittable(validation.reason)
+          ) {
+            videoMediaWarningsByChannel.gmb = {
+              code: validation.reason,
+              message: `${validation.message} Google Business publiera le texte sans vidéo.`,
+            };
+            return [];
+          }
+          return [{
             channel: request.channel,
             signature,
             reason: validation.reason,
             message: validation.message,
-          },
-        ];
-      });
-      if (invalidVideoChannels.length > 0) {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "workspace_video_preparation_pending",
-            error:
-              invalidVideoChannels[0]?.message ||
-              "La vidéo est encore en cours de préparation pour les réseaux. Patientez quelques instants puis relancez la publication.",
-            invalidChannels: invalidVideoChannels,
-            errors: variantResult.errors,
-          },
-          { status: 409 },
+          }];
+        });
+
+      // Publication is a latency-sensitive dispatch path. Heavy FFmpeg work is
+      // prepared by the media workspace beforehand; a cold/missing derivative
+      // becomes a retryable failure for that channel only. Generating up to
+      // eight variants here could exceed the route's 180-second budget and
+      // abort otherwise valid deliveries.
+      const variantResult = await preparePublicationVariants(false);
+      const invalidVideoChannels = collectInvalidVideoChannels(
+        variantResult,
+      );
+
+      publicationVideo = {
+        ...videoSource,
+        transformedVariants: variantResult.variants,
+      };
+      invalidVideoChannels.forEach((invalid) => {
+        const reason = String(
+          invalid.reason || "workspace_video_preparation_pending",
         );
-      }
+        setPreflightFailure(invalid.channel as ChannelKey, {
+          code: reason,
+          error:
+            invalid.message ||
+            "La vidéo est encore en cours de préparation pour ce canal. Patientez quelques instants puis relancez la publication.",
+          retryable: ![
+            "video_duration_too_long",
+            "video_duration_too_short",
+          ].includes(reason),
+          signature: invalid.signature,
+          preparationErrors: variantResult.errors,
+        });
+      });
     }
 
     const {
@@ -622,11 +710,31 @@ async function publishNowHandler(req: Request) {
       const invalidLegacyVideoChannels = selected
         .filter((channel) => mediaModeByChannel[channel] === "video")
         .flatMap((channel) => {
+          if (channel === "gmb") {
+            const decision = getGoogleBusinessVideoPreparationDecision({
+              name: publicationVideo?.name,
+              type: publicationVideo?.type,
+              storagePath: publicationVideo?.storagePath,
+              sizeBytes: publicationVideo?.size,
+              durationSeconds: publicationVideo?.duration,
+              width: publicationVideo?.sourceMetadata?.width,
+              height: publicationVideo?.sourceMetadata?.height,
+            });
+            if (decision.action === "omit") {
+              videoMediaWarningsByChannel.gmb = {
+                code: decision.warningCode,
+                message: decision.warningMessage,
+              };
+              return [];
+            }
+          }
           const settings = videoSettingsByChannel[channel];
+          const profile = getVideoPublicationProfileForChannel(channel as any);
           const signature = settings
             ? buildVideoTransformSignature(
                 settings.format,
                 settings.adaptationMode,
+                profile,
               )
             : "";
           const variant = settings
@@ -642,11 +750,23 @@ async function publishNowHandler(req: Request) {
                 storagePath: variant.storagePath,
                 sizeBytes: variant.size,
                 durationSeconds: variant.duration ?? publicationVideo.duration,
+                width: variant.width,
+                height: variant.height,
               })
             : null;
           if (variantValidation?.ok) return [];
 
           const policy = getVideoPublicationPolicy(channel);
+          const sourceValidation = validateVideoPublicationForChannel({
+            channel,
+            name: publicationVideo.name,
+            type: publicationVideo.type,
+            storagePath: publicationVideo.storagePath,
+            sizeBytes: publicationVideo.size,
+            durationSeconds: publicationVideo.duration,
+            width: publicationVideo.sourceMetadata?.width,
+            height: publicationVideo.sourceMetadata?.height,
+          });
           const sourceDirectlyPublishable =
             canPublishVideoSourceDirectly({
               name: publicationVideo.name,
@@ -654,67 +774,72 @@ async function publishNowHandler(req: Request) {
               storagePath: publicationVideo.storagePath,
               sizeBytes: publicationVideo.size,
               maxBytes: policy.maxBytes,
-            }) &&
-            validateVideoPublicationForChannel({
-              channel,
-              name: publicationVideo.name,
-              type: publicationVideo.type,
-              storagePath: publicationVideo.storagePath,
-              sizeBytes: publicationVideo.size,
-              durationSeconds: publicationVideo.duration,
-            }).ok;
+            }) && sourceValidation.ok;
           if (sourceDirectlyPublishable) return [];
 
           const failedValidation =
             variantValidation && !variantValidation.ok
               ? variantValidation
-              : validateVideoPublicationForChannel({
-                  channel,
-                  name: publicationVideo.name,
-                  type: publicationVideo.type,
-                  storagePath: publicationVideo.storagePath,
-                  sizeBytes: publicationVideo.size,
-                  durationSeconds: publicationVideo.duration,
-                });
-          return [
-            {
-              channel,
-              signature: signature || null,
-              reason: failedValidation.ok
-                ? "publishable_video_missing"
-                : failedValidation.reason,
-              message: failedValidation.ok
-                ? "La variante vidéo demandée n’est pas encore prête."
-                : failedValidation.message,
-            },
-          ];
+              : sourceValidation;
+          if (
+            channel === "gmb" &&
+            !failedValidation.ok &&
+            isGoogleBusinessVideoValidationOmittable(failedValidation.reason)
+          ) {
+            videoMediaWarningsByChannel.gmb = {
+              code: failedValidation.reason,
+              message: `${failedValidation.message} Google Business publiera le texte sans vidéo.`,
+            };
+            return [];
+          }
+          return [{
+            channel,
+            signature: signature || null,
+            reason: failedValidation.ok
+              ? "publishable_video_missing"
+              : failedValidation.reason,
+            message: failedValidation.ok
+              ? "La variante vidéo demandée n’est pas encore prête."
+              : failedValidation.message,
+          }];
         });
-      if (invalidLegacyVideoChannels.length > 0) {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "video_variant_required",
-            error:
-              invalidLegacyVideoChannels[0]?.message ||
-              "La vidéo doit être préparée en MP4 compatible avec les limites du canal avant publication.",
-            invalidChannels: invalidLegacyVideoChannels,
-          },
-          { status: 422 },
-        );
-      }
+      invalidLegacyVideoChannels.forEach((invalid) => {
+        const reason = String(invalid.reason || "video_variant_required");
+        setPreflightFailure(invalid.channel as ChannelKey, {
+          code: reason,
+          error:
+            invalid.message ||
+            "La vidéo doit être préparée en MP4 compatible avec les limites de ce canal avant publication.",
+          retryable: ![
+            "video_duration_too_long",
+            "video_duration_too_short",
+          ].includes(reason),
+          signature: invalid.signature,
+        });
+      });
     }
 
     if (hasAnyVideoChannel && videoPayloadError) {
-      return NextResponse.json(
-        { ok: false, error: videoPayloadError },
-        { status: 400 },
-      );
+      selected
+        .filter((channel) => mediaModeByChannel[channel] === "video")
+        .forEach((channel) =>
+          setPreflightFailure(channel, {
+            code: "video_payload_invalid",
+            error: videoPayloadError,
+            retryable: false,
+          }),
+        );
     }
     if (hasAnyVideoChannel && !publicationVideo) {
-      return NextResponse.json(
-        { ok: false, error: "Ajoutez une vidéo avant de publier." },
-        { status: 400 },
-      );
+      selected
+        .filter((channel) => mediaModeByChannel[channel] === "video")
+        .forEach((channel) =>
+          setPreflightFailure(channel, {
+            code: "video_required",
+            error: "Ajoutez une vidéo avant de publier sur ce canal.",
+            retryable: false,
+          }),
+        );
     }
 
     const workflowToolRaw = String(body.workflowTool || "")
@@ -1019,61 +1144,25 @@ async function publishNowHandler(req: Request) {
     ) {
       const imageFailureMessage =
         "Les images sélectionnées n'ont pas pu être envoyées. Merci de réessayer.";
-      if (internalAsyncDispatch) {
-        const channel = selected[0];
-        const failedResult = {
-          ok: false,
-          error: imageFailureMessage,
-          code: "image_upload_failed",
-          uploadErrors,
-        };
-        await supabaseAdmin
-          .from("publication_deliveries")
-          .update({ status: "failed", error: imageFailureMessage })
-          .eq("publication_id", publicationId)
-          .eq("user_id", userId)
-          .eq("channel", channel);
-        await updateAsyncChannelEvent({
-          userId,
-          eventId: asyncChannelEventId,
-          patch: {
-            status: "failed",
-            result: failedResult,
-            completedAt: new Date().toISOString(),
-          },
-        });
-        await finalizeAsyncPublicationIfReady({ userId, publicationId });
-        return NextResponse.json({
-          ok: false,
-          queued: false,
-          asyncDispatch: true,
-          publication_id: publicationId,
-          channel,
-          results: { [channel]: failedResult },
-        });
-      }
-
-      await syncMediaWorkspaceLifecycle("failed", {
-        publicationId,
-        failureStage: "image_upload",
-      });
-      await failExecutionIdempotencyLock({
-        supabase: supabaseAdmin,
-        lockId: publishIdempotencyLockId,
-        error: "Image upload failed",
-        result: { publicationId, uploadErrors },
-        metadata: { stage: "image_upload" },
-      });
-      shouldFailPublishIdempotencyLockOnError = false;
-      return NextResponse.json(
-        {
-          ok: false,
-          error: imageFailureMessage,
-          uploadErrors,
-        },
-        { status: 400 },
-      );
+      selected
+        .filter((channel) => mediaModeByChannel[channel] === "images")
+        .forEach((channel) =>
+          setPreflightFailure(channel, {
+            code: "image_upload_failed",
+            error: imageFailureMessage,
+            uploadErrors,
+          }),
+        );
     }
+    const channelPreflightPlan = buildBoosterPublicationDispatchPlan(
+      selected,
+      preflightFailuresByChannel as Partial<
+        Record<
+          ChannelKey,
+          { ok: false; code: string; error: string; [key: string]: unknown }
+        >
+      >,
+    );
     if (!internalAsyncDispatch) {
       // 2) Persist publication
       const publicationInsert: JsonRecord = {
@@ -1131,12 +1220,15 @@ async function publishNowHandler(req: Request) {
       await invalidateBoosterGenerationContext(userId, "publications");
 
       // 3) Create deliveries
-      const deliveries = selected.map((ch) => ({
+      const deliveries = channelPreflightPlan.entries.map((entry) => ({
         id: randomUUID(),
         publication_id: publicationId,
         user_id: userId,
-        channel: ch,
-        status: "queued" as const,
+        channel: entry.channel,
+        status: entry.status,
+        error: entry.result
+          ? String(entry.result.error || "Échec du préflight média.")
+          : null,
       }));
 
       const { error: deliveriesError } = await supabaseAdmin
@@ -1299,6 +1391,7 @@ async function publishNowHandler(req: Request) {
         };
 
         const channelRows = selected.map((channel) => {
+          const preflightFailure = preflightFailuresByChannel[channel] || null;
           const channelDispatchRequest = {
             ...body,
             channels: [channel],
@@ -1340,15 +1433,26 @@ async function publishNowHandler(req: Request) {
             user_id: userId,
             module: eventModule,
             type: BOOSTER_ASYNC_CHANNEL_EVENT_TYPE,
-            payload: {
-              status: "queued",
-              publication_id: publicationId,
-              parentEventId: publicationId,
-              channel,
-              attempt: 0,
-              dispatchRequest: channelDispatchRequest,
-              createdAt: new Date().toISOString(),
-            },
+            payload: preflightFailure
+              ? {
+                  status: "failed",
+                  publication_id: publicationId,
+                  parentEventId: publicationId,
+                  channel,
+                  attempt: 0,
+                  result: preflightFailure,
+                  completedAt: new Date().toISOString(),
+                  createdAt: new Date().toISOString(),
+                }
+              : {
+                  status: "queued",
+                  publication_id: publicationId,
+                  parentEventId: publicationId,
+                  channel,
+                  attempt: 0,
+                  dispatchRequest: channelDispatchRequest,
+                  createdAt: new Date().toISOString(),
+                },
           };
         });
 
@@ -1366,11 +1470,42 @@ async function publishNowHandler(req: Request) {
           ]);
 
         if (!asyncJobError) {
+          const queuedChannelRows = channelRows.filter(
+            (row) => asRecord(row.payload).status === "queued",
+          );
+          if (!queuedChannelRows.length) {
+            const finalization = await finalizeAsyncPublicationIfReady({
+              userId,
+              publicationId,
+            });
+            const finalPayload = asRecord(finalization.payload);
+            return NextResponse.json({
+              ...finalPayload,
+              ok: false,
+              queued: false,
+              asyncDispatch: true,
+              publication_id: publicationId,
+              results:
+                finalPayload.results ||
+                Object.fromEntries(
+                  selected.map((channel) => [
+                    channel,
+                    preflightFailuresByChannel[channel],
+                  ]),
+                ),
+              summary:
+                finalPayload.summary ||
+                buildResultsSummary(
+                  preflightFailuresByChannel as Record<string, unknown>,
+                  selected,
+                ),
+            });
+          }
           const appOrigin = getAppOriginFromRequest(req);
           const internalHeaders = buildInternalCronHeaders(userId);
           after(async () => {
             await Promise.allSettled(
-              channelRows.map(async (row) => {
+              queuedChannelRows.map(async (row) => {
                 const dispatchRequest = asRecord(row.payload).dispatchRequest;
                 try {
                   await fetch(`${appOrigin}/api/booster/publish-now`, {
@@ -1393,7 +1528,28 @@ async function publishNowHandler(req: Request) {
             );
           });
 
-          const queuedSummary = buildQueuedPublicationSummary(selected);
+          const queuedSummaryBase = buildQueuedPublicationSummary(selected);
+          const queuedSummary = {
+            ...queuedSummaryBase,
+            failureCount: selected.length - queuedChannelRows.length,
+            pendingCount: queuedChannelRows.length,
+            entries: queuedSummaryBase.entries.map((entry) => {
+              const failure = preflightFailuresByChannel[entry.channel];
+              return failure
+                ? {
+                    ...entry,
+                    ok: false,
+                    status: "failed",
+                    code: String(failure.code || "media_preflight_failed"),
+                    retryable: failure.retryable !== false,
+                    error: String(failure.error || "Échec du préflight média."),
+                  }
+                : entry;
+            }),
+            failedChannels: selected.filter(
+              (channel) => Boolean(preflightFailuresByChannel[channel]),
+            ),
+          };
           return NextResponse.json(
             {
               ok: true,
@@ -1410,7 +1566,11 @@ async function publishNowHandler(req: Request) {
               results: Object.fromEntries(
                 selected.map((channel) => [
                   channel,
-                  { ok: true, queued: true, status: "queued" },
+                  preflightFailuresByChannel[channel] || {
+                    ok: true,
+                    queued: true,
+                    status: "queued",
+                  },
                 ]),
               ),
               summary: queuedSummary,
@@ -1429,7 +1589,12 @@ async function publishNowHandler(req: Request) {
     }
 
     // 4) Publish now
-    const results: Record<string, unknown> = {};
+    const results: Record<string, unknown> = Object.fromEntries(
+      selected.flatMap((channel) => {
+        const failure = preflightFailuresByChannel[channel];
+        return failure ? [[channel, failure] as const] : [];
+      }),
+    );
     let asyncChannelLockId: string | null = null;
 
     if (internalAsyncDispatch) {
@@ -1736,6 +1901,17 @@ async function publishNowHandler(req: Request) {
 
     for (const ch of selected) {
       try {
+        const preflightFailure = preflightFailuresByChannel[ch];
+        if (preflightFailure) {
+          await setDelivery(ch, {
+            status: "failed",
+            error: String(
+              preflightFailure.error || "Le média n'est pas publiable sur ce canal.",
+            ),
+          });
+          results[ch] = preflightFailure;
+          continue;
+        }
         if (ch === "pinterest" && !isBubbleEnabled(bubbleAccess, "pinterest")) {
           const disabledMessage = "Pinterest est désactivé dans Bubble Access.";
           await setDelivery(ch, { status: "failed", error: disabledMessage });
@@ -1977,7 +2153,8 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const resp =
+          let facebookWarning: { code: string; message: string } | null = null;
+          let resp =
             mediaModeByChannel[ch] === "video" && channelVideo
               ? await facebookPublishVideoToPage({
                   pageId,
@@ -1992,6 +2169,34 @@ async function publishNowHandler(req: Request) {
                   message: canonMessage,
                   imageUrls: facebookImageUrls,
                 });
+
+          if (
+            !resp.ok &&
+            mediaModeByChannel[ch] === "video" &&
+            channelVideo &&
+            resp.safeTextFallback === true
+          ) {
+            const mediaError = resp;
+            const fallbackResp = await facebookPublishToPage({
+              pageId,
+              pageAccessToken: pageToken,
+              message: canonMessage,
+              imageUrls: [],
+            });
+            if (fallbackResp.ok) {
+              facebookWarning = {
+                code: "published_without_video",
+                message:
+                  "Facebook a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+              };
+              resp = {
+                ...fallbackResp,
+                photoErrors: mediaError.error
+                  ? [{ url: channelVideo.publicUrl, error: mediaError.error }]
+                  : undefined,
+              };
+            }
+          }
 
           if (!resp.ok) {
             const facebookUserError = getPublishChannelUserMessage(
@@ -2017,8 +2222,29 @@ async function publishNowHandler(req: Request) {
               error: facebookUserError,
               raw_error: resp.error,
               diagnostics: resp,
+              ...(resp.requestMayHaveSucceeded
+                ? { code: "provider_status_unknown", retryable: false }
+                : {}),
             };
             continue;
+          }
+
+          if (
+            mediaModeByChannel[ch] === "images" &&
+            facebookImageUrls.length > 0 &&
+            Number(resp.failedImages || 0) > 0
+          ) {
+            facebookWarning = Number(resp.uploadedImages || 0) > 0
+              ? {
+                  code: "published_with_partial_images",
+                  message:
+                    "Facebook a publié uniquement les images acceptées. Une ou plusieurs images n'ont pas pu être jointes.",
+                }
+              : {
+                  code: "published_without_image",
+                  message:
+                    "Facebook a publié le texte, mais aucune image n'a pu être jointe cette fois-ci.",
+                };
           }
 
           await setDelivery(ch, {
@@ -2030,6 +2256,12 @@ async function publishNowHandler(req: Request) {
             ok: true,
             external_id: resp.postId,
             diagnostics: resp,
+            ...(facebookWarning
+              ? {
+                  warning: facebookWarning.code,
+                  warning_message: facebookWarning.message,
+                }
+              : {}),
           };
           continue;
         }
@@ -2262,6 +2494,7 @@ async function publishNowHandler(req: Request) {
           const isLinkedInVideo = Boolean(
             mediaModeByChannel[ch] === "video" && channelVideo,
           );
+          let linkedInWarning: { code: string; message: string } | null = null;
           let resp = isLinkedInVideo
             ? await linkedinPublishVideo({
                 accessToken,
@@ -2292,18 +2525,31 @@ async function publishNowHandler(req: Request) {
                     text: canonMessage,
                   });
 
-          if (!resp.ok && !isLinkedInVideo && linkedInImages[0]) {
+          if (
+            !resp.ok &&
+            (isLinkedInVideo || linkedInImages.length > 0) &&
+            resp.safeTextFallback === true
+          ) {
+            const mediaResp = resp;
             const fallbackResp = await linkedinPublishText({
               accessToken,
               authorUrn: useAuthor,
               text: canonMessage,
             });
             if (fallbackResp.ok) {
+              linkedInWarning = {
+                code: isLinkedInVideo
+                  ? "published_without_video"
+                  : "published_without_image",
+                message: isLinkedInVideo
+                  ? "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci."
+                  : "LinkedIn a publié le texte, mais les images n'ont pas pu être jointes cette fois-ci.",
+              };
               resp = {
                 ...fallbackResp,
                 diagnostics: {
-                  mediaPublishError: resp.error,
-                  mediaPublishDiagnostics: resp.diagnostics,
+                  mediaPublishError: mediaResp.error,
+                  mediaPublishDiagnostics: mediaResp.diagnostics,
                   fallback: "text_only",
                 },
               };
@@ -2334,6 +2580,9 @@ async function publishNowHandler(req: Request) {
               error: linkedInUserError,
               raw_error: resp.error,
               diagnostics: resp,
+              ...(resp.requestMayHaveSucceeded
+                ? { code: "provider_status_unknown", retryable: false }
+                : {}),
             };
             continue;
           }
@@ -2405,6 +2654,12 @@ async function publishNowHandler(req: Request) {
             external_id: resp.postUrn || null,
             linkedin_personal_share_id: linkedInPersonalShareUrn,
             diagnostics: linkedInDiagnostics,
+            ...(linkedInWarning
+              ? {
+                  warning: linkedInWarning.code,
+                  warning_message: linkedInWarning.message,
+                }
+              : {}),
           };
           continue;
         }
@@ -3001,6 +3256,7 @@ async function publishNowHandler(req: Request) {
 
           const pin = await createPinterestImagePin({
             accessToken: pinterestAccessToken,
+            userId,
             boardId,
             title: channelPost.title || post.title || "Publication iNrCy",
             description,
@@ -3020,6 +3276,12 @@ async function publishNowHandler(req: Request) {
             board_name: boardName || null,
             media_type: "image",
             image_count: pinterestImageUrls.length,
+            images_harmonized: Boolean(pin.images_harmonized),
+            image_preparation_message: pin.images_harmonized
+              ? "Les images Pinterest ont été harmonisées automatiquement pour conserver un format identique."
+              : null,
+            target_width: pin.target_width || null,
+            target_height: pin.target_height || null,
           };
           continue;
         }
@@ -3067,7 +3329,10 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const gmbChannelImages =
+          let gmbWarning: { code: string; message: string } | null =
+            videoMediaWarningsByChannel.gmb || null;
+
+          const rawGmbChannelImages =
             mediaModeByChannel[ch] === "images"
               ? pickCompleteChannelImageUrls({
                   channel: ch,
@@ -3080,22 +3345,76 @@ async function publishNowHandler(req: Request) {
                   limit: 5,
                 })
               : [];
+          const probedGmbImages = rawGmbChannelImages.length
+            ? await filterGoogleBusinessMediaUrls({
+                urls: rawGmbChannelImages,
+                kind: "image",
+              })
+            : { acceptedUrls: [] as string[] };
+          const gmbChannelImages = probedGmbImages.acceptedUrls.slice(0, 5);
           if (
             mediaModeByChannel[ch] === "images" &&
             getExpectedChannelImageCount(ch) > 0 &&
-            !gmbChannelImages.length
+            gmbChannelImages.length < rawGmbChannelImages.length
           ) {
-            const gmbUserError =
-              "L'image Google Business n'a pas pu être préparée sans modifier le rendu.";
-            await setDelivery(ch, { status: "failed", error: gmbUserError });
-            results[ch] = { ok: false, error: gmbUserError };
-            continue;
+            gmbWarning = {
+              code: gmbChannelImages.length
+                ? "published_with_partial_images"
+                : "published_without_image",
+              message: gmbChannelImages.length
+                ? "Google Business a publié uniquement les images accessibles et conformes. Les autres médias ont été écartés avant l’envoi."
+                : "Google Business publiera le texte sans image, car aucune image n’était encore accessible ou conforme au moment de l’envoi.",
+            };
+          }
+          if (
+            mediaModeByChannel[ch] === "images" &&
+            getExpectedChannelImageCount(ch) > 0 &&
+            !gmbChannelImages.length &&
+            !gmbWarning
+          ) {
+            gmbWarning = {
+              code: "published_without_image",
+              message:
+                "Google Business publiera le texte sans image, car le média n’a pas pu être préparé de façon conforme.",
+            };
           }
 
-          const gmbChannelVideos =
-            mediaModeByChannel[ch] === "video" && channelVideo
+          const rawGmbChannelVideos =
+            mediaModeByChannel[ch] === "video" &&
+            channelVideo &&
+            !videoMediaWarningsByChannel.gmb
               ? [channelVideo.publicUrl].filter(Boolean).slice(0, 1)
               : [];
+          const probedGmbVideos = rawGmbChannelVideos.length
+            ? await filterGoogleBusinessMediaUrls({
+                urls: rawGmbChannelVideos,
+                kind: "video",
+              })
+            : { acceptedUrls: [] as string[] };
+          const gmbChannelVideos = probedGmbVideos.acceptedUrls.slice(0, 1);
+          if (
+            mediaModeByChannel[ch] === "video" &&
+            rawGmbChannelVideos.length > 0 &&
+            !gmbChannelVideos.length
+          ) {
+            gmbWarning = {
+              code: "published_without_video",
+              message:
+                "Google Business publiera le texte sans vidéo, car l’URL ou le fichier vidéo n’était pas conforme au moment de l’envoi.",
+            };
+          }
+          if (
+            mediaModeByChannel[ch] === "video" &&
+            !gmbChannelVideos.length &&
+            !gmbWarning
+          ) {
+            gmbWarning = {
+              code: "published_without_video",
+              message:
+                "Google Business publiera le texte sans vidéo, car la variante dédiée n’était pas disponible.",
+            };
+          }
+
           const gmbSummary = buildBoosterGmbSummary(channelPost, {
             websiteUrl: siteWebUrl || inrcySiteUrl,
             phone: businessPhone,
@@ -3105,7 +3424,6 @@ async function publishNowHandler(req: Request) {
             phone: businessPhone,
           });
           let gmbResp: any;
-          let gmbWarning: { code: string; message: string } | null = null;
 
           try {
             gmbResp = await gmbCreateLocalPost({

@@ -17,10 +17,14 @@ test("normal publication reuses a prepared variant or safely publishes the compa
 
   assert.match(modal, /generateMissingVideoVariants:\s*false,[\s\S]{0,100}allowOriginalVideoFallback:\s*true/);
   assert.match(modal, /generateMissingVideoVariants:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/);
-  assert.match(prewarm, /allowOriginalVideoFallback && sourceValidation\.ok/);
+  assert.match(
+    prewarm,
+    /allowOriginalVideoFallback[\s\S]{0,120}generateMissingVideoVariants[\s\S]{0,120}sourceValidation\.ok/,
+  );
   assert.match(prewarm, /const ready = invalidChannels\.length === 0/);
   assert.match(publish, /if \(sourceValidation\.ok\) return \[\]/);
   assert.match(publish, /if \(!variantValidation\.ok\)[\s\S]{0,100}return sourceValidation\.ok \? publicationVideo : null/);
+  assert.doesNotMatch(publish, /preparePublicationVariants\(true\)/);
   assert.doesNotMatch(publish, /if \(!variantResult\.ok \|\| invalidVideoChannels\.length > 0\)/);
   assert.doesNotMatch(workspaceHook, /background video prewarm skipped/);
 });

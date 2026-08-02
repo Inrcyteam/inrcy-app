@@ -7,6 +7,10 @@ import {
   VIDEO_AI_PREVIEW_FPS,
   VIDEO_AI_PREVIEW_MAX_SIDE,
   VIDEO_AUDIO_TRACK_MAX_BYTES,
+  VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
+  VIDEO_CANONICAL_ENCODER_PRESET,
+  VIDEO_CANONICAL_MIN_SAVINGS_RATIO,
+  VIDEO_CANONICAL_QUALITY_CRF,
   VIDEO_CANONICAL_MAX_BYTES,
   VIDEO_CANONICAL_MAX_SIDE,
   VIDEO_FRAME_MAX_BYTES,
@@ -15,6 +19,7 @@ import {
   buildVideoFrameCaptureTimes,
   fitVideoWithinMaxSide,
   getOrientedVideoDimensions,
+  getVideoCanonicalOptimizationProfile,
   getVideoNormalizationPurpose,
   getVideoTargetBitrateKbps,
   type VideoNormalizationPurpose,
@@ -26,7 +31,6 @@ const FFMPEG_PROBE_TIMEOUT_MS = 30_000;
 const FFMPEG_CANONICAL_TIMEOUT_MS = 240_000;
 const FFMPEG_DERIVATIVE_TIMEOUT_MS = 75_000;
 const FFMPEG_STALL_TIMEOUT_MS = 55_000;
-const VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES = 80 * 1024 * 1024;
 
 export type VideoSourceProbe = {
   width: number;
@@ -72,8 +76,14 @@ type CanonicalPreparation = {
   sizeBytes: number;
   bitrateKbps: number | null;
   attempts: number;
-  mode: "stream_copy" | "video_copy_audio_transcode" | "full_transcode";
-  encoderPreset: "ultrafast" | "superfast" | null;
+  mode:
+    | "stream_copy"
+    | "video_copy_audio_transcode"
+    | "quality_transcode"
+    | "size_cap_transcode";
+  encoderPreset: "ultrafast" | "superfast" | "veryfast" | null;
+  qualityCrf: number | null;
+  optimizationReason: string;
 };
 
 function compactError(error: unknown) {
@@ -362,7 +372,7 @@ async function encodeMp4(params: {
   includeAudio: boolean;
   fps?: number;
   timeoutMs: number;
-  encoderPreset?: "ultrafast" | "superfast";
+  encoderPreset?: "ultrafast" | "superfast" | "veryfast";
   onProgress?: (ratio: number) => void;
 }) {
   const initialBitrate = getVideoTargetBitrateKbps({
@@ -440,8 +450,10 @@ async function encodeMp4(params: {
         sizeBytes,
         bitrateKbps: bitrate,
         attempts: attempt,
-        mode: "full_transcode" as const,
+        mode: "size_cap_transcode" as const,
         encoderPreset,
+        qualityCrf: null,
+        optimizationReason: "size_cap_fallback",
       };
     }
     if (attempt === 2) {
@@ -535,6 +547,95 @@ async function remuxCanonical(params: {
     attempts: 1,
     mode: copyAudio ? "stream_copy" : "video_copy_audio_transcode",
     encoderPreset: null,
+    qualityCrf: null,
+    optimizationReason: "already_efficient",
+  };
+}
+
+async function encodeQualityOptimizedCanonical(params: {
+  ffmpegPath: string;
+  inputPath: string;
+  outputPath: string;
+  source: VideoSourceProbe;
+  targetMaxVideoKbps: number;
+  onProgress?: (ratio: number) => void;
+}): Promise<CanonicalPreparation> {
+  const args = [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-i",
+    params.inputPath,
+    "-map",
+    "0:v:0",
+  ];
+  if (params.source.hasAudio) args.push("-map", "0:a:0?");
+  args.push(
+    "-vf",
+    buildScaleFilter(VIDEO_CANONICAL_MAX_SIDE),
+    "-c:v",
+    "libx264",
+    "-preset",
+    VIDEO_CANONICAL_ENCODER_PRESET,
+    "-crf",
+    String(VIDEO_CANONICAL_QUALITY_CRF),
+    "-maxrate",
+    `${params.targetMaxVideoKbps}k`,
+    "-bufsize",
+    `${params.targetMaxVideoKbps * 2}k`,
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-map_metadata",
+    "-1",
+    "-map_chapters",
+    "-1",
+    "-metadata:s:v:0",
+    "rotate=0",
+    "-max_muxing_queue_size",
+    "2048",
+  );
+  if (params.source.hasAudio) {
+    args.push(
+      "-c:a",
+      "aac",
+      "-b:a",
+      `${VIDEO_CANONICAL_AUDIO_BITRATE_KBPS}k`,
+      "-ac",
+      "2",
+    );
+  } else {
+    args.push("-an");
+  }
+  args.push("-progress", "pipe:1", "-nostats", params.outputPath);
+
+  await runFfmpegWithProgress({
+    ffmpegPath: params.ffmpegPath,
+    args,
+    durationSeconds: params.source.durationSeconds,
+    timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
+    onProgress: params.onProgress,
+  });
+  const sizeBytes = await outputSize(params.outputPath);
+  if (!sizeBytes) throw new Error("video_canonical_empty");
+  if (sizeBytes > VIDEO_CANONICAL_MAX_BYTES) {
+    throw new Error(
+      `video_output_too_large:${path.basename(params.outputPath)}:${sizeBytes}`,
+    );
+  }
+  return {
+    sizeBytes,
+    bitrateKbps: Math.round(
+      (sizeBytes * 8) / Math.max(0.001, params.source.durationSeconds) / 1000,
+    ),
+    attempts: 1,
+    mode: "quality_transcode",
+    encoderPreset: VIDEO_CANONICAL_ENCODER_PRESET,
+    qualityCrf: VIDEO_CANONICAL_QUALITY_CRF,
+    optimizationReason: "meaningful_savings",
   };
 }
 
@@ -547,13 +648,54 @@ async function prepareCanonical(params: {
   warnings: string[];
   onProgress?: (ratio: number) => void;
 }) {
-  if (canFastPrepareCanonical(params)) {
+  const compatibleForRemux = canFastPrepareCanonical(params);
+  const optimization = getVideoCanonicalOptimizationProfile({
+    width: params.source.orientedWidth,
+    height: params.source.orientedHeight,
+    durationSeconds: params.source.durationSeconds,
+    sourceSizeBytes: params.sourceSizeBytes,
+    hasAudio: params.source.hasAudio,
+  });
+
+  if (compatibleForRemux && !optimization.shouldOptimize) {
     try {
-      return await remuxCanonical(params);
+      const remuxed = await remuxCanonical(params);
+      return { ...remuxed, optimizationReason: optimization.reason };
     } catch (error) {
       params.warnings.push(`canonical_fast_path_failed:${compactError(error)}`);
       params.onProgress?.(0);
     }
+  }
+
+  try {
+    const optimized = await encodeQualityOptimizedCanonical({
+      ffmpegPath: params.ffmpegPath,
+      inputPath: params.inputPath,
+      outputPath: params.outputPath,
+      source: params.source,
+      targetMaxVideoKbps: optimization.targetMaxVideoKbps,
+      onProgress: params.onProgress,
+    });
+    const actualSavingsRatio = params.sourceSizeBytes
+      ? 1 - optimized.sizeBytes / params.sourceSizeBytes
+      : 1;
+    if (
+      compatibleForRemux &&
+      actualSavingsRatio < VIDEO_CANONICAL_MIN_SAVINGS_RATIO
+    ) {
+      params.warnings.push(
+        `canonical_transcode_skipped_low_gain:${actualSavingsRatio.toFixed(4)}`,
+      );
+      params.onProgress?.(0);
+      const remuxed = await remuxCanonical(params);
+      return { ...remuxed, optimizationReason: "measured_gain_too_small" };
+    }
+    return optimized;
+  } catch (error) {
+    params.warnings.push(
+      `canonical_quality_optimization_failed:${compactError(error)}`,
+    );
+    params.onProgress?.(0);
   }
 
   return await encodeMp4({
@@ -563,15 +705,12 @@ async function prepareCanonical(params: {
     maxSide: VIDEO_CANONICAL_MAX_SIDE,
     durationSeconds: params.source.durationSeconds,
     maxBytes: VIDEO_CANONICAL_MAX_BYTES,
-    maxVideoKbps: 5_000,
+    maxVideoKbps: optimization.targetMaxVideoKbps,
     minVideoKbps: 250,
-    audioBitrateKbps: 128,
+    audioBitrateKbps: VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
     includeAudio: params.source.hasAudio,
     timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
-    encoderPreset:
-      params.sourceSizeBytes >= VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES
-        ? "ultrafast"
-        : "superfast",
+    encoderPreset: "superfast",
     onProgress: params.onProgress,
   });
 }
@@ -858,6 +997,13 @@ export async function normalizeVideoSource(params: {
     source_container_formats: source.containerFormats,
     source_has_audio: source.hasAudio,
     canonical_mode: canonicalEncoding.mode,
+    canonical_optimization_reason: canonicalEncoding.optimizationReason,
+    source_size_bytes: sourceSizeBytes,
+    canonical_size_bytes: canonicalEncoding.sizeBytes,
+    canonical_saved_bytes: Math.max(0, sourceSizeBytes - canonicalEncoding.sizeBytes),
+    canonical_compression_ratio: sourceSizeBytes
+      ? Number((canonicalEncoding.sizeBytes / sourceSizeBytes).toFixed(4))
+      : null,
     metadata_stripped: true,
   };
 
@@ -885,12 +1031,20 @@ export async function normalizeVideoSource(params: {
           preserve_ratio: true,
           without_enlargement: true,
           auto_orient: true,
-          pixel_format: canonicalEncoding.mode === "full_transcode" ? "yuv420p" : source.pixelFormat,
+          pixel_format:
+            canonicalEncoding.mode === "quality_transcode" ||
+            canonicalEncoding.mode === "size_cap_transcode"
+              ? "yuv420p"
+              : source.pixelFormat,
           faststart: true,
           bitrate_kbps: canonicalEncoding.bitrateKbps,
           mode: canonicalEncoding.mode,
           attempts: canonicalEncoding.attempts,
           encoder_preset: canonicalEncoding.encoderPreset,
+          quality_crf: canonicalEncoding.qualityCrf,
+          optimization_reason: canonicalEncoding.optimizationReason,
+          source_size_bytes: sourceSizeBytes,
+          saved_bytes: Math.max(0, sourceSizeBytes - canonicalEncoding.sizeBytes),
         },
         metadata: sourceMetadata,
       }),

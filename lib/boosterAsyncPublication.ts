@@ -8,6 +8,7 @@ import {
   isBoosterPublishFailureRetryable,
   type BoosterPublicationChannelKey,
 } from "@/lib/boosterPublicationPolicy";
+import { classifyBoosterPublicationResult } from "@/lib/boosterPublicationOutcome";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const BOOSTER_ASYNC_JOB_EVENT_TYPE = "publish_async_job";
@@ -43,7 +44,8 @@ export function buildAsyncPublicationSummary(
 ) {
   const entries = selected.map((channel) => {
     const value = asRecord(results[channel]);
-    const ok = value.ok !== false;
+    const outcome = classifyBoosterPublicationResult(value);
+    const ok = outcome.ok;
     const code = cleanString(value.code) || null;
     const retryable = isBoosterPublishFailureRetryable({
       ok,
@@ -54,28 +56,31 @@ export function buildAsyncPublicationSummary(
       channel,
       label: CHANNEL_LABELS[channel],
       ok,
-      status: ok
-        ? value.warning
-          ? "processing"
-          : "published"
-        : "failed",
+      status: outcome.status,
       code,
       retryable,
       error: !ok ? cleanString(value.error) || "erreur" : null,
-      warning: value.warning ? cleanString(value.warning) : null,
-      warning_message: value.warning_message
-        ? cleanString(value.warning_message)
-        : null,
+      warning: outcome.warningCode,
+      warning_kind: outcome.warningKind,
+      warning_message: outcome.warningMessage,
     };
   });
 
   const successes = entries.filter((entry) => entry.ok);
   const failures = entries.filter((entry) => !entry.ok);
+  const warnings = entries.filter(
+    (entry) => entry.status === "published_with_warning",
+  );
+  const pending = entries.filter((entry) => entry.status === "processing");
   return {
     total: entries.length,
     successCount: successes.length,
     failureCount: failures.length,
-    pendingCount: 0,
+    warningCount: warnings.length,
+    mediaWarningCount: warnings.filter(
+      (entry) => entry.warning_kind === "media_degraded",
+    ).length,
+    pendingCount: pending.length,
     allSucceeded: failures.length === 0,
     allFailed: successes.length === 0,
     entries,
@@ -210,6 +215,15 @@ export async function finalizeAsyncPublicationIfReady(params: {
     : summary.failureCount > 0
       ? "partial"
       : "completed";
+  const finalOutcome = summary.allFailed
+    ? "failed"
+    : summary.failureCount > 0
+      ? "partial"
+      : summary.pendingCount > 0
+        ? "external_processing"
+        : summary.warningCount > 0
+          ? "completed_with_warnings"
+          : "completed";
   const completedAt = new Date().toISOString();
   const finalPayload = {
     ...finalPayloadBase,
@@ -219,6 +233,7 @@ export async function finalizeAsyncPublicationIfReady(params: {
     results,
     summary,
     status: finalStatus,
+    outcome: finalOutcome,
     completedAt,
     asyncDispatch: true,
   };
@@ -368,20 +383,27 @@ export async function readAsyncPublicationStatus(params: {
   const entries = selected.map((channel) => {
     const eventId = cleanString(channelEventIds[channel]);
     const channelPayload: JsonRecord = eventById.get(eventId) || {};
-    const status = cleanString(channelPayload.status) || "queued";
+    const technicalStatus = cleanString(channelPayload.status) || "queued";
     const result = asRecord(channelPayload.result);
+    const outcome = TERMINAL_CHANNEL_STATUSES.has(technicalStatus)
+      ? classifyBoosterPublicationResult(result)
+      : null;
     return {
       channel,
       label: CHANNEL_LABELS[channel],
-      status,
-      ok: TERMINAL_CHANNEL_STATUSES.has(status)
-        ? result.ok !== false && status !== "failed"
+      status: outcome?.status || technicalStatus,
+      technicalStatus,
+      ok: TERMINAL_CHANNEL_STATUSES.has(technicalStatus)
+        ? result.ok !== false && technicalStatus !== "failed"
         : null,
       error: cleanString(result.error) || null,
+      warning: outcome?.warningCode || null,
+      warning_kind: outcome?.warningKind || null,
+      warning_message: outcome?.warningMessage || null,
     };
   });
   const pendingCount = entries.filter(
-    (entry) => !TERMINAL_CHANNEL_STATUSES.has(entry.status),
+    (entry) => !TERMINAL_CHANNEL_STATUSES.has(entry.technicalStatus),
   ).length;
 
   return {

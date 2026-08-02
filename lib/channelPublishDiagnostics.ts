@@ -8,6 +8,10 @@ import {
   LINKEDIN_RECONNECT_USER_MESSAGE,
   getSimpleFrenchErrorMessage,
 } from "@/lib/userFacingErrors";
+import {
+  ensureFrenchPublicationErrorMessage,
+  getProviderPublicationErrorMessage,
+} from "@/lib/publicationErrorFrench";
 
 export type PublishDiagnosticChannel = "facebook" | "instagram" | "linkedin" | "gmb" | "inrcy_site" | "site_web" | "inr_search" | "tiktok" | "youtube_shorts" | "pinterest";
 
@@ -82,7 +86,8 @@ export function getPublishChannelUserMessage(
   const raw = stringifyError(error).trim();
   const label = CHANNEL_LABELS[channel] || channel;
   const fallbackMessage = fallback || CHANNEL_FALLBACKS[channel] || "La publication n'a pas pu aboutir.";
-  const message = getSimpleFrenchErrorMessage(`${label} ${raw}`, fallbackMessage);
+  const providerMessage = getProviderPublicationErrorMessage(channel, raw);
+  const message = providerMessage || getSimpleFrenchErrorMessage(`${label} ${raw}`, fallbackMessage);
 
   // Si l'erreur brute indique clairement une connexion/tokens invalides mais que le mapper
   // global est passé à côté, on garde un message court et actionnable.
@@ -102,7 +107,7 @@ export function getPublishChannelUserMessage(
     return reconnectMessage;
   }
 
-  return message;
+  return ensureFrenchPublicationErrorMessage(message, fallbackMessage);
 }
 
 export function logPublishChannelFailure(params: {

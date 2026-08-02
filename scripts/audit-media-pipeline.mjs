@@ -128,12 +128,12 @@ requirePattern(
 );
 requirePattern(
   "app/dashboard/booster/publier/PublishModal.tsx",
-  /imagesByChannel:\s*uploadedChannelImages/,
+  /imagesByChannel:\s*buildChannelRecord\([\s\S]{0,100}uploadedChannelImages/,
   "Contrat imagesByChannel de publication",
 );
 requirePattern(
   "app/dashboard/booster/publier/PublishModal.tsx",
-  /imageSettingsByChannel:\s*channelSettings/,
+  /imageSettingsByChannel:\s*buildChannelRecord\([\s\S]{0,100}channelSettings/,
   "Contrat imageSettingsByChannel de publication",
 );
 requirePattern(

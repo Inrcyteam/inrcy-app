@@ -1,6 +1,6 @@
 import { log } from "@/lib/observability/logger";
-
-const FACEBOOK_GRAPH_VERSION = "v19.0";
+import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
+import { getProviderCreateFailureSafety } from "@/lib/providerMediaFallbackPolicy";
 
 type PublishOk = {
   ok: true;
@@ -14,6 +14,10 @@ type PublishOk = {
 type PublishKo = {
   ok: false;
   error: string;
+  /** True only when no provider-side post creation could have succeeded. */
+  safeTextFallback?: boolean;
+  /** A timeout/ambiguous response happened after the create request was sent. */
+  requestMayHaveSucceeded?: boolean;
   // Diagnostics (useful for UI + debugging)
   uploadedImages?: number;
   failedImages?: number;
@@ -21,6 +25,31 @@ type PublishKo = {
 };
 
 type PublishResult = PublishOk | PublishKo;
+
+export const FACEBOOK_IMAGE_UPLOAD_CONCURRENCY = 2;
+
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  mapper: (value: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index], index);
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(Math.max(1, concurrency), values.length) },
+      () => worker(),
+    ),
+  );
+  return results;
+}
 
 /**
  * Upload one image to Facebook as an unpublished photo and return its media_fbid.
@@ -64,7 +93,7 @@ async function uploadUnpublishedPhoto(params: {
 
     // IMPORTANT: post explicitly to the Page, not /me
     const uploadRes = await fetch(
-      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/photos`,
+      buildMetaGraphUrl(`${encodeURIComponent(pageId)}/photos`),
       { method: "POST", body: form }
     );
 
@@ -94,8 +123,21 @@ export async function facebookPublishToPage(params: {
     const attachedMedia: any[] = [];
     const photoErrors: Array<{ url: string; error: string }> = [];
 
-    for (const url of imageUrls) {
-      const up = await uploadUnpublishedPhoto({ pageId, pageAccessToken, imageUrl: url });
+    const uploads = await mapWithConcurrency(
+      imageUrls,
+      FACEBOOK_IMAGE_UPLOAD_CONCURRENCY,
+      async (url) => ({
+        url,
+        result: await uploadUnpublishedPhoto({
+          pageId,
+          pageAccessToken,
+          imageUrl: url,
+        }),
+      }),
+    );
+
+    for (const upload of uploads) {
+      const { url, result: up } = upload;
       if (!up.ok) {
         // Continue with remaining images, but keep diagnostics
         log.warn("facebook_image_upload_failed", { error: up.error });
@@ -116,7 +158,7 @@ export async function facebookPublishToPage(params: {
 
     // IMPORTANT: post explicitly to the Page, not /me
     const feedRes = await fetch(
-      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/feed`,
+      buildMetaGraphUrl(`${encodeURIComponent(pageId)}/feed`),
       { method: "POST", body: feedForm }
     );
 
@@ -171,11 +213,33 @@ export async function facebookPublishVideoToPage(params: {
 }): Promise<PublishResult> {
   const { pageId, pageAccessToken, description, videoUrl, title } = params;
 
-  try {
-    if (!pageId || !pageAccessToken) return { ok: false, error: "Facebook à connecter. Rendez-vous dans Canaux." };
-    if (!videoUrl?.trim()) return { ok: false, error: "Ajoutez une vidéo avant de publier sur Facebook." };
+  if (!pageId || !pageAccessToken) {
+    return {
+      ok: false,
+      error: "Facebook à connecter. Rendez-vous dans Canaux.",
+      safeTextFallback: true,
+    };
+  }
+  if (!videoUrl?.trim()) {
+    return {
+      ok: false,
+      error: "Ajoutez une vidéo avant de publier sur Facebook.",
+      safeTextFallback: true,
+    };
+  }
 
-    const videoBlob = await fetchMediaBlob(videoUrl, "video/mp4");
+  let videoBlob: Blob;
+  try {
+    videoBlob = await fetchMediaBlob(videoUrl, "video/mp4");
+  } catch (e: any) {
+    return {
+      ok: false,
+      error: e?.message || "Impossible de récupérer la vidéo pour Facebook.",
+      safeTextFallback: true,
+    };
+  }
+
+  try {
     const form = new FormData();
     form.append("access_token", pageAccessToken);
     form.append("description", description || "");
@@ -183,20 +247,30 @@ export async function facebookPublishVideoToPage(params: {
     form.append("source", videoBlob, "video-inrcy.mp4");
 
     const uploadRes = await fetch(
-      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/videos`,
+      buildMetaGraphUrl(`${encodeURIComponent(pageId)}/videos`),
       { method: "POST", body: form }
     );
 
     const uploadJson: any = await uploadRes.json().catch(() => ({}));
     if (!uploadRes.ok) {
+      const safety = getProviderCreateFailureSafety({
+        httpStatus: uploadRes.status,
+      });
       return {
         ok: false,
         error: uploadJson?.error?.message || "Impossible de publier la vidéo sur Facebook pour le moment.",
+        ...safety,
       };
     }
 
     const videoId = String(uploadJson?.id || "");
-    if (!videoId) return { ok: false, error: "Facebook n'a pas renvoyé l'identifiant de la vidéo." };
+    if (!videoId) {
+      return {
+        ok: false,
+        error: "Facebook n'a pas renvoyé l'identifiant de la vidéo.",
+        ...getProviderCreateFailureSafety({ successResponseMissingId: true }),
+      };
+    }
 
     return {
       ok: true,
@@ -208,6 +282,7 @@ export async function facebookPublishVideoToPage(params: {
     return {
       ok: false,
       error: e?.message || "Impossible de publier la vidéo sur Facebook pour le moment.",
+      ...getProviderCreateFailureSafety({ requestThrew: true }),
     };
   }
 }

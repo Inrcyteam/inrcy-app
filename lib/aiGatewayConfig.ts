@@ -13,8 +13,15 @@ export function getAiGatewayCredential(): string {
 }
 
 export function normalizeAiGatewayBaseUrl(value: unknown): string {
-  const raw = cleanAiGatewayEnv(value) || DEFAULT_GATEWAY_BASE_URL;
-  return raw.replace(/\/+$/, "");
+  const raw = (cleanAiGatewayEnv(value) || DEFAULT_GATEWAY_BASE_URL).replace(/\/+$/, "");
+
+  // AI_GATEWAY_BASE_URL doit rester une base. Une ancienne configuration peut
+  // toutefois contenir l'endpoint complet. On le corrige ici pour ne jamais
+  // fabriquer /chat/completions/responses ou /responses/responses.
+  return raw
+    .replace(/\/chat\/completions$/i, "")
+    .replace(/\/responses$/i, "")
+    .replace(/\/+$/, "");
 }
 
 export function getAiGatewayTranscriptionUrl(): string {

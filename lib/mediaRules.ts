@@ -17,6 +17,14 @@ export const INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES =
 export const INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL =
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 
+// Le canonique commun garde une marge technique de 1 Mio sous la source.
+// Ce plafond est uniquement un garde-fou. La cible réelle est une variante
+// qualité/poids adaptative : les sources lourdes sont compressées selon leur
+// durée, résolution et débit, tandis qu'une source déjà efficace est remuxée.
+export const INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES =
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES - 1 * 1024 * 1024;
+export const INR_MEDIA_VIDEO_CANONICAL_MAX_MB_LABEL = "299 Mo";
+
 export const INR_MEDIA_AGENT_MAX_MEDIA_COUNT = 1;
 export const INR_MEDIA_UPLOAD_BATCH_SIZE = 10;
 

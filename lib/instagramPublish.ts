@@ -1,4 +1,4 @@
-const FACEBOOK_GRAPH_VERSION = "v20.0";
+import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 
 type PublishOk = {
   ok: true;
@@ -186,7 +186,7 @@ async function waitForContainerReady(params: {
       access_token: accessToken,
     });
 
-    const url = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(containerId)}?${qs.toString()}`;
+    const url = `${buildMetaGraphUrl(encodeURIComponent(containerId))}?${qs.toString()}`;
     const { res, json } = await fetchJson(url, { method: "GET" });
 
     const row = {
@@ -245,7 +245,7 @@ async function createInstagramImageContainer(params: {
   if (params.caption) createParams.set("caption", params.caption);
   if (params.isCarouselItem) createParams.set("is_carousel_item", "true");
 
-  const createUrl = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(params.igUserId)}/media?${createParams.toString()}`;
+  const createUrl = `${buildMetaGraphUrl(`${encodeURIComponent(params.igUserId)}/media`)}?${createParams.toString()}`;
   return fetchJson(createUrl, { method: "POST" });
 }
 
@@ -259,7 +259,7 @@ async function publishInstagramContainer(params: {
     access_token: params.accessToken,
   });
 
-  const publishUrl = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(params.igUserId)}/media_publish?${publishParams.toString()}`;
+  const publishUrl = `${buildMetaGraphUrl(`${encodeURIComponent(params.igUserId)}/media_publish`)}?${publishParams.toString()}`;
   return fetchJson(publishUrl, { method: "POST" });
 }
 
@@ -271,7 +271,7 @@ async function getInstagramMediaDetails(params: {
     fields: "id,media_type,media_product_type,permalink,children{id,media_type,permalink}",
     access_token: params.accessToken,
   });
-  const url = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(params.mediaId)}?${qs.toString()}`;
+  const url = `${buildMetaGraphUrl(encodeURIComponent(params.mediaId))}?${qs.toString()}`;
   return fetchJson(url, { method: "GET" });
 }
 
@@ -402,7 +402,7 @@ async function createInstagramVideoContainer(params: {
   if (params.caption) createParams.set("caption", params.caption);
   createParams.set("share_to_feed", "true");
 
-  const createUrl = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(params.igUserId)}/media?${createParams.toString()}`;
+  const createUrl = `${buildMetaGraphUrl(`${encodeURIComponent(params.igUserId)}/media`)}?${createParams.toString()}`;
   return fetchJson(createUrl, { method: "POST" });
 }
 
@@ -594,7 +594,7 @@ export async function instagramPublishCarousel(params: {
       access_token: accessToken,
     });
 
-    const createUrl = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(igUserId)}/media?${createParams.toString()}`;
+    const createUrl = `${buildMetaGraphUrl(`${encodeURIComponent(igUserId)}/media`)}?${createParams.toString()}`;
     const { res: createRes, json: createJson } = await fetchJson(createUrl, { method: "POST" });
 
     if (!createRes.ok) {

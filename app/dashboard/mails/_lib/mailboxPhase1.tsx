@@ -3,6 +3,7 @@ import styles from "../mails.module.css";
 import type { MailCampaignRecipientInput } from "@/lib/crmRecipients";
 import type { MailCampaignExperienceReport } from "@/lib/mailCampaignReport";
 import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
+import { getFrenchPublicationErrorMessage } from "@/lib/publicationErrorFrench";
 import {
   getDefaultChannelVideoSettings,
   isBoosterVideoChannelKey,
@@ -1192,7 +1193,35 @@ export function isFailedChannelResult(result: any): boolean {
   return status === "failed" || status === "error";
 }
 
-export function getChannelIndicatorMeta(result: any): { kind: "failed" | "deleted" | "cancelled"; title: string; className: string } | null {
+export function isWarningChannelResult(result: any): boolean {
+  if (!result || typeof result !== "object") return false;
+  if (
+    isFailedChannelResult(result) ||
+    isDeletedChannelResult(result) ||
+    isCancelledChannelResult(result)
+  ) {
+    return false;
+  }
+  const warning = String(result.warning || result.code || "").trim();
+  return Boolean(warning || result.warning_message || result.warningMessage);
+}
+
+export function getWarningChannelMessage(result: any, channel = ""): string {
+  if (!isWarningChannelResult(result)) return "";
+  const message =
+    result?.warning_message ??
+    result?.warningMessage ??
+    result?.error ??
+    result?.message ??
+    "Publication publiée avec un avertissement.";
+  return getFrenchPublicationErrorMessage(
+    channel || "site_web",
+    message,
+    "Publication publiée avec un avertissement.",
+  );
+}
+
+export function getChannelIndicatorMeta(result: any, channel = ""): { kind: "failed" | "deleted" | "cancelled" | "warning"; title: string; className: string } | null {
   if (isCancelledChannelResult(result)) {
     return {
       kind: "cancelled",
@@ -1214,13 +1243,24 @@ export function getChannelIndicatorMeta(result: any): { kind: "failed" | "delete
       className: styles.channelFailedDot,
     };
   }
+  if (isWarningChannelResult(result)) {
+    return {
+      kind: "warning",
+      title: getWarningChannelMessage(result, channel) || "Publication publiée avec avertissement",
+      className: styles.channelWarningDot,
+    };
+  }
   return null;
 }
 
-export function getFailedChannelMessage(result: any): string {
+export function getFailedChannelMessage(result: any, channel = ""): string {
   if (!isFailedChannelResult(result)) return "";
   const message = result?.error ?? result?.message ?? result?.last_error ?? "";
-  return typeof message === "string" ? message.trim() : String(message || "").trim();
+  return getFrenchPublicationErrorMessage(
+    channel || "site_web",
+    message,
+    "La publication n'a pas pu aboutir sur ce canal. Merci de réessayer.",
+  );
 }
 
 export function getPublicationChannelStatuses(payload: any, fallbackChannels: string[] = []) {
@@ -1233,12 +1273,13 @@ export function getPublicationChannelStatuses(payload: any, fallbackChannels: st
 
   return channels.map((channel) => {
     const result = (results as any)?.[channel] || null;
-    const indicator = getChannelIndicatorMeta(result);
+    const indicator = getChannelIndicatorMeta(result, channel);
     return {
       key: channel,
       label: formatChannelLabel(channel),
       failed: indicator?.kind === "failed",
       deleted: indicator?.kind === "deleted",
+      warning: indicator?.kind === "warning",
       indicator,
       result,
     };

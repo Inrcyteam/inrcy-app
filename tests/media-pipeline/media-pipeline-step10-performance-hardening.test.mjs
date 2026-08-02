@@ -101,7 +101,7 @@ test("le canon vidéo reste publiable et les incidents temporaires sont rejoués
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
   assert.match(
     policy,
-    /VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*-\s*1\s*\*\s*1024\s*\*\s*1024/,
+    /VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES/,
   );
   const terminalBlock =
     worker.match(/const terminal\s*=([\s\S]*?);\s*[\r\n]+\s*return new VideoNormalizationError/)?.[1] ||
@@ -145,7 +145,10 @@ test("les variantes par canal sont persistantes et la publication reste légère
     prewarm,
     /body\?\.generateMissingVideoVariants\s*!==\s*false/,
   );
-  assert.match(publish, /generateMissing:\s*false/);
+  assert.match(publish, /preparePublicationVariants\(false\)/);
+  assert.doesNotMatch(publish, /preparePublicationVariants\(true\)/);
+  assert.match(publish, /if \(sourceValidation\.ok\) return \[\]/);
+  assert.match(publish, /preflightFailuresByChannel/);
   assert.match(publish, /img\.publicationReady\s*===\s*true/);
   assert.match(publish, /strictMediaCutover\s*\?\s*\[\]\s*:\s*images/);
 });

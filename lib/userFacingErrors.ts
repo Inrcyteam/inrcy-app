@@ -1,4 +1,8 @@
 import { normalizeAppLanguage, type AppLanguageCode } from "@/lib/appLanguage";
+import {
+  getProviderPublicationErrorMessage,
+  looksLikeEnglishErrorMessage,
+} from "@/lib/publicationErrorFrench";
 
 export const FACEBOOK_RECONNECT_USER_MESSAGE = "Facebook à reconnecter. Rendez-vous dans Canaux.";
 export const INSTAGRAM_RECONNECT_USER_MESSAGE = "Instagram à reconnecter. Rendez-vous dans Canaux.";
@@ -252,6 +256,31 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
 
   const message = raw.toLowerCase();
 
+  const providerMessage =
+    getProviderPublicationErrorMessage(
+      message.includes("pinterest") ||
+        message.includes("same width/height ratios") ||
+        message.includes("same aspect ratio")
+        ? "pinterest"
+        : message.includes("tiktok") ||
+            message.includes("url_ownership_unverified") ||
+            message.includes("url properties have not been verified")
+          ? "tiktok"
+          : message.includes("instagram")
+            ? "instagram"
+            : message.includes("facebook") || message.includes("meta graph")
+              ? "facebook"
+              : message.includes("linkedin")
+                ? "linkedin"
+                : message.includes("google business") || message.includes("gmb")
+                  ? "gmb"
+                  : message.includes("youtube")
+                    ? "youtube_shorts"
+                    : "site_web",
+      raw,
+    );
+  if (providerMessage) return providerMessage;
+
   if (isFacebookAuthorizationLikeMessage(raw)) {
     return FACEBOOK_RECONNECT_USER_MESSAGE;
   }
@@ -355,7 +384,24 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "Le lien n'est plus valide ou l'envoi est temporairement limité. Merci de réessayer dans quelques minutes.";
   }
 
-  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed", "microsoft send failed", "imap send failed", "token refresh failed", "db update failed", "google business", "facebook", "linkedin", "tiktok", "mail account not found", "missing_access_token", "google_calendar_integration_removed", "instagram optimized image url unavailable", "storage upload", "upload failed", "signature-image", "image upload", "invalid mime type"])) {
+  if (matches(message, [
+    "variante vidéo",
+    "variante video",
+    "version canonique de la vidéo",
+    "version canonique de la video",
+    "vidéo est encore en préparation",
+    "video est encore en preparation",
+    "doit être préparée en mp4",
+    "doit etre preparee en mp4",
+    "durée de la vidéo",
+    "duree de la video",
+    "résolution de la vidéo",
+    "resolution de la video",
+  ])) {
+    return sanitizeSentence(raw);
+  }
+
+  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed", "microsoft send failed", "imap send failed", "token refresh failed", "db update failed", "google business", "facebook", "linkedin", "tiktok", "pinterest", "mail account not found", "missing_access_token", "google_calendar_integration_removed", "instagram optimized image url unavailable", "storage upload", "upload failed", "signature-image", "image upload", "invalid mime type"])) {
     return "L'action demandée n'a pas pu être finalisée pour le moment. Merci de réessayer.";
   }
 
@@ -376,7 +422,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return sanitizeSentence(raw);
   }
 
-  if (looksTechnical(raw)) {
+  if (looksTechnical(raw) || looksLikeEnglishErrorMessage(raw)) {
     return fallback;
   }
 

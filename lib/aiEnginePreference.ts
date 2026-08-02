@@ -49,7 +49,7 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     description: "Écriture naturelle, nuancée et attentive au style.",
     naturalTendency: "Fluide, humain, nuancé et moins mécanique.",
     bestFor: "LinkedIn, storytelling, textes longs et contenus premium.",
-    model: "anthropic/claude-3.5-haiku",
+    model: "anthropic/claude-haiku-4.5",
     supportsVision: true,
     jsonMode: "strict",
   },

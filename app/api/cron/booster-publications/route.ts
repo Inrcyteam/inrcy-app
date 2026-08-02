@@ -8,6 +8,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   BOOSTER_ASYNC_CHANNEL_EVENT_TYPE,
   BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS,
+  finalizeAsyncPublicationIfReady,
+  updateAsyncChannelEvent,
 } from "@/lib/boosterAsyncPublication";
 
 export const runtime = "nodejs";
@@ -28,9 +30,11 @@ type AsyncDispatchJob = {
   publicationId: string;
   dispatchRequest: JsonRecord;
   lastActivityAt: number;
+  attempt: number;
 };
 
 const PROCESSING_RECOVERY_GRACE_MS = 30 * 1000;
+const MAX_ASYNC_DISPATCH_ATTEMPTS = 3;
 
 function timestampMs(...values: unknown[]) {
   for (const value of values) {
@@ -78,6 +82,7 @@ export async function GET(request: Request) {
         channel: String(payload.channel || ""),
         publicationId: String(payload.publication_id || ""),
         dispatchRequest,
+        attempt: Math.max(0, Number(payload.attempt || 0)),
         lastActivityAt: timestampMs(
           payload.updatedAt,
           payload.startedAt,
@@ -103,7 +108,44 @@ export async function GET(request: Request) {
     after(async () => {
       await Promise.allSettled(
         jobs.map(async (job: AsyncDispatchJob) => {
+          if (job.attempt >= MAX_ASYNC_DISPATCH_ATTEMPTS) {
+            const errorMessage =
+              "Le canal n'a pas pu être relancé automatiquement après plusieurs tentatives.";
+            await updateAsyncChannelEvent({
+              userId: job.userId,
+              eventId: job.id,
+              patch: {
+                status: "failed",
+                result: {
+                  ok: false,
+                  code: "async_dispatch_exhausted",
+                  retryable: true,
+                  error: errorMessage,
+                },
+                completedAt: new Date().toISOString(),
+              },
+            });
+            await supabaseAdmin
+              .from("publication_deliveries")
+              .update({ status: "failed", error: errorMessage })
+              .eq("publication_id", job.publicationId)
+              .eq("user_id", job.userId)
+              .eq("channel", job.channel);
+            await finalizeAsyncPublicationIfReady({
+              userId: job.userId,
+              publicationId: job.publicationId,
+            });
+            return;
+          }
           try {
+            await updateAsyncChannelEvent({
+              userId: job.userId,
+              eventId: job.id,
+              patch: {
+                attempt: job.attempt + 1,
+                lastDispatchAt: new Date().toISOString(),
+              },
+            });
             await fetch(`${appOrigin}/api/booster/publish-now`, {
               method: "POST",
               headers: buildInternalCronHeaders(job.userId),

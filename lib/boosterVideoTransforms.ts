@@ -8,6 +8,15 @@ import {
   type VideoFormat,
 } from "./boosterVideoSettings.ts";
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "./mediaRules.ts";
+import {
+  GOOGLE_BUSINESS_VIDEO_PROFILE,
+  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+} from "./googleBusinessMediaPolicy.ts";
+
+export type VideoPublicationProfile =
+  | "default"
+  | "light_background"
+  | typeof GOOGLE_BUSINESS_VIDEO_PROFILE;
 
 export type BoosterVideoTransformTarget = {
   format: VideoFormat;
@@ -20,7 +29,8 @@ export type BoosterVideoTransformTarget = {
 export type BoosterVideoQualityProfile = {
   label: string;
   crf: number;
-  videoBitrate: string;
+  preset: "veryfast" | "superfast";
+  maxVideoKbps: number;
   maxrate: string;
   bufsize: string;
   audioBitrate: string;
@@ -32,6 +42,7 @@ export type BoosterVideoTransformRequestVariant = {
   channel?: BoosterVideoChannelKey;
   format?: VideoFormat;
   adaptationMode?: VideoAdaptationMode;
+  publicationProfile?: VideoPublicationProfile;
 };
 
 export type BoosterVideoTransformVariantPlan = {
@@ -39,17 +50,21 @@ export type BoosterVideoTransformVariantPlan = {
   channel: BoosterVideoChannelKey | null;
   format: VideoFormat;
   adaptationMode: VideoAdaptationMode;
+  publicationProfile: VideoPublicationProfile;
   target: BoosterVideoTransformTarget;
   signature: string;
 };
 
 export type BoosterVideoTransformedVariant =
-  BoosterVideoTransformVariantPlan & {
+  Omit<BoosterVideoTransformVariantPlan, "publicationProfile"> & {
+    publicationProfile?: VideoPublicationProfile;
     storagePath: string;
     publicUrl: string;
     contentType: string;
     size: number;
     duration: number | null;
+    width?: number | null;
+    height?: number | null;
     generatedAt: string;
     quality?: BoosterVideoQualityProfile;
     // Compatibilité avec les anciennes données / payloads côté UI.
@@ -81,8 +96,6 @@ export const VIDEO_TRANSFORM_TARGETS: Record<
 > = {
   "9_16": {
     format: "9_16",
-    // Sortie volontairement plafonnée en 720p vertical : beaucoup plus rapide sur Vercel,
-    // largement suffisante pour un aperçu/publication sociale, et moins risquée côté timeout.
     width: 720,
     height: 1280,
     aspectRatio: "9:16",
@@ -110,49 +123,82 @@ export const VIDEO_TRANSFORM_QUALITY_PROFILES: Record<
 > = {
   "9_16": {
     label: "Qualité verticale rapide",
-    crf: 27,
-    videoBitrate: "1800k",
-    maxrate: "2400k",
-    bufsize: "3600k",
+    crf: 22,
+    preset: "veryfast",
+    maxVideoKbps: 4_500,
+    maxrate: "4500k",
+    bufsize: "9000k",
     audioBitrate: "96k",
     maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
   "1_1": {
     label: "Qualité carrée rapide",
-    crf: 27,
-    videoBitrate: "1600k",
-    maxrate: "2200k",
-    bufsize: "3300k",
+    crf: 22,
+    preset: "veryfast",
+    maxVideoKbps: 4_000,
+    maxrate: "4000k",
+    bufsize: "8000k",
     audioBitrate: "96k",
     maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
   "16_9": {
     label: "Qualité horizontale rapide",
-    crf: 26,
-    videoBitrate: "2200k",
-    maxrate: "3000k",
-    bufsize: "4500k",
+    crf: 21,
+    preset: "veryfast",
+    maxVideoKbps: 5_500,
+    maxrate: "5500k",
+    bufsize: "11000k",
     audioBitrate: "96k",
     maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
   original: {
     label: "Original optimisé",
-    crf: 26,
-    videoBitrate: "2200k",
-    maxrate: "3000k",
-    bufsize: "4500k",
+    crf: 21,
+    preset: "veryfast",
+    maxVideoKbps: 5_500,
+    maxrate: "5500k",
+    bufsize: "11000k",
     audioBitrate: "96k",
     maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
 };
 
+const GOOGLE_BUSINESS_QUALITY_PROFILE: BoosterVideoQualityProfile = {
+  label: "Google Business sécurisé",
+  crf: 21,
+  preset: "superfast",
+  maxVideoKbps: 6_000,
+  maxrate: "6000k",
+  bufsize: "12000k",
+  audioBitrate: "128k",
+  maxOutputBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+};
+
 export function getVideoTransformQualityProfile(
   format: VideoFormat,
+  publicationProfile: VideoPublicationProfile = "default",
 ): BoosterVideoQualityProfile {
+  if (publicationProfile === GOOGLE_BUSINESS_VIDEO_PROFILE) {
+    return GOOGLE_BUSINESS_QUALITY_PROFILE;
+  }
   return (
     VIDEO_TRANSFORM_QUALITY_PROFILES[format] ||
     VIDEO_TRANSFORM_QUALITY_PROFILES.original
   );
+}
+
+export function getVideoPublicationProfileForChannel(
+  channel: BoosterVideoChannelKey | null | undefined,
+): VideoPublicationProfile {
+  if (channel === "gmb") return GOOGLE_BUSINESS_VIDEO_PROFILE;
+  if (
+    channel === "inrcy_site" ||
+    channel === "site_web" ||
+    channel === "inr_search"
+  ) {
+    return "light_background";
+  }
+  return "default";
 }
 
 export function getVideoTransformTarget(
@@ -186,8 +232,10 @@ function sanitizeVariantKey(value: string) {
 export function buildVideoTransformSignature(
   format: VideoFormat,
   adaptationMode: VideoAdaptationMode,
+  publicationProfile: VideoPublicationProfile = "default",
 ) {
-  return `${format}:${adaptationMode}`;
+  const base = `${format}:${adaptationMode}`;
+  return publicationProfile === "default" ? base : `${base}:${publicationProfile}`;
 }
 
 export function normalizeVideoTransformVariant(
@@ -207,7 +255,13 @@ export function normalizeVideoTransformVariant(
   const adaptationMode = normalizeVideoAdaptationMode(
     raw.adaptationMode || channelDefaults.adaptationMode,
   );
-  const signature = buildVideoTransformSignature(format, adaptationMode);
+  const publicationProfile =
+    raw.publicationProfile || getVideoPublicationProfileForChannel(channel);
+  const signature = buildVideoTransformSignature(
+    format,
+    adaptationMode,
+    publicationProfile,
+  );
   const key = sanitizeVariantKey(
     raw.key ||
       (channel
@@ -220,6 +274,7 @@ export function normalizeVideoTransformVariant(
     channel,
     format,
     adaptationMode,
+    publicationProfile,
     target: getVideoTransformTarget(format),
     signature,
   };
@@ -249,13 +304,30 @@ export function getVariantForChannel(
   format: VideoFormat,
   adaptationMode: VideoAdaptationMode,
 ) {
-  const signature = buildVideoTransformSignature(format, adaptationMode);
+  const profile = getVideoPublicationProfileForChannel(channel);
+  const signature = buildVideoTransformSignature(
+    format,
+    adaptationMode,
+    profile,
+  );
   const exact = (variants || []).find(
     (variant) => variant.signature === signature,
   );
   if (exact) return exact;
-  // Never reuse an old channel-specific crop when the requested policy is
-  // Original. Legacy fallback is allowed only for unsigned adapted variants.
+
+  // Compatibilité temporaire : une ancienne variante sans profil reste
+  // utilisable uniquement si elle respecte ensuite la validation du canal.
+  if (profile === GOOGLE_BUSINESS_VIDEO_PROFILE) {
+    const legacySignature = buildVideoTransformSignature(
+      format,
+      adaptationMode,
+    );
+    const legacy = (variants || []).find(
+      (variant) => variant.signature === legacySignature,
+    );
+    if (legacy) return legacy;
+  }
+
   if (format === "original") return null;
   return (
     (variants || []).find(

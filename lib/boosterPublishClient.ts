@@ -12,6 +12,24 @@ type BoosterPublishRequestOptions = {
   maxPollingMs?: number;
 };
 
+export class BoosterPublishError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly payload: JsonRecord;
+  readonly invalidChannels: unknown[];
+
+  constructor(message: string, status: number, payload: JsonRecord) {
+    super(message);
+    this.name = "BoosterPublishError";
+    this.status = status;
+    this.code = String(payload.code || "").trim() || null;
+    this.payload = payload;
+    this.invalidChannels = Array.isArray(payload.invalidChannels)
+      ? payload.invalidChannels
+      : [];
+  }
+}
+
 const TRANSIENT_STATUS_CODES = new Set([425, 502, 503, 504]);
 
 function sleep(ms: number) {
@@ -170,11 +188,13 @@ export async function postBoosterPublication(
     }
 
     if (isPendingIdempotentExecution) {
-      throw new Error(
+      throw new BoosterPublishError(
         String(
           json.message ||
             "La publication est toujours en cours. Consultez iNr’Send avant de relancer afin d’éviter un doublon.",
         ),
+        response.status,
+        json,
       );
     }
 
@@ -182,8 +202,10 @@ export async function postBoosterPublication(
       throw buildConnectionInterruptedError();
     }
 
-    throw new Error(
+    throw new BoosterPublishError(
       String(json.user_message || json.error || "La publication a échoué."),
+      response.status,
+      json,
     );
   }
 

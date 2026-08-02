@@ -172,8 +172,11 @@ const dashboardPageSource = readFileSync(
   "utf8",
 );
 
-const eReputationSource = readFileSync(
-  new URL("../../app/dashboard/e-reputation/page.tsx", import.meta.url),
+const googleBusinessChannelSource = readFileSync(
+  new URL(
+    "../../app/dashboard/_hooks/channels/useGoogleBusinessChannel.ts",
+    import.meta.url,
+  ),
   "utf8",
 );
 test("first onboarding uses a dedicated desktop presentation and a Passer action", () => {
@@ -246,7 +249,14 @@ test("returning to the dashboard reuses the establishment onboarding cache", () 
   assert.match(onboardingHookSource, /readCachedOnboardingState\(\) \?\? INITIAL_ONBOARDING_STATE/);
 });
 
-test("Google OAuth starts from a classic anchor and is not prefetched by Next", () => {
-  assert.match(eReputationSource, /primaryAction\.href\.startsWith\("\/api\/integrations\/google-business\/start"\)/);
-  assert.match(eReputationSource, /<a className=\{styles\.btnPrimary\} href=\{primaryAction\.href\}>/);
+test("Google OAuth uses a full browser navigation and cannot be prefetched by Next", () => {
+  assert.match(
+    googleBusinessChannelSource,
+    /window\.location\.href\s*=\s*`\/api\/integrations\/google-business\/start\?returnTo=\$\{returnTo\}`/,
+  );
+  assert.match(
+    googleBusinessChannelSource,
+    /encodeURIComponent\("\/dashboard\?panel=gmb"\)/,
+  );
+  assert.doesNotMatch(googleBusinessChannelSource, /router\.(?:push|replace)\(/);
 });

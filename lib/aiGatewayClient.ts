@@ -410,7 +410,9 @@ async function executeAiJsonAttempt<T extends AiResponseJSON>(args: {
       retries: target.retries,
       timeoutMs: target.timeoutMs,
       deadlineAt: target.deadlineAt,
-      retryStatuses: [404, 408, 500, 502, 503, 504],
+      // Un 404 indique généralement un modèle ou un endpoint indisponible :
+      // basculer immédiatement vers le moteur de secours au lieu de perdre un essai.
+      retryStatuses: [408, 500, 502, 503, 504],
       onAttempt: async (attempt) => {
         httpAttempts = Math.max(httpAttempts, attempt + 1);
         const reservation = await reserveAiGatewayAccountAttempt(opts.accountId, {
@@ -492,6 +494,7 @@ async function executeAiJsonAttempt<T extends AiResponseJSON>(args: {
       status: res.status,
     }).catch(() => undefined);
     const failedDurationMs = Date.now() - requestStartedAt;
+    const safeDetail = String(text || res.statusText || "").trim().slice(0, 500);
     console.error("[ai-generation] request failed", {
       feature: opts.feature,
       model: target.accountingModel,
@@ -502,6 +505,7 @@ async function executeAiJsonAttempt<T extends AiResponseJSON>(args: {
       hasImages,
       structuredOutput: Boolean(structuredFormat),
       status: res.status,
+      detail: safeDetail || undefined,
       durationMs: failedDurationMs,
     });
     recordAiGatewayOperationCall({
@@ -523,7 +527,6 @@ async function executeAiJsonAttempt<T extends AiResponseJSON>(args: {
       hasImages,
       httpAttempts,
     });
-    const safeDetail = String(text || res.statusText || "").trim().slice(0, 500);
     const sourceLabel = target.transport === "openai_direct" ? "OpenAI direct" : "AI Gateway";
     throw new AiGatewayHttpError(
       res.status,

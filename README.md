@@ -228,7 +228,7 @@ Ne jamais lancer une migration non testée directement en production.
 
 - Images : jusqu’à 5 images, 50 Mo par image et 150 Mo au total.
 - Vidéo source : 1 vidéo, jusqu’à 300 Mo.
-- Publication optimisée : compression automatique, avec variante jusqu’à 40 Mo lorsque le canal l’exige.
+- Publication optimisée : source jusqu’à 300 Mo, canonique jusqu’à 299 Mo et variante dédiée plus légère uniquement lorsque le canal l’exige (notamment Google Business).
 
 Ces règles doivent rester alignées entre :
 

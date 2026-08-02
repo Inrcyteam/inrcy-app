@@ -65,21 +65,22 @@ test("server image preparation must cover every selected image channel", () => {
   assert.match(route, /prepareBoosterImagesByChannelOnServer\(/);
   assert.match(route, /channels:\s*imageChannels/);
   assert.match(route, /workspaceId:\s*mediaWorkspaceId/);
-  assert.match(route, /imageChannels\.some\(/);
+  assert.match(route, /imageChannels\.forEach\(/);
   assert.match(route, /code:\s*"workspace_image_preparation_failed"/);
   assert.match(route, /pickCompleteChannelImageUrls/);
   assert.match(channelContext, /never borrow a fallback from another channel/i);
 });
 
-test("video publication uses prepared variants or a validated compatible source", () => {
+test("video publication keeps the request path fast and isolates invalid channels", () => {
   assert.match(route, /prepareBoosterVideoVariantsOnServer\(/);
-  assert.match(route, /generateMissing:\s*false/);
+  assert.match(route, /preparePublicationVariants\(false\)/);
+  assert.doesNotMatch(route, /preparePublicationVariants\(true\)/);
   assert.match(route, /buildVideoTransformSignature\(/);
   assert.match(route, /validateVideoPublicationForChannel\(/);
   assert.match(route, /canPublishVideoSourceDirectly\(/);
-  assert.match(route, /code:\s*"workspace_video_preparation_pending"/);
-  assert.match(route, /code:\s*"video_variant_required"/);
-  assert.doesNotMatch(route, /generateMissing:\s*true/);
+  assert.match(route, /preflightFailuresByChannel/);
+  assert.match(route, /buildBoosterPublicationDispatchPlan\(/);
+  assert.match(route, /if \(sourceValidation\.ok\) return \[\]/);
 });
 
 test("scheduled duplicate protection runs before parent idempotency acquisition", () => {
@@ -110,8 +111,9 @@ test("parent idempotency replays completed executions and blocks concurrent retr
 
 test("the parent request persists the publication and queued deliveries before dispatch", () => {
   assert.match(route, /\.from\("publications"\)[\s\S]*\.insert\(publicationInsert\)/);
-  assert.match(route, /const deliveries = selected\.map/);
-  assert.match(route, /status:\s*"queued" as const/);
+  assert.match(route, /const deliveries = channelPreflightPlan\.entries\.map/);
+  assert.match(route, /status:\s*entry\.status/);
+  assert.match(route, /error:\s*entry\.result/);
   assert.match(route, /\.from\("publication_deliveries"\)[\s\S]*\.insert\(deliveries\)/);
   assertBefore(
     route,
@@ -131,6 +133,10 @@ test("async fan-out creates one technical event per channel and strips workspace
   assert.match(route, /mediaPipelineCutoverV1:\s*false/);
   assert.match(route, /images:\s*\[\]/);
   assert.match(route, /imagesByChannel:\s*\{[\s\S]*preparedImagesByChannel\[channel\]/);
+  assert.match(route, /const queuedChannelRows = channelRows\.filter/);
+  assert.match(route, /payload:\s*preflightFailure/);
+  assert.match(route, /status:\s*"failed"/);
+  assert.match(route, /status:\s*"queued"/);
   assert.match(route, /after\(async \(\) =>/);
   assert.match(route, /\{ status:\s*202 \}/);
 });
@@ -144,6 +150,8 @@ test("each async channel worker owns an independent lock and durable delivery st
   assert.match(route, /finalizeAsyncPublicationIfReady\(/);
   assert.match(recoveryCron, /BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS/);
   assert.match(recoveryCron, /PROCESSING_RECOVERY_GRACE_MS/);
+  assert.match(recoveryCron, /MAX_ASYNC_DISPATCH_ATTEMPTS/);
+  assert.match(recoveryCron, /async_dispatch_exhausted/);
 });
 
 test("all ten supported channels keep an explicit server branch", () => {

@@ -4,6 +4,11 @@ import {
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "./mediaRules.ts";
 import { canPublishVideoSourceDirectly } from "./mediaVideoSourceCompatibility.ts";
+import {
+  GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
+  GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
+  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+} from "./googleBusinessMediaPolicy.ts";
 
 export type VideoPublicationPolicy = {
   channel: BoosterVideoChannelKey;
@@ -11,6 +16,7 @@ export type VideoPublicationPolicy = {
   maxBytesLabel: string;
   minDurationSeconds: number | null;
   maxDurationSeconds: number | null;
+  minShortEdgePixels: number | null;
   requiresMp4: boolean;
 };
 
@@ -25,7 +31,9 @@ export type VideoPublicationValidation =
         | "video_format_invalid"
         | "video_duration_unknown"
         | "video_duration_too_short"
-        | "video_duration_too_long";
+        | "video_duration_too_long"
+        | "video_resolution_unknown"
+        | "video_resolution_too_small";
       message: string;
     };
 
@@ -47,14 +55,13 @@ const DEFAULT_POLICY = {
   maxBytesLabel: INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
   minDurationSeconds: null,
   maxDurationSeconds: null,
+  minShortEdgePixels: null,
   requiresMp4: true,
 } as const;
 
 /**
- * Les tailles ci-dessous restent volontairement bornées par la limite source
- * iNrCy de 300 Mo. Les APIs actuellement utilisées acceptent toutes au moins
- * cette taille ; la vraie différenciation utile se fait donc surtout sur la
- * durée et le format, sans plafond global artificiel à 40 Mo.
+ * La source iNrCy reste acceptée jusqu'à 300 Mo. Google Business reçoit une
+ * variante dédiée avec une marge de sécurité sous sa limite officielle.
  */
 export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
   BoosterVideoChannelKey,
@@ -63,7 +70,14 @@ export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
   inrcy_site: { channel: "inrcy_site", ...DEFAULT_POLICY },
   site_web: { channel: "site_web", ...DEFAULT_POLICY },
   inr_search: { channel: "inr_search", ...DEFAULT_POLICY },
-  gmb: { channel: "gmb", ...DEFAULT_POLICY },
+  gmb: {
+    channel: "gmb",
+    ...DEFAULT_POLICY,
+    maxBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+    maxBytesLabel: "72 Mo (marge iNrCy sous la limite Google de 75 Mo)",
+    maxDurationSeconds: GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
+    minShortEdgePixels: GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
+  },
   facebook: {
     channel: "facebook",
     ...DEFAULT_POLICY,
@@ -84,7 +98,11 @@ export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
   tiktok: {
     channel: "tiktok",
     ...DEFAULT_POLICY,
-    maxDurationSeconds: 10 * 60,
+    // TikTok exposes the current account limit through creator-info. It can
+    // differ from one account to another, so the generic/shared policy must
+    // not impose a contradictory fixed 10-minute ceiling. The live TikTok
+    // preflight remains authoritative for this channel.
+    maxDurationSeconds: null,
   },
   youtube_shorts: {
     channel: "youtube_shorts",
@@ -110,6 +128,11 @@ function formatDuration(seconds: number) {
   return `${seconds} s`;
 }
 
+function positiveNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
 export function validateVideoPublicationForChannel(input: {
   channel: BoosterVideoChannelKey;
   name?: unknown;
@@ -118,6 +141,8 @@ export function validateVideoPublicationForChannel(input: {
   storagePath?: unknown;
   sizeBytes?: unknown;
   durationSeconds?: unknown;
+  width?: unknown;
+  height?: unknown;
 }): VideoPublicationValidation {
   const policy = getVideoPublicationPolicy(input.channel);
   const label = CHANNEL_LABELS[input.channel];
@@ -137,7 +162,7 @@ export function validateVideoPublicationForChannel(input: {
       ok: false,
       policy,
       reason: "video_too_large",
-      message: `La vidéo ${label} dépasse ${policy.maxBytesLabel}, limite source iNrCy.`,
+      message: `La vidéo ${label} dépasse ${policy.maxBytesLabel}. Une variante dédiée doit être préparée.`,
     };
   }
 
@@ -160,13 +185,10 @@ export function validateVideoPublicationForChannel(input: {
     };
   }
 
-  const durationSeconds = Number(input.durationSeconds || 0);
+  const durationSeconds = positiveNumber(input.durationSeconds);
   const hasDurationConstraint =
     policy.minDurationSeconds !== null || policy.maxDurationSeconds !== null;
-  if (
-    hasDurationConstraint &&
-    (!Number.isFinite(durationSeconds) || durationSeconds <= 0)
-  ) {
+  if (hasDurationConstraint && durationSeconds === null) {
     return {
       ok: false,
       policy,
@@ -175,7 +197,7 @@ export function validateVideoPublicationForChannel(input: {
     };
   }
 
-  if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+  if (durationSeconds !== null) {
     if (
       policy.minDurationSeconds !== null &&
       durationSeconds < policy.minDurationSeconds
@@ -196,6 +218,27 @@ export function validateVideoPublicationForChannel(input: {
         policy,
         reason: "video_duration_too_long",
         message: `La vidéo ${label} dépasse la durée maximale de ${formatDuration(policy.maxDurationSeconds)}.`,
+      };
+    }
+  }
+
+  if (policy.minShortEdgePixels !== null) {
+    const width = positiveNumber(input.width);
+    const height = positiveNumber(input.height);
+    if (width === null || height === null) {
+      return {
+        ok: false,
+        policy,
+        reason: "video_resolution_unknown",
+        message: `La résolution de la vidéo ${label} est inconnue. Relancez sa préparation.`,
+      };
+    }
+    if (Math.min(width, height) < policy.minShortEdgePixels) {
+      return {
+        ok: false,
+        policy,
+        reason: "video_resolution_too_small",
+        message: `La vidéo ${label} doit atteindre au moins ${policy.minShortEdgePixels} px sur son côté court.`,
       };
     }
   }

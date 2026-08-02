@@ -4,6 +4,10 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { fetchTiktokCreatorInfo } from "@/lib/tiktokOAuth";
 import type { TiktokCommercialContent } from "@/lib/tiktokSettings";
 import { buildTikTokVideoUploadPlan } from "@/lib/tiktokUploadPlan";
+import {
+  ensureFrenchPublicationErrorMessage,
+  getProviderPublicationErrorMessage,
+} from "@/lib/publicationErrorFrench";
 
 export { buildTikTokVideoUploadPlan } from "@/lib/tiktokUploadPlan";
 
@@ -330,6 +334,8 @@ function extractStatusFailReason(data: Record<string, unknown>, raw: unknown) {
 }
 
 export function getTiktokUserFacingError(error: unknown) {
+  const providerMessage = getProviderPublicationErrorMessage("tiktok", error);
+  if (providerMessage) return providerMessage;
   const message = String(error || "").toLowerCase();
   if (message.includes("url_ownership_unverified")) return "TikTok refuse le média : le domaine ou le préfixe d'URL iNrCy utilisé pour les médias doit être vérifié dans TikTok Developer.";
   if (message.includes("unaudited_client_can_only_post_to_private_accounts")) return "TikTok impose un compte privé et une visibilité privée tant que l'audit Direct Post n'est pas validé.";
@@ -355,7 +361,10 @@ export function getTiktokUserFacingError(error: unknown) {
   if (message.includes("picture_size_check_failed")) return "TikTok refuse la photo car ses dimensions ne respectent pas ses contraintes. iNrCy sert une version JPEG verticale optimisée ; réessaie avec le dernier correctif.";
   if (message.includes("photo") && (message.includes("not") || message.includes("failed"))) return "TikTok n'a pas accepté cette publication photo. Vérifie le format des images, le domaine média vérifié et réessaie.";
   if (message.includes("publish_cancelled") || message.includes("user_cancelled")) return "TikTok a annulé la publication. Réessaie depuis iNrCy.";
-  return String(error || "TikTok n'a pas accepté la publication.");
+  return ensureFrenchPublicationErrorMessage(
+    error,
+    "TikTok n'a pas accepté la publication. Merci de réessayer.",
+  );
 }
 
 export async function fetchTiktokPublishStatus(accessToken: string, publishId: string): Promise<TiktokPublishStatus> {
@@ -382,7 +391,9 @@ export async function fetchTiktokPublishStatus(accessToken: string, publishId: s
     return {
       ok: false,
       status: "STATUS_FETCH_ERROR",
-      failReason: response.error || response.errorCode || "TikTok n'a pas permis de lire le statut.",
+      failReason: getTiktokUserFacingError(
+        response.error || response.errorCode || "TikTok n'a pas permis de lire le statut.",
+      ),
       raw: response.raw,
       complete: false,
       failed: false,
@@ -401,7 +412,12 @@ export async function fetchTiktokPublishStatus(accessToken: string, publishId: s
     "PROCESSING";
   const failed = status === "FAILED" || status === "PUBLISH_FAILED" || status === "ERROR";
   const complete = status === "PUBLISH_COMPLETE" || status === "DONE" || status === "SUCCESS";
-  const failReason = failed ? extractStatusFailReason(data, response.raw) || "TikTok a refusé la publication." : null;
+  const rawFailReason = failed
+    ? extractStatusFailReason(data, response.raw) || "TikTok a refusé la publication."
+    : null;
+  const failReason = rawFailReason
+    ? getTiktokUserFacingError(rawFailReason)
+    : null;
   const publiclyAvailablePostIds = stringArray(
     data.publicaly_available_post_id || data.publicly_available_post_id || data.post_ids,
   );

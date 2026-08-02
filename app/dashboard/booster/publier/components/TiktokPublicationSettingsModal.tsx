@@ -50,6 +50,7 @@ type Props = {
   previewMediaCount?: number;
   onCancel: () => void;
   onValidate: (settings: TiktokPublicationSettings) => void;
+  onExcludeAndContinue?: () => void;
 };
 
 const privacyLabels: Record<string, string> = {
@@ -193,6 +194,7 @@ export default function TiktokPublicationSettingsModal({
   previewMediaCount,
   onCancel,
   onValidate,
+  onExcludeAndContinue,
 }: Props) {
   const [creatorInfo, setCreatorInfo] = useState<CreatorInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -534,7 +536,17 @@ export default function TiktokPublicationSettingsModal({
                   lineHeight: isMobile ? 1.5 : 1.35,
                 }}
               >
-                ⛔ {durationBlocker}
+                <div>⛔ {durationBlocker}</div>
+                {onExcludeAndContinue ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryBtn}
+                    onClick={onExcludeAndContinue}
+                    style={{ marginTop: 10, width: isMobile ? "100%" : undefined }}
+                  >
+                    Retirer TikTok et continuer sur les autres canaux
+                  </button>
+                ) : null}
               </div>
             ) : null}
 

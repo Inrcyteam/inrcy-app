@@ -14,8 +14,15 @@ import {
   isBoosterVideoChannelKey,
   type BoosterVideoChannelKey,
 } from "@/lib/boosterVideoSettings";
-import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import {
+  buildVideoTransformSignature,
+  getVideoPublicationProfileForChannel,
+} from "@/lib/boosterVideoTransforms";
 import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
+import {
+  getGoogleBusinessVideoPreparationDecision,
+  isGoogleBusinessVideoValidationOmittable,
+} from "@/lib/googleBusinessMediaPolicy";
 import type { BoosterImageChannel } from "@/lib/boosterImageDecision";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 
@@ -128,17 +135,48 @@ export async function POST(request: Request) {
         videoSettingsByChannel: body?.videoSettingsByChannel,
         sourceMetadata: video.sourceMetadata,
       });
+      const sourceWidth = Number(video.sourceMetadata?.width || 0) || null;
+      const sourceHeight = Number(video.sourceMetadata?.height || 0) || null;
       const signedSourceUrl = await createSafeStorageSignedUrl(
         video.bucket,
         video.storagePath,
         60 * 60,
       );
-      const requestedVariants = selectedChannels.map((channel) => ({
-        key: `${channel}-${settings[channel]?.format || "original"}-${settings[channel]?.adaptationMode || "safe_frame"}`,
-        channel,
-        format: settings[channel]?.format,
-        adaptationMode: settings[channel]?.adaptationMode,
-      }));
+
+      const mediaWarnings: Array<{
+        channel: BoosterVideoChannelKey;
+        code: string;
+        message: string;
+      }> = [];
+      const requestedVariants = selectedChannels.flatMap((channel) => {
+        if (channel === "gmb") {
+          const decision = getGoogleBusinessVideoPreparationDecision({
+            name: video.name,
+            type: video.type,
+            storagePath: video.storagePath,
+            sizeBytes: video.size,
+            durationSeconds: video.duration,
+            width: sourceWidth,
+            height: sourceHeight,
+          });
+          if (decision.action === "omit") {
+            mediaWarnings.push({
+              channel,
+              code: decision.warningCode,
+              message: decision.warningMessage,
+            });
+            return [];
+          }
+        }
+        return [{
+          key: `${channel}-${settings[channel]?.format || "original"}-${settings[channel]?.adaptationMode || "safe_frame"}`,
+          channel,
+          format: settings[channel]?.format,
+          adaptationMode: settings[channel]?.adaptationMode,
+          publicationProfile: getVideoPublicationProfileForChannel(channel),
+        }];
+      });
+
       const prepared = await prepareBoosterVideoVariantsOnServer({
         accountId: activeUserId,
         workspaceId,
@@ -151,46 +189,69 @@ export async function POST(request: Request) {
         },
         variants: requestedVariants,
       });
-      const requiredSignatures = Array.from(
-        new Set(
-          requestedVariants.map((variant) =>
-            buildVideoTransformSignature(
-              variant.format || "original",
-              variant.adaptationMode || "safe_frame",
-            ),
-          ),
-        ),
-      );
-      const invalidChannels = requestedVariants.flatMap((request) => {
-        const signature = buildVideoTransformSignature(
+      const signatureFor = (request: (typeof requestedVariants)[number]) =>
+        buildVideoTransformSignature(
           request.format || "original",
           request.adaptationMode || "safe_frame",
+          request.publicationProfile,
         );
+      const requiredSignatures = Array.from(
+        new Set(requestedVariants.map(signatureFor)),
+      );
+      const invalidChannels = requestedVariants.flatMap((request) => {
+        const signature = signatureFor(request);
         const variant = prepared.variants.find(
           (candidate) => candidate.signature === signature,
         );
+        const sourceValidation = validateVideoPublicationForChannel({
+          channel: request.channel,
+          name: video.name,
+          type: video.type,
+          storagePath: video.storagePath,
+          sizeBytes: video.size,
+          durationSeconds: video.duration,
+          width: sourceWidth,
+          height: sourceHeight,
+        });
         if (!variant?.publicUrl || !variant?.storagePath) {
-          const sourceValidation = validateVideoPublicationForChannel({
-            channel: request.channel,
-            name: video.name,
-            type: video.type,
-            storagePath: video.storagePath,
-            sizeBytes: video.size,
-            durationSeconds: video.duration,
-          });
-          if (allowOriginalVideoFallback && sourceValidation.ok) return [];
-          return [
-            {
+          if (
+            allowOriginalVideoFallback &&
+            generateMissingVideoVariants &&
+            sourceValidation.ok
+          ) {
+            mediaWarnings.push({
               channel: request.channel,
-              signature,
-              reason: sourceValidation.ok
-                ? "variant_missing"
-                : sourceValidation.reason,
+              code: "video_variant_fallback_to_original",
+              message:
+                "La variante optimisée n’a pas pu être préparée. La vidéo originale compatible sera utilisée.",
+            });
+            return [];
+          }
+          if (
+            request.channel === "gmb" &&
+            (!sourceValidation.ok || prepared.errors.length > 0)
+          ) {
+            mediaWarnings.push({
+              channel: "gmb",
+              code: sourceValidation.ok
+                ? "google_business_video_variant_missing"
+                : String(sourceValidation.reason),
               message: sourceValidation.ok
-                ? "La variante vidéo demandée n’est pas encore prête."
+                ? "Google Business publiera le texte sans vidéo si sa variante dédiée n’est pas prête."
                 : sourceValidation.message,
-            },
-          ];
+            });
+            return [];
+          }
+          return [{
+            channel: request.channel,
+            signature,
+            reason: sourceValidation.ok
+              ? "variant_missing"
+              : sourceValidation.reason,
+            message: sourceValidation.ok
+              ? "La variante vidéo demandée n’est pas encore prête."
+              : sourceValidation.message,
+          }];
         }
         const validation = validateVideoPublicationForChannel({
           channel: request.channel,
@@ -199,25 +260,40 @@ export async function POST(request: Request) {
           storagePath: variant.storagePath,
           sizeBytes: variant.size,
           durationSeconds: variant.duration ?? video.duration,
+          width: variant.width,
+          height: variant.height,
         });
         if (validation.ok) return [];
-        const sourceValidation = validateVideoPublicationForChannel({
-          channel: request.channel,
-          name: video.name,
-          type: video.type,
-          storagePath: video.storagePath,
-          sizeBytes: video.size,
-          durationSeconds: video.duration,
-        });
-        if (allowOriginalVideoFallback && sourceValidation.ok) return [];
-        return [
-          {
+        if (
+          allowOriginalVideoFallback &&
+          generateMissingVideoVariants &&
+          sourceValidation.ok
+        ) {
+          mediaWarnings.push({
             channel: request.channel,
-            signature,
-            reason: validation.reason,
-            message: validation.message,
-          },
-        ];
+            code: "video_variant_fallback_to_original",
+            message:
+              "La variante optimisée reste incompatible. La vidéo originale compatible sera utilisée.",
+          });
+          return [];
+        }
+        if (
+          request.channel === "gmb" &&
+          isGoogleBusinessVideoValidationOmittable(validation.reason)
+        ) {
+          mediaWarnings.push({
+            channel: "gmb",
+            code: validation.reason,
+            message: `${validation.message} Google Business publiera le texte sans vidéo.`,
+          });
+          return [];
+        }
+        return [{
+          channel: request.channel,
+          signature,
+          reason: validation.reason,
+          message: validation.message,
+        }];
       });
       const invalidSignatures = Array.from(
         new Set(invalidChannels.map((item) => item.signature)),
@@ -225,10 +301,7 @@ export async function POST(request: Request) {
       const fallbackOriginalChannels = allowOriginalVideoFallback
         ? requestedVariants
             .filter((request) => {
-              const signature = buildVideoTransformSignature(
-                request.format || "original",
-                request.adaptationMode || "safe_frame",
-              );
+              const signature = signatureFor(request);
               const variant = prepared.variants.find(
                 (candidate) => candidate.signature === signature,
               );
@@ -241,6 +314,8 @@ export async function POST(request: Request) {
                       storagePath: variant.storagePath,
                       sizeBytes: variant.size,
                       durationSeconds: variant.duration ?? video.duration,
+                      width: variant.width,
+                      height: variant.height,
                     })
                   : null;
               if (variantValidation?.ok) return false;
@@ -251,6 +326,8 @@ export async function POST(request: Request) {
                 storagePath: video.storagePath,
                 sizeBytes: video.size,
                 durationSeconds: video.duration,
+                width: sourceWidth,
+                height: sourceHeight,
               }).ok;
             })
             .map((request) => request.channel)
@@ -266,6 +343,7 @@ export async function POST(request: Request) {
         invalidSignatures,
         invalidChannels,
         fallbackOriginalChannels,
+        mediaWarnings,
         errors: prepared.errors,
       });
     }

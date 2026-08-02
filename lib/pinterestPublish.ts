@@ -3,6 +3,11 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { publishPinterestVideoWithProtocol } from "@/lib/pinterestVideoProtocol";
 import { buildPinterestImageMediaSource } from "@/lib/pinterestImagePinPayload";
+import { preparePinterestCarouselImages } from "@/lib/pinterestCarouselImages";
+import {
+  ensureFrenchPublicationErrorMessage,
+  getProviderPublicationErrorMessage,
+} from "@/lib/publicationErrorFrench";
 import { getVideoPublicationPolicy } from "@/lib/videoPublicationPolicy";
 import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { randomUUID } from "crypto";
@@ -15,6 +20,7 @@ import ffmpegStaticPath from "ffmpeg-static";
 
 export type PinterestCreateImagePinArgs = {
   accessToken: string;
+  userId: string;
   boardId: string;
   title: string;
   description?: string;
@@ -32,6 +38,10 @@ export type PinterestCreatePinResult = {
   media_status?: string | null;
   media_type?: "image" | "video";
   cover_image_url?: string | null;
+  images_harmonized?: boolean;
+  prepared_image_urls?: string[];
+  target_width?: number | null;
+  target_height?: number | null;
 };
 
 export type PinterestCreateVideoPinArgs = {
@@ -122,19 +132,27 @@ async function pinterestApiRequest<T = unknown>(
 
   if (!res.ok) {
     const rec = asRecord(json);
-    const message =
+    const rawMessage =
       asString(rec.message) ||
       asString(rec.error_description) ||
       asString(rec.error) ||
       `Pinterest a refusé l'action (${res.status}).`;
+    const message =
+      getProviderPublicationErrorMessage("pinterest", rawMessage) ||
+      ensureFrenchPublicationErrorMessage(
+        rawMessage,
+        `Pinterest a refusé l'action (${res.status}). Merci de réessayer.`,
+      );
     const pinterestCode =
       asString(rec.code) || asString(rec.error_code) || asString(rec.error_type) || null;
     const error = new Error(message) as Error & {
       status?: number;
       pinterestCode?: string | null;
+      pinterestRawMessage?: string | null;
     };
     error.status = res.status;
     error.pinterestCode = pinterestCode;
+    error.pinterestRawMessage = rawMessage;
     throw error;
   }
   return json as T;
@@ -446,9 +464,12 @@ async function preparePinterestVideoAsset(params: {
 
 export function isPinterestPinEditRestrictedError(error: unknown) {
   const rec = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
-  const message = String(
+  const message = [
     error instanceof Error ? error.message : rec.message || error || "",
-  ).toLowerCase();
+    rec.pinterestRawMessage || "",
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
   const code = String(rec.pinterestCode || rec.code || "").toLowerCase();
   return (
     message.includes("pin_edit") ||
@@ -459,6 +480,7 @@ export function isPinterestPinEditRestrictedError(error: unknown) {
 
 export async function createPinterestImagePin({
   accessToken,
+  userId,
   boardId,
   title,
   description,
@@ -467,6 +489,7 @@ export async function createPinterestImagePin({
   link,
 }: PinterestCreateImagePinArgs): Promise<PinterestCreatePinResult> {
   const token = String(accessToken || "").trim();
+  const cleanUserId = String(userId || "").trim();
   const cleanBoardId = String(boardId || "").trim();
   const requestedImageUrls = Array.isArray(imageUrls) && imageUrls.length
     ? imageUrls
@@ -474,10 +497,16 @@ export async function createPinterestImagePin({
 
   if (!token)
     throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
+  if (!cleanUserId)
+    throw new Error("Compte iNrCy introuvable pour préparer les images Pinterest.");
   if (!cleanBoardId)
     throw new Error("Choisissez un tableau Pinterest avant de publier.");
 
-  const mediaSource = buildPinterestImageMediaSource(requestedImageUrls);
+  const preparedImages = await preparePinterestCarouselImages({
+    userId: cleanUserId,
+    imageUrls: requestedImageUrls,
+  });
+  const mediaSource = buildPinterestImageMediaSource(preparedImages.imageUrls);
 
   const payload: Record<string, unknown> = {
     board_id: cleanBoardId,
@@ -503,6 +532,10 @@ export async function createPinterestImagePin({
     url: asString(json.url) || asString(json.link) || buildPinterestPinUrl(id),
     board_id: asString(json.board_id) || cleanBoardId,
     media_type: "image",
+    images_harmonized: preparedImages.harmonized,
+    prepared_image_urls: preparedImages.imageUrls,
+    target_width: preparedImages.targetWidth,
+    target_height: preparedImages.targetHeight,
   };
 }
 
@@ -554,18 +587,47 @@ export async function createPinterestVideoPin({
     coverImageUrl: cleanCoverUrl,
   });
 
-  const protocolResult = await publishPinterestVideoWithProtocol({
-    apiBaseUrl: getPinterestApiBaseUrl(),
-    accessToken: token,
-    boardId: cleanBoardId,
-    title: cleanSingleLineText(title || "Publication iNrCy", 100),
-    description: cleanMultilineText(description || "", 500),
-    link: normalizePublicUrl(link) || null,
-    coverImageUrl: prepared.coverImageUrl,
-    videoBytes: new Uint8Array(prepared.videoBuffer),
-    videoContentType: prepared.videoContentType,
-    videoFileName: prepared.videoFileName,
-  });
+  let protocolResult: Awaited<
+    ReturnType<typeof publishPinterestVideoWithProtocol>
+  >;
+  try {
+    protocolResult = await publishPinterestVideoWithProtocol({
+      apiBaseUrl: getPinterestApiBaseUrl(),
+      accessToken: token,
+      boardId: cleanBoardId,
+      title: cleanSingleLineText(title || "Publication iNrCy", 100),
+      description: cleanMultilineText(description || "", 500),
+      link: normalizePublicUrl(link) || null,
+      coverImageUrl: prepared.coverImageUrl,
+      videoBytes: new Uint8Array(prepared.videoBuffer),
+      videoContentType: prepared.videoContentType,
+      videoFileName: prepared.videoFileName,
+    });
+  } catch (protocolError) {
+    const source =
+      protocolError instanceof Error
+        ? protocolError.message
+        : String(protocolError || "");
+    const message =
+      getProviderPublicationErrorMessage("pinterest", source) ||
+      ensureFrenchPublicationErrorMessage(
+        source,
+        "Pinterest n'a pas pu finaliser la publication vidéo. Merci de réessayer.",
+      );
+    const sourceRecord =
+      protocolError && typeof protocolError === "object"
+        ? (protocolError as Record<string, unknown>)
+        : {};
+    const wrapped = new Error(message) as Error & {
+      status?: number;
+      pinterestCode?: string | null;
+      pinterestRawMessage?: string | null;
+    };
+    wrapped.status = Number(sourceRecord.status || 0) || undefined;
+    wrapped.pinterestCode = asString(sourceRecord.pinterestCode) || null;
+    wrapped.pinterestRawMessage = source || null;
+    throw wrapped;
+  }
 
   const json = asRecord(protocolResult.pin);
   const id = asString(json.id) || asString(json.pin_id) || null;

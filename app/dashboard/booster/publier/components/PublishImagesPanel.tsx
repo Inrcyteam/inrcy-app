@@ -84,6 +84,7 @@ type PublishImagesPanelProps = {
   publicationMediaType: PublicationMediaType;
   channelMediaModes: Partial<Record<ChannelKey, ChannelMediaMode>>;
   setChannelMediaMode: (channel: ChannelKey, mode: ChannelMediaMode) => void;
+  onRemoveChannel: (channel: ChannelKey) => void;
   videoFormatByChannel: Partial<Record<ChannelKey, VideoFormat>>;
   setVideoFormatForChannel: (channel: ChannelKey, format: VideoFormat) => void;
   videoAdaptationModeByChannel: Partial<Record<ChannelKey, VideoAdaptationMode>>;
@@ -129,6 +130,7 @@ export default function PublishImagesPanel({
   publicationMediaType: _publicationMediaType,
   channelMediaModes,
   setChannelMediaMode,
+  onRemoveChannel,
   videoFormatByChannel,
   setVideoFormatForChannel,
   videoAdaptationModeByChannel,
@@ -601,7 +603,7 @@ export default function PublishImagesPanel({
               videoPreviewVariantsPreparing={videoPreviewVariantsPreparing}
               onApplyVideoFormatForChannel={onApplyVideoFormatForChannel}
               onApplyVideoFormatToAllChannels={onApplyVideoFormatToAllChannels}
-              setChannelMediaMode={setChannelMediaMode}
+              onRemoveChannel={onRemoveChannel}
             />
           ) : !images.length ? (
             <div style={{ fontSize: 13, opacity: 0.75 }}>

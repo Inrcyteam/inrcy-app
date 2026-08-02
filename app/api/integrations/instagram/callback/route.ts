@@ -11,6 +11,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
+import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 type TokenResponse = {
   access_token?: string;
   expires_in?: number;
@@ -114,7 +115,7 @@ export async function GET(req: Request) {
     if (rlIp) return rlIp;
 
     // Exchange code -> user token
-    const tokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({
+    const tokenUrl = `${buildMetaGraphUrl("oauth/access_token")}?${new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
       client_secret: appSecret,
@@ -131,7 +132,7 @@ export async function GET(req: Request) {
     let longUserToken = userAccessToken;
     let longExpiresIn: number | null = null;
     try {
-      const longTokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({
+      const longTokenUrl = `${buildMetaGraphUrl("oauth/access_token")}?${new URLSearchParams({
         grant_type: "fb_exchange_token",
         client_id: appId,
         client_secret: appSecret,

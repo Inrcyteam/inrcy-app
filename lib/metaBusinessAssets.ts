@@ -1,4 +1,5 @@
 import { asRecord, asString } from "@/lib/tsSafe";
+import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 
 export type FacebookPageAsset = {
   id: string;
@@ -73,7 +74,7 @@ function normalizePage(raw: unknown, source: FacebookPageAsset["source"], busine
 async function enrichPageWithLookup(page: FacebookPageAsset, userToken: string): Promise<FacebookPageAsset> {
   if (page.access_token && page.instagram_business_account?.id) return page;
   try {
-    const url = `https://graph.facebook.com/v20.0/${encodeURIComponent(page.id)}?${new URLSearchParams({
+    const url = `${buildMetaGraphUrl(encodeURIComponent(page.id))}?${new URLSearchParams({
       fields: "id,name,access_token,instagram_business_account{username,id}",
       access_token: userToken,
     }).toString()}`;
@@ -118,7 +119,7 @@ export async function listAccessibleFacebookPages(userToken: string): Promise<Fa
   };
 
   try {
-    const url = `https://graph.facebook.com/v20.0/me/accounts?${new URLSearchParams({
+    const url = `${buildMetaGraphUrl("me/accounts")}?${new URLSearchParams({
       fields: "id,name,access_token,instagram_business_account{username,id}",
       access_token: userToken,
       limit: "200",
@@ -128,7 +129,7 @@ export async function listAccessibleFacebookPages(userToken: string): Promise<Fa
   } catch {}
 
   try {
-    const url = `https://graph.facebook.com/v20.0/me/assigned_pages?${new URLSearchParams({
+    const url = `${buildMetaGraphUrl("me/assigned_pages")}?${new URLSearchParams({
       fields: "id,name,instagram_business_account{username,id}",
       access_token: userToken,
       limit: "200",
@@ -138,7 +139,7 @@ export async function listAccessibleFacebookPages(userToken: string): Promise<Fa
   } catch {}
 
   try {
-    const businessesUrl = `https://graph.facebook.com/v20.0/me/businesses?${new URLSearchParams({
+    const businessesUrl = `${buildMetaGraphUrl("me/businesses")}?${new URLSearchParams({
       fields: "id,name",
       access_token: userToken,
       limit: "200",
@@ -158,7 +159,7 @@ export async function listAccessibleFacebookPages(userToken: string): Promise<Fa
 
       for (const { edge, source } of edges) {
         try {
-          const edgeUrl = `https://graph.facebook.com/v20.0/${encodeURIComponent(businessId)}/${edge}?${new URLSearchParams({
+          const edgeUrl = `${buildMetaGraphUrl(`${encodeURIComponent(businessId)}/${edge}`)}?${new URLSearchParams({
             fields: "id,name,instagram_business_account{username,id}",
             access_token: userToken,
             limit: "200",

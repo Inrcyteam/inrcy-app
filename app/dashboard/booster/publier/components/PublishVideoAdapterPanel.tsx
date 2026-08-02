@@ -5,7 +5,6 @@ import BoosterVideoFormatManager, {
 import {
   type BoosterVideoSourceMetadata,
   type ChannelKey,
-  type ChannelMediaMode,
   type VideoAdaptationMode,
   type VideoFormat,
 } from "../publishModal.shared";
@@ -36,7 +35,7 @@ type PublishVideoAdapterPanelProps = {
   videoPreviewVariantsPreparing?: boolean;
   onApplyVideoFormatForChannel?: (channel: ChannelKey) => void;
   onApplyVideoFormatToAllChannels?: (channel: ChannelKey) => void;
-  setChannelMediaMode: (channel: ChannelKey, mode: ChannelMediaMode) => void;
+  onRemoveChannel: (channel: ChannelKey) => void;
 };
 
 export default function PublishVideoAdapterPanel({
@@ -56,7 +55,7 @@ export default function PublishVideoAdapterPanel({
   videoPreviewVariantsPreparing = false,
   onApplyVideoFormatForChannel,
   onApplyVideoFormatToAllChannels,
-  setChannelMediaMode,
+  onRemoveChannel,
 }: PublishVideoAdapterPanelProps) {
   const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
 
@@ -101,7 +100,7 @@ export default function PublishVideoAdapterPanel({
           ? () => onApplyVideoFormatToAllChannels(activeChannel)
           : undefined
       }
-      onRemoveFromChannel={() => setChannelMediaMode(activeChannel, "none")}
+      onRemoveFromChannel={() => onRemoveChannel(activeChannel)}
       buttonClassName={styles.secondaryBtn}
     />
   );

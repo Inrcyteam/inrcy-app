@@ -76,6 +76,50 @@ test("Pinterest only adapts images taller than 2:3", () => {
   );
 });
 
+test("Pinterest keeps an already uniform multi-image ratio untouched", () => {
+  const target = getBoosterImageSequenceTargetRatio({
+    channel: "pinterest",
+    metas: [
+      { width: 1080, height: 1350 },
+      { width: 800, height: 1000 },
+    ],
+  });
+
+  assert.equal(target, null);
+});
+
+test("Pinterest gives mixed images one shared ratio and forces an exact canvas", () => {
+  const target = getBoosterImageSequenceTargetRatio({
+    channel: "pinterest",
+    metas: [
+      { width: 1080, height: 1350 },
+      { width: 1920, height: 1080 },
+    ],
+  });
+
+  assert.equal(target, 4 / 5);
+  const first = getBoosterImageDecision({
+    channel: "pinterest",
+    meta: { width: 1080, height: 1350 },
+    requiredTargetRatio: target,
+    forceRequiredTargetCanvas: true,
+  });
+  assert.equal(first.mode, "adapted");
+  assert.equal(first.reason, "sequence_target_ratio");
+});
+
+test("Pinterest normalizes a too-tall first image to 2:3 for the whole Pin", () => {
+  const target = getBoosterImageSequenceTargetRatio({
+    channel: "pinterest",
+    metas: [
+      { width: 600, height: 1200 },
+      { width: 1000, height: 1000 },
+    ],
+  });
+
+  assert.equal(target, 2 / 3);
+});
+
 test("A transform delta without explicit Adapter provenance stays original", () => {
   const automaticTransform = {
     fit: "contain" as const,

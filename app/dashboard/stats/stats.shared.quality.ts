@@ -98,9 +98,12 @@ export function buildProvenance(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "facebook") {
     const m = ov?.sources?.facebook?.metrics;
     const audience = Math.max(
+      safeNum(m?.totals?.page_total_media_view_unique),
+      safeNum(m?.totals?.post_total_media_view_unique_sum),
+      safeNum(m?.totals?.reach),
+      // Historique antérieur à la migration Meta de juin 2026.
       safeNum(m?.totals?.page_impressions_unique),
       safeNum(m?.totals?.post_impressions_unique_sum),
-      safeNum(m?.totals?.reach),
       safeNum(m?.totals?.fan_count),
       safeNum(m?.totals?.followers_count),
       safeNum(m?.totals?.page_views_total),
@@ -243,7 +246,7 @@ export function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" 
 
   const audience =
     cubeKey === "facebook"
-      ? safeNum(m?.totals?.fan_count) + safeNum(m?.totals?.followers_count) + safeNum(m?.totals?.post_impressions_sum)
+      ? safeNum(m?.totals?.fan_count) + safeNum(m?.totals?.followers_count) + bestMetricValue(m, ["page_total_media_view_unique", "post_total_media_view_unique_sum", "reach", "page_impressions_unique", "post_impressions_unique_sum"])
       : cubeKey === "instagram"
         ? latestDailyMetricValue(m, "follower_count") + safeNum(m?.totals?.reach) + safeNum(m?.totals?.profile_views)
         : cubeKey === "tiktok"
@@ -288,7 +291,7 @@ export function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" 
 
   const visibility =
     cubeKey === "facebook"
-      ? safeNum(m?.totals?.post_impressions_sum) + safeNum(m?.totals?.page_impressions)
+      ? bestMetricValue(m, ["page_media_view", "post_media_view_sum", "views", "page_impressions", "post_impressions_sum", "impressions"])
       : cubeKey === "instagram"
         ? safeNum(m?.totals?.impressions) + safeNum(m?.totals?.reach)
         : cubeKey === "tiktok"

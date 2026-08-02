@@ -65,7 +65,7 @@ test("TikTok garde un dernier morceau conforme pour une source de 300 Mo", () =>
   assert.ok(lastChunkSize <= 64 * MB);
 });
 
-test("publier et programmer ne lancent plus de préparation bloquante à 42 %", async () => {
+test("publier et programmer font un contrôle rapide puis une seule récupération si nécessaire", async () => {
   const modal = await readSource(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
@@ -81,7 +81,12 @@ test("publier et programmer ne lancent plus de préparation bloquante à 42 %", 
   assert.match(modal, /async function prepareCutoverVideoVariants/);
   assert.equal(
     (modal.match(/prewarmPersistentMediaWorkspace\(/g) || []).length,
-    1,
+    2,
+  );
+  assert.match(modal, /generateMissingVideoVariants:\s*false/);
+  assert.match(
+    modal,
+    /shouldRetryVideoVariantGeneration[\s\S]*generateMissingVideoVariants:\s*true/,
   );
   assert.match(uploadEvent, /!directVideoSource/);
   assert.match(uploadEvent, /reason:\s*"source_direct_ready"/);

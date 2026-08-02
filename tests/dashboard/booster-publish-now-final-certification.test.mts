@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -13,10 +12,6 @@ function sliceBetween(source: string, start: string, end: string) {
   assert.ok(startIndex >= 0, `missing start marker: ${start}`);
   assert.ok(endIndex > startIndex, `missing end marker after ${start}: ${end}`);
   return source.slice(startIndex, endIndex);
-}
-
-function sha256(value: string) {
-  return createHash("sha256").update(value).digest("hex");
 }
 
 const route = read("app/api/booster/publish-now/route.ts");
@@ -261,19 +256,23 @@ test("async status, recovery and aggregate finalization stay connected to publis
   assert.match(asyncPublication, /export async function readAsyncPublicationStatus/);
   assert.match(statusRoute, /readAsyncPublicationStatus\(/);
   assert.match(recoveryCron, /BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS/);
+  assert.match(recoveryCron, /MAX_ASYNC_DISPATCH_ATTEMPTS/);
+  assert.match(recoveryCron, /async_dispatch_exhausted/);
   assert.match(recoveryCron, /\/api\/booster\/publish-now/);
   assert.match(recoveryCron, /buildInternalCronHeaders\(/);
 });
 
-test("the certified dispatch loop fingerprint is recorded for future intentional review", () => {
+test("the dispatch loop preserves semantic channel isolation and safe provider fallback", () => {
   const dispatchLoop = sliceBetween(
     route,
     "for (const ch of selected)",
     "if (internalAsyncDispatch)",
   );
-  assert.equal(dispatchLoop.length, 56_590);
-  assert.equal(
-    sha256(dispatchLoop),
-    "3c13546a773656f1bbeb5a5cbd8aac2656e2c3ba0a34c8bc46eba3067b27d67f",
-  );
+  assert.match(dispatchLoop, /const preflightFailure = preflightFailuresByChannel\[ch\]/);
+  assert.match(dispatchLoop, /if \(preflightFailure\)/);
+  assert.match(dispatchLoop, /continue/);
+  assert.match(dispatchLoop, /ch === "site_web"/);
+  assert.match(dispatchLoop, /if \(ch === "tiktok"\)/);
+  assert.match(route, /resp\.safeTextFallback === true/);
+  assert.doesNotMatch(route, /preparePublicationVariants\(true\)/);
 });

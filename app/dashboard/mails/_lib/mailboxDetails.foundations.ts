@@ -4,6 +4,11 @@ import type { BoosterVideoPreparationState } from "@/app/dashboard/booster/publi
 import type { VideoAdaptationMode, VideoFormat } from "@/app/dashboard/booster/publier/publishModal.shared";
 import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
 import {
+  ensureFrenchPublicationErrorMessage,
+  getFrenchPublicationErrorMessage,
+  getProviderPublicationErrorMessage,
+} from "@/lib/publicationErrorFrench";
+import {
   formatCampaignProgress,
   type CampaignExperienceReport,
   type CampaignRecipientsFilterId,
@@ -261,17 +266,31 @@ export function getTiktokStatusMeta(result: any) {
               : pending
                 ? "En traitement"
                 : "Statut inconnu";
-  const failReason = firstStringDeep(
+  const rawFailReason = firstStringDeep(
     result?.tiktok_fail_reason,
     getNestedString(result, ["diagnostics", "status", "failReason"]),
   );
-  const message = firstStringDeep(
+  const failReason = rawFailReason
+    ? getProviderPublicationErrorMessage("tiktok", rawFailReason) ||
+      ensureFrenchPublicationErrorMessage(
+        rawFailReason,
+        "TikTok a refusé la publication.",
+      )
+    : "";
+  const rawMessage = firstStringDeep(
     result?.tiktok_status_message,
     result?.error,
     result?.warning_message,
     result?.tiktok_status_fetch_error,
     failReason,
   );
+  const message = rawMessage
+    ? getFrenchPublicationErrorMessage(
+        "tiktok",
+        rawMessage,
+        "TikTok n'a pas pu finaliser la publication.",
+      )
+    : "";
   const uploadedBytes = Number(result?.tiktok_uploaded_bytes ?? getNestedString(result, ["diagnostics", "status", "uploadedBytes"]) ?? 0) || 0;
   return { status, cancelled, failed, complete, pending, label, message, failReason, statusFetchFailed, stalled, uploadedBytes };
 }

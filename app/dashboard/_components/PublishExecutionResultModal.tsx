@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  ensureFrenchPublicationErrorMessage,
+  getFrenchPublicationErrorMessage,
+} from "@/lib/publicationErrorFrench";
 import StatusMessage from "./StatusMessage";
 
 type DashboardStyles = Readonly<Record<string, string>>;
@@ -8,16 +12,22 @@ type PublishExecutionSummary = {
   allFailed?: boolean;
   failureCount?: number;
   successCount?: number;
+  warningCount?: number;
+  mediaWarningCount?: number;
+  pendingCount?: number;
+  skippedCount?: number;
   entries?: Array<{
     channel: string;
     label: string;
     ok?: boolean;
-    status?: "published" | "processing" | "failed" | string;
+    status?: "published" | "published_with_warning" | "processing" | "failed" | string;
     code?: string | null;
     retryable?: boolean;
     error?: string | null;
     warning?: string | null;
+    warning_kind?: "media_degraded" | "degraded" | "pending" | string | null;
     warning_message?: string | null;
+    blockers?: string[];
   }>;
   channelLinks?: Record<string, string>;
   retryableFailureCount?: number;
@@ -42,7 +52,28 @@ export default function PublishExecutionResultModal({
   const successCount = Number(summary?.successCount || 0);
   const allFailed = Boolean(summary?.allFailed);
   const entries = Array.isArray(summary?.entries) ? summary.entries : [];
-  const pendingCount = entries.filter((entry) => entry.ok && entry.warning).length;
+  const warningCount = Math.max(
+    Number(summary?.warningCount || 0),
+    entries.filter((entry) => entry.status === "published_with_warning").length,
+  );
+  const mediaWarningCount = Math.max(
+    Number(summary?.mediaWarningCount || 0),
+    entries.filter((entry) => entry.warning_kind === "media_degraded").length,
+  );
+  const pendingCount = Math.max(
+    Number(summary?.pendingCount || 0),
+    entries.filter((entry) => entry.status === "processing").length,
+  );
+  const skippedCount = Math.max(
+    Number(summary?.skippedCount || 0),
+    entries.filter((entry) => entry.status === "skipped").length,
+  );
+  const pendingEntries = entries.filter(
+    (entry) => entry.status === "processing",
+  );
+  const pendingLabels = Array.from(
+    new Set(pendingEntries.map((entry) => entry.label).filter(Boolean)),
+  );
   const retryableFailureCount = Math.max(
     0,
     Number(summary?.retryableFailureCount || 0),
@@ -76,7 +107,7 @@ export default function PublishExecutionResultModal({
           border: `1px solid ${
             allFailed
               ? "rgba(248,113,113,0.34)"
-              : failureCount
+              : failureCount || pendingCount || warningCount || skippedCount
                 ? "rgba(251,191,36,0.28)"
                 : "rgba(34,197,94,0.28)"
           }`,
@@ -100,7 +131,15 @@ export default function PublishExecutionResultModal({
           ✕
         </button>
         <div style={{ fontSize: 42, marginBottom: 8 }}>
-          {allFailed ? "❌" : failureCount ? "✅" : "🎉"}
+          {allFailed
+            ? "❌"
+            : failureCount
+              ? "⚠️"
+              : pendingCount
+                ? "⏳"
+                : warningCount || skippedCount
+                  ? "⚠️"
+                  : "🎉"}
         </div>
         <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
           {allFailed
@@ -109,6 +148,10 @@ export default function PublishExecutionResultModal({
               ? "Publication envoyée partiellement"
               : pendingCount
                 ? "Envoi accepté, traitement en cours"
+              : warningCount
+                ? `Publication publiée avec avertissement${warningCount > 1 ? "s" : ""}`
+              : skippedCount
+                ? "Publication envoyée sur les canaux prêts"
                 : "Publication envoyée avec succès"}
         </div>
         <div
@@ -120,11 +163,15 @@ export default function PublishExecutionResultModal({
             : failureCount
               ? `Votre publication a été envoyée sur ${successCount} canal(aux). ${failureCount} canal(aux) n'ont pas pu publier.`
               : pendingCount
-                ? "TikTok a accepté l’envoi. Le traitement final continue côté TikTok et le statut peut être vérifié dans iNrSend."
+                ? `${pendingLabels.length ? pendingLabels.join(", ") : `${pendingCount} canal(aux)`} ${pendingCount > 1 ? "sont encore en traitement" : "est encore en traitement"}. Le statut final peut être vérifié dans iNrSend.`
+              : warningCount
+                ? `${successCount} canal(aux) ont publié. ${mediaWarningCount || warningCount} publication(s) comportent un avertissement${mediaWarningCount ? " lié au média" : ""}.`
+              : skippedCount
+                ? `${successCount} canal(aux) ont publié. ${skippedCount} canal(aux) ont été ignorés avant l’envoi car ils n’étaient pas prêts.`
                 : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
         </div>
         <StatusMessage
-          variant={failureCount ? "error" : "success"}
+          variant={failureCount ? "error" : pendingCount || warningCount || skippedCount ? "warning" : "success"}
           style={{ marginTop: 0, fontSize: 14 }}
         >
           {allFailed
@@ -132,13 +179,36 @@ export default function PublishExecutionResultModal({
             : failureCount
               ? "Succès partiel : vérifiez le détail ci-dessous."
               : pendingCount
-                ? "Envoi accepté : vérifiez le statut TikTok dans iNrSend."
+                ? "Envoi accepté : suivez les canaux en traitement dans iNrSend."
+              : warningCount
+                ? "La publication est bien en ligne. Vérifiez les canaux signalés ci-dessous."
+              : skippedCount
+                ? "Les canaux prêts ont été publiés ; corrigez les canaux ignorés avant de les relancer."
                 : "C’est parfait, votre publication est lancée."}
         </StatusMessage>
         {entries.length ? (
           <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
             {entries.map((entry) => {
               const channelHref = String(summary?.channelLinks?.[entry.channel] || "").trim();
+              const visibleError = entry.error
+                ? getFrenchPublicationErrorMessage(
+                    entry.channel,
+                    entry.error,
+                    `${entry.label} n'a pas pu publier. Merci de réessayer.`,
+                  )
+                : "";
+              const visibleWarning = entry.warning_message
+                ? ensureFrenchPublicationErrorMessage(
+                    entry.warning_message,
+                    `${entry.label} a publié avec un avertissement.`,
+                  )
+                : "";
+              const visibleBlockers = (entry.blockers || []).map((blocker) =>
+                ensureFrenchPublicationErrorMessage(
+                  blocker,
+                  `${entry.label} n'est pas prêt pour la publication.`,
+                ),
+              );
               return (
                 <div
                   key={entry.channel}
@@ -158,7 +228,15 @@ export default function PublishExecutionResultModal({
                     }}
                   >
                     <strong>
-                      {entry.ok ? "✅" : "❌"} {entry.label}
+                      {entry.status === "skipped"
+                        ? "⏭️"
+                        : entry.ok
+                        ? entry.status === "published_with_warning"
+                          ? "⚠️"
+                          : entry.status === "processing"
+                            ? "⏳"
+                            : "✅"
+                        : "❌"} {entry.label}
                     </strong>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       {channelHref ? (
@@ -180,18 +258,31 @@ export default function PublishExecutionResultModal({
                         </a>
                       ) : null}
                       <span style={{ fontSize: 12, opacity: 0.75 }}>
-                        {entry.ok ? (entry.warning ? "En traitement" : "Publié") : "Échec"}
+                        {entry.status === "skipped"
+                          ? "Ignoré avant envoi"
+                          : entry.ok
+                          ? entry.status === "processing"
+                            ? "En traitement"
+                            : entry.status === "published_with_warning"
+                              ? "Publié avec avertissement"
+                              : "Publié"
+                          : "Échec"}
                       </span>
                     </span>
                   </div>
-                  {entry.error ? (
-                    <div style={{ marginTop: 6, fontSize: 13, color: "#ffb4b4" }}>
-                      {entry.error}
+                  {visibleError ? (
+                    <div style={{ marginTop: 6, fontSize: 13, color: entry.status === "skipped" ? "#fde68a" : "#ffb4b4" }}>
+                      {visibleError}
                     </div>
                   ) : null}
-                  {entry.warning_message ? (
+                  {entry.status === "skipped" && visibleBlockers.length ? (
                     <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>
-                      {entry.warning_message}
+                      {visibleBlockers.join(" · ")}
+                    </div>
+                  ) : null}
+                  {visibleWarning ? (
+                    <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>
+                      {visibleWarning}
                     </div>
                   ) : null}
                 </div>

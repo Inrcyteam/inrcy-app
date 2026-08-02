@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import {
+  isBoosterImageExplicitlyCustomized,
+  normalizeBoosterImageCustomizationScope,
+} from "@/lib/boosterImageCustomization";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import {
@@ -13,6 +17,10 @@ import {
   type BoosterImageMetaLike,
   type ComparableImageTransform,
 } from "@/lib/boosterImageDecision";
+import {
+  getBoosterOriginalPublicationExtension,
+  shouldPreserveBoosterOriginalAlpha,
+} from "@/lib/boosterImageOutputPolicy";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -74,7 +82,7 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
   pinterest: { width: 1000, height: 1500 },
 };
 
-const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 4;
+const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7;
 const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
 
 type ChannelImageVariantRow = {
@@ -602,7 +610,7 @@ async function renderImageTransform(params: {
 
   if (transparent) {
     return {
-      output: await canvas.png({ compressionLevel: 8 }).toBuffer(),
+      output: await canvas.png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer(),
       mime: "image/png",
       extension: "png",
       width: dimensions.width,
@@ -612,7 +620,7 @@ async function renderImageTransform(params: {
   return {
     output: await canvas
       .flatten({ background })
-      .jpeg({ quality: 90, mozjpeg: true, progressive: true })
+      .jpeg({ quality: 87, mozjpeg: true, progressive: true, optimiseScans: true })
       .toBuffer(),
     mime: "image/jpeg",
     extension: "jpg",
@@ -641,27 +649,43 @@ async function renderAutomaticAdaptation(params: {
   return { ...rendered, fit: transform.fit } as const;
 }
 
-async function renderPublicationOriginal(buffer: Buffer) {
-  const { data, info } = await sharp(buffer, { failOn: "none" })
+async function renderPublicationOriginal(params: {
+  buffer: Buffer;
+  channel: BoosterImageChannel;
+  sourceMime: string;
+}) {
+  const sourceMetadata = await sharp(params.buffer, { failOn: "none" }).metadata();
+  const preserveAlpha = shouldPreserveBoosterOriginalAlpha({
+    channel: params.channel,
+    sourceMime: params.sourceMime,
+    sourceHasAlpha: Boolean(sourceMetadata.hasAlpha),
+  });
+  const pipeline = sharp(params.buffer, { failOn: "none" })
     .rotate()
     .resize({
       width: 2048,
       height: 2048,
       fit: "inside",
       withoutEnlargement: true,
-    })
-    .flatten({ background: "#ffffff" })
-    .jpeg({ quality: 90, mozjpeg: true, progressive: true })
-    .toBuffer({ resolveWithObject: true });
+    });
+  const { data, info } = preserveAlpha
+    ? await pipeline
+        .png({ compressionLevel: 9, adaptiveFiltering: true, palette: false })
+        .toBuffer({ resolveWithObject: true })
+    : await pipeline
+        .flatten({ background: "#ffffff" })
+        .jpeg({ quality: 87, mozjpeg: true, progressive: true, optimiseScans: true })
+        .toBuffer({ resolveWithObject: true });
   if (!info.width || !info.height) {
     throw new Error("image_publication_dimensions_missing");
   }
   return {
     output: data,
-    mime: "image/jpeg",
-    extension: "jpg",
+    mime: preserveAlpha ? "image/png" : "image/jpeg",
+    extension: preserveAlpha ? "png" : "jpg",
     width: info.width,
     height: info.height,
+    preserveAlpha,
   } as const;
 }
 
@@ -727,23 +751,45 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
       continue;
     }
 
-    const requestedSettings = normalizeChannelSettings(params.settingsByChannel?.[channel]);
+    const rawChannelSettings = params.settingsByChannel?.[channel];
+    const rawChannelSettingsNode = asObject(rawChannelSettings);
+    const hasExplicitImageSelection = Object.prototype.hasOwnProperty.call(
+      rawChannelSettingsNode,
+      "imageKeys",
+    );
+    const rawRequestedSettings = normalizeChannelSettings(rawChannelSettings);
     const byKey = new Map(valid.map((entry) => [entry.imageKey, entry]));
-    const ordered = requestedSettings.imageKeys.length
-      ? requestedSettings.imageKeys.map((key) => byKey.get(key)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-      : valid;
-    const completeOrder = ordered.length === valid.length ? ordered : valid;
-    const channelSources = channel === "gmb" ? completeOrder.slice(0, 5) : completeOrder;
+    const requestedSettings =
+      normalizeBoosterImageCustomizationScope<ServerImageTransform>({
+        availableImageKeys: valid.map((entry) => entry.imageKey),
+        requestedImageKeys: rawRequestedSettings.imageKeys,
+        transforms: rawRequestedSettings.transforms,
+        customizedImageKeys: rawRequestedSettings.customizedImageKeys,
+        maxImages: 5,
+        fallbackToAvailableWhenSelectionEmpty: !hasExplicitImageSelection,
+      });
+    const exactChannelSources = requestedSettings.imageKeys
+      .map((key) => byKey.get(key))
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    const channelSources =
+      channel === "gmb" ? exactChannelSources.slice(0, 5) : exactChannelSources;
     const firstImageKey = channelSources[0]?.imageKey || "";
-    const firstCustomized = requestedSettings.customizedImageKeys.includes(firstImageKey);
+    const firstCustomized = isBoosterImageExplicitlyCustomized(
+      requestedSettings.customizedImageKeys,
+      firstImageKey,
+    );
     const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({
       channel,
       metas: channelSources.map((entry) => entry.meta),
       firstImageCustomizedTargetRatio:
-        channel === "instagram" && firstCustomized
-          ? CHANNEL_RENDER_BASE.instagram.width / CHANNEL_RENDER_BASE.instagram.height
+        (channel === "instagram" || channel === "pinterest") && firstCustomized
+          ? CHANNEL_RENDER_BASE[channel].width / CHANNEL_RENDER_BASE[channel].height
           : null,
     });
+    const forcePinterestSequenceCanvas =
+      channel === "pinterest" &&
+      channelSources.length > 1 &&
+      Number(sequenceTargetRatio) > 0;
     const prepared: BoosterServerImagePayload[] = [];
     const transforms: Record<string, unknown> = {};
     const customizedImageKeys: string[] = [];
@@ -754,6 +800,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           channel,
           meta: entry.meta,
           requiredTargetRatio: sequenceTargetRatio,
+          forceRequiredTargetCanvas: forcePinterestSequenceCanvas,
         });
         if (initialDecision.mode === "unsupported") continue;
         const sourceRatio = Number(initialDecision.sourceRatio || entry.meta.ratio || 0);
@@ -768,7 +815,10 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           requestedSettings.transforms[entry.imageKey],
           automaticTransform,
         );
-        const explicitlyCustomized = requestedSettings.customizedImageKeys.includes(entry.imageKey);
+        const explicitlyCustomized = isBoosterImageExplicitlyCustomized(
+          requestedSettings.customizedImageKeys,
+          entry.imageKey,
+        );
         const displayPlan = getBoosterImageDisplayPlan({
           channel,
           meta: entry.meta,
@@ -776,6 +826,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           currentTransform: currentTransform as ComparableImageTransform,
           automaticTransform: automaticTransform as ComparableImageTransform,
           requiredTargetRatio: sequenceTargetRatio,
+          forceRequiredTargetCanvas: forcePinterestSequenceCanvas,
         });
 
         const originalUrl = getStableOriginalUrl(entry.image);
@@ -807,6 +858,14 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
             channel,
             mode,
             transform,
+            originalOutputPolicy:
+              mode === "original"
+                ? getBoosterOriginalPublicationExtension({
+                    channel,
+                    sourceMime: entry.image.type,
+                  })
+                : null,
+            sequenceTargetRatio: sequenceTargetRatio || null,
           });
 
         const readCachedPreparedVariant = (
@@ -901,7 +960,11 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           const nameBase = String(
             entry.image.name || `image-${entry.imageKey}`,
           ).replace(/\.[^.]+$/, "");
-          const outputName = `${nameBase}-${channel}-publication.jpg`;
+          const originalExtension = getBoosterOriginalPublicationExtension({
+            channel,
+            sourceMime: entry.image.type,
+          });
+          const outputName = `${nameBase}-${channel}-publication.${originalExtension}`;
           const cached = readCachedPreparedVariant(
             "original",
             outputName,
@@ -913,7 +976,11 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
             continue;
           }
           const input = await entry.resolveInput();
-          const original = await renderPublicationOriginal(input.buffer);
+          const original = await renderPublicationOriginal({
+            buffer: input.buffer,
+            channel,
+            sourceMime: input.mime || entry.image.type,
+          });
           prepared.push(
             await buildPreparedVariant({
               mode: "original",
@@ -967,7 +1034,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           continue;
         }
 
-        const customizedTargetRatio = channel === "instagram" && sequenceTargetRatio
+        const customizedTargetRatio = (channel === "instagram" || channel === "pinterest") && sequenceTargetRatio
           ? sequenceTargetRatio
           : CHANNEL_RENDER_BASE[channel].width / CHANNEL_RENDER_BASE[channel].height;
         const nameBase = String(entry.image.name || `image-${entry.imageKey}`).replace(/\.[^.]+$/, "");

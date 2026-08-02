@@ -37,6 +37,7 @@ import { darkOptionStyle, darkSelectStyle, lightFieldStyle, textAreaStyle } from
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "@/app/dashboard/_hooks/useUnsavedExitGuard";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getFrenchPublicationErrorMessage } from "@/lib/publicationErrorFrench";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -53,10 +54,12 @@ import {
   getCampaignRecipientStatusLabel,
   getChannelIndicatorMeta,
   getFailedChannelMessage,
+  getWarningChannelMessage,
   getPublicationBackgroundMode,
   arePublicationTransformsEquivalent,
   isDeletedChannelResult,
   isFailedChannelResult,
+  isWarningChannelResult,
   isImageAttachment,
   isRetryableCampaignItem,
   isVideoAttachment,
@@ -668,7 +671,23 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                     : null;
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
                   const activePublicationFailed = isFailedChannelResult(activePublicationResult);
-                  const activePublicationFailureMessage = getFailedChannelMessage(activePublicationResult);
+                  const activePublicationFailureMessage = getFailedChannelMessage(
+                    activePublicationResult,
+                    activePublicationEntry?.key || "",
+                  );
+                  const activePublicationWarning = isWarningChannelResult(activePublicationResult);
+                  const activePublicationWarningMessage = getWarningChannelMessage(
+                    activePublicationResult,
+                    activePublicationEntry?.key || "",
+                  );
+                  const visiblePublicationItemError =
+                    detailsItem.source === "app_events" && detailsItem.error
+                      ? getFrenchPublicationErrorMessage(
+                          activePublicationEntry?.key || "site_web",
+                          detailsItem.error,
+                          "La publication n'a pas pu être finalisée. Merci de réessayer.",
+                        )
+                      : "";
                   const isTiktokPublicationEntry = activePublicationEntry?.key === "tiktok";
                   const isYoutubeShortsPublicationEntry = activePublicationEntry?.key === "youtube_shorts";
                   const isExternalVideoPublicationEntry = isTiktokPublicationEntry || isYoutubeShortsPublicationEntry;
@@ -1285,9 +1304,16 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             </div>
                           ) : null}
 
+                          {detailsItem.source === "app_events" && activePublicationWarning ? (
+                            <div className={styles.detailsWarning}>
+                              <b>Statut :</b> Publiée avec avertissement
+                              {activePublicationWarningMessage ? ` — ${activePublicationWarningMessage}` : ""}
+                            </div>
+                          ) : null}
+
                           {detailsItem.error ? (
                             <div className={styles.detailsError}>
-                              <b>Détail :</b> {detailsItem.source !== "app_events" ? formatVisibleMailError(detailsItem.error, detailsMailProvider) : detailsItem.error}
+                              <b>Détail :</b> {detailsItem.source !== "app_events" ? formatVisibleMailError(detailsItem.error, detailsMailProvider) : visiblePublicationItemError}
                             </div>
                           ) : null}
                         </section>

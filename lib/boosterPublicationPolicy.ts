@@ -38,6 +38,11 @@ export const NON_RETRYABLE_BOOSTER_PUBLISH_CODES = new Set([
   "bubble_access_disabled",
   "unsupported_channel",
   "delivery_status_unknown",
+  "provider_status_unknown",
+  "video_duration_too_long",
+  "video_duration_too_short",
+  "video_payload_invalid",
+  "video_required",
 ]);
 
 export function isBoosterPublicationChannel(

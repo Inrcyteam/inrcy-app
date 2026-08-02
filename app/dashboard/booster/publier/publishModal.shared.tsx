@@ -4,6 +4,7 @@ import {
   getBoosterImageDisplayPlan,
   getBoosterImageSafetyBackgroundMode,
 } from "@/lib/boosterImageDecision";
+import { mergeBoosterChannelImageSelection } from "@/lib/boosterChannelImageSelection";
 import {
   INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS,
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
@@ -350,6 +351,8 @@ export type ChannelImageEditorState = {
   transforms: Record<string, ImageTransform>;
   /** Explicit Adapter provenance. Opening the modal alone never adds a key. */
   customizedImageKeys?: string[];
+  /** Internal marker used to distinguish a new file from an explicit deselection. */
+  synchronizedImageKeys?: string[];
 };
 
 export type ChannelImagePayload = Record<ChannelKey, ImagePayload[]>;
@@ -2474,19 +2477,13 @@ export function syncChannelImageEditors(params: {
 
   for (const channel of selectedChannels) {
     const prevState = previous[channel];
-    const nextImageKeys = (prevState?.imageKeys || []).filter((key) =>
-      imageKeys.includes(key),
-    );
     const supportsImages = channelSupportsImages(channel);
-    const autoSelectedNewKeys = supportsImages
-      ? imageKeys.filter((key) => !nextImageKeys.includes(key))
-      : [];
-    const mergedKeys = !supportsImages
-      ? []
-      : (nextImageKeys.length
-          ? [...nextImageKeys, ...autoSelectedNewKeys]
-          : [...imageKeys]
-        ).filter((key, index, arr) => arr.indexOf(key) === index);
+    const mergedKeys = mergeBoosterChannelImageSelection({
+      availableKeys: imageKeys,
+      previousSelectedKeys: prevState?.imageKeys,
+      previousAvailableKeys: prevState?.synchronizedImageKeys,
+      supportsImages,
+    });
     const transforms: Record<string, ImageTransform> = {};
     if (channelSupportsImages(channel)) {
       for (const key of imageKeys) {
@@ -2498,7 +2495,12 @@ export function syncChannelImageEditors(params: {
     const customizedImageKeys = (prevState?.customizedImageKeys || []).filter(
       (key) => imageKeys.includes(key),
     );
-    next[channel] = { imageKeys: mergedKeys, transforms, customizedImageKeys };
+    next[channel] = {
+      imageKeys: mergedKeys,
+      transforms,
+      customizedImageKeys,
+      synchronizedImageKeys: [...imageKeys],
+    };
   }
 
   return next;

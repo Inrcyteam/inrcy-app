@@ -29,7 +29,7 @@ const MB_AS_DATA_URL_CHARS = 1_450_000;
 
 const DEFAULT_ALLOWED_AI_GATEWAY_MODELS = [
   "openai/gpt-4o-mini",
-  "anthropic/claude-3.5-haiku",
+  "anthropic/claude-haiku-4.5",
   "google/gemini-2.5-flash-lite",
   "mistral/mistral-medium-3.5",
   "xai/grok-4.1-fast-non-reasoning",

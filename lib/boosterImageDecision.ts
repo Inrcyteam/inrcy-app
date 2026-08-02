@@ -323,11 +323,17 @@ export function getBoosterImageDecision(params: {
   /** Automatic reference transform for the same channel/image. */
   automaticTransform?: ComparableImageTransform | null;
   /**
-   * Optional collection-level target. Instagram carousels use the first
-   * image ratio as the shared output ratio, so following images can be
-   * prepared before the platform performs an implicit crop.
+   * Optional collection-level target. Instagram uses the first image ratio
+   * and Pinterest requires one exact ratio for every image of a multi-image
+   * Pin.
    */
   requiredTargetRatio?: number | null;
+  /**
+   * Forces a real canvas even when the source ratio is numerically equal to
+   * the collection ratio. Pinterest needs this to guarantee identical pixel
+   * ratios for every item, not just visually close ratios.
+   */
+  forceRequiredTargetCanvas?: boolean;
 }): BoosterImageDecision {
   const {
     channel,
@@ -336,6 +342,7 @@ export function getBoosterImageDecision(params: {
     currentTransform,
     automaticTransform,
     requiredTargetRatio,
+    forceRequiredTargetCanvas = false,
   } = params;
   const policy = BOOSTER_IMAGE_CHANNEL_POLICIES[channel];
   const sourceRatio = getBoosterImageRatio(meta);
@@ -387,7 +394,7 @@ export function getBoosterImageDecision(params: {
   if (Number.isFinite(sequenceTargetRatio) && sequenceTargetRatio > 0) {
     const relativeDelta =
       Math.abs(sourceRatio - sequenceTargetRatio) / sequenceTargetRatio;
-    if (relativeDelta > 0.005) {
+    if (relativeDelta > 0.005 || forceRequiredTargetCanvas) {
       return {
         ...base,
         mode: "adapted",
@@ -440,21 +447,48 @@ export function getBoosterImageDecision(params: {
 
 /**
  * Collection-level target used by channels whose carousel geometry is driven
- * by the first image. Today this applies to Instagram only. The first image is
- * itself normalized by the per-image policy before becoming the shared target.
+ * by the first image. Instagram follows the first item. Pinterest additionally
+ * rejects a multi-image Pin when width/height ratios are not identical.
  */
 export function getBoosterImageSequenceTargetRatio(params: {
   channel: BoosterImageChannel;
   metas: Array<BoosterImageMetaLike | null | undefined>;
-  /** Manual first-image canvas wins because Instagram carousels follow it. */
+  /** Manual first-image canvas wins because the complete carousel follows it. */
   firstImageCustomizedTargetRatio?: number | null;
 }): number | null {
   const { channel, metas, firstImageCustomizedTargetRatio } = params;
-  if (channel !== "instagram" || metas.length < 2) return null;
+  if ((channel !== "instagram" && channel !== "pinterest") || metas.length < 2) {
+    return null;
+  }
 
   const customizedTarget = Number(firstImageCustomizedTargetRatio);
   if (Number.isFinite(customizedTarget) && customizedTarget > 0) {
     return customizedTarget;
+  }
+
+  if (channel === "pinterest") {
+    const firstRatio = getBoosterImageRatio(metas[0]);
+    if (!firstRatio) return PINTEREST_MIN_RATIO;
+
+    const firstWidth = Number(metas[0]?.width || 0);
+    const firstHeight = Number(metas[0]?.height || 0);
+    const allSameRatio = metas.every((meta) => {
+      const ratio = getBoosterImageRatio(meta);
+      if (!ratio) return false;
+      const width = Number(meta?.width || 0);
+      const height = Number(meta?.height || 0);
+      if (
+        firstWidth > 0 &&
+        firstHeight > 0 &&
+        width > 0 &&
+        height > 0
+      ) {
+        return firstWidth * height === width * firstHeight;
+      }
+      return Math.abs(ratio - firstRatio) <= 1e-9;
+    });
+
+    if (allSameRatio && firstRatio >= PINTEREST_MIN_RATIO) return null;
   }
 
   const firstDecision = getBoosterImageDecision({
