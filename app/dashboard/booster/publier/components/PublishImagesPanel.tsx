@@ -75,7 +75,9 @@ type ImageAdapterTab = {
   key: ChannelKey;
   label: string;
   count: number;
-  tone: "ready" | "warning";
+  tone: "ready" | "warning" | "blocked";
+  message?: string;
+  blockers?: string[];
 };
 
 type PublishImagesPanelProps = {
@@ -193,6 +195,10 @@ export default function PublishImagesPanel({
   };
 
   const activeMode: ChannelMediaMode = getModeForChannel(activeImageChannel);
+  const activeMediaTab = imageAdapterTabs.find(
+    (tab) => tab.key === activeImageChannel,
+  );
+  const activeMediaBlockers = activeMediaTab?.blockers || [];
   const activeImageEditor = channelImageEditors[activeImageChannel];
   const activeImageFirstKey = activeImageEditor?.imageKeys?.[0] || "";
   const activeImageSequenceTargetRatio = getBoosterImageSequenceTargetRatio({
@@ -224,6 +230,10 @@ export default function PublishImagesPanel({
   };
 
   const getMediaToneForChannel = (channel: ChannelKey): "ready" | "warning" | "blocked" => {
+    const readinessTone = imageAdapterTabs.find(
+      (tab) => tab.key === channel,
+    )?.tone;
+    if (readinessTone === "blocked") return "blocked";
     const mode = getModeForChannel(channel);
     const count = getMediaCountForChannel(channel);
     if (channel === "youtube_shorts") return hasVideoMedia ? "ready" : "blocked";
@@ -447,12 +457,17 @@ export default function PublishImagesPanel({
               const tone = getMediaToneForChannel(channel);
               const toneReady = tone === "ready";
               const toneBlocked = tone === "blocked";
+              const mediaMessage = imageAdapterTabs.find(
+                (tab) => tab.key === channel,
+              )?.message;
               const isActive = activeImageChannel === channel;
               return (
                 <button
                   key={channel}
                   type="button"
                   onClick={() => setSynchronizedActiveChannel(channel)}
+                  title={mediaMessage || undefined}
+                  aria-invalid={toneBlocked || undefined}
                   style={{
                     minWidth: 0,
                     width: "100%",
@@ -567,6 +582,37 @@ export default function PublishImagesPanel({
             {mediaModeButton("images", "Photos", !hasImages || !channelSupportsImages(activeImageChannel))}
             {mediaModeButton("none", "Aucun", !channelSupportsTextOnly(activeImageChannel))}
           </div>
+
+          {activeMediaBlockers.length ? (
+            <div
+              role="alert"
+              aria-live="polite"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                borderRadius: 14,
+                padding: "11px 13px",
+                border: "1px solid rgba(248,113,113,0.38)",
+                background: "rgba(248,113,113,0.11)",
+                color: "#fecaca",
+                fontSize: 13,
+                lineHeight: 1.45,
+              }}
+            >
+              <span aria-hidden="true" style={{ flex: "0 0 auto" }}>
+                ⛔
+              </span>
+              <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
+                <strong>
+                  Média incompatible pour {getImageAdapterLabel(activeImageChannel)}
+                </strong>
+                {activeMediaBlockers.map((blocker) => (
+                  <span key={blocker}>{blocker}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {activeMode === "none" ? (
             <div

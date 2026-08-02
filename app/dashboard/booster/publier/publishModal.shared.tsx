@@ -618,6 +618,7 @@ export type ChannelPublicationRequirementInput = {
 export type ChannelPublicationRequirements = {
   warnings: string[];
   blockers: string[];
+  mediaBlockers: string[];
 };
 
 function isMp4VideoFile(type?: string | null, name?: string | null) {
@@ -642,21 +643,26 @@ export function getChannelPublicationRequirements({
 }: ChannelPublicationRequirementInput): ChannelPublicationRequirements {
   const warnings: string[] = [];
   const blockers: string[] = [];
+  const mediaBlockers: string[] = [];
+  const addMediaBlocker = (message: string) => {
+    blockers.push(message);
+    mediaBlockers.push(message);
+  };
 
   if (!connected) {
     blockers.push("Canal non connecté.");
-    return { warnings, blockers };
+    return { warnings, blockers, mediaBlockers };
   }
 
   if (!hasContent) warnings.push("Contenu vide");
   if (!hasTitle) warnings.push("Titre vide");
 
   if (mediaMode === "video") {
-    if (!hasVideo) blockers.push("Ajoutez une vidéo.");
+    if (!hasVideo) addMediaBlocker("Ajoutez une vidéo.");
 
     if (channel === "youtube_shorts") {
       if (!hasVideo) {
-        blockers.push("YouTube nécessite une vidéo.");
+        addMediaBlocker("YouTube nécessite une vidéo.");
       } else if (videoDurationSeconds == null) {
         warnings.push(
           "Durée YouTube non vérifiée : iNrCy publiera quand même la vidéo, YouTube décidera ensuite du format court ou classique.",
@@ -675,7 +681,7 @@ export function getChannelPublicationRequirements({
         videoDurationSeconds != null &&
         videoDurationSeconds > PINTEREST_VIDEO_MAX_DURATION_SECONDS
       ) {
-        blockers.push(PINTEREST_VIDEO_TOO_LONG_MESSAGE);
+        addMediaBlocker(PINTEREST_VIDEO_TOO_LONG_MESSAGE);
       } else {
         warnings.push(
           "Pinterest publiera la vidéo avec une image de couverture générée automatiquement si nécessaire.",
@@ -685,7 +691,7 @@ export function getChannelPublicationRequirements({
 
     if (channel === "linkedin") {
       if (hasVideo && !isMp4VideoFile(videoFileType, videoFileName)) {
-        blockers.push("LinkedIn nécessite une vidéo MP4.");
+        addMediaBlocker("LinkedIn nécessite une vidéo MP4.");
       } else if (hasVideo) {
         warnings.push(
           "LinkedIn finalise la vidéo avant publication. L’envoi peut prendre quelques secondes.",
@@ -695,13 +701,13 @@ export function getChannelPublicationRequirements({
   } else if (mediaMode === "images") {
     if (!hasImage) {
       if (channel === "instagram") {
-        blockers.push("Instagram nécessite au moins 1 image.");
+        addMediaBlocker("Instagram nécessite au moins 1 image.");
       } else if (channel === "tiktok") {
-        blockers.push("TikTok nécessite au moins 1 photo ou 1 vidéo.");
+        addMediaBlocker("TikTok nécessite au moins 1 photo ou 1 vidéo.");
       } else if (channel === "youtube_shorts") {
-        blockers.push("YouTube nécessite une vidéo.");
+        addMediaBlocker("YouTube nécessite une vidéo.");
       } else if (channel === "pinterest") {
-        blockers.push("Pinterest nécessite au moins 1 image.");
+        addMediaBlocker("Pinterest nécessite au moins 1 image.");
       } else if (channel !== "gmb") {
         warnings.push("Aucune image sélectionnée.");
       }
@@ -722,17 +728,17 @@ export function getChannelPublicationRequirements({
     }
 
     if (channel === "youtube_shorts" && hasImage) {
-      blockers.push("YouTube ne publie pas les photos : ajoutez une vidéo.");
+      addMediaBlocker("YouTube ne publie pas les photos : ajoutez une vidéo.");
     }
   } else {
     if (channel === "instagram") {
-      blockers.push("Instagram nécessite une vidéo ou au moins 1 image.");
+      addMediaBlocker("Instagram nécessite une vidéo ou au moins 1 image.");
     } else if (channel === "tiktok") {
-      blockers.push("TikTok nécessite une vidéo ou au moins 1 photo.");
+      addMediaBlocker("TikTok nécessite une vidéo ou au moins 1 photo.");
     } else if (channel === "youtube_shorts") {
-      blockers.push("YouTube nécessite une vidéo.");
+      addMediaBlocker("YouTube nécessite une vidéo.");
     } else if (channel === "pinterest") {
-      blockers.push("Pinterest nécessite une image ou une vidéo.");
+      addMediaBlocker("Pinterest nécessite une image ou une vidéo.");
     }
   }
 
@@ -749,6 +755,7 @@ export function getChannelPublicationRequirements({
   return {
     warnings: Array.from(new Set(warnings)),
     blockers: Array.from(new Set(blockers)),
+    mediaBlockers: Array.from(new Set(mediaBlockers)),
   };
 }
 

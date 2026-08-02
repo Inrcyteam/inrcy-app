@@ -4885,6 +4885,7 @@ export default function PublishModal({
         imageCount: imageKeysToPublish.length,
         warnings: requirements.warnings,
         blockers,
+        mediaBlockers: requirements.mediaBlockers,
         publishable: blockers.length === 0,
         tiktokParametersValidated:
           channel === "tiktok" && Boolean(tiktokPublicationSettings),
@@ -4958,7 +4959,13 @@ export default function PublishModal({
       key: channel,
       label: getImageAdapterLabel(channel),
       count,
-      tone: count ? ("ready" as const) : ("warning" as const),
+      tone: reviewItem?.mediaBlockers?.length
+        ? ("blocked" as const)
+        : count
+          ? ("ready" as const)
+          : ("warning" as const),
+      message: reviewItem?.mediaBlockers?.[0] || "",
+      blockers: reviewItem?.mediaBlockers || [],
     };
   });
 
@@ -4984,6 +4991,7 @@ export default function PublishModal({
           : hasText || hasMedia
             ? ("warning" as const)
             : ("blocked" as const),
+      message: reviewItem?.blockers?.[0] || "",
     };
   });
 

@@ -104,14 +104,34 @@ test("Pinterest turns red before dispatch and is reported as a failed channel", 
   const layer = await read(
     "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
   );
+  const mediaPanel = await read(
+    "app/dashboard/booster/publier/components/PublishImagesPanel.tsx",
+  );
+  const previewPanel = await read(
+    "app/dashboard/booster/publier/components/PublishPreviewPanel.tsx",
+  );
 
   assert.match(
     shared,
     /videoDurationSeconds\s*>\s*PINTEREST_VIDEO_MAX_DURATION_SECONDS/,
   );
-  assert.match(shared, /blockers\.push\(PINTEREST_VIDEO_TOO_LONG_MESSAGE\)/);
+  assert.match(shared, /addMediaBlocker\(PINTEREST_VIDEO_TOO_LONG_MESSAGE\)/);
+  assert.match(shared, /mediaBlockers\.push\(message\)/);
   assert.match(modal, /const preflightFailedChannels = reviewItems/);
   assert.match(modal, /code:[\s\S]*video_duration_too_long/);
+  assert.match(
+    modal,
+    /tone:\s*reviewItem\?\.mediaBlockers\?\.length[\s\S]*\("blocked" as const\)/,
+  );
+  assert.match(modal, /message:\s*reviewItem\?\.blockers\?\.\[0\]/);
+  assert.match(
+    mediaPanel,
+    /if \(readinessTone === "blocked"\) return "blocked"/,
+  );
+  assert.match(mediaPanel, /role="alert"/);
+  assert.match(mediaPanel, /Média incompatible pour/);
+  assert.match(mediaPanel, /activeMediaBlockers\.map/);
+  assert.match(previewPanel, /tab\.message \|\| "Canal incompatible/);
   assert.match(layer, /mergePreflightFailuresIntoPublicationSummary/);
   assert.doesNotMatch(layer, /status:\s*"skipped"/);
 });

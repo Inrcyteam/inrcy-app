@@ -12,6 +12,7 @@ type PreviewReadinessTab = {
   key: ChannelKey;
   label: string;
   tone: "ready" | "warning" | "blocked";
+  message?: string;
 };
 
 type PublishPreviewPanelProps = {
@@ -135,7 +136,7 @@ export default function PublishPreviewPanel({
                     tab.tone === "ready"
                       ? "Texte + image"
                       : tab.tone === "blocked"
-                        ? "Canal vide"
+                        ? tab.message || "Canal incompatible avec cette publication"
                         : "Texte seul ou image seule"
                   }
                   style={{
