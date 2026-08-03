@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useUnsavedExitGuard } from "../../../_hooks/useUnsavedExitGuard";
+import {
+  formatVideoDuration,
+  validateVideoDurationForChannel,
+} from "@/lib/videoPublicationPolicy";
 
 export type TiktokPrivacyLevel =
   | "PUBLIC_TO_EVERYONE"
@@ -121,14 +125,6 @@ function SectionHeader({ icon, title }: { icon: string; title: string }) {
   );
 }
 
-function formatDuration(seconds: number | null) {
-  if (!seconds || !Number.isFinite(seconds)) return "durée non détectée";
-  const rounded = Math.round(seconds);
-  const min = Math.floor(rounded / 60);
-  const sec = rounded % 60;
-  return min ? `${min} min ${String(sec).padStart(2, "0")} s` : `${sec} s`;
-}
-
 function trimText(input: unknown, max = 280) {
   const value = String(input || "").trim();
   if (value.length <= max) return value;
@@ -243,17 +239,18 @@ export default function TiktokPublicationSettingsModal({
 
   const durationBlocker = useMemo(() => {
     if (!creatorInfo || mediaType !== "video") return "";
-    const max = creatorInfo.maxVideoDurationSeconds;
-    const actual = videoDurationSeconds;
-    if (!max || !actual || !Number.isFinite(actual)) return "";
-    return actual > max
-      ? `Cette vidéo dure ${formatDuration(actual)}. TikTok limite ce compte à ${formatDuration(max)}.`
-      : "";
+    const validation = validateVideoDurationForChannel({
+      channel: "tiktok",
+      durationSeconds: videoDurationSeconds,
+      tiktokMaxDurationSeconds: creatorInfo.maxVideoDurationSeconds,
+      enforceAccountCapabilities: true,
+    });
+    return validation.ok ? "" : validation.message;
   }, [creatorInfo, mediaType, videoDurationSeconds]);
 
   const mediaSummary = useMemo(() => {
     if (mediaType === "video") {
-      const duration = formatDuration(videoDurationSeconds);
+      const duration = formatVideoDuration(videoDurationSeconds);
       return `Vidéo${previewMediaName ? ` · ${previewMediaName}` : ""} · ${duration}`;
     }
     const count = Math.max(1, Number(previewMediaCount || 0));

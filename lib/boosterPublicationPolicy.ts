@@ -41,6 +41,8 @@ export const NON_RETRYABLE_BOOSTER_PUBLISH_CODES = new Set([
   "provider_status_unknown",
   "video_duration_too_long",
   "video_duration_too_short",
+  "video_duration_account_limit_unknown",
+  "video_duration_long_upload_not_allowed",
   "video_payload_invalid",
   "video_required",
 ]);

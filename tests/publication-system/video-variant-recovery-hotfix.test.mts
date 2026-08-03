@@ -34,6 +34,7 @@ test("hard duration constraints are not transcoded pointlessly", () => {
     shouldRetryVideoVariantGeneration([
       { reason: "video_duration_too_long" },
       { reason: "video_duration_too_short" },
+      { reason: "video_duration_long_upload_not_allowed" },
     ]),
     false,
   );
@@ -96,7 +97,7 @@ test("the client performs a fast check then one recovery generation", async () =
   assert.match(modal, /Préparation de la variante vidéo nécessaire/);
 });
 
-test("Pinterest turns red before dispatch and is reported as a failed channel", async () => {
+test("duration-invalid channels turn red before dispatch and are reported as failed", async () => {
   const shared = await read(
     "app/dashboard/booster/publier/publishModal.shared.tsx",
   );
@@ -113,12 +114,13 @@ test("Pinterest turns red before dispatch and is reported as a failed channel", 
 
   assert.match(
     shared,
-    /videoDurationSeconds\s*>\s*PINTEREST_VIDEO_MAX_DURATION_SECONDS/,
+    /validateVideoDurationForChannel/,
   );
-  assert.match(shared, /addMediaBlocker\(PINTEREST_VIDEO_TOO_LONG_MESSAGE\)/);
+  assert.match(shared, /durationValidation\.message/);
+  assert.match(shared, /durationValidation\.reason/);
   assert.match(shared, /mediaBlockers\.push\(message\)/);
   assert.match(modal, /const preflightFailedChannels = reviewItems/);
-  assert.match(modal, /code:[\s\S]*video_duration_too_long/);
+  assert.match(modal, /item\.blockerCodes\?\.\[0\]/);
   assert.match(
     modal,
     /tone:\s*reviewItem\?\.mediaBlockers\?\.length[\s\S]*\("blocked" as const\)/,
@@ -158,10 +160,10 @@ test("heavy work stays in prewarm while publish can use a policy-compliant sourc
   const prewarm = await read("app/api/media-pipeline/workspace/prewarm/route.ts");
   assert.match(
     prewarm,
-    /allowOriginalVideoFallback[\s\S]*generateMissingVideoVariants[\s\S]*sourceValidation\.ok/,
+    /allowsOriginalVideoFallback[\s\S]*sourceValidation\.ok/,
   );
   const route = await read("app/api/booster/publish-now/route.ts");
-  assert.match(route, /if \(sourceValidation\.ok\) return \[\];/);
+  assert.match(route, /requiresPreparedNetworkVideoVariant/);
   assert.doesNotMatch(route, /generationAttempted:\s*boolean/);
 });
 

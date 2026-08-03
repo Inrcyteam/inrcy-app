@@ -147,7 +147,8 @@ test("les variantes par canal sont persistantes et la publication reste légère
   );
   assert.match(publish, /preparePublicationVariants\(false\)/);
   assert.doesNotMatch(publish, /preparePublicationVariants\(true\)/);
-  assert.match(publish, /if \(sourceValidation\.ok\) return \[\]/);
+  assert.match(publish, /requiresPreparedNetworkVideoVariant/);
+  assert.match(publish, /video_variant_required/);
   assert.match(publish, /preflightFailuresByChannel/);
   assert.match(publish, /img\.publicationReady\s*===\s*true/);
   assert.match(publish, /strictMediaCutover\s*\?\s*\[\]\s*:\s*images/);

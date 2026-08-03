@@ -5,7 +5,7 @@ import test from "node:test";
 const read = (path) =>
   readFile(new URL(`../../${path}`, import.meta.url), "utf8");
 
-test("normal publication reuses a prepared variant or safely publishes the compatible original", async () => {
+test("normal publication reuses a prepared variant and limits original fallback to iNrCy surfaces", async () => {
   const [modal, prewarm, publishRoute, channelContext, workspaceHook] = await Promise.all([
     read("app/dashboard/booster/publier/PublishModal.tsx"),
     read("app/api/media-pipeline/workspace/prewarm/route.ts"),
@@ -19,10 +19,11 @@ test("normal publication reuses a prepared variant or safely publishes the compa
   assert.match(modal, /generateMissingVideoVariants:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/);
   assert.match(
     prewarm,
-    /allowOriginalVideoFallback[\s\S]{0,120}generateMissingVideoVariants[\s\S]{0,120}sourceValidation\.ok/,
+    /allowsOriginalVideoFallback\(request\.channel\)[\s\S]{0,120}sourceValidation\.ok/,
   );
   assert.match(prewarm, /const ready = invalidChannels\.length === 0/);
-  assert.match(publish, /if \(sourceValidation\.ok\) return \[\]/);
+  assert.match(publishRoute, /requiresPreparedNetworkVideoVariant/);
+  assert.match(publishRoute, /video_variant_required/);
   assert.match(publish, /if \(!variantValidation\.ok\)[\s\S]{0,100}return sourceValidation\.ok \? publicationVideo : null/);
   assert.doesNotMatch(publish, /preparePublicationVariants\(true\)/);
   assert.doesNotMatch(publish, /if \(!variantResult\.ok \|\| invalidVideoChannels\.length > 0\)/);

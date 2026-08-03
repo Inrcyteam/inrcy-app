@@ -467,7 +467,12 @@ export default function PublishImagesPanel({
                   type="button"
                   onClick={() => setSynchronizedActiveChannel(channel)}
                   title={mediaMessage || undefined}
-                  aria-invalid={toneBlocked || undefined}
+                  aria-pressed={isActive}
+                  aria-label={
+                    toneBlocked && mediaMessage
+                      ? `${getImageAdapterLabel(channel)} : ${mediaMessage}`
+                      : undefined
+                  }
                   style={{
                     minWidth: 0,
                     width: "100%",

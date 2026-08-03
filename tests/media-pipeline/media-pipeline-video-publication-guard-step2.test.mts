@@ -47,10 +47,10 @@ test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () 
 
 test("les limites vidéo sont contrôlées canal par canal", () => {
   assert.equal(getVideoPublicationPolicy("tiktok").maxBytes, 300 * MB);
-  assert.equal(getVideoPublicationPolicy("tiktok").maxDurationSeconds, null);
+  assert.equal(getVideoPublicationPolicy("tiktok").maxDurationSeconds, 10 * 60);
   assert.equal(getVideoPublicationPolicy("linkedin").maxDurationSeconds, 30 * 60);
   assert.equal(getVideoPublicationPolicy("instagram").maxDurationSeconds, 15 * 60);
-  assert.equal(getVideoPublicationPolicy("pinterest").maxDurationSeconds, 5 * 60);
+  assert.equal(getVideoPublicationPolicy("pinterest").maxDurationSeconds, 15 * 60);
 
   assert.equal(
     validateVideoPublicationForChannel({
@@ -72,7 +72,7 @@ test("les limites vidéo sont contrôlées canal par canal", () => {
       sizeBytes: 110 * MB,
       durationSeconds: 717,
     }).ok,
-    true,
+    false,
   );
   assert.equal(
     validateVideoPublicationForChannel({
@@ -81,7 +81,7 @@ test("les limites vidéo sont contrôlées canal par canal", () => {
       type: "video/mp4",
       storagePath: "videos/video.mp4",
       sizeBytes: 110 * MB,
-      durationSeconds: 301,
+      durationSeconds: 901,
     }).ok,
     false,
   );
@@ -153,7 +153,7 @@ test("la préparation réseau et la validation par canal précèdent la publicat
   assert.match(policy, /maxDurationSeconds:\s*null/);
   assert.match(
     policy,
-    /PINTEREST_VIDEO_MAX_DURATION_SECONDS\s*=\s*5\s*\*\s*60/,
+    /PINTEREST_VIDEO_MAX_DURATION_SECONDS\s*=\s*15\s*\*\s*60/,
   );
   assert.match(
     policy,
@@ -161,7 +161,7 @@ test("la préparation réseau et la validation par canal précèdent la publicat
   );
   assert.match(
     variants,
-    /ok:\s*false,[\s\S]{0,140}fallbackToOriginal:\s*sourceCanPublishDirectly/,
+    /fallbackToOriginalAllowed\s*=\s*[\s\S]{0,220}publicationProfile\s*===\s*"light_background"[\s\S]{0,120}format\s*===\s*"original"/,
   );
 });
 

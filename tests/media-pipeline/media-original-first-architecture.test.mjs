@@ -13,7 +13,7 @@ test("channel variants use the new original-first cache generation", async () =>
   assert.match(images, /initialDecision\.mode === "original"[\s\S]{0,160}originalReferenceTransform/);
   assert.match(images, /getBoosterImageSafetyBackgroundMode/);
   assert.doesNotMatch(images, /\.blur\(/);
-  assert.match(videos, /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6/);
+  assert.match(videos, /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/);
   assert.match(videos, /pad=\$\{w\}:\$\{h\}/);
   assert.doesNotMatch(videos, /boxblur|gblur|avgblur|smartblur/);
 });

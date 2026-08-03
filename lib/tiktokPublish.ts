@@ -4,6 +4,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { fetchTiktokCreatorInfo } from "@/lib/tiktokOAuth";
 import type { TiktokCommercialContent } from "@/lib/tiktokSettings";
 import { buildTikTokVideoUploadPlan } from "@/lib/tiktokUploadPlan";
+import { validateVideoDurationForChannel } from "@/lib/videoPublicationPolicy";
 import {
   ensureFrenchPublicationErrorMessage,
   getProviderPublicationErrorMessage,
@@ -118,10 +119,16 @@ function validatePublicationSettings({
     throw new Error("Le Stitch est désactivé côté TikTok pour ce compte.");
   }
 
-  const maxVideoDuration = Number(creatorInfo.max_video_post_duration_sec || 0);
-  const actualDuration = Number(videoDurationSeconds || 0);
-  if (!isPhoto && Number.isFinite(maxVideoDuration) && maxVideoDuration > 0 && Number.isFinite(actualDuration) && actualDuration > maxVideoDuration) {
-    throw new Error("Cette vidéo dépasse la durée maximale autorisée par TikTok pour ce compte.");
+  if (!isPhoto) {
+    const durationValidation = validateVideoDurationForChannel({
+      channel: "tiktok",
+      durationSeconds: videoDurationSeconds,
+      tiktokMaxDurationSeconds: creatorInfo.max_video_post_duration_sec,
+      enforceAccountCapabilities: true,
+    });
+    if (!durationValidation.ok) {
+      throw new Error(durationValidation.message);
+    }
   }
 }
 

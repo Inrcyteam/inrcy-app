@@ -58,8 +58,10 @@ test("Google prépare 220 Mo, accepte une vidéo conforme et ne coupe jamais sil
     width: 1280,
     height: 720,
   });
-  assert.equal(tooLong.action, "omit");
-  assert.match(tooLong.warningMessage, /n’a pas été coupée automatiquement/);
+  assert.equal(tooLong.action, "block");
+  if (tooLong.action === "block") {
+    assert.match(tooLong.errorMessage, /n’a pas été coupée automatiquement/);
+  }
 });
 
 test("un texte publié sans média est un avertissement terminal, pas un échec", () => {

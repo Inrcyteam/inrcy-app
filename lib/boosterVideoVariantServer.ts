@@ -20,10 +20,10 @@ import {
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "@/lib/mediaRules";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
-import {
-  getVideoCanonicalOptimizationProfile,
-} from "@/lib/mediaVideoNormalizationPolicy";
 import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
+import {
+  getVideoTargetBitrateKbps,
+} from "@/lib/mediaVideoNormalizationPolicy";
 import {
   GOOGLE_BUSINESS_VIDEO_PROFILE,
   GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
@@ -35,7 +35,7 @@ const BOOSTER_BUCKET = "booster";
 const MAX_VARIANTS_PER_REQUEST = 8;
 const OUTPUT_CONTENT_TYPE = "video/mp4";
 const FFMPEG_TRANSFORM_TIMEOUT_MS = 150000;
-const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6;
+const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7;
 
 type CachedVideoVariantRow = {
   id: string;
@@ -265,7 +265,14 @@ function buildFilter(plan: BoosterVideoTransformVariantPlan) {
   if (plan.publicationProfile === "google_business" && format === "original") {
     return `[0:v]scale='if(gte(iw,ih),-2,${GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE})':'if(gte(iw,ih),${GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE},-2)',setsar=1,format=yuv420p[v]`;
   }
-  if (format === "original" || !target.width || !target.height) return null;
+  if (format === "original" || !target.width || !target.height) {
+    // Préserve le ratio et toute l'image, mais normalise réellement la source :
+    // côté long plafonné à 1920 px, dimensions paires et pixels yuv420p. Un
+    // fond sobre complète les sources extrêmes afin de rester dans le rapport
+    // commun 1:2,4 à 2,4:1 sans rogner l'image.
+    const background = getVideoSafetyBackgroundColor(plan.publicationProfile);
+    return `[0:v]scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,pad='ceil(max(max(iw,ih/2.4),360)/2)*2':'ceil(max(max(ih,iw/2.4),360)/2)*2':(ow-iw)/2:(oh-ih)/2:color=${background},setsar=1,format=yuv420p[v]`;
+  }
   const w = target.width;
   const h = target.height;
   if (adaptationMode === "cover_crop") {
@@ -281,9 +288,44 @@ async function runFfmpegVariant(
   inputPath: string,
   outputPath: string,
   plan: BoosterVideoTransformVariantPlan,
+  durationSeconds?: number | null,
+  sourceSizeBytes?: number | null,
 ) {
   const filter = buildFilter(plan);
   const quality = getVideoTransformQualityProfile(plan.format, plan.publicationProfile);
+  const audioBitrateKbps = Math.max(
+    32,
+    Number.parseInt(quality.audioBitrate, 10) || 96,
+  );
+  const safeDurationSeconds = Number(durationSeconds || 0);
+  const safeSourceSizeBytes = Number(sourceSizeBytes || 0);
+  const sourceAverageTotalKbps =
+    Number.isFinite(safeDurationSeconds) &&
+    safeDurationSeconds > 0 &&
+    Number.isFinite(safeSourceSizeBytes) &&
+    safeSourceSizeBytes > 0
+      ? Math.round((safeSourceSizeBytes * 8) / safeDurationSeconds / 1000)
+      : null;
+  const sourceAwareMaxVideoKbps = sourceAverageTotalKbps
+    ? Math.max(
+        32,
+        Math.round(sourceAverageTotalKbps * 1.1) - audioBitrateKbps,
+      )
+    : quality.maxVideoKbps;
+  const targetVideoKbps = getVideoTargetBitrateKbps({
+    durationSeconds: safeDurationSeconds,
+    maxBytes: quality.maxOutputBytes,
+    audioBitrateKbps,
+    minVideoKbps: 32,
+    maxVideoKbps: Math.min(
+      quality.maxVideoKbps,
+      sourceAwareMaxVideoKbps,
+    ),
+  });
+  const durationArgs =
+    Number.isFinite(safeDurationSeconds) && safeDurationSeconds > 0
+      ? ["-t", safeDurationSeconds.toFixed(3)]
+      : [];
   const commonOutputArgs = [
     "-c:v",
     "libx264",
@@ -292,11 +334,13 @@ async function runFfmpegVariant(
     "-crf",
     String(quality.crf),
     "-maxrate",
-    quality.maxrate,
+    `${targetVideoKbps}k`,
     "-bufsize",
-    quality.bufsize,
+    `${Math.max(64, targetVideoKbps * 2)}k`,
     "-pix_fmt",
     "yuv420p",
+    "-r",
+    "30",
     "-c:a",
     "aac",
     "-b:a",
@@ -305,9 +349,19 @@ async function runFfmpegVariant(
     "2",
     "-movflags",
     "+faststart",
+    "-map_metadata",
+    "-1",
+    "-map_chapters",
+    "-1",
+    "-metadata:s:v:0",
+    "rotate=0",
+    "-avoid_negative_ts",
+    "make_zero",
+    "-max_muxing_queue_size",
+    "2048",
     "-threads",
     "2",
-    "-shortest",
+    ...durationArgs,
     outputPath,
   ];
   const args = filter
@@ -539,14 +593,13 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       sizeBytes: params.source.size,
       maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
     });
-  const sourceOptimizationProfile = getVideoCanonicalOptimizationProfile({
-    width: emptySource.width || 1920,
-    height: emptySource.height || 1080,
-    durationSeconds: emptySource.duration || 0,
-    sourceSizeBytes: Number(params.source.size || 0),
-    hasAudio: true,
-  });
-
+  const fallbackToOriginalAllowed =
+    sourceCanPublishDirectly &&
+    plan.every(
+      (variant) =>
+        variant.publicationProfile === "light_background" &&
+        variant.format === "original",
+    );
   if (!plan.length) {
     return {
       ok: true,
@@ -581,8 +634,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       : null;
     const requiresSocialOptimization =
       variant.publicationProfile === "default" &&
-      variant.format === "original" &&
-      sourceOptimizationProfile.shouldOptimize;
+      variant.format === "original";
     if (
       variant.format === "original" &&
       Number(params.source.size || 0) > 0 &&
@@ -649,7 +701,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
   if (params.generateMissing === false) {
     return {
       ok: false,
-      fallbackToOriginal: sourceCanPublishDirectly,
+      fallbackToOriginal: fallbackToOriginalAllowed,
       source: {
         ...emptySource,
         size: Number(params.source.size || 0),
@@ -659,7 +711,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         key: variant.key,
         format: variant.format,
         adaptationMode: variant.adaptationMode,
-        message: sourceCanPublishDirectly
+        message: fallbackToOriginalAllowed
           ? "Variante non préparée : la préparation doit être terminée avant la publication."
           : "Variante vidéo obligatoire manquante : la source originale dépasse le plafond de publication ou n'est pas directement compatible.",
       })),
@@ -683,9 +735,10 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
     await writeFile(inputPath, downloaded.buffer);
     const probedSource = await probeVideoMetadata(inputPath);
     const duration =
-      (typeof params.source.duration === "number" ? params.source.duration : null) ||
-      params.source.sourceMetadata?.duration ||
-      probedSource.duration;
+      probedSource.duration ??
+      (typeof params.source.duration === "number" ? params.source.duration : null) ??
+      params.source.sourceMetadata?.duration ??
+      null;
     const sourceWidth =
       Number(params.source.sourceMetadata?.width || 0) || probedSource.width;
     const sourceHeight =
@@ -708,7 +761,14 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
             "Google Business refuse les vidéos de plus de 30 secondes. La vidéo n’a pas été coupée automatiquement.",
           );
         }
-        await runFfmpegVariant(ffmpegPath, inputPath, outputPath, variant);
+        await runFfmpegVariant(
+          ffmpegPath,
+          inputPath,
+          outputPath,
+          variant,
+          duration,
+          downloaded.buffer.length,
+        );
         const outputBuffer = await readFile(outputPath);
         const quality = getVideoTransformQualityProfile(variant.format, variant.publicationProfile);
         const outputMetadata = await probeVideoMetadata(outputPath);
@@ -797,7 +857,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
 
     return {
       ok: errors.length === 0,
-      fallbackToOriginal: errors.length > 0 && sourceCanPublishDirectly,
+      fallbackToOriginal: errors.length > 0 && fallbackToOriginalAllowed,
       source: {
         bucket: downloaded.bucket,
         storagePath: downloaded.storagePath || null,
@@ -813,14 +873,14 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
   } catch (error: any) {
     return {
       ok: false,
-      fallbackToOriginal: sourceCanPublishDirectly,
+      fallbackToOriginal: fallbackToOriginalAllowed,
       source: emptySource,
       variants: readyVariants,
       errors: [
         {
           message: compactFfmpegError(
             error,
-            sourceCanPublishDirectly
+            fallbackToOriginalAllowed
               ? "Adaptation automatique indisponible : la vidéo originale compatible peut être conservée."
               : "Adaptation vidéo indisponible : la source originale ne peut pas être publiée directement.",
           ),

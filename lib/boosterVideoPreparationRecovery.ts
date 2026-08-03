@@ -14,6 +14,8 @@ type VideoPreparationResult = {
 const NON_RECOVERABLE_VIDEO_REASONS = new Set([
   "video_duration_too_short",
   "video_duration_too_long",
+  "video_duration_account_limit_unknown",
+  "video_duration_long_upload_not_allowed",
 ]);
 
 /**

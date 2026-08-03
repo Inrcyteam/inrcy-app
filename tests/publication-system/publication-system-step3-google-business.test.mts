@@ -131,10 +131,11 @@ test("Google Business prepares heavy or low-resolution videos but never silently
     width: 1280,
     height: 720,
   });
-  assert.equal(long.action, "omit");
-  if (long.action === "omit") {
-    assert.match(long.warningMessage, /sans vidéo/i);
-    assert.match(long.warningMessage, /pas été coupée/i);
+  assert.equal(long.action, "block");
+  if (long.action === "block") {
+    assert.equal(long.errorCode, "video_duration_too_long");
+    assert.match(long.errorMessage, /30 secondes maximum/i);
+    assert.match(long.errorMessage, /pas été coupée/i);
   }
 });
 
@@ -239,11 +240,12 @@ test("prewarm, publish-now and iNrSend all use the same Google safeguards", () =
 
   assert.match(prewarm, /getGoogleBusinessVideoPreparationDecision/);
   assert.match(prewarm, /mediaWarnings/);
-  assert.match(route, /videoMediaWarningsByChannel/);
+  assert.match(route, /preflightFailuresByChannel/);
+  assert.match(route, /video_variant_required/);
   assert.match(route, /filterGoogleBusinessMediaUrls/);
-  assert.match(route, /Google Business publiera le texte sans vidéo/);
+  assert.match(route, /La publication texte n’a pas été envoyée à la place/);
   assert.match(inrsend, /filterGoogleBusinessMediaUrls/);
-  assert.match(variantServer, /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6/);
+  assert.match(variantServer, /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/);
   assert.match(variantServer, /GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE/);
   assert.match(variantServer, /n’a pas été coupée automatiquement/);
   assert.match(optimizer, /ensureGoogleBusinessImageCompliance/);

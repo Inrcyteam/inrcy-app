@@ -25,15 +25,24 @@ export type GoogleBusinessVideoPreparationDecision =
         | "metadata_requires_probe";
     }
   | {
-      action: "omit";
+      action: "block";
       reason: "duration_too_long";
-      warningCode: "google_business_video_too_long";
-      warningMessage: string;
+      errorCode: "video_duration_too_long";
+      errorMessage: string;
     };
 
 function knownPositiveNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function formatDuration(seconds: number) {
+  const rounded = Math.max(1, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  return minutes
+    ? `${minutes} min${remainingSeconds ? ` ${remainingSeconds} s` : ""}`
+    : `${remainingSeconds} s`;
 }
 
 export function getGoogleBusinessVideoPreparationDecision(input: {
@@ -52,11 +61,10 @@ export function getGoogleBusinessVideoPreparationDecision(input: {
     durationSeconds > GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS
   ) {
     return {
-      action: "omit",
+      action: "block",
       reason: "duration_too_long",
-      warningCode: "google_business_video_too_long",
-      warningMessage:
-        "Google Business a publié le texte sans vidéo, car la vidéo dépasse 30 secondes. La vidéo originale n’a pas été coupée automatiquement.",
+      errorCode: "video_duration_too_long",
+      errorMessage: `Google Business bloqué — cette vidéo dure ${formatDuration(durationSeconds)}. Règle Google Business : 30 secondes maximum. La vidéo n’a pas été coupée automatiquement.`,
     };
   }
 
@@ -93,13 +101,9 @@ export function getGoogleBusinessVideoPreparationDecision(input: {
 }
 
 export function isGoogleBusinessVideoValidationOmittable(reason: unknown) {
-  return [
-    "video_size_unknown",
-    "video_too_large",
-    "video_format_invalid",
-    "video_duration_unknown",
-    "video_duration_too_long",
-    "video_resolution_unknown",
-    "video_resolution_too_small",
-  ].includes(String(reason || ""));
+  // Une publication explicitement configurée en vidéo ne doit jamais devenir
+  // silencieusement une publication texte. iNrCy convertit les contraintes
+  // techniques ; si la conversion échoue, seul ce canal échoue avec son motif.
+  void reason;
+  return false;
 }

@@ -34,8 +34,9 @@ import {
 } from "@/lib/boosterCta";
 import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
 import {
-  PINTEREST_VIDEO_MAX_DURATION_SECONDS,
-  PINTEREST_VIDEO_TOO_LONG_MESSAGE,
+  getYoutubePublicationTypeForDuration,
+  validateVideoDurationForChannel,
+  type YoutubeLongUploadsStatus,
 } from "@/lib/videoPublicationPolicy";
 import {
   isUniversalMediaUploadEnabled,
@@ -498,6 +499,7 @@ export {
   VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL,
   buildVideoSettingsByChannel,
   getDefaultChannelVideoSettings,
+  getAutomaticVideoSettingsForPublication,
   getRecommendedVideoFormatForSource,
   getVideoFormatLabel,
   getVideoPreviewAspectRatio,
@@ -608,6 +610,9 @@ export type ChannelPublicationRequirementInput = {
   videoDurationSeconds?: number | null;
   videoFileType?: string | null;
   videoFileName?: string | null;
+  tiktokMaxVideoDurationSeconds?: number | null;
+  tiktokDurationLimitVerified?: boolean;
+  youtubeLongUploadsStatus?: YoutubeLongUploadsStatus | null;
   hasImage: boolean;
   imageCount: number;
   hasText: boolean;
@@ -619,6 +624,8 @@ export type ChannelPublicationRequirements = {
   warnings: string[];
   blockers: string[];
   mediaBlockers: string[];
+  blockerCodes: string[];
+  mediaBlockerCodes: string[];
 };
 
 function isMp4VideoFile(type?: string | null, name?: string | null) {
@@ -635,6 +642,9 @@ export function getChannelPublicationRequirements({
   videoDurationSeconds,
   videoFileType,
   videoFileName,
+  tiktokMaxVideoDurationSeconds,
+  tiktokDurationLimitVerified,
+  youtubeLongUploadsStatus,
   hasImage,
   imageCount,
   hasText,
@@ -644,59 +654,92 @@ export function getChannelPublicationRequirements({
   const warnings: string[] = [];
   const blockers: string[] = [];
   const mediaBlockers: string[] = [];
-  const addMediaBlocker = (message: string) => {
+  const blockerCodes: string[] = [];
+  const mediaBlockerCodes: string[] = [];
+  const addBlocker = (message: string, code = "prepublish_validation_failed") => {
     blockers.push(message);
+    blockerCodes.push(code);
+  };
+  const addMediaBlocker = (
+    message: string,
+    code = "prepublish_validation_failed",
+  ) => {
+    addBlocker(message, code);
     mediaBlockers.push(message);
+    mediaBlockerCodes.push(code);
   };
 
   if (!connected) {
-    blockers.push("Canal non connecté.");
-    return { warnings, blockers, mediaBlockers };
+    addBlocker("Canal non connecté.", "channel_not_connected");
+    return {
+      warnings,
+      blockers,
+      mediaBlockers,
+      blockerCodes,
+      mediaBlockerCodes,
+    };
   }
 
   if (!hasContent) warnings.push("Contenu vide");
   if (!hasTitle) warnings.push("Titre vide");
 
   if (mediaMode === "video") {
-    if (!hasVideo) addMediaBlocker("Ajoutez une vidéo.");
+    if (!hasVideo) addMediaBlocker("Ajoutez une vidéo.", "video_required");
+    let videoDurationIsValid = true;
 
-    if (channel === "youtube_shorts") {
-      if (!hasVideo) {
-        addMediaBlocker("YouTube nécessite une vidéo.");
-      } else if (videoDurationSeconds == null) {
+    if (hasVideo) {
+      const durationValidation = validateVideoDurationForChannel({
+        channel,
+        durationSeconds: videoDurationSeconds,
+        tiktokMaxDurationSeconds: tiktokMaxVideoDurationSeconds,
+        tiktokAccountLimitVerified: tiktokDurationLimitVerified,
+        youtubeLongUploadsStatus,
+        enforceAccountCapabilities: true,
+      });
+      if (!durationValidation.ok) {
+        videoDurationIsValid = false;
+        addMediaBlocker(
+          durationValidation.message,
+          durationValidation.reason,
+        );
+      }
+
+      if (!isMp4VideoFile(videoFileType, videoFileName)) {
         warnings.push(
-          "Durée YouTube non vérifiée : iNrCy publiera quand même la vidéo, YouTube décidera ensuite du format court ou classique.",
+          "Format source détecté : iNrCy le convertira automatiquement en MP4/H.264, audio AAC et 30 fps avant l’envoi.",
         );
       }
     }
 
-    if (channel === "tiktok") {
+    if (channel === "youtube_shorts") {
+      if (hasVideo && videoDurationSeconds != null && videoDurationIsValid) {
+        const publicationType = getYoutubePublicationTypeForDuration(
+          videoDurationSeconds,
+        );
+        warnings.push(
+          publicationType === "short"
+            ? "YouTube : vidéo de 3 minutes maximum, iNrCy la convertira automatiquement en format vertical et la publiera en Short."
+            : "YouTube : vidéo de plus de 3 minutes, publication automatique en vidéo classique.",
+        );
+      }
+    }
+
+    if (channel === "tiktok" && videoDurationIsValid) {
       warnings.push(
         "TikTok publiera la vidéo sur le compte connecté avec les paramètres validés.",
       );
     }
 
-    if (channel === "pinterest" && hasVideo) {
-      if (
-        videoDurationSeconds != null &&
-        videoDurationSeconds > PINTEREST_VIDEO_MAX_DURATION_SECONDS
-      ) {
-        addMediaBlocker(PINTEREST_VIDEO_TOO_LONG_MESSAGE);
-      } else {
-        warnings.push(
-          "Pinterest publiera la vidéo avec une image de couverture générée automatiquement si nécessaire.",
-        );
-      }
+    if (channel === "pinterest" && hasVideo && videoDurationIsValid) {
+      warnings.push(
+        "Pinterest publiera la vidéo avec une image de couverture générée automatiquement si nécessaire.",
+      );
     }
 
-    if (channel === "linkedin") {
-      if (hasVideo && !isMp4VideoFile(videoFileType, videoFileName)) {
-        addMediaBlocker("LinkedIn nécessite une vidéo MP4.");
-      } else if (hasVideo) {
-        warnings.push(
-          "LinkedIn finalise la vidéo avant publication. L’envoi peut prendre quelques secondes.",
-        );
-      }
+    if (channel === "linkedin" && hasVideo && videoDurationIsValid) {
+      warnings.push(
+        "LinkedIn finalise la vidéo après la conversion iNrCy. L’envoi peut prendre quelques secondes.",
+      );
     }
   } else if (mediaMode === "images") {
     if (!hasImage) {
@@ -749,13 +792,15 @@ export function getChannelPublicationRequirements({
         ? hasImage
         : false;
   if (!hasText && !hasMedia) {
-    blockers.push("Ajoutez au moins du texte ou un média.");
+    addBlocker("Ajoutez au moins du texte ou un média.");
   }
 
   return {
     warnings: Array.from(new Set(warnings)),
     blockers: Array.from(new Set(blockers)),
     mediaBlockers: Array.from(new Set(mediaBlockers)),
+    blockerCodes: Array.from(new Set(blockerCodes)),
+    mediaBlockerCodes: Array.from(new Set(mediaBlockerCodes)),
   };
 }
 

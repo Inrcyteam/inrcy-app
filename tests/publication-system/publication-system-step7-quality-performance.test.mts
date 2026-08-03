@@ -67,11 +67,11 @@ test("Facebook envoie au plus deux images simultanément et garde l'ordre", () =
   assert.match(source, /results\[index\] = await mapper/);
 });
 
-test("Facebook et LinkedIn publient le texte si leur média échoue", () => {
+test("une vidéo en échec reste un échec de canal, tandis que les images gardent leur reprise texte", () => {
   const immediate = read("app/api/booster/publish-now/route.ts");
   const inrSend = read("lib/inrsend/publicationChannelActions.ts");
   for (const source of [immediate, inrSend]) {
-    assert.match(source, /published_without_video/);
+    assert.doesNotMatch(source, /published_without_video/);
     assert.match(source, /published_without_image/);
     assert.match(source, /published_with_partial_images/);
     assert.match(source, /fallbackResp/);

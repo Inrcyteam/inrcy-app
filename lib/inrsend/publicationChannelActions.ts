@@ -1075,8 +1075,13 @@ async function replaceChannelDelivery(params: {
   const { userId, publicationId, channel, previousExternalId, publication, eventPayload, nextPost, imageSet } = params;
   const mediaType = params.mediaType || getEventPublicationMediaType(eventPayload, publication, channel);
   const video = params.video || getPublicationVideo(eventPayload, publication, channel);
-  const isVideoPublication = mediaType === "video" && !!video?.publicUrl;
+  const isVideoPublication = mediaType === "video";
   const videoUrl = String(video?.publicUrl || video?.url || "").trim();
+  if (isVideoPublication && (!video || !videoUrl)) {
+    throw new Error(
+      "La vidéo prévue pour ce canal est introuvable ou inaccessible. Le texte n’a pas été publié à sa place.",
+    );
+  }
   const resolvedImageSet = imageSet ?? getChannelImageSet(eventPayload, publication, channel);
   const images = resolvedImageSet.images;
   const socialFeedImageUrls = resolvedImageSet.socialFeedPublishableUrls.length ? resolvedImageSet.socialFeedPublishableUrls : images;
@@ -1175,36 +1180,13 @@ async function replaceChannelDelivery(params: {
     }
 
     if (isVideoPublication && videoUrl) {
-      let facebookWarning: { code: string; message: string } | null = null;
-      let resp = await facebookPublishVideoToPage({
+      const resp = await facebookPublishVideoToPage({
         pageId,
         pageAccessToken: pageToken,
         description: canonMessage,
         videoUrl,
         title: nextPost.title || undefined,
       });
-      if (!resp.ok && resp.safeTextFallback === true) {
-        const mediaResp = resp;
-        const fallbackResp = await facebookPublishToPage({
-          pageId,
-          pageAccessToken: pageToken,
-          message: canonMessage,
-          imageUrls: [],
-        });
-        if (fallbackResp.ok) {
-          facebookWarning = {
-            code: "published_without_video",
-            message:
-              "Facebook a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
-          };
-          resp = {
-            ...fallbackResp,
-            photoErrors: mediaResp.error
-              ? [{ url: videoUrl, error: mediaResp.error }]
-              : undefined,
-          };
-        }
-      }
       if (!resp.ok) {
         const facebookUserError = getPublishChannelUserMessage("facebook", resp.error);
         logPublishChannelFailure({
@@ -1231,8 +1213,8 @@ async function replaceChannelDelivery(params: {
         externalId: resp.postId,
         status: "delivered",
         error: null,
-        warning: facebookWarning?.code || null,
-        warningMessage: facebookWarning?.message || null,
+        warning: null,
+        warningMessage: null,
       };
     }
 
@@ -1472,19 +1454,17 @@ async function replaceChannelDelivery(params: {
 
     if (
       !resp.ok &&
-      ((isVideoPublication && videoUrl) || linkedInImages.length > 0) &&
+      !isVideoPublication &&
+      linkedInImages.length > 0 &&
       resp.safeTextFallback === true
     ) {
       const mediaResp = resp;
       const fallbackResp = await linkedinPublishText({ accessToken, authorUrn, text: canonMessage });
       if (fallbackResp.ok) {
         linkedInWarning = {
-          code: isVideoPublication
-            ? "published_without_video"
-            : "published_without_image",
-          message: isVideoPublication
-            ? "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci."
-            : "LinkedIn a publié le texte, mais les images n'ont pas pu être jointes cette fois-ci.",
+          code: "published_without_image",
+          message:
+            "LinkedIn a publié le texte, mais les images n'ont pas pu être jointes cette fois-ci.",
         };
         resp = {
           ...fallbackResp,
@@ -1611,11 +1591,10 @@ async function replaceChannelDelivery(params: {
           message: "Google Business a publié le texte sans image, car le média n’était plus accessible ou conforme.",
         };
       }
-      if (isVideoPublication && rawGmbVideoUrls.length && !gmbVideoUrls.length) {
-        gmbWarning = {
-          code: "published_without_video",
-          message: "Google Business a publié le texte sans vidéo, car le média n’était plus accessible ou conforme.",
-        };
+      if (isVideoPublication && !gmbVideoUrls.length) {
+        throw new Error(
+          "La vidéo Google Business n’est plus accessible ou conforme. La publication texte n’a pas été envoyée à la place.",
+        );
       }
       const hasMedia = Boolean(safeGmbImageUrls.length || gmbVideoUrls.length);
 
@@ -1636,12 +1615,12 @@ async function replaceChannelDelivery(params: {
       } catch (gmbFirstError: unknown) {
         const retryWarnings: Array<{ code: string; message: string; publish: () => Promise<unknown> }> = [];
 
-        if (hasMedia) {
+        if (hasMedia && !isVideoPublication) {
           retryWarnings.push({
-            code: isVideoPublication ? "published_without_video" : (isGoogleBusinessImageError(gmbFirstError) ? "published_without_image" : "published_after_retry_without_image"),
-            message: isVideoPublication
-              ? "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci."
-              : isGoogleBusinessImageError(gmbFirstError)
+            code: isGoogleBusinessImageError(gmbFirstError)
+              ? "published_without_image"
+              : "published_after_retry_without_image",
+            message: isGoogleBusinessImageError(gmbFirstError)
                 ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image."
                 : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
             publish: () => publishGmb({ withoutMedia: true }),
@@ -1656,12 +1635,11 @@ async function replaceChannelDelivery(params: {
           });
         }
 
-        if (hasMedia && gmbCallToAction) {
+        if (hasMedia && gmbCallToAction && !isVideoPublication) {
           retryWarnings.push({
             code: "published_without_media_and_cta",
-            message: isVideoPublication
-              ? "Google Business a publié le texte, sans vidéo ni bouton CTA."
-              : "Google Business a publié le texte, sans image ni bouton CTA.",
+            message:
+              "Google Business a publié le texte, sans image ni bouton CTA.",
             publish: () => publishGmb({ withoutMedia: true, withoutCta: true }),
           });
         }
@@ -1980,7 +1958,7 @@ function buildUpdatedPayload(params: {
   const { eventPayload, publication, channel, nextPost, externalId, imageSet, instagramMeta, tiktokMeta, pinterestMeta } = params;
   const mediaType = params.mediaType || getEventPublicationMediaType(eventPayload, publication, channel);
   const video = params.video || getPublicationVideo(eventPayload, publication, channel);
-  const isVideoPublication = mediaType === "video" && !!video?.publicUrl;
+  const isVideoPublication = mediaType === "video";
   const results = cloneRecord(asRecord(eventPayload.results));
   const channelResult = asRecord(results[channel]);
   results[channel] = {

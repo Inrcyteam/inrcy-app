@@ -41,8 +41,8 @@ test("un statut générique iNrSearch publié ne devient jamais un faux pending 
   assert.equal(classifyBoosterPublicationResult(tiktokResult).status, "processing");
 });
 
-test("la limite TikTok générique reste dynamique et ne réintroduit pas 10 minutes en dur", () => {
-  assert.equal(getVideoPublicationPolicy("tiktok").maxDurationSeconds, null);
+test("TikTok garde le plafond technique de 10 minutes avant la limite dynamique du compte", () => {
+  assert.equal(getVideoPublicationPolicy("tiktok").maxDurationSeconds, 600);
   const validation = validateVideoPublicationForChannel({
     channel: "tiktok",
     name: "video-10m36.mp4",
@@ -53,12 +53,16 @@ test("la limite TikTok générique reste dynamique et ne réintroduit pas 10 min
     width: 1920,
     height: 1080,
   });
-  assert.equal(validation.ok, true);
+  assert.equal(validation.ok, false);
+  if (!validation.ok) {
+    assert.equal(validation.reason, "video_duration_too_long");
+    assert.match(validation.message, /10 minutes maximum/i);
+  }
 });
 
-test("une vidéo Pinterest de 10 min 36 est refusée avec le motif métier explicite", () => {
-  assert.equal(getVideoPublicationPolicy("pinterest").maxDurationSeconds, 300);
-  const validation = validateVideoPublicationForChannel({
+test("Pinterest accepte 10 min 36 en épingle standard et bloque seulement au-delà de 15 minutes", () => {
+  assert.equal(getVideoPublicationPolicy("pinterest").maxDurationSeconds, 900);
+  const accepted = validateVideoPublicationForChannel({
     channel: "pinterest",
     name: "video-10m36.mp4",
     type: "video/mp4",
@@ -68,11 +72,24 @@ test("une vidéo Pinterest de 10 min 36 est refusée avec le motif métier expli
     width: 1920,
     height: 1080,
   });
+  assert.equal(accepted.ok, true);
 
+  const validation = validateVideoPublicationForChannel({
+    channel: "pinterest",
+    name: "video-15m01.mp4",
+    type: "video/mp4",
+    storagePath: "video-15m01.mp4",
+    sizeBytes: 50 * 1024 * 1024,
+    durationSeconds: 901,
+    width: 1920,
+    height: 1080,
+  });
   assert.equal(validation.ok, false);
   if (validation.ok) return;
   assert.equal(validation.reason, "video_duration_too_long");
-  assert.equal(validation.message, PINTEREST_VIDEO_TOO_LONG_MESSAGE);
+  assert.match(validation.message, /15 min 1 s/);
+  assert.match(validation.message, /Règle Pinterest/i);
+  assert.match(validation.message, /entre 4 secondes et 15 minutes/i);
 });
 
 test("un préflight TikTok invalide terminalise TikTok mais garde Site et iNrSearch dispatchables", () => {
@@ -290,6 +307,6 @@ test("les contrats UI du hotfix excluent réellement un canal et ne codent plus 
   assert.match(route, /resp\.safeTextFallback === true/);
   assert.match(facebook, /getProviderCreateFailureSafety/);
   assert.match(linkedin, /getProviderCreateFailureSafety/);
-  assert.doesNotMatch(route, /code: "video_variant_required"/);
+  assert.match(route, /video_variant_required/);
   assert.doesNotMatch(route, /preparePublicationVariants\(true\)/);
 });

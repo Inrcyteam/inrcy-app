@@ -68,6 +68,7 @@ import {
   clampPercent,
   getChannelDefaultCtaLabel,
   getChannelPublicationRequirements,
+  getAutomaticVideoSettingsForPublication,
   getDefaultCtaModeForChannel,
   normalizeBoosterPreferredCta,
   getPublicationMediaLabel,
@@ -162,7 +163,11 @@ import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
-import { PINTEREST_VIDEO_TOO_LONG_MESSAGE } from "@/lib/videoPublicationPolicy";
+import {
+  YOUTUBE_SHORT_MAX_DURATION_SECONDS,
+  normalizeYoutubeLongUploadsStatus,
+  type YoutubeLongUploadsStatus,
+} from "@/lib/videoPublicationPolicy";
 import {
   canContinueWithIsolatedVideoPreparationFailures,
   isVideoPreparationReady,
@@ -1194,6 +1199,116 @@ export default function PublishModal({
     setPublishProgress,
     setPublishProgressLabel,
   });
+
+  const [tiktokMaxVideoDurationSeconds, setTiktokMaxVideoDurationSeconds] =
+    useState<number | null>(null);
+  const [tiktokDurationLimitVerified, setTiktokDurationLimitVerified] =
+    useState(false);
+  const [youtubeLongUploadsStatus, setYoutubeLongUploadsStatus] =
+    useState<YoutubeLongUploadsStatus>("unknown");
+
+  useEffect(() => {
+    if (!connected.tiktok) {
+      setTiktokMaxVideoDurationSeconds(null);
+      setTiktokDurationLimitVerified(false);
+      return;
+    }
+    let active = true;
+    setTiktokDurationLimitVerified(false);
+    fetch("/api/integrations/tiktok/creator-info", {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json?.ok) {
+          throw new Error(String(json?.error || "Limite TikTok indisponible."));
+        }
+        return json;
+      })
+      .then((json) => {
+        if (!active) return;
+        const value = Number(json?.creatorInfo?.maxVideoDurationSeconds || 0);
+        setTiktokMaxVideoDurationSeconds(
+          Number.isFinite(value) && value > 0 ? value : null,
+        );
+        setTiktokDurationLimitVerified(Number.isFinite(value) && value > 0);
+      })
+      .catch(() => {
+        if (active) {
+          setTiktokMaxVideoDurationSeconds(null);
+          setTiktokDurationLimitVerified(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [connected.tiktok]);
+
+  useEffect(() => {
+    if (!connected.youtube_shorts) {
+      setYoutubeLongUploadsStatus("unknown");
+      return;
+    }
+    let active = true;
+    fetch("/api/integrations/youtube-shorts/creator-info", {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json?.ok) {
+          throw new Error(String(json?.error || "Limites YouTube indisponibles."));
+        }
+        return json;
+      })
+      .then((json) => {
+        if (!active) return;
+        setYoutubeLongUploadsStatus(
+          normalizeYoutubeLongUploadsStatus(
+            json?.creatorInfo?.longUploadsStatus,
+          ),
+        );
+      })
+      .catch(() => {
+        if (active) setYoutubeLongUploadsStatus("unknown");
+      });
+    return () => {
+      active = false;
+    };
+  }, [connected.youtube_shorts]);
+
+  useEffect(() => {
+    const duration = Number(
+      videoDurationSeconds ?? videoSourceMetadata?.duration ?? 0,
+    );
+    if (
+      !videoFile ||
+      !channels.youtube_shorts ||
+      !Number.isFinite(duration) ||
+      duration <= 0 ||
+      duration > YOUTUBE_SHORT_MAX_DURATION_SECONDS
+    ) {
+      return;
+    }
+    setVideoFormatByChannel((current) =>
+      current.youtube_shorts === "9_16"
+        ? current
+        : { ...current, youtube_shorts: "9_16" },
+    );
+    setVideoAdaptationModeByChannel((current) =>
+      current.youtube_shorts === "safe_frame"
+        ? current
+        : { ...current, youtube_shorts: "safe_frame" },
+    );
+  }, [
+    channels.youtube_shorts,
+    setVideoAdaptationModeByChannel,
+    setVideoFormatByChannel,
+    videoDurationSeconds,
+    videoFile,
+    videoSourceMetadata?.duration,
+  ]);
 
   const waitForPersistentWorkspaceReadiness = useCallback(
     async (
@@ -3611,11 +3726,7 @@ export default function PublishModal({
         channel: item.channel,
         label: item.label,
         blockers: item.blockers,
-        code:
-          item.channel === "pinterest" &&
-          item.blockers.includes(PINTEREST_VIDEO_TOO_LONG_MESSAGE)
-            ? "video_duration_too_long"
-            : "prepublish_validation_failed",
+        code: item.blockerCodes?.[0] || "prepublish_validation_failed",
       }));
 
     if (!publishableChannels.length) {
@@ -3637,6 +3748,22 @@ export default function PublishModal({
     const hasAnyImagePublish = publishableChannels.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
+    const publishVideoSettingsByChannel = Object.fromEntries(
+      publishableChannels.map((channel) => [
+        channel,
+        getAutomaticVideoSettingsForPublication({
+          channel,
+          settings: videoSettingsByChannel[channel],
+          durationSeconds:
+            videoDurationSeconds ?? videoSourceMetadata?.duration ?? null,
+        }),
+      ]),
+    ) as Partial<
+      Record<
+        ChannelKey,
+        { format: VideoFormat; adaptationMode: VideoAdaptationMode }
+      >
+    >;
 
     if (hasAnyVideoPublish && !videoFile) {
       setImgError(
@@ -3730,7 +3857,7 @@ export default function PublishModal({
         );
         const videoPreparation = await ensureCutoverVideoVariantsReady(
           videoChannels,
-          videoSettingsByChannel,
+          publishVideoSettingsByChannel,
           {
             generateMissingVideoVariants: false,
             allowOriginalVideoFallback: true,
@@ -3878,6 +4005,7 @@ export default function PublishModal({
           publicationVideo,
           publishableChannels,
           publishMediaModeByChannel,
+          { settingsByChannel: publishVideoSettingsByChannel },
         );
       }
 
@@ -3952,7 +4080,7 @@ export default function PublishModal({
           publishableChannels,
         ),
         videoSettingsByChannel: buildChannelRecord(
-          videoSettingsByChannel,
+          publishVideoSettingsByChannel,
           publishableChannels,
         ),
         video: publicationVideo,
@@ -4323,13 +4451,13 @@ export default function PublishModal({
   ): Promise<PendingImmediatePublishAfterSchedule | null | undefined> => {
     if (saving || draftSaving || scheduleSaving) return;
 
-    const channelsToSchedule = Array.from(
+    const requestedChannelsToSchedule = Array.from(
       new Set(selections.map((selection) => selection.channel)),
     ).filter((channel): channel is ChannelKey =>
       selectedChannels.includes(channel),
     );
 
-    if (!channelsToSchedule.length) {
+    if (!requestedChannelsToSchedule.length) {
       setScheduleError("Sélectionnez au moins un canal à programmer.");
       return;
     }
@@ -4338,17 +4466,23 @@ export default function PublishModal({
       .filter((channel): channel is ChannelKey =>
         selectedChannels.includes(channel),
       )
-      .filter((channel) => !channelsToSchedule.includes(channel));
+      .filter((channel) => !requestedChannelsToSchedule.includes(channel));
 
     const reviewItems = buildFinalReviewItems(
       preparedPostsByChannel,
-      channelsToSchedule,
+      requestedChannelsToSchedule,
     );
     const blocked = reviewItems.filter((item) => item.blockers.length > 0);
-    if (blocked.length) {
+    const channelsToSchedule = reviewItems
+      .filter((item) => item.blockers.length === 0)
+      .map((item) => item.channel);
+    if (!channelsToSchedule.length) {
       setScheduleError(
-        `Certains canaux ne sont pas prêts : ${blocked
-          .map((item) => item.label)
+        `Aucun canal ne peut être programmé : ${blocked
+          .map(
+            (item) =>
+              `${item.label} — ${item.blockers[0] || "canal non prêt"}`,
+          )
           .join(" / ")}.`,
       );
       return;
@@ -4366,6 +4500,22 @@ export default function PublishModal({
     const hasAnyImagePublish = channelsToSchedule.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
+    const scheduleVideoSettingsByChannel = Object.fromEntries(
+      channelsToSchedule.map((channel) => [
+        channel,
+        getAutomaticVideoSettingsForPublication({
+          channel,
+          settings: videoSettingsByChannel[channel],
+          durationSeconds:
+            videoDurationSeconds ?? videoSourceMetadata?.duration ?? null,
+        }),
+      ]),
+    ) as Partial<
+      Record<
+        ChannelKey,
+        { format: VideoFormat; adaptationMode: VideoAdaptationMode }
+      >
+    >;
 
     if (hasAnyVideoPublish && !videoFile) {
       setScheduleError("Ajoutez une vidéo avant de programmer ces canaux.");
@@ -4398,7 +4548,7 @@ export default function PublishModal({
         );
         const videoPreparation = await ensureCutoverVideoVariantsReady(
           videoChannels,
-          videoSettingsByChannel,
+          scheduleVideoSettingsByChannel,
           {
             generateMissingVideoVariants: false,
             allowOriginalVideoFallback: true,
@@ -4534,6 +4684,7 @@ export default function PublishModal({
           publicationVideo,
           channelsToSchedule,
           publishMediaModeByChannel,
+          { settingsByChannel: scheduleVideoSettingsByChannel },
         );
       }
 
@@ -4625,7 +4776,7 @@ export default function PublishModal({
                   groupChannels,
                 ),
                 videoSettingsByChannel: buildChannelUnknownRecord(
-                  videoSettingsByChannel as Partial<
+                  scheduleVideoSettingsByChannel as Partial<
                     Record<ChannelKey, unknown>
                   >,
                   groupChannels,
@@ -4688,11 +4839,19 @@ export default function PublishModal({
           ? "Programmation enregistrée, envoi des autres canaux..."
           : "Publication confiée à iNr’Agent.",
       );
-      setDraftMessage(
+      const scheduledMessage =
         channelsToSchedule.length > 1
           ? `Publication multicanale programmée dans iNr’Agent (${channelsToSchedule.length} canaux).`
-          : "Publication programmée dans iNr’Agent.",
-      );
+          : "Publication programmée dans iNr’Agent.";
+      const blockedMessage = blocked.length
+        ? ` Canal${blocked.length > 1 ? "aux" : ""} non programmé${blocked.length > 1 ? "s" : ""} : ${blocked
+            .map(
+              (item) =>
+                `${item.label} — ${item.blockers[0] || "canal non prêt"}`,
+            )
+            .join(" / ")}.`
+        : "";
+      setDraftMessage(`${scheduledMessage}${blockedMessage}`);
 
       const immediatePublishRequest = immediateChannelsToPublish.length
         ? {
@@ -4711,7 +4870,7 @@ export default function PublishModal({
       setTiktokPublicationSettings(null);
       setTiktokSettingsFlow(null);
       setPendingScheduleRequest(null);
-      onUnsavedChange?.(false);
+      onUnsavedChange?.(blocked.length > 0);
       return immediatePublishRequest;
     } catch (e) {
       const message = getSimpleFrenchErrorMessage(
@@ -4858,17 +5017,36 @@ export default function PublishModal({
           videoDurationSeconds ?? videoSourceMetadata?.duration ?? null,
         videoFileType: videoFile?.type || null,
         videoFileName: videoFile?.name || null,
+        tiktokMaxVideoDurationSeconds,
+        tiktokDurationLimitVerified,
+        youtubeLongUploadsStatus,
         hasImage,
         imageCount: imageKeysToPublish.length,
         hasText,
         hasTitle,
         hasContent,
       });
+      const videoPreparationState = videoVariantPreparationByChannel[channel];
+      const videoPreparationBlocker =
+        mode === "video" && videoPreparationState?.status === "error"
+          ? String(
+              videoPreparationState.detail ||
+                "La conversion technique de la vidéo a échoué pour ce canal.",
+            ).trim()
+          : "";
 
       const blockers = [
         ...requirements.blockers,
+        ...(videoPreparationBlocker ? [videoPreparationBlocker] : []),
         ...(channel === "pinterest" && !pinterestBoardId
           ? ["Choisissez un tableau Pinterest."]
+          : []),
+      ];
+      const blockerCodes = [
+        ...requirements.blockerCodes,
+        ...(videoPreparationBlocker ? ["video_conversion_failed"] : []),
+        ...(channel === "pinterest" && !pinterestBoardId
+          ? ["pinterest_board_required"]
           : []),
       ];
 
@@ -4885,7 +5063,15 @@ export default function PublishModal({
         imageCount: imageKeysToPublish.length,
         warnings: requirements.warnings,
         blockers,
-        mediaBlockers: requirements.mediaBlockers,
+        blockerCodes,
+        mediaBlockers: [
+          ...requirements.mediaBlockers,
+          ...(videoPreparationBlocker ? [videoPreparationBlocker] : []),
+        ],
+        mediaBlockerCodes: [
+          ...requirements.mediaBlockerCodes,
+          ...(videoPreparationBlocker ? ["video_conversion_failed"] : []),
+        ],
         publishable: blockers.length === 0,
         tiktokParametersValidated:
           channel === "tiktok" && Boolean(tiktokPublicationSettings),

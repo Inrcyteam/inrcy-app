@@ -176,6 +176,30 @@ export function buildVideoSettingsByChannel(params: {
   }, {});
 }
 
+export function getAutomaticVideoSettingsForPublication(params: {
+  channel: BoosterVideoChannelKey;
+  settings?: ChannelVideoSettings | null;
+  durationSeconds?: unknown;
+}): ChannelVideoSettings {
+  const settings = normalizeChannelVideoSettings(
+    params.channel,
+    params.settings,
+  );
+  const duration = Number(params.durationSeconds || 0);
+  if (
+    params.channel === "youtube_shorts" &&
+    Number.isFinite(duration) &&
+    duration > 0 &&
+    duration <= YOUTUBE_SHORT_MAX_DURATION_SECONDS
+  ) {
+    return {
+      format: "9_16",
+      adaptationMode: "safe_frame",
+    };
+  }
+  return settings;
+}
+
 export function splitVideoSettingsByChannel(settings: VideoSettingsByChannel): {
   videoFormatByChannel: VideoFormatByChannel;
   videoAdaptationModeByChannel: VideoAdaptationModeByChannel;
@@ -211,3 +235,4 @@ export function getVideoPreviewAspectRatio(
 export function getVideoPreviewFitMode(mode: VideoAdaptationMode | null | undefined): "contain" | "cover" {
   return normalizeVideoAdaptationMode(mode) === "cover_crop" ? "cover" : "contain";
 }
+import { YOUTUBE_SHORT_MAX_DURATION_SECONDS } from "./videoPublicationPolicy.ts";

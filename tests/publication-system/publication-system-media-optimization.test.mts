@@ -48,11 +48,12 @@ test("la compression vidéo est pilotée par la qualité et non par 40 Mo", () =
   assert.doesNotMatch(normalizer, /VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES/);
 });
 
-test("les variantes sociales réutilisent le direct uniquement si la source est efficace", () => {
+test("les variantes sociales normalisent toujours les sources réseau", () => {
   const server = read("lib/boosterVideoVariantServer.ts");
-  assert.match(server, /sourceOptimizationProfile\.shouldOptimize/);
   assert.match(server, /requiresSocialOptimization/);
-  assert.match(server, /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6/);
+  assert.match(server, /variant\.publicationProfile === "default"/);
+  assert.match(server, /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/);
+  assert.match(server, /"-r",\s*"30"/);
   assert.doesNotMatch(server, /quality\.videoBitrate/);
 });
 

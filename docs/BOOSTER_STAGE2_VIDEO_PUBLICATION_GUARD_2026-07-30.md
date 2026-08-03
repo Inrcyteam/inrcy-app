@@ -14,7 +14,7 @@ Empêcher l'envoi d'une vidéo réellement incompatible, sans imposer une compre
 - TikTok est bloqué au-delà de 10 minutes avant l'envoi, puis la limite propre au compte est encore vérifiée via Creator Info.
 - Instagram est contrôlé entre 3 secondes et 15 minutes.
 - LinkedIn est contrôlé entre 3 secondes et 30 minutes.
-- Pinterest est contrôlé entre 4 secondes et 5 minutes.
+- Pinterest est contrôlé entre 4 secondes et 15 minutes pour l’épingle vidéo standard publiée par l’API (`video_id`). La limite de 5 minutes concerne les Idea Ads et ne doit pas bloquer ce flux.
 - Facebook est contrôlé jusqu'à 4 heures.
 - YouTube accepte aussi les vidéos longues : elles sont publiées comme vidéo classique lorsqu'elles ne sont pas éligibles au format Short.
 - Aucun connecteur n'est artificiellement plafonné à 40 Mo. Le plafond technique iNrCy reste 300 Mo.

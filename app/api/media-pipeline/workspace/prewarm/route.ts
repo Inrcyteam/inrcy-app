@@ -11,6 +11,7 @@ import {
 import { prepareBoosterVideoVariantsOnServer } from "@/lib/boosterVideoVariantServer";
 import {
   buildVideoSettingsByChannel,
+  getAutomaticVideoSettingsForPublication,
   isBoosterVideoChannelKey,
   type BoosterVideoChannelKey,
 } from "@/lib/boosterVideoSettings";
@@ -21,7 +22,6 @@ import {
 import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
 import {
   getGoogleBusinessVideoPreparationDecision,
-  isGoogleBusinessVideoValidationOmittable,
 } from "@/lib/googleBusinessMediaPolicy";
 import type { BoosterImageChannel } from "@/lib/boosterImageDecision";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
@@ -42,6 +42,10 @@ const ALLOWED_CHANNELS = new Set<BoosterVideoChannelKey>([
   "youtube_shorts",
   "pinterest",
 ]);
+
+function allowsOriginalVideoFallback(channel: BoosterVideoChannelKey) {
+  return ["inrcy_site", "site_web", "inr_search"].includes(channel);
+}
 
 function cleanText(value: unknown, max = 100) {
   return String(value || "").trim().slice(0, max);
@@ -135,6 +139,13 @@ export async function POST(request: Request) {
         videoSettingsByChannel: body?.videoSettingsByChannel,
         sourceMetadata: video.sourceMetadata,
       });
+      if (selectedChannels.includes("youtube_shorts")) {
+        settings.youtube_shorts = getAutomaticVideoSettingsForPublication({
+          channel: "youtube_shorts",
+          settings: settings.youtube_shorts,
+          durationSeconds: video.duration,
+        });
+      }
       const sourceWidth = Number(video.sourceMetadata?.width || 0) || null;
       const sourceHeight = Number(video.sourceMetadata?.height || 0) || null;
       const signedSourceUrl = await createSafeStorageSignedUrl(
@@ -148,6 +159,12 @@ export async function POST(request: Request) {
         code: string;
         message: string;
       }> = [];
+      const durationBlockedChannels: Array<{
+        channel: BoosterVideoChannelKey;
+        signature: string;
+        reason: string;
+        message: string;
+      }> = [];
       const requestedVariants = selectedChannels.flatMap((channel) => {
         if (channel === "gmb") {
           const decision = getGoogleBusinessVideoPreparationDecision({
@@ -159,11 +176,12 @@ export async function POST(request: Request) {
             width: sourceWidth,
             height: sourceHeight,
           });
-          if (decision.action === "omit") {
-            mediaWarnings.push({
+          if (decision.action === "block") {
+            durationBlockedChannels.push({
               channel,
-              code: decision.warningCode,
-              message: decision.warningMessage,
+              signature: `${channel}:duration`,
+              reason: decision.errorCode,
+              message: decision.errorMessage,
             });
             return [];
           }
@@ -198,7 +216,9 @@ export async function POST(request: Request) {
       const requiredSignatures = Array.from(
         new Set(requestedVariants.map(signatureFor)),
       );
-      const invalidChannels = requestedVariants.flatMap((request) => {
+      const invalidChannels = [
+        ...durationBlockedChannels,
+        ...requestedVariants.flatMap((request) => {
         const signature = signatureFor(request);
         const variant = prepared.variants.find(
           (candidate) => candidate.signature === signature,
@@ -217,6 +237,7 @@ export async function POST(request: Request) {
           if (
             allowOriginalVideoFallback &&
             generateMissingVideoVariants &&
+            allowsOriginalVideoFallback(request.channel) &&
             sourceValidation.ok
           ) {
             mediaWarnings.push({
@@ -224,21 +245,6 @@ export async function POST(request: Request) {
               code: "video_variant_fallback_to_original",
               message:
                 "La variante optimisée n’a pas pu être préparée. La vidéo originale compatible sera utilisée.",
-            });
-            return [];
-          }
-          if (
-            request.channel === "gmb" &&
-            (!sourceValidation.ok || prepared.errors.length > 0)
-          ) {
-            mediaWarnings.push({
-              channel: "gmb",
-              code: sourceValidation.ok
-                ? "google_business_video_variant_missing"
-                : String(sourceValidation.reason),
-              message: sourceValidation.ok
-                ? "Google Business publiera le texte sans vidéo si sa variante dédiée n’est pas prête."
-                : sourceValidation.message,
             });
             return [];
           }
@@ -267,6 +273,7 @@ export async function POST(request: Request) {
         if (
           allowOriginalVideoFallback &&
           generateMissingVideoVariants &&
+          allowsOriginalVideoFallback(request.channel) &&
           sourceValidation.ok
         ) {
           mediaWarnings.push({
@@ -277,30 +284,21 @@ export async function POST(request: Request) {
           });
           return [];
         }
-        if (
-          request.channel === "gmb" &&
-          isGoogleBusinessVideoValidationOmittable(validation.reason)
-        ) {
-          mediaWarnings.push({
-            channel: "gmb",
-            code: validation.reason,
-            message: `${validation.message} Google Business publiera le texte sans vidéo.`,
-          });
-          return [];
-        }
         return [{
           channel: request.channel,
           signature,
           reason: validation.reason,
           message: validation.message,
         }];
-      });
+        }),
+      ];
       const invalidSignatures = Array.from(
         new Set(invalidChannels.map((item) => item.signature)),
       );
       const fallbackOriginalChannels = allowOriginalVideoFallback
         ? requestedVariants
             .filter((request) => {
+              if (!allowsOriginalVideoFallback(request.channel)) return false;
               const signature = signatureFor(request);
               const variant = prepared.variants.find(
                 (candidate) => candidate.signature === signature,

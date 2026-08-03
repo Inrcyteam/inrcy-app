@@ -1,6 +1,7 @@
 import "server-only";
 
 import { asRecord, asString } from "@/lib/tsSafe";
+import { normalizeYoutubeLongUploadsStatus } from "@/lib/videoPublicationPolicy";
 
 export const YOUTUBE_SHORTS_DEFAULT_SCOPES = [
   "https://www.googleapis.com/auth/youtube.upload",
@@ -339,12 +340,15 @@ type YoutubeChannelApiItem = {
     hiddenSubscriberCount?: boolean;
     videoCount?: string;
   };
+  status?: {
+    longUploadsStatus?: string;
+  };
 };
 
 export async function fetchYoutubeMineChannel(accessToken: string) {
-  const fields = "items(id,snippet(title,customUrl,thumbnails),statistics(viewCount,subscriberCount,hiddenSubscriberCount,videoCount))";
+  const fields = "items(id,snippet(title,customUrl,thumbnails),statistics(viewCount,subscriberCount,hiddenSubscriberCount,videoCount),status(longUploadsStatus))";
   const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?${new URLSearchParams({
-    part: "snippet,statistics",
+    part: "snippet,statistics,status",
     mine: "true",
     fields,
   }).toString()}`, {
@@ -375,6 +379,9 @@ export async function fetchYoutubeMineChannel(accessToken: string) {
     channelHandle: handle,
     channelUrl,
     thumbnailUrl,
+    longUploadsStatus: normalizeYoutubeLongUploadsStatus(
+      item.status?.longUploadsStatus,
+    ),
     stats: {
       subscriberCount: item.statistics?.hiddenSubscriberCount ? null : numberOrNull(item.statistics?.subscriberCount),
       videoCount: numberOrNull(item.statistics?.videoCount),

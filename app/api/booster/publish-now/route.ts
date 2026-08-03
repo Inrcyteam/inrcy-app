@@ -75,6 +75,7 @@ import {
   type TiktokPublicationSettings,
 } from "@/lib/tiktokPublish";
 import {
+  fetchYoutubeMineChannel,
   isYoutubeShortsIntegrationActive,
   refreshYoutubeShortsAccessToken,
 } from "@/lib/youtubeShortsOAuth";
@@ -84,7 +85,10 @@ import {
   createPinterestImagePin,
   createPinterestVideoPin,
 } from "@/lib/pinterestPublish";
-import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
+import {
+  buildVideoSettingsByChannel,
+  getAutomaticVideoSettingsForPublication,
+} from "@/lib/boosterVideoSettings";
 import {
   buildVideoTransformSignature,
   getVideoPublicationProfileForChannel,
@@ -103,12 +107,15 @@ import { prepareBoosterImagesByChannelOnServer } from "@/lib/boosterImageServerP
 import { prepareBoosterVideoVariantsOnServer } from "@/lib/boosterVideoVariantServer";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 import {
+  YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS,
+  getYoutubePublicationTypeForDuration,
   getVideoPublicationPolicy,
+  normalizeYoutubeLongUploadsStatus,
+  validateVideoDurationForChannel,
   validateVideoPublicationForChannel,
 } from "@/lib/videoPublicationPolicy";
 import {
   getGoogleBusinessVideoPreparationDecision,
-  isGoogleBusinessVideoValidationOmittable,
 } from "@/lib/googleBusinessMediaPolicy";
 import { filterGoogleBusinessMediaUrls } from "@/lib/googleBusinessMediaProbe";
 import {
@@ -172,6 +179,10 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
+
+function requiresPreparedNetworkVideoVariant(channel: ChannelKey) {
+  return !["inrcy_site", "site_web", "inr_search"].includes(channel);
+}
 
 async function publishNowHandler(req: Request) {
   let lifecycleWorkspaceId = "";
@@ -535,9 +546,18 @@ async function publishNowHandler(req: Request) {
       }
     }
 
-    const videoMediaWarningsByChannel: Partial<
-      Record<ChannelKey, { code: string; message: string }>
-    > = {};
+    if (
+      publicationVideo &&
+      selected.includes("youtube_shorts") &&
+      mediaModeByChannel.youtube_shorts === "video"
+    ) {
+      videoSettingsByChannel.youtube_shorts =
+        getAutomaticVideoSettingsForPublication({
+          channel: "youtube_shorts",
+          settings: videoSettingsByChannel.youtube_shorts,
+          durationSeconds: publicationVideo.duration,
+        });
+    }
 
     if (strictMediaCutover && hasAnyVideoChannel && publicationVideo) {
       const sourceWidth = Number(publicationVideo.sourceMetadata?.width || 0) || null;
@@ -555,11 +575,12 @@ async function publishNowHandler(req: Request) {
               width: sourceWidth,
               height: sourceHeight,
             });
-            if (decision.action === "omit") {
-              videoMediaWarningsByChannel.gmb = {
-                code: decision.warningCode,
-                message: decision.warningMessage,
-              };
+            if (decision.action === "block") {
+              setPreflightFailure("gmb", {
+                code: decision.errorCode,
+                error: decision.errorMessage,
+                retryable: false,
+              });
               return [];
             }
           }
@@ -615,22 +636,21 @@ async function publishNowHandler(req: Request) {
             height: videoSource.sourceMetadata?.height,
           });
           if (!variant?.publicUrl || !variant?.storagePath) {
-            if (sourceValidation.ok) return [];
             if (
-              request.channel === "gmb" &&
-              isGoogleBusinessVideoValidationOmittable(sourceValidation.reason)
+              sourceValidation.ok &&
+              !requiresPreparedNetworkVideoVariant(request.channel)
             ) {
-              videoMediaWarningsByChannel.gmb = {
-                code: sourceValidation.reason,
-                message: `${sourceValidation.message} Google Business publiera le texte sans vidéo.`,
-              };
               return [];
             }
             return [{
               channel: request.channel,
               signature,
-              reason: sourceValidation.reason,
-              message: sourceValidation.message,
+              reason: sourceValidation.ok
+                ? "video_variant_required"
+                : sourceValidation.reason,
+              message: sourceValidation.ok
+                ? "La variante MP4/H.264, AAC, 30 fps et dimensions réseau doit être prête avant publication."
+                : sourceValidation.message,
             }];
           }
           const validation = validateVideoPublicationForChannel({
@@ -644,15 +664,10 @@ async function publishNowHandler(req: Request) {
             height: variant.height,
           });
           if (validation.ok) return [];
-          if (sourceValidation.ok) return [];
           if (
-            request.channel === "gmb" &&
-            isGoogleBusinessVideoValidationOmittable(validation.reason)
+            sourceValidation.ok &&
+            !requiresPreparedNetworkVideoVariant(request.channel)
           ) {
-            videoMediaWarningsByChannel.gmb = {
-              code: validation.reason,
-              message: `${validation.message} Google Business publiera le texte sans vidéo.`,
-            };
             return [];
           }
           return [{
@@ -689,6 +704,8 @@ async function publishNowHandler(req: Request) {
           retryable: ![
             "video_duration_too_long",
             "video_duration_too_short",
+            "video_duration_account_limit_unknown",
+            "video_duration_long_upload_not_allowed",
           ].includes(reason),
           signature: invalid.signature,
           preparationErrors: variantResult.errors,
@@ -720,11 +737,12 @@ async function publishNowHandler(req: Request) {
               width: publicationVideo?.sourceMetadata?.width,
               height: publicationVideo?.sourceMetadata?.height,
             });
-            if (decision.action === "omit") {
-              videoMediaWarningsByChannel.gmb = {
-                code: decision.warningCode,
-                message: decision.warningMessage,
-              };
+            if (decision.action === "block") {
+              setPreflightFailure("gmb", {
+                code: decision.errorCode,
+                error: decision.errorMessage,
+                retryable: false,
+              });
               return [];
             }
           }
@@ -775,23 +793,17 @@ async function publishNowHandler(req: Request) {
               sizeBytes: publicationVideo.size,
               maxBytes: policy.maxBytes,
             }) && sourceValidation.ok;
-          if (sourceDirectlyPublishable) return [];
+          if (
+            sourceDirectlyPublishable &&
+            !requiresPreparedNetworkVideoVariant(channel)
+          ) {
+            return [];
+          }
 
           const failedValidation =
             variantValidation && !variantValidation.ok
               ? variantValidation
               : sourceValidation;
-          if (
-            channel === "gmb" &&
-            !failedValidation.ok &&
-            isGoogleBusinessVideoValidationOmittable(failedValidation.reason)
-          ) {
-            videoMediaWarningsByChannel.gmb = {
-              code: failedValidation.reason,
-              message: `${failedValidation.message} Google Business publiera le texte sans vidéo.`,
-            };
-            return [];
-          }
           return [{
             channel,
             signature: signature || null,
@@ -813,6 +825,8 @@ async function publishNowHandler(req: Request) {
           retryable: ![
             "video_duration_too_long",
             "video_duration_too_short",
+            "video_duration_account_limit_unknown",
+            "video_duration_long_upload_not_allowed",
           ].includes(reason),
           signature: invalid.signature,
         });
@@ -2154,7 +2168,7 @@ async function publishNowHandler(req: Request) {
           }
 
           let facebookWarning: { code: string; message: string } | null = null;
-          let resp =
+          const resp =
             mediaModeByChannel[ch] === "video" && channelVideo
               ? await facebookPublishVideoToPage({
                   pageId,
@@ -2169,34 +2183,6 @@ async function publishNowHandler(req: Request) {
                   message: canonMessage,
                   imageUrls: facebookImageUrls,
                 });
-
-          if (
-            !resp.ok &&
-            mediaModeByChannel[ch] === "video" &&
-            channelVideo &&
-            resp.safeTextFallback === true
-          ) {
-            const mediaError = resp;
-            const fallbackResp = await facebookPublishToPage({
-              pageId,
-              pageAccessToken: pageToken,
-              message: canonMessage,
-              imageUrls: [],
-            });
-            if (fallbackResp.ok) {
-              facebookWarning = {
-                code: "published_without_video",
-                message:
-                  "Facebook a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
-              };
-              resp = {
-                ...fallbackResp,
-                photoErrors: mediaError.error
-                  ? [{ url: channelVideo.publicUrl, error: mediaError.error }]
-                  : undefined,
-              };
-            }
-          }
 
           if (!resp.ok) {
             const facebookUserError = getPublishChannelUserMessage(
@@ -2527,7 +2513,8 @@ async function publishNowHandler(req: Request) {
 
           if (
             !resp.ok &&
-            (isLinkedInVideo || linkedInImages.length > 0) &&
+            !isLinkedInVideo &&
+            linkedInImages.length > 0 &&
             resp.safeTextFallback === true
           ) {
             const mediaResp = resp;
@@ -2538,12 +2525,9 @@ async function publishNowHandler(req: Request) {
             });
             if (fallbackResp.ok) {
               linkedInWarning = {
-                code: isLinkedInVideo
-                  ? "published_without_video"
-                  : "published_without_image",
-                message: isLinkedInVideo
-                  ? "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci."
-                  : "LinkedIn a publié le texte, mais les images n'ont pas pu être jointes cette fois-ci.",
+                code: "published_without_image",
+                message:
+                  "LinkedIn a publié le texte, mais les images n'ont pas pu être jointes cette fois-ci.",
               };
               resp = {
                 ...fallbackResp,
@@ -2709,20 +2693,49 @@ async function publishNowHandler(req: Request) {
               : "public"
           ) as "public" | "unlisted" | "private";
           const madeForKids = Boolean(youtubeDefaults.madeForKids);
-          const youtubeVideoSettings = videoSettingsByChannel[ch] || null;
-          const youtubeFormat = String(
-            (youtubeVideoSettings as any)?.format ||
-              asRecord(asRecord(channelVideo.transformedVariant).target)
-                .format ||
-              "original",
-          );
           const youtubeDuration = Number(channelVideo.duration || 0);
-          const youtubeCanBeShort =
+          let youtubeLongUploadsStatus = normalizeYoutubeLongUploadsStatus(
+            youtubeMeta.long_uploads_status,
+          );
+          if (
             Number.isFinite(youtubeDuration) &&
-            youtubeDuration > 0 &&
-            youtubeDuration <= 180 &&
-            (youtubeFormat === "9_16" || youtubeFormat === "1_1");
-          const youtubePublicationType = youtubeCanBeShort ? "short" : "video";
+            youtubeDuration > YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS
+          ) {
+            try {
+              const channelInfo = await fetchYoutubeMineChannel(
+                youtubeAccessToken,
+              );
+              youtubeLongUploadsStatus = normalizeYoutubeLongUploadsStatus(
+                channelInfo?.longUploadsStatus,
+              );
+            } catch {
+              youtubeLongUploadsStatus = "unknown";
+            }
+          }
+          const youtubeDurationValidation =
+            validateVideoDurationForChannel({
+              channel: "youtube_shorts",
+              durationSeconds: youtubeDuration,
+              youtubeLongUploadsStatus,
+              enforceAccountCapabilities: true,
+            });
+          if (!youtubeDurationValidation.ok) {
+            await setDelivery(ch, {
+              status: "failed",
+              error: youtubeDurationValidation.message,
+            });
+            results[ch] = {
+              ok: false,
+              code: youtubeDurationValidation.reason,
+              retryable: false,
+              error: youtubeDurationValidation.message,
+            };
+            continue;
+          }
+          const youtubePublicationType =
+            getYoutubePublicationTypeForDuration(youtubeDuration);
+          const youtubeFormat =
+            videoSettingsByChannel.youtube_shorts?.format || "original";
           const hashtags = Array.isArray(channelPost.hashtags)
             ? channelPost.hashtags
             : [];
@@ -3329,8 +3342,7 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          let gmbWarning: { code: string; message: string } | null =
-            videoMediaWarningsByChannel.gmb || null;
+          let gmbWarning: { code: string; message: string } | null = null;
 
           const rawGmbChannelImages =
             mediaModeByChannel[ch] === "images"
@@ -3381,8 +3393,7 @@ async function publishNowHandler(req: Request) {
 
           const rawGmbChannelVideos =
             mediaModeByChannel[ch] === "video" &&
-            channelVideo &&
-            !videoMediaWarningsByChannel.gmb
+            channelVideo
               ? [channelVideo.publicUrl].filter(Boolean).slice(0, 1)
               : [];
           const probedGmbVideos = rawGmbChannelVideos.length
@@ -3397,22 +3408,32 @@ async function publishNowHandler(req: Request) {
             rawGmbChannelVideos.length > 0 &&
             !gmbChannelVideos.length
           ) {
-            gmbWarning = {
-              code: "published_without_video",
-              message:
-                "Google Business publiera le texte sans vidéo, car l’URL ou le fichier vidéo n’était pas conforme au moment de l’envoi.",
+            const gmbVideoError =
+              "Google Business n’a pas reçu la vidéo : l’URL ou le fichier préparé n’était plus accessible ou conforme au moment de l’envoi.";
+            await setDelivery(ch, { status: "failed", error: gmbVideoError });
+            results[ch] = {
+              ok: false,
+              code: "video_conversion_or_probe_failed",
+              retryable: true,
+              error: gmbVideoError,
             };
+            continue;
           }
           if (
             mediaModeByChannel[ch] === "video" &&
             !gmbChannelVideos.length &&
             !gmbWarning
           ) {
-            gmbWarning = {
-              code: "published_without_video",
-              message:
-                "Google Business publiera le texte sans vidéo, car la variante dédiée n’était pas disponible.",
+            const gmbVideoError =
+              "La variante vidéo Google Business n’était pas disponible. La publication texte n’a pas été envoyée à la place.";
+            await setDelivery(ch, { status: "failed", error: gmbVideoError });
+            results[ch] = {
+              ok: false,
+              code: "video_variant_required",
+              retryable: true,
+              error: gmbVideoError,
             };
+            continue;
           }
 
           const gmbSummary = buildBoosterGmbSummary(channelPost, {
@@ -3465,22 +3486,16 @@ async function publishNowHandler(req: Request) {
               });
             try {
               if (!hasMedia) throw gmbErr;
+              if (mediaModeByChannel[ch] === "video") throw gmbErr;
               gmbResp = await retryWithoutMedia();
-              gmbWarning =
-                mediaModeByChannel[ch] === "video"
-                  ? {
-                      code: "published_without_video",
-                      message:
-                        "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
-                    }
-                  : {
-                      code: isGoogleBusinessImageError(gmbErr)
-                        ? "published_without_image"
-                        : "published_after_retry_without_image",
-                      message: isGoogleBusinessImageError(gmbErr)
-                        ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image. Vérifiez que l'image reste publique et accessible sans connexion."
-                        : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
-                    };
+              gmbWarning = {
+                code: isGoogleBusinessImageError(gmbErr)
+                  ? "published_without_image"
+                  : "published_after_retry_without_image",
+                message: isGoogleBusinessImageError(gmbErr)
+                  ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image. Vérifiez que l'image reste publique et accessible sans connexion."
+                  : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
+              };
             } catch (retryError: unknown) {
               if (gmbCallToAction) {
                 try {

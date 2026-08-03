@@ -10,6 +10,12 @@ import {
   GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
 } from "./googleBusinessMediaPolicy.ts";
 
+export type YoutubeLongUploadsStatus =
+  | "allowed"
+  | "eligible"
+  | "disallowed"
+  | "unknown";
+
 export type VideoPublicationPolicy = {
   channel: BoosterVideoChannelKey;
   maxBytes: number;
@@ -20,6 +26,29 @@ export type VideoPublicationPolicy = {
   requiresMp4: boolean;
 };
 
+export type VideoDurationFailureReason =
+  | "video_duration_unknown"
+  | "video_duration_too_short"
+  | "video_duration_too_long"
+  | "video_duration_account_limit_unknown"
+  | "video_duration_long_upload_not_allowed";
+
+export type VideoDurationValidation =
+  | {
+      ok: true;
+      policy: VideoPublicationPolicy;
+      durationSeconds: number | null;
+      rule: string | null;
+    }
+  | {
+      ok: false;
+      policy: VideoPublicationPolicy;
+      reason: VideoDurationFailureReason;
+      message: string;
+      durationSeconds: number | null;
+      rule: string;
+    };
+
 export type VideoPublicationValidation =
   | { ok: true; policy: VideoPublicationPolicy }
   | {
@@ -29,15 +58,13 @@ export type VideoPublicationValidation =
         | "video_size_unknown"
         | "video_too_large"
         | "video_format_invalid"
-        | "video_duration_unknown"
-        | "video_duration_too_short"
-        | "video_duration_too_long"
+        | VideoDurationFailureReason
         | "video_resolution_unknown"
         | "video_resolution_too_small";
       message: string;
     };
 
-const CHANNEL_LABELS: Record<BoosterVideoChannelKey, string> = {
+export const VIDEO_CHANNEL_LABELS: Record<BoosterVideoChannelKey, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
   inr_search: "iNr'Search",
@@ -59,13 +86,24 @@ const DEFAULT_POLICY = {
   requiresMp4: true,
 } as const;
 
-export const PINTEREST_VIDEO_MAX_DURATION_SECONDS = 5 * 60;
-export const PINTEREST_VIDEO_TOO_LONG_MESSAGE =
-  "Vidéo de plus de 5 minutes non autorisée sur Pinterest.";
+export const PINTEREST_VIDEO_MAX_DURATION_SECONDS = 15 * 60;
+export const TIKTOK_VIDEO_TECHNICAL_MAX_DURATION_SECONDS = 10 * 60;
+export const YOUTUBE_SHORT_MAX_DURATION_SECONDS = 3 * 60;
+export const YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS = 15 * 60;
+export const YOUTUBE_VIDEO_MAX_DURATION_SECONDS = 12 * 60 * 60;
 
 /**
- * La source iNrCy reste acceptée jusqu'à 300 Mo. Google Business reçoit une
- * variante dédiée avec une marge de sécurité sous sa limite officielle.
+ * Compatibilité avec les anciens consommateurs. Les nouvelles interfaces
+ * utilisent `validateVideoDurationForChannel`, qui ajoute la durée réelle et
+ * la règle complète du canal.
+ */
+export const PINTEREST_VIDEO_TOO_LONG_MESSAGE =
+  "Vidéo de plus de 15 minutes non autorisée sur une épingle vidéo Pinterest standard.";
+
+/**
+ * La source iNrCy reste acceptée jusqu'à 300 Mo. Les formats, codecs, FPS,
+ * dimensions et poids sont normalisés par les variantes serveur. La durée,
+ * elle, n'est jamais coupée silencieusement : elle est contrôlée par canal.
  */
 export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
   BoosterVideoChannelKey,
@@ -102,15 +140,13 @@ export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
   tiktok: {
     channel: "tiktok",
     ...DEFAULT_POLICY,
-    // TikTok exposes the current account limit through creator-info. It can
-    // differ from one account to another, so the generic/shared policy must
-    // not impose a contradictory fixed 10-minute ceiling. The live TikTok
-    // preflight remains authoritative for this channel.
-    maxDurationSeconds: null,
+    // Le plafond du compte renvoyé par creator-info peut être inférieur.
+    maxDurationSeconds: TIKTOK_VIDEO_TECHNICAL_MAX_DURATION_SECONDS,
   },
   youtube_shorts: {
     channel: "youtube_shorts",
     ...DEFAULT_POLICY,
+    maxDurationSeconds: YOUTUBE_VIDEO_MAX_DURATION_SECONDS,
   },
   pinterest: {
     channel: "pinterest",
@@ -126,15 +162,189 @@ export function getVideoPublicationPolicy(
   return VIDEO_PUBLICATION_POLICY_BY_CHANNEL[channel];
 }
 
-function formatDuration(seconds: number) {
-  if (seconds % 3600 === 0) return `${seconds / 3600} h`;
-  if (seconds % 60 === 0) return `${seconds / 60} min`;
-  return `${seconds} s`;
-}
-
 function positiveNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+export function formatVideoDuration(secondsValue: unknown) {
+  const seconds = positiveNumber(secondsValue);
+  if (seconds === null) return "durée inconnue";
+  const rounded = Math.max(1, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const remainingSeconds = rounded % 60;
+  const parts: string[] = [];
+  if (hours) parts.push(`${hours} h`);
+  if (minutes) parts.push(`${minutes} min`);
+  if (remainingSeconds || !parts.length) parts.push(`${remainingSeconds} s`);
+  return parts.join(" ");
+}
+
+export function normalizeYoutubeLongUploadsStatus(
+  value: unknown,
+): YoutubeLongUploadsStatus {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (
+    normalized === "allowed" ||
+    normalized === "eligible" ||
+    normalized === "disallowed"
+  ) {
+    return normalized;
+  }
+  return "unknown";
+}
+
+function getEffectiveTiktokMaxDurationSeconds(value: unknown) {
+  const accountMax = positiveNumber(value);
+  return accountMax === null
+    ? TIKTOK_VIDEO_TECHNICAL_MAX_DURATION_SECONDS
+    : Math.min(accountMax, TIKTOK_VIDEO_TECHNICAL_MAX_DURATION_SECONDS);
+}
+
+export function getVideoDurationRuleDescription(input: {
+  channel: BoosterVideoChannelKey;
+  tiktokMaxDurationSeconds?: unknown;
+}) {
+  switch (input.channel) {
+    case "gmb":
+      return "30 secondes maximum.";
+    case "facebook":
+      return "4 heures maximum.";
+    case "instagram":
+      return "entre 3 secondes et 15 minutes.";
+    case "linkedin":
+      return "entre 3 secondes et 30 minutes.";
+    case "tiktok": {
+      const max = getEffectiveTiktokMaxDurationSeconds(
+        input.tiktokMaxDurationSeconds,
+      );
+      return input.tiktokMaxDurationSeconds == null
+        ? "10 minutes maximum pour l’envoi vidéo par iNrCy ; le compte connecté peut imposer une limite plus courte."
+        : `${formatVideoDuration(max)} maximum pour le compte TikTok connecté (10 minutes maximum technique).`;
+    }
+    case "youtube_shorts":
+      return "jusqu’à 3 minutes : Short automatique ; au-delà : vidéo classique ; au-delà de 15 minutes : vidéos longues autorisées sur la chaîne ; 12 heures maximum.";
+    case "pinterest":
+      return "entre 4 secondes et 15 minutes pour une épingle vidéo standard ; la limite de 5 minutes concerne les Idea Ads.";
+    default:
+      return null;
+  }
+}
+
+export function validateVideoDurationForChannel(input: {
+  channel: BoosterVideoChannelKey;
+  durationSeconds?: unknown;
+  tiktokMaxDurationSeconds?: unknown;
+  tiktokAccountLimitVerified?: boolean;
+  youtubeLongUploadsStatus?: unknown;
+  enforceAccountCapabilities?: boolean;
+}): VideoDurationValidation {
+  const policy = getVideoPublicationPolicy(input.channel);
+  const label = VIDEO_CHANNEL_LABELS[input.channel];
+  const durationSeconds = positiveNumber(input.durationSeconds);
+  const rule = getVideoDurationRuleDescription(input);
+  const hasDurationConstraint =
+    policy.minDurationSeconds !== null || policy.maxDurationSeconds !== null;
+
+  if (!hasDurationConstraint) {
+    return { ok: true, policy, durationSeconds, rule };
+  }
+
+  if (durationSeconds === null) {
+    return {
+      ok: false,
+      policy,
+      reason: "video_duration_unknown",
+      message: `${label} bloqué — la durée de la vidéo n’a pas pu être vérifiée. Règle ${label} : ${rule}`,
+      durationSeconds,
+      rule: rule || "durée à vérifier avant publication.",
+    };
+  }
+
+  const effectiveMax =
+    input.channel === "tiktok"
+      ? getEffectiveTiktokMaxDurationSeconds(input.tiktokMaxDurationSeconds)
+      : policy.maxDurationSeconds;
+
+  if (
+    policy.minDurationSeconds !== null &&
+    durationSeconds < policy.minDurationSeconds
+  ) {
+    return {
+      ok: false,
+      policy,
+      reason: "video_duration_too_short",
+      message: `${label} bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)}. Règle ${label} : ${rule}`,
+      durationSeconds,
+      rule: rule || "durée minimale non respectée.",
+    };
+  }
+
+  if (effectiveMax !== null && durationSeconds > effectiveMax) {
+    return {
+      ok: false,
+      policy,
+      reason: "video_duration_too_long",
+      message: `${label} bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)}. Règle ${label} : ${rule}`,
+      durationSeconds,
+      rule: rule || "durée maximale dépassée.",
+    };
+  }
+
+  if (
+    input.channel === "tiktok" &&
+    input.enforceAccountCapabilities === true &&
+    input.tiktokAccountLimitVerified === false
+  ) {
+    return {
+      ok: false,
+      policy,
+      reason: "video_duration_account_limit_unknown",
+      message: `TikTok bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)}. Règle TikTok : la durée maximale dépend du compte connecté (10 minutes maximum technique). iNrCy n’a pas pu vérifier la limite de ce compte ; actualisez puis réessayez.`,
+      durationSeconds,
+      rule: rule || "limite du compte à vérifier avant publication.",
+    };
+  }
+
+  if (
+    input.channel === "youtube_shorts" &&
+    durationSeconds > YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS &&
+    input.enforceAccountCapabilities === true
+  ) {
+    const status = normalizeYoutubeLongUploadsStatus(
+      input.youtubeLongUploadsStatus,
+    );
+    if (status === "unknown") {
+      return {
+        ok: false,
+        policy,
+        reason: "video_duration_account_limit_unknown",
+        message: `YouTube bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)} et dépasse 15 minutes. Règle YouTube : les vidéos longues doivent être autorisées sur la chaîne. iNrCy n’a pas pu vérifier cette autorisation ; actualisez puis réessayez.`,
+        durationSeconds,
+        rule: rule || "autorisation des vidéos longues requise.",
+      };
+    }
+    if (status !== "allowed") {
+      return {
+        ok: false,
+        policy,
+        reason: "video_duration_long_upload_not_allowed",
+        message: `YouTube bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)} et dépasse 15 minutes. Règle YouTube : les vidéos longues doivent être autorisées sur la chaîne ; cette chaîne ne les autorise pas actuellement.`,
+        durationSeconds,
+        rule: rule || "autorisation des vidéos longues requise.",
+      };
+    }
+  }
+
+  return { ok: true, policy, durationSeconds, rule };
+}
+
+export function getYoutubePublicationTypeForDuration(durationSeconds: unknown) {
+  const duration = positiveNumber(durationSeconds);
+  return duration !== null && duration <= YOUTUBE_SHORT_MAX_DURATION_SECONDS
+    ? ("short" as const)
+    : ("video" as const);
 }
 
 export function validateVideoPublicationForChannel(input: {
@@ -147,11 +357,27 @@ export function validateVideoPublicationForChannel(input: {
   durationSeconds?: unknown;
   width?: unknown;
   height?: unknown;
+  tiktokMaxDurationSeconds?: unknown;
+  tiktokAccountLimitVerified?: boolean;
+  youtubeLongUploadsStatus?: unknown;
+  enforceAccountCapabilities?: boolean;
 }): VideoPublicationValidation {
   const policy = getVideoPublicationPolicy(input.channel);
-  const label = CHANNEL_LABELS[input.channel];
-  const sizeBytes = Number(input.sizeBytes || 0);
+  const label = VIDEO_CHANNEL_LABELS[input.channel];
+  const durationValidation = validateVideoDurationForChannel(input);
 
+  // La durée est non récupérable : on la contrôle avant d'essayer de convertir
+  // le poids, le codec ou les dimensions.
+  if (!durationValidation.ok) {
+    return {
+      ok: false,
+      policy,
+      reason: durationValidation.reason,
+      message: durationValidation.message,
+    };
+  }
+
+  const sizeBytes = Number(input.sizeBytes || 0);
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
     return {
       ok: false,
@@ -187,46 +413,6 @@ export function validateVideoPublicationForChannel(input: {
       reason: "video_format_invalid",
       message: `La vidéo ${label} doit être préparée en MP4 compatible avant publication.`,
     };
-  }
-
-  const durationSeconds = positiveNumber(input.durationSeconds);
-  const hasDurationConstraint =
-    policy.minDurationSeconds !== null || policy.maxDurationSeconds !== null;
-  if (hasDurationConstraint && durationSeconds === null) {
-    return {
-      ok: false,
-      policy,
-      reason: "video_duration_unknown",
-      message: `La durée de la vidéo ${label} est inconnue. Relancez sa préparation.`,
-    };
-  }
-
-  if (durationSeconds !== null) {
-    if (
-      policy.minDurationSeconds !== null &&
-      durationSeconds < policy.minDurationSeconds
-    ) {
-      return {
-        ok: false,
-        policy,
-        reason: "video_duration_too_short",
-        message: `La vidéo ${label} doit durer au moins ${formatDuration(policy.minDurationSeconds)}.`,
-      };
-    }
-    if (
-      policy.maxDurationSeconds !== null &&
-      durationSeconds > policy.maxDurationSeconds
-    ) {
-      return {
-        ok: false,
-        policy,
-        reason: "video_duration_too_long",
-        message:
-          input.channel === "pinterest"
-            ? PINTEREST_VIDEO_TOO_LONG_MESSAGE
-            : `La vidéo ${label} dépasse la durée maximale de ${formatDuration(policy.maxDurationSeconds)}.`,
-      };
-    }
   }
 
   if (policy.minShortEdgePixels !== null) {

@@ -173,6 +173,7 @@ export async function GET(request: Request) {
       channel_handle: channel.channelHandle,
       channel_url: channel.channelUrl,
       thumbnail_url: channel.thumbnailUrl || null,
+      long_uploads_status: channel.longUploadsStatus,
       stats: channel.stats,
     });
 
