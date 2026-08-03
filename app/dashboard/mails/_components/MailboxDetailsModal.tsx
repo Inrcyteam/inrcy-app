@@ -1359,7 +1359,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                           {detailsItem.source === "app_events" && activePublicationWarning ? (
                             <div className={styles.detailsWarning}>
-                              <b>Statut :</b> Publiée avec avertissement
+                              <b>Statut :</b>{" "}
+                              {tiktokStatusMeta?.pending
+                                ? "En traitement"
+                                : "Publiée avec avertissement"}
                               {activePublicationWarningMessage ? ` — ${activePublicationWarningMessage}` : ""}
                             </div>
                           ) : null}

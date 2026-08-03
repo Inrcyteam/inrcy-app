@@ -14,7 +14,7 @@ const TIKTOK_PORTRAIT_MAX_WIDTH = 1080;
 const TIKTOK_PORTRAIT_MAX_HEIGHT = 1920;
 const TIKTOK_FALLBACK_WIDTH = 1080;
 const TIKTOK_FALLBACK_HEIGHT = 1920;
-const TIKTOK_PHOTO_CACHE_VERSION = 2;
+const TIKTOK_PHOTO_CACHE_VERSION = 3;
 
 function safeStoragePath(input: string) {
   const path = String(input || "").trim();
@@ -35,6 +35,45 @@ function mediaPathSuffix(path: string) {
   if (!clean) return "";
   const parts = clean.split("/").filter(Boolean);
   return parts.slice(-2).join("/").slice(-160);
+}
+
+type TikTokByteRange = { start: number; end: number } | "invalid" | null;
+
+function parseTikTokByteRange(value: string | null, totalLength: number): TikTokByteRange {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(raw);
+  if (!match || !Number.isFinite(totalLength) || totalLength <= 0) return "invalid";
+
+  const startRaw = match[1];
+  const endRaw = match[2];
+  if (!startRaw && !endRaw) return "invalid";
+
+  if (!startRaw) {
+    const suffixLength = Number(endRaw);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return "invalid";
+    return {
+      start: Math.max(0, totalLength - suffixLength),
+      end: totalLength - 1,
+    };
+  }
+
+  const start = Number(startRaw);
+  const requestedEnd = endRaw ? Number(endRaw) : totalLength - 1;
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(requestedEnd) ||
+    start < 0 ||
+    start >= totalLength ||
+    requestedEnd < start
+  ) {
+    return "invalid";
+  }
+
+  return {
+    start,
+    end: Math.min(totalLength - 1, requestedEnd),
+  };
 }
 
 function tiktokPreparedPhotoPath(path: string, geometryLocked: boolean) {
@@ -77,11 +116,12 @@ async function renderTikTokRatioPreservingJpeg(input: Buffer) {
         withoutEnlargement: true,
       })
       .flatten({ background: { r: 255, g: 255, b: 255, alpha: 1 } })
+      .toColourspace("srgb")
       .jpeg({
         quality: q,
-        mozjpeg: true,
         progressive: false,
         chromaSubsampling: "4:2:0",
+        optimiseCoding: false,
       })
       .toBuffer();
 
@@ -106,11 +146,12 @@ async function renderTikTokSafetyFrame(input: Buffer) {
       background: { r: 8, g: 12, b: 22, alpha: 1 },
       withoutEnlargement: false,
     })
+    .toColourspace("srgb")
     .jpeg({
       quality: 90,
-      mozjpeg: true,
       progressive: false,
       chromaSubsampling: "4:2:0",
+      optimiseCoding: false,
     })
     .toBuffer();
 }
@@ -281,11 +322,46 @@ async function loadMedia(request: Request, includeBody: boolean) {
     }
   }
 
+  const byteRange = parseTikTokByteRange(
+    request.headers.get("range"),
+    contentLength,
+  );
   const headers = new Headers();
   headers.set("Content-Type", contentType);
-  headers.set("Content-Length", String(contentLength));
-  headers.set("Cache-Control", "public, max-age=3600, immutable");
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Cache-Control", "no-store, no-transform");
+  headers.set("CDN-Cache-Control", "no-store");
+  headers.set("Vercel-CDN-Cache-Control", "no-store");
   headers.set("X-Content-Type-Options", "nosniff");
+  headers.set(
+    "Content-Disposition",
+    `inline; filename="tiktok-media.${contentType === "image/webp" ? "webp" : contentType === "image/jpeg" ? "jpg" : "bin"}"`,
+  );
+
+  if (byteRange === "invalid") {
+    headers.set("Content-Range", `bytes */${contentLength}`);
+    headers.set("Content-Length", "0");
+    console.warn("[tiktok-media] invalid byte range", {
+      method: request.method,
+      variant,
+      pathSuffix: mediaPathSuffix(path),
+      range: request.headers.get("range"),
+      contentLength,
+    });
+    return new NextResponse(null, { status: 416, headers });
+  }
+
+  const responseStatus = byteRange ? 206 : 200;
+  const responseLength = byteRange
+    ? byteRange.end - byteRange.start + 1
+    : contentLength;
+  headers.set("Content-Length", String(responseLength));
+  if (byteRange) {
+    headers.set(
+      "Content-Range",
+      `bytes ${byteRange.start}-${byteRange.end}/${contentLength}`,
+    );
+  }
 
   console.info("[tiktok-media] media served", {
     method: request.method,
@@ -293,16 +369,29 @@ async function loadMedia(request: Request, includeBody: boolean) {
     pathSuffix: mediaPathSuffix(path),
     contentType,
     contentLength,
+    responseStatus,
+    rangeStart: byteRange?.start ?? null,
+    rangeEnd: byteRange?.end ?? null,
   });
 
-  if (!includeBody) return new NextResponse(null, { status: 200, headers });
+  if (!includeBody) {
+    return new NextResponse(null, { status: responseStatus, headers });
+  }
 
+  const selectedBody = byteRange
+    ? body instanceof Blob
+      ? body.slice(byteRange.start, byteRange.end + 1, contentType)
+      : body.subarray(byteRange.start, byteRange.end + 1)
+    : body;
   const responseBody: BodyInit =
-    body instanceof Blob
-      ? body
-      : (body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer);
+    selectedBody instanceof Blob
+      ? selectedBody
+      : (selectedBody.buffer.slice(
+          selectedBody.byteOffset,
+          selectedBody.byteOffset + selectedBody.byteLength,
+        ) as ArrayBuffer);
 
-  return new NextResponse(responseBody, { status: 200, headers });
+  return new NextResponse(responseBody, { status: responseStatus, headers });
 }
 
 export async function GET(request: Request) {

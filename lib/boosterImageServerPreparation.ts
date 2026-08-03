@@ -83,7 +83,7 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
 };
 
 const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7;
-const TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8;
+const TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 9;
 const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
 
 function getChannelImagePipelineVersion(channel: BoosterImageChannel) {
@@ -96,9 +96,9 @@ function getChannelJpegOptions(channel: BoosterImageChannel, quality = 87) {
   if (channel === "tiktok") {
     return {
       quality: Math.max(50, Math.min(100, quality === 87 ? 90 : quality)),
-      mozjpeg: true,
       progressive: false,
       chromaSubsampling: "4:2:0" as const,
+      optimiseCoding: false,
     };
   }
   return {
