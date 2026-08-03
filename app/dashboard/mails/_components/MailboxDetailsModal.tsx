@@ -1359,10 +1359,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                           {detailsItem.source === "app_events" && activePublicationWarning ? (
                             <div className={styles.detailsWarning}>
-                              <b>Statut :</b>{" "}
-                              {tiktokStatusMeta?.pending
-                                ? "En traitement"
-                                : "Publiée avec avertissement"}
+                              <b>Statut :</b> Publiée avec avertissement
                               {activePublicationWarningMessage ? ` — ${activePublicationWarningMessage}` : ""}
                             </div>
                           ) : null}
@@ -1879,6 +1876,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     onAdaptationModeChange={detailsEditMode ? (mode) => { markPublicationEditDirty(); setPublicationVideoAdaptationModeForChannel(activePublicationEntry.key, mode); } : undefined}
                                     onApplyFormat={detailsEditMode ? async () => { markPublicationEditDirty(); await applyPublicationVideoFormatForChannel(activePublicationEntry.key); } : undefined}
                                     onDeleteVideo={detailsEditMode ? () => { markPublicationEditDirty(); removePublicationVideo(activePublicationEntry.key); } : undefined}
+                                    deleteVideoLabel="Retirer la vidéo de ce canal"
                                     onPickVideoClick={detailsEditMode ? () => document.getElementById(publicationVideoInputId)?.click() : undefined}
                                     showApplyAll={false}
                                     buttonClassName={styles.btnGhost}

@@ -29,12 +29,21 @@ test("channel titles keep raw spaces while the user is typing", () => {
   assert.match(publishModal, /\}, \[ctaDefaults\]\);/);
 });
 
-test("block 4 exposes both channel removal and global video deletion", () => {
+test("block 4 exposes scoped media removal and global video removal", () => {
   assert.match(publishModal, /removeVideo=\{removeVideo\}/);
   assert.match(imagesPanel, /removeVideo: \(\) => void/);
   assert.match(imagesPanel, /onDeleteVideo=\{removeVideo\}/);
   assert.match(videoAdapter, /onDeleteVideo=\{onDeleteVideo\}/);
-  assert.match(videoManager, /Supprimer la vidéo de toute la publication/);
-  assert.match(videoManager, /Retirer du canal/);
+  assert.match(publishModal, /removeVideoFromChannel/);
+  assert.match(imagesPanel, /onRemoveMediaFromChannel/);
+  assert.match(videoAdapter, /onRemoveMediaFromChannel/);
+  assert.match(videoManager, /Retirer la vidéo de ce canal/);
+  assert.match(videoManager, /Retirer la vidéo de tous les canaux/);
   assert.doesNotMatch(videoManager, /\) : onDeleteVideo \? \(/);
+});
+
+test("a scoped removal keeps an explicit empty media mode", () => {
+  assert.match(publishModal, /if \(explicit === "none"\) return "none"/);
+  assert.match(imagesPanel, /if \(explicit === "none"\) return "none"/);
+  assert.match(publishModal, /current === "none" \|\|/);
 });

@@ -106,6 +106,7 @@ export default function BoosterVideoFormatManager({
   onApplyFormatToAllChannels,
   onRemoveFromChannel,
   onDeleteVideo,
+  deleteVideoLabel = "Retirer la vidéo de tous les canaux",
   onPickVideoClick,
   pickVideoLabel = "Remplacer la vidéo",
   showApplyAll = true,
@@ -130,6 +131,7 @@ export default function BoosterVideoFormatManager({
   onApplyFormatToAllChannels?: () => void;
   onRemoveFromChannel?: () => void;
   onDeleteVideo?: () => void;
+  deleteVideoLabel?: string;
   onPickVideoClick?: () => void;
   pickVideoLabel?: string;
   showApplyAll?: boolean;
@@ -357,7 +359,7 @@ export default function BoosterVideoFormatManager({
             Modification
           </div>
           {onRemoveFromChannel || onDeleteVideo ? (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 6, flex: "0 0 auto", maxWidth: "100%" }}>
               {onRemoveFromChannel ? (
                 <button
                   type="button"
@@ -365,7 +367,7 @@ export default function BoosterVideoFormatManager({
                   onClick={onRemoveFromChannel}
                   style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
                 >
-                  Retirer du canal
+                  Retirer la vidéo de ce canal
                 </button>
               ) : null}
               {onDeleteVideo ? (
@@ -373,22 +375,23 @@ export default function BoosterVideoFormatManager({
                   type="button"
                   className={btnClass}
                   onClick={onDeleteVideo}
-                  title="Supprimer la vidéo de toute la publication"
-                  aria-label="Supprimer la vidéo de toute la publication"
+                  title={deleteVideoLabel}
+                  aria-label={deleteVideoLabel}
                   style={{
-                    width: 30,
-                    minWidth: 30,
-                    height: 28,
-                    padding: 0,
-                    display: "inline-grid",
-                    placeItems: "center",
-                    fontSize: 14,
+                    minHeight: 28,
+                    padding: "4px 9px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                    fontSize: 10.5,
                     color: "#fecaca",
                     borderColor: "rgba(248,113,113,0.34)",
                     background: "rgba(248,113,113,0.10)",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  🗑️
+                  {deleteVideoLabel}
                 </button>
               ) : null}
             </div>

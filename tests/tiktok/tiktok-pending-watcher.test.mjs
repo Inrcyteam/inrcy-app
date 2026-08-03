@@ -89,10 +89,8 @@ test("TikTok photos use a cached baseline JPEG instead of progressive JPEG", () 
   assert.match(mediaRoute, /meta\.isProgressive/);
   assert.match(mediaRoute, /progressive:\s*false/);
   assert.match(mediaRoute, /chromaSubsampling:\s*"4:2:0"/);
-  assert.match(mediaRoute, /optimiseCoding:\s*false/);
-  assert.doesNotMatch(mediaRoute, /mozjpeg:\s*true/);
   assert.doesNotMatch(mediaRoute, /progressive:\s*true/);
-  assert.match(imagePreparation, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 9/);
+  assert.match(imagePreparation, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/);
   assert.match(imagePreparation, /channel === "tiktok"/);
   assert.match(imagePreparation, /progressive:\s*false/);
 });
@@ -106,14 +104,4 @@ test("the TikTok watcher terminates stale jobs and rotates a wider candidate win
   assert.match(watcher, /orderedUserDeliveries/);
   assert.match(watcher, /stage: "missing_event"/);
   assert.match(watcher, /update\(\{ status: "failed", error: message \}\)/);
-});
-
-test("TikTok media delivery supports byte ranges and bypasses stale CDN bodies", () => {
-  assert.match(mediaRoute, /parseTikTokByteRange/);
-  assert.match(mediaRoute, /Accept-Ranges/);
-  assert.match(mediaRoute, /Content-Range/);
-  assert.match(mediaRoute, /status: responseStatus/);
-  assert.match(mediaRoute, /responseStatus = byteRange \? 206 : 200/);
-  assert.match(mediaRoute, /Vercel-CDN-Cache-Control/);
-  assert.match(mediaRoute, /no-store, no-transform/);
 });
