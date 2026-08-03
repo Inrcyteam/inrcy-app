@@ -9,9 +9,10 @@
 
 2. **Photos TikTok**
    - Variante TikTok dédiée en JPEG classique non progressif, qualité 90 et sous-échantillonnage 4:2:0.
-   - Version du pipeline TikTok portée à 8 afin d'invalider les anciennes variantes progressives.
+   - Cache de l'URL photo TikTok porté à la version 3 afin d'invalider les anciens octets.
+   - Pipeline des variantes image TikTok porté à la version 9 afin d'invalider les anciennes variantes progressives.
    - Les anciennes sources incompatibles sont converties une seule fois puis mises en cache dans le stockage.
-   - L'URL média renvoie des octets stables avec `Content-Type`, `Content-Length` et cache cohérents.
+   - L'URL média gère `HEAD`, `Range`/`206 Partial Content`, `Content-Range` et désactive les caches intermédiaires pour éviter un corps obsolète.
 
 3. **Suivi TikTok**
    - Arrêt terminal après 60 minutes sans finalisation (`PROCESSING_TIMEOUT`).

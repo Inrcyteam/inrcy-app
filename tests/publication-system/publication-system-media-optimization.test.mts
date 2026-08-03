@@ -63,7 +63,7 @@ test("les images utilisent MozJPEG et invalident le cache de publication", () =>
   assert.match(normalizer, /mozjpeg: !providerSafe/);
   assert.match(normalizer, /optimiseScans: !providerSafe/);
   assert.match(server, /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7/);
-  assert.match(server, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/);
+  assert.match(server, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 9/);
   assert.match(server, /function getChannelJpegOptions/);
   assert.match(server, /quality = 87/);
   assert.match(server, /progressive: false/);
