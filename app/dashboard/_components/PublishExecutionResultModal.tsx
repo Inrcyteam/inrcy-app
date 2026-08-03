@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import {
   ensureFrenchPublicationErrorMessage,
   getFrenchPublicationErrorMessage,
@@ -9,6 +11,8 @@ import StatusMessage from "./StatusMessage";
 type DashboardStyles = Readonly<Record<string, string>>;
 
 type PublishExecutionSummary = {
+  publicationId?: string | null;
+  publication_id?: string | null;
   allFailed?: boolean;
   failureCount?: number;
   successCount?: number;
@@ -48,24 +52,156 @@ export default function PublishExecutionResultModal({
   onRetryFailed?: () => void | Promise<void>;
   retrying?: boolean;
 }) {
-  const failureCount = Number(summary?.failureCount || 0);
-  const successCount = Number(summary?.successCount || 0);
-  const allFailed = Boolean(summary?.allFailed);
-  const entries = Array.isArray(summary?.entries) ? summary.entries : [];
+  const [liveSummary, setLiveSummary] = useState<PublishExecutionSummary | null>(summary || null);
+  const tiktokPollInFlightRef = useRef(false);
+
+  useEffect(() => {
+    setLiveSummary(summary || null);
+  }, [summary]);
+
+  const publicationId = String(
+    liveSummary?.publicationId || liveSummary?.publication_id || "",
+  ).trim();
+  const liveEntries = Array.isArray(liveSummary?.entries)
+    ? liveSummary.entries
+    : [];
+  const pendingTiktokEntry = liveEntries.find(
+    (entry) => entry.channel === "tiktok" && entry.status === "processing",
+  );
+  const hasPendingTiktok = Boolean(pendingTiktokEntry);
+
+  useEffect(() => {
+    if (!publicationId || !hasPendingTiktok) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
+
+    const schedule = (delayMs: number) => {
+      timer = setTimeout(async () => {
+        if (cancelled || tiktokPollInFlightRef.current) return;
+        tiktokPollInFlightRef.current = true;
+        let shouldContinue = true;
+        try {
+          const res = await fetch(
+            `/api/inrsend/publications/${encodeURIComponent(publicationId)}/tiktok/status`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+            },
+          );
+          const json = await res.json().catch(() => ({}));
+          const status = String(json?.status?.status || "").toUpperCase();
+          const complete = ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
+          const failed = ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status);
+          const message = String(
+            json?.message ||
+              (failed
+                ? "TikTok n'a pas pu finaliser la publication."
+                : "TikTok traite encore la publication."),
+          ).trim();
+          shouldContinue = !complete && !failed;
+
+          setLiveSummary((current) => {
+            if (!current || !Array.isArray(current.entries)) return current;
+            const previousEntry = current.entries.find(
+              (entry) => entry.channel === "tiktok",
+            );
+            if (!previousEntry) return current;
+
+            const nextEntries = current.entries.map((entry) => {
+              if (entry.channel !== "tiktok") return entry;
+              if (complete) {
+                return {
+                  ...entry,
+                  ok: true,
+                  status: "published",
+                  error: null,
+                  warning: null,
+                  warning_kind: null,
+                  warning_message: null,
+                };
+              }
+              if (failed) {
+                return {
+                  ...entry,
+                  ok: false,
+                  status: "failed",
+                  error: message,
+                  warning: null,
+                  warning_kind: null,
+                  warning_message: null,
+                };
+              }
+              return {
+                ...entry,
+                ok: true,
+                status: "processing",
+                warning: "pending",
+                warning_kind: "pending",
+                warning_message: message,
+              };
+            });
+
+            let successCount = Number(current.successCount || 0);
+            let failureCount = Number(current.failureCount || 0);
+            let pendingCount = Number(current.pendingCount || 0);
+            if (previousEntry.status === "processing" && complete) {
+              pendingCount = Math.max(0, pendingCount - 1);
+            } else if (previousEntry.status === "processing" && failed) {
+              pendingCount = Math.max(0, pendingCount - 1);
+              successCount = Math.max(0, successCount - 1);
+              failureCount += 1;
+            }
+
+            return {
+              ...current,
+              entries: nextEntries,
+              successCount,
+              failureCount,
+              pendingCount,
+              allFailed: failureCount > 0 && successCount === 0,
+            };
+          });
+        } catch {
+          shouldContinue = true;
+        } finally {
+          tiktokPollInFlightRef.current = false;
+        }
+
+        if (!cancelled && shouldContinue && Date.now() - startedAt < 5 * 60_000) {
+          schedule(Date.now() - startedAt >= 2 * 60_000 ? 30_000 : 15_000);
+        }
+      }, delayMs);
+    };
+
+    schedule(8_000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [publicationId, hasPendingTiktok]);
+
+  const effectiveSummary = liveSummary || summary;
+  const failureCount = Number(effectiveSummary?.failureCount || 0);
+  const successCount = Number(effectiveSummary?.successCount || 0);
+  const allFailed = Boolean(effectiveSummary?.allFailed);
+  const entries = Array.isArray(effectiveSummary?.entries) ? effectiveSummary.entries : [];
   const warningCount = Math.max(
-    Number(summary?.warningCount || 0),
+    Number(effectiveSummary?.warningCount || 0),
     entries.filter((entry) => entry.status === "published_with_warning").length,
   );
   const mediaWarningCount = Math.max(
-    Number(summary?.mediaWarningCount || 0),
+    Number(effectiveSummary?.mediaWarningCount || 0),
     entries.filter((entry) => entry.warning_kind === "media_degraded").length,
   );
   const pendingCount = Math.max(
-    Number(summary?.pendingCount || 0),
+    Number(effectiveSummary?.pendingCount || 0),
     entries.filter((entry) => entry.status === "processing").length,
   );
   const skippedCount = Math.max(
-    Number(summary?.skippedCount || 0),
+    Number(effectiveSummary?.skippedCount || 0),
     entries.filter((entry) => entry.status === "skipped").length,
   );
   const pendingEntries = entries.filter(
@@ -76,7 +212,7 @@ export default function PublishExecutionResultModal({
   );
   const retryableFailureCount = Math.max(
     0,
-    Number(summary?.retryableFailureCount || 0),
+    Number(effectiveSummary?.retryableFailureCount || 0),
   );
 
   return (
@@ -189,7 +325,7 @@ export default function PublishExecutionResultModal({
         {entries.length ? (
           <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
             {entries.map((entry) => {
-              const channelHref = String(summary?.channelLinks?.[entry.channel] || "").trim();
+              const channelHref = String(effectiveSummary?.channelLinks?.[entry.channel] || "").trim();
               const visibleError = entry.error
                 ? getFrenchPublicationErrorMessage(
                     entry.channel,

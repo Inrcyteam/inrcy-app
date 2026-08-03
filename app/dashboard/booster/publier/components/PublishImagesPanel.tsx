@@ -101,6 +101,7 @@ type PublishImagesPanelProps = {
   videoPreviewVariantsPreparing?: boolean;
   onApplyVideoFormatForChannel?: (channel: ChannelKey) => void;
   onApplyVideoFormatToAllChannels?: (channel: ChannelKey) => void;
+  removeVideo: () => void;
   imgError: string;
   selectedChannels: ChannelKey[];
   activeImageChannel: ChannelKey;
@@ -147,6 +148,7 @@ export default function PublishImagesPanel({
   videoPreviewVariantsPreparing = false,
   onApplyVideoFormatForChannel,
   onApplyVideoFormatToAllChannels,
+  removeVideo,
   imgError,
   selectedChannels,
   activeImageChannel,
@@ -655,6 +657,7 @@ export default function PublishImagesPanel({
               onApplyVideoFormatForChannel={onApplyVideoFormatForChannel}
               onApplyVideoFormatToAllChannels={onApplyVideoFormatToAllChannels}
               onRemoveChannel={onRemoveChannel}
+              onDeleteVideo={removeVideo}
             />
           ) : !images.length ? (
             <div style={{ fontSize: 13, opacity: 0.75 }}>

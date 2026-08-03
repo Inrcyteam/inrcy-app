@@ -356,24 +356,42 @@ export default function BoosterVideoFormatManager({
           <div style={{ fontSize: 12, fontWeight: 950, color: "rgba(248,250,252,0.92)", letterSpacing: "0.01em" }}>
             Modification
           </div>
-          {onRemoveFromChannel ? (
-            <button
-              type="button"
-              className={btnClass}
-              onClick={onRemoveFromChannel}
-              style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
-            >
-              Retirer du canal
-            </button>
-          ) : onDeleteVideo ? (
-            <button
-              type="button"
-              className={btnClass}
-              onClick={onDeleteVideo}
-              style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
-            >
-              Supprimer la vidéo
-            </button>
+          {onRemoveFromChannel || onDeleteVideo ? (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
+              {onRemoveFromChannel ? (
+                <button
+                  type="button"
+                  className={btnClass}
+                  onClick={onRemoveFromChannel}
+                  style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
+                >
+                  Retirer du canal
+                </button>
+              ) : null}
+              {onDeleteVideo ? (
+                <button
+                  type="button"
+                  className={btnClass}
+                  onClick={onDeleteVideo}
+                  title="Supprimer la vidéo de toute la publication"
+                  aria-label="Supprimer la vidéo de toute la publication"
+                  style={{
+                    width: 30,
+                    minWidth: 30,
+                    height: 28,
+                    padding: 0,
+                    display: "inline-grid",
+                    placeItems: "center",
+                    fontSize: 14,
+                    color: "#fecaca",
+                    borderColor: "rgba(248,113,113,0.34)",
+                    background: "rgba(248,113,113,0.10)",
+                  }}
+                >
+                  🗑️
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
 

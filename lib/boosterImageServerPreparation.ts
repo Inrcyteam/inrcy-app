@@ -83,7 +83,31 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
 };
 
 const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7;
+const TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8;
 const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
+
+function getChannelImagePipelineVersion(channel: BoosterImageChannel) {
+  return channel === "tiktok"
+    ? TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION
+    : CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION;
+}
+
+function getChannelJpegOptions(channel: BoosterImageChannel, quality = 87) {
+  if (channel === "tiktok") {
+    return {
+      quality: Math.max(50, Math.min(100, quality === 87 ? 90 : quality)),
+      mozjpeg: true,
+      progressive: false,
+      chromaSubsampling: "4:2:0" as const,
+    };
+  }
+  return {
+    quality,
+    mozjpeg: true,
+    progressive: true,
+    optimiseScans: true,
+  };
+}
 
 type ChannelImageVariantRow = {
   id: string;
@@ -110,12 +134,16 @@ function safeStorageSegment(value: unknown, fallback: string) {
 }
 
 function buildChannelImageSignature(value: Record<string, unknown>) {
+  const pipelineVersion = Number(
+    value.pipelineVersion || CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION,
+  );
   const hash = createHash("sha256")
     .update(JSON.stringify(value))
     .digest("hex");
   return {
     hash,
-    signature: `inrcy:image:channel_publish:v${CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION}:${hash}`,
+    pipelineVersion,
+    signature: `inrcy:image:channel_publish:v${pipelineVersion}:${hash}`,
   };
 }
 
@@ -174,6 +202,7 @@ async function persistChannelImageVariant(params: {
   height: number;
   transform: Record<string, unknown>;
   metadata: Record<string, unknown>;
+  pipelineVersion: number;
 }) {
   const account = safeStorageSegment(params.accountId, "account");
   const media = safeStorageSegment(params.mediaId, "media");
@@ -203,7 +232,7 @@ async function persistChannelImageVariant(params: {
     width: params.width,
     height: params.height,
     duration_seconds: null,
-    pipeline_version: CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION,
+    pipeline_version: params.pipelineVersion,
     transform_spec: params.transform,
     variant_metadata: params.metadata,
     error_code: null,
@@ -620,7 +649,7 @@ async function renderImageTransform(params: {
   return {
     output: await canvas
       .flatten({ background })
-      .jpeg({ quality: 87, mozjpeg: true, progressive: true, optimiseScans: true })
+      .jpeg(getChannelJpegOptions(params.channel))
       .toBuffer(),
     mime: "image/jpeg",
     extension: "jpg",
@@ -655,6 +684,19 @@ async function renderPublicationOriginal(params: {
   sourceMime: string;
 }) {
   const sourceMetadata = await sharp(params.buffer, { failOn: "none" }).metadata();
+  const sourceOrientation = Number(sourceMetadata.orientation || 1);
+  const swapsAxes = sourceOrientation >= 5 && sourceOrientation <= 8;
+  const sourceWidth = Number(
+    swapsAxes ? sourceMetadata.height || 0 : sourceMetadata.width || 0,
+  );
+  const sourceHeight = Number(
+    swapsAxes ? sourceMetadata.width || 0 : sourceMetadata.height || 0,
+  );
+  const isLandscape = sourceWidth >= sourceHeight;
+  const maxWidth =
+    params.channel === "tiktok" ? (isLandscape ? 1920 : 1080) : 2048;
+  const maxHeight =
+    params.channel === "tiktok" ? (isLandscape ? 1080 : 1920) : 2048;
   const preserveAlpha = shouldPreserveBoosterOriginalAlpha({
     channel: params.channel,
     sourceMime: params.sourceMime,
@@ -663,8 +705,8 @@ async function renderPublicationOriginal(params: {
   const pipeline = sharp(params.buffer, { failOn: "none" })
     .rotate()
     .resize({
-      width: 2048,
-      height: 2048,
+      width: maxWidth,
+      height: maxHeight,
       fit: "inside",
       withoutEnlargement: true,
     });
@@ -674,7 +716,7 @@ async function renderPublicationOriginal(params: {
         .toBuffer({ resolveWithObject: true })
     : await pipeline
         .flatten({ background: "#ffffff" })
-        .jpeg({ quality: 87, mozjpeg: true, progressive: true, optimiseScans: true })
+        .jpeg(getChannelJpegOptions(params.channel))
         .toBuffer({ resolveWithObject: true });
   if (!info.width || !info.height) {
     throw new Error("image_publication_dimensions_missing");
@@ -851,7 +893,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           transform: ServerImageTransform,
         ) =>
           buildChannelImageSignature({
-            pipelineVersion: CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION,
+            pipelineVersion: getChannelImagePipelineVersion(channel),
             mediaId: String(entry.image.mediaId || "").trim(),
             sourcePath: entry.image.storagePath || "",
             imageKey: entry.imageKey,
@@ -913,6 +955,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
                 channel,
                 signature: signed.signature,
                 hash: signed.hash,
+                pipelineVersion: signed.pipelineVersion,
                 output: variant.output,
                 mime: variant.mime,
                 extension: variant.extension,

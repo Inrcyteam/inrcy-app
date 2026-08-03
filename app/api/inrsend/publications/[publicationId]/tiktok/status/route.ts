@@ -19,6 +19,7 @@ type AppEventRow = {
 
 const TIKTOK_LOCAL_CANCEL_MESSAGE =
   "Publication annulée dans iNrSend. Le suivi automatique est arrêté. Une tentative déjà acceptée par TikTok ne peut pas être interrompue à distance.";
+const TIKTOK_PENDING_TIMEOUT_MS = 60 * 60 * 1000;
 
 function isTiktokCancelledResult(resultLike: unknown) {
   const result = asRecord(resultLike);
@@ -179,6 +180,7 @@ function tiktokStatusLabel(
   statusFetchFailed = false,
   stalled = false,
 ) {
+  if (String(status || "").toUpperCase() === "PROCESSING_TIMEOUT") return "Délai dépassé";
   if (statusFetchFailed) return "Vérification impossible";
   if (stalled) return "Traitement prolongé";
   const value = String(status || "").toUpperCase();
@@ -201,7 +203,11 @@ function formatBytes(value: number | null | undefined) {
 function tiktokStatusMessage(
   status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>,
   stalled = false,
+  timedOut = false,
 ) {
+  if (timedOut) {
+    return "TikTok n’a pas finalisé la publication après 60 minutes. Le suivi automatique est arrêté sans nouvelle republication pour éviter un doublon.";
+  }
   if (status.statusFetchFailed) {
     return getTiktokUserFacingError(status.failReason || status.providerErrorCode || "tiktok_status_fetch_failed");
   }
@@ -283,32 +289,67 @@ async function persistTiktokStatus({
       nowMs - submittedAtMs >= 15 * 60 * 1000 &&
       nowMs - progressAtMs >= 10 * 60 * 1000,
   );
-  const message = tiktokStatusMessage(status, stalled);
+  const timedOut = Boolean(
+    status.pending &&
+      submittedAtMs !== null &&
+      nowMs - submittedAtMs >= TIKTOK_PENDING_TIMEOUT_MS,
+  );
+  const currentTiktokStatus =
+    typeof current.tiktok_status === "string"
+      ? current.tiktok_status
+      : null;
+  const effectiveStatus: string | null = timedOut
+    ? "PROCESSING_TIMEOUT"
+    : status.status || currentTiktokStatus;
+  const effectiveFailed = Boolean(status.failed || timedOut);
+  const effectivePending = Boolean(status.pending && !timedOut);
+  const checkCount =
+    Math.max(
+      0,
+      Number(
+        current.tiktok_status_check_count ??
+          diagnostics.status_check_count ??
+          0,
+      ) || 0,
+    ) + 1;
+  const processingDurationSeconds = submittedAtMs === null
+    ? null
+    : Math.max(0, Math.floor((nowMs - submittedAtMs) / 1000));
+  const message = tiktokStatusMessage(status, stalled, timedOut);
   const nextResult: JsonRecord = {
     ...current,
-    ok: status.complete ? true : status.failed ? false : current.ok !== false,
+    ok: status.complete ? true : effectiveFailed ? false : current.ok !== false,
     external_id: publishId,
     share_url: status.shareUrl || current.share_url || null,
     external_url: status.shareUrl || current.share_url || current.external_url || current.profile_url || null,
-    tiktok_status: status.status || current.tiktok_status || null,
-    tiktok_status_label: tiktokStatusLabel(status.status, Boolean(status.statusFetchFailed), stalled),
+    tiktok_status: effectiveStatus,
+    tiktok_status_label: tiktokStatusLabel(effectiveStatus, Boolean(status.statusFetchFailed), stalled),
     tiktok_status_message: message,
     tiktok_status_checked_at: nowIso,
     tiktok_submitted_at: submittedAt,
     tiktok_status_progress_at: progressAt,
     tiktok_status_fetch_failed: Boolean(status.statusFetchFailed),
     tiktok_status_fetch_error: status.statusFetchFailed ? status.failReason || status.providerErrorCode || null : null,
-    tiktok_fail_reason: status.failed ? status.failReason || null : null,
-    tiktok_provider_error_code: status.providerErrorCode || null,
+    tiktok_fail_reason: effectiveFailed
+      ? timedOut
+        ? "processing_timeout"
+        : status.failReason || null
+      : null,
+    tiktok_provider_error_code: timedOut
+      ? "processing_timeout"
+      : status.providerErrorCode || null,
     tiktok_uploaded_bytes: nextUploadedBytes,
     tiktok_downloaded_bytes: nextDownloadedBytes,
     tiktok_public_post_ids: status.publiclyAvailablePostIds?.length
       ? status.publiclyAvailablePostIds
       : current.tiktok_public_post_ids || [],
     tiktok_stalled: stalled,
-    warning: Boolean(status.pending || status.statusFetchFailed),
-    warning_message: status.pending || status.statusFetchFailed ? message : null,
-    error: status.failed ? message : null,
+    tiktok_timed_out: timedOut,
+    tiktok_status_check_count: checkCount,
+    tiktok_processing_duration_seconds: processingDurationSeconds,
+    warning: Boolean(effectivePending || status.statusFetchFailed),
+    warning_message: effectivePending || status.statusFetchFailed ? message : null,
+    error: effectiveFailed ? message : null,
     diagnostics: {
       ...diagnostics,
       publish_id: publishId,
@@ -318,6 +359,9 @@ async function persistTiktokStatus({
       status_progress_at: progressAt,
       status_checked_at: nowIso,
       stalled,
+      timed_out: timedOut,
+      status_check_count: checkCount,
+      processing_duration_seconds: processingDurationSeconds,
     },
   };
 
@@ -336,8 +380,8 @@ async function persistTiktokStatus({
   const { error: deliveryUpdateError } = await supabaseAdmin
     .from("publication_deliveries")
     .update({
-      status: status.failed ? "failed" : status.complete ? "delivered" : "processing",
-      error: status.failed ? message : null,
+      status: effectiveFailed ? "failed" : status.complete ? "delivered" : "processing",
+      error: effectiveFailed ? message : null,
     })
     .eq("user_id", userId)
     .eq("publication_id", publicationId)
@@ -350,7 +394,14 @@ async function persistTiktokStatus({
     return ensureCancelledEventState({ userId, event: latestEvent });
   }
 
-  return { nextPayload, nextResult, message, stalled, cancelled: false };
+  return {
+    nextPayload,
+    nextResult,
+    message,
+    stalled,
+    timedOut,
+    cancelled: false,
+  };
 }
 
 async function handler(_request: Request, context: { params: Promise<{ publicationId: string }> }) {
@@ -413,15 +464,34 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
     const status = await fetchTiktokPublishStatus(accessToken, publishId);
     const persisted = await persistTiktokStatus({ userId: activeUserId, publicationId, publishId, status });
 
+    const persistedStatus = String(
+      persisted.nextResult.tiktok_status || status.status || "",
+    );
+    const timedOut = persistedStatus === "PROCESSING_TIMEOUT";
+
     return NextResponse.json({
-      ok: status.ok,
+      ok: timedOut ? false : status.ok,
       publication_id: publicationId,
       channel: "tiktok",
       publish_id: publishId,
-      status,
+      status: timedOut
+        ? {
+            ...status,
+            status: persistedStatus,
+            complete: false,
+            failed: true,
+            pending: false,
+            failReason: "processing_timeout",
+            providerErrorCode: "processing_timeout",
+          }
+        : status,
       status_label: persisted.cancelled
         ? "Annulé"
-        : tiktokStatusLabel(status.status, Boolean(status.statusFetchFailed), persisted.stalled),
+        : tiktokStatusLabel(
+            persistedStatus,
+            Boolean(status.statusFetchFailed),
+            persisted.stalled,
+          ),
       message: persisted.message,
       result: persisted.nextResult,
       payload: persisted.nextPayload,

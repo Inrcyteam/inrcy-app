@@ -894,7 +894,7 @@ export default function PublishModal({
       }
       return changed ? next : prev;
     });
-  }, [ctaDefaults, postsByChannel]);
+  }, [ctaDefaults]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -5531,6 +5531,7 @@ export default function PublishModal({
               videoPreviewVariantsPreparing={videoPreviewVariantsPreparing}
               onApplyVideoFormatForChannel={applyVideoFormatForChannel}
               onApplyVideoFormatToAllChannels={applyVideoFormatToAllChannels}
+              removeVideo={removeVideo}
               imgError={imgError}
               selectedChannels={selectedChannels}
               activeImageChannel={activeImageChannel}

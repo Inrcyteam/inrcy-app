@@ -3005,6 +3005,7 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
+          const tiktokSubmittedAt = new Date().toISOString();
           const tiktokResult = isVideo
             ? await tiktokDirectPostVideoFileUpload({
                 accessToken: tiktokAccessToken,
@@ -3074,8 +3075,11 @@ async function publishNowHandler(req: Request) {
                 ? "En traitement"
                 : "Publié",
             tiktok_status_message: tiktokPendingMessage,
-            tiktok_status_checked_at: new Date().toISOString(),
-            tiktok_submitted_at: new Date().toISOString(),
+            tiktok_status_checked_at: tiktokSubmittedAt,
+            tiktok_submitted_at: tiktokSubmittedAt,
+            tiktok_status_progress_at: tiktokSubmittedAt,
+            tiktok_status_check_count: 1,
+            tiktok_processing_duration_seconds: 0,
             tiktok_status_fetch_failed: Boolean(tiktokResult.status?.statusFetchFailed),
             tiktok_uploaded_bytes: tiktokResult.status?.uploadedBytes ?? null,
             tiktok_downloaded_bytes: tiktokResult.status?.downloadedBytes ?? null,
@@ -3098,6 +3102,11 @@ async function publishNowHandler(req: Request) {
               publicationSettings: tiktokPublicationSettings,
               status: tiktokResult.status || null,
               share_url: tiktokResult.shareUrl || null,
+              submitted_at: tiktokSubmittedAt,
+              status_progress_at: tiktokSubmittedAt,
+              status_checked_at: tiktokSubmittedAt,
+              status_check_count: 1,
+              processing_duration_seconds: 0,
               raw: tiktokResult.raw,
             },
           };

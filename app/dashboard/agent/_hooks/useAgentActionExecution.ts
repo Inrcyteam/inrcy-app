@@ -259,6 +259,12 @@ export function useAgentActionExecution({
           setAgentPublishExecutionProgress(null);
           setAgentPublishSuccessSummary({
             ...(asRecord(failedPublishSummary) || {}),
+            publicationId:
+              String(
+                asRecord(payload?.publishResult)?.publication_id ||
+                  asRecord(payload?.publishResult)?.publicationId ||
+                  "",
+              ).trim() || null,
             channelLinks,
           });
           return;
@@ -278,6 +284,12 @@ export function useAgentActionExecution({
       setAgentPublishExecutionProgress(null);
       setAgentPublishSuccessSummary({
         ...(asRecord(publishSummary) || {}),
+        publicationId:
+          String(
+            asRecord(payload?.publishResult)?.publication_id ||
+              asRecord(payload?.publishResult)?.publicationId ||
+              "",
+          ).trim() || null,
         channelLinks,
       });
       await refreshActions(true);
@@ -345,6 +357,12 @@ export function useAgentActionExecution({
           setAgentPublishExecutionProgress(null);
           setAgentPublishSuccessSummary({
             ...(asRecord(failedPublishSummary) || {}),
+            publicationId:
+              String(
+                asRecord(payload?.publishResult)?.publication_id ||
+                  asRecord(payload?.publishResult)?.publicationId ||
+                  "",
+              ).trim() || null,
             channelLinks,
           });
           return;
@@ -377,6 +395,12 @@ export function useAgentActionExecution({
         setAgentPublishExecutionProgress(null);
         setAgentPublishSuccessSummary({
           ...(asRecord(publishSummary) || {}),
+          publicationId:
+            String(
+              asRecord(payload?.publishResult)?.publication_id ||
+                asRecord(payload?.publishResult)?.publicationId ||
+                "",
+            ).trim() || null,
           channelLinks,
         });
         return;
@@ -481,6 +505,12 @@ export function useAgentActionExecution({
           setAgentPublishExecutionProgress(null);
           setAgentPublishSuccessSummary({
             ...(asRecord(failedPublishSummary) || {}),
+            publicationId:
+              String(
+                asRecord(payload?.publishResult)?.publication_id ||
+                  asRecord(payload?.publishResult)?.publicationId ||
+                  "",
+              ).trim() || null,
             channelLinks,
           });
           return;
