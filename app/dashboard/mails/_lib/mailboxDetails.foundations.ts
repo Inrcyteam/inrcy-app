@@ -246,14 +246,11 @@ export function getTiktokStatusMeta(result: any) {
       getNestedString(result, ["diagnostics", "status", "statusFetchFailed"]) === "true",
   );
   const stalled = Boolean(result?.tiktok_stalled || getNestedString(result, ["diagnostics", "stalled"]) === "true");
-  const timedOut = status === "PROCESSING_TIMEOUT" || result?.tiktok_timed_out === true;
-  const failed = !cancelled && (["FAILED", "PUBLISH_FAILED", "ERROR", "PROCESSING_TIMEOUT"].includes(status) || (result?.ok === false && !statusFetchFailed));
+  const failed = !cancelled && (["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status) || (result?.ok === false && !statusFetchFailed));
   const complete = !cancelled && ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
   const pending = !cancelled && !failed && !complete && Boolean(statusFetchFailed || result?.warning || status || getTiktokPublishId(result));
   const label = cancelled
     ? "Annulé"
-    : timedOut
-    ? "Délai dépassé"
     : failed
     ? "Échec"
     : complete
@@ -295,54 +292,7 @@ export function getTiktokStatusMeta(result: any) {
       )
     : "";
   const uploadedBytes = Number(result?.tiktok_uploaded_bytes ?? getNestedString(result, ["diagnostics", "status", "uploadedBytes"]) ?? 0) || 0;
-  const downloadedBytes = Number(result?.tiktok_downloaded_bytes ?? getNestedString(result, ["diagnostics", "status", "downloadedBytes"]) ?? 0) || 0;
-  const providerErrorCode = firstStringDeep(
-    result?.tiktok_provider_error_code,
-    getNestedString(result, ["diagnostics", "status", "providerErrorCode"]),
-  );
-  const checkedAt = firstStringDeep(
-    result?.tiktok_status_checked_at,
-    getNestedString(result, ["diagnostics", "status_checked_at"]),
-  );
-  const progressAt = firstStringDeep(
-    result?.tiktok_status_progress_at,
-    getNestedString(result, ["diagnostics", "status_progress_at"]),
-  );
-  const submittedAt = firstStringDeep(
-    result?.tiktok_submitted_at,
-    getNestedString(result, ["diagnostics", "submitted_at"]),
-  );
-  const checkCount = Number(
-    result?.tiktok_status_check_count ??
-      getNestedString(result, ["diagnostics", "status_check_count"]) ??
-      0,
-  ) || 0;
-  const processingDurationSeconds = Number(
-    result?.tiktok_processing_duration_seconds ??
-      getNestedString(result, ["diagnostics", "processing_duration_seconds"]) ??
-      0,
-  ) || 0;
-  return {
-    status,
-    cancelled,
-    failed,
-    complete,
-    pending,
-    label,
-    message,
-    failReason,
-    providerErrorCode,
-    statusFetchFailed,
-    stalled,
-    timedOut,
-    uploadedBytes,
-    downloadedBytes,
-    checkedAt,
-    progressAt,
-    submittedAt,
-    checkCount,
-    processingDurationSeconds,
-  };
+  return { status, cancelled, failed, complete, pending, label, message, failReason, statusFetchFailed, stalled, uploadedBytes };
 }
 
 export function getTiktokAutoPollTarget(detailsItem: any) {

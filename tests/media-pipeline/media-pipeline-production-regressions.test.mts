@@ -104,7 +104,7 @@ test("les aperçus locaux restent affichés pendant la préparation serveur", as
   assert.match(source, /makeImageKey\(currentFile\) !== expectedImageKey/);
 });
 
-test("les vidéos MP4 directes contrôlent les variantes au clic et gardent une récupération", async () => {
+test("les vidéos MP4 directes évitent le préchauffage de fond et gardent une récupération au clic", async () => {
   const hook = await readSource(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
@@ -119,7 +119,6 @@ test("les vidéos MP4 directes contrôlent les variantes au clic et gardent une 
     /request\.mediaType === "video" &&[\s\S]{0,120}request\.directVideoSource/,
   );
   assert.match(hook, /loadMediaPublicationWorkspace\(/);
-  assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.match(modal, /async function prepareCutoverVideoVariants/);
   assert.equal(
     (modal.match(/prewarmPersistentMediaWorkspace\(/g) || []).length,

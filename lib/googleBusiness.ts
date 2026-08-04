@@ -99,11 +99,8 @@ export async function gmbListLocationsWithFallback(accessToken: string, accountN
  * Returns an access token + the stored integration row for the current user,
  * refreshing the access token if needed.
  */
-export async function getGmbToken(ctx?: { supabase?: any; userId?: string }) {
-  // Publication routes already resolved the active iNrCy account. Reuse that
-  // identity instead of relying on a second cookie-based auth lookup, which
-  // is unavailable in long-running/cron-style server actions.
-  const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb", ctx);
+export async function getGmbToken() {
+  const tok = await getGoogleTokenForAnyGoogle("gmb", "gmb");
   if (!tok?.accessToken) return null;
   return tok;
 }

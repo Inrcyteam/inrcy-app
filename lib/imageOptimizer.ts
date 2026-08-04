@@ -109,10 +109,7 @@ async function ensureGoogleBusinessImageCompliance(
       .jpeg({
         quality,
         mozjpeg: true,
-        // Keep publication media baseline (non-progressive). Several
-        // providers, notably TikTok and Google Business, reject or stall on
-        // progressive JPEGs after a second optimization pass.
-        progressive: false,
+        progressive: true,
         chromaSubsampling: "4:2:0",
       })
       .toBuffer();
@@ -240,7 +237,7 @@ async function createNativeJpeg(params: {
       .jpeg({
         quality: q,
         mozjpeg: true,
-        progressive: false,
+        progressive: true,
         chromaSubsampling: "4:2:0",
       })
       .toBuffer();
@@ -417,7 +414,7 @@ async function createSmartJpeg(params: {
       .jpeg({
         quality: q,
         mozjpeg: true,
-        progressive: false,
+        progressive: true,
         chromaSubsampling: "4:2:0",
       })
       .toBuffer();

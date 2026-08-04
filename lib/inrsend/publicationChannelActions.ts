@@ -1556,10 +1556,7 @@ async function replaceChannelDelivery(params: {
       });
       throw new Error(gmbUserError);
     }
-    const token = await getGmbToken({
-      supabase: supabaseAdmin,
-      userId,
-    });
+    const token = await getGmbToken();
     if (!token?.accessToken) {
       const gmbUserError = getPublishChannelUserMessage("gmb", "token expired");
       logPublishChannelFailure({
@@ -1936,10 +1933,7 @@ async function removeChannelDelivery(params: {
   }
 
   if (channel === "gmb") {
-    const token = await getGmbToken({
-      supabase: supabaseAdmin,
-      userId,
-    });
+    const token = await getGmbToken();
     if (!token?.accessToken) throw new Error("La connexion Google a expiré. Merci de reconnecter votre compte.");
     if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
   }

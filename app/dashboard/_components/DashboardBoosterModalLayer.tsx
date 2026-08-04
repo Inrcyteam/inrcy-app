@@ -452,10 +452,6 @@ export default function DashboardBoosterModalLayer({
                       preflightFailedChannels,
                     ),
                     channelLinks: result?.channelLinks || {},
-                    publicationId:
-                      String(
-                        result?.publication_id || result?.publicationId || "",
-                      ).trim() || null,
                     retryableFailureCount: Array.isArray(
                       result?.retryFailedChannels,
                     )

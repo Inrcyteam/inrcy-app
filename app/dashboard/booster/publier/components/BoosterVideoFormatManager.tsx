@@ -106,7 +106,6 @@ export default function BoosterVideoFormatManager({
   onApplyFormatToAllChannels,
   onRemoveFromChannel,
   onDeleteVideo,
-  deleteVideoLabel = "Retirer la vidéo de tous les canaux",
   onPickVideoClick,
   pickVideoLabel = "Remplacer la vidéo",
   showApplyAll = true,
@@ -131,7 +130,6 @@ export default function BoosterVideoFormatManager({
   onApplyFormatToAllChannels?: () => void;
   onRemoveFromChannel?: () => void;
   onDeleteVideo?: () => void;
-  deleteVideoLabel?: string;
   onPickVideoClick?: () => void;
   pickVideoLabel?: string;
   showApplyAll?: boolean;
@@ -358,43 +356,24 @@ export default function BoosterVideoFormatManager({
           <div style={{ fontSize: 12, fontWeight: 950, color: "rgba(248,250,252,0.92)", letterSpacing: "0.01em" }}>
             Modification
           </div>
-          {onRemoveFromChannel || onDeleteVideo ? (
-            <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 6, flex: "0 0 auto", maxWidth: "100%" }}>
-              {onRemoveFromChannel ? (
-                <button
-                  type="button"
-                  className={btnClass}
-                  onClick={onRemoveFromChannel}
-                  style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
-                >
-                  Retirer la vidéo de ce canal
-                </button>
-              ) : null}
-              {onDeleteVideo ? (
-                <button
-                  type="button"
-                  className={btnClass}
-                  onClick={onDeleteVideo}
-                  title={deleteVideoLabel}
-                  aria-label={deleteVideoLabel}
-                  style={{
-                    minHeight: 28,
-                    padding: "4px 9px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 5,
-                    fontSize: 10.5,
-                    color: "#fecaca",
-                    borderColor: "rgba(248,113,113,0.34)",
-                    background: "rgba(248,113,113,0.10)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {deleteVideoLabel}
-                </button>
-              ) : null}
-            </div>
+          {onRemoveFromChannel ? (
+            <button
+              type="button"
+              className={btnClass}
+              onClick={onRemoveFromChannel}
+              style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
+            >
+              Retirer du canal
+            </button>
+          ) : onDeleteVideo ? (
+            <button
+              type="button"
+              className={btnClass}
+              onClick={onDeleteVideo}
+              style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
+            >
+              Supprimer la vidéo
+            </button>
           ) : null}
         </div>
 

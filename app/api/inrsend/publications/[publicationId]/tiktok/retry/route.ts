@@ -187,7 +187,6 @@ function buildRetryResult({
   mediaUrls: string[];
   settings: TiktokPublicationSettings;
 }) {
-  const submittedAt = new Date().toISOString();
   const pendingMessage = result.status?.statusFetchFailed
     ? `TikTok a accepté le nouvel envoi, mais le statut n'est pas lisible pour le moment : ${result.status.failReason || "vérification temporairement indisponible"}.`
     : result.status?.pending
@@ -213,11 +212,8 @@ function buildRetryResult({
         ? "En traitement"
         : "Publié",
     tiktok_status_message: pendingMessage,
-    tiktok_status_checked_at: submittedAt,
-    tiktok_submitted_at: submittedAt,
-    tiktok_status_progress_at: submittedAt,
-    tiktok_status_check_count: 1,
-    tiktok_processing_duration_seconds: 0,
+    tiktok_status_checked_at: new Date().toISOString(),
+    tiktok_submitted_at: new Date().toISOString(),
     tiktok_status_fetch_failed: Boolean(result.status?.statusFetchFailed),
     tiktok_uploaded_bytes: result.status?.uploadedBytes ?? null,
     tiktok_downloaded_bytes: result.status?.downloadedBytes ?? null,
@@ -237,11 +233,6 @@ function buildRetryResult({
       publicationSettings: settings,
       status: result.status || null,
       share_url: shareUrl || null,
-      submitted_at: submittedAt,
-      status_progress_at: submittedAt,
-      status_checked_at: submittedAt,
-      status_check_count: 1,
-      processing_duration_seconds: 0,
       raw: result.raw,
     },
   } satisfies JsonRecord;

@@ -26,10 +26,8 @@ test("final audit only uses a complete TikTok storage-path set", async () => {
 
   assert.match(route, /expectedTiktokImageCount/);
   assert.match(route, /hasCompleteTikTokPaths/);
-  assert.match(route, /const preferredTiktokStoragePaths/);
-  assert.match(route, /const fallbackTiktokStoragePaths/);
-  assert.match(route, /hasCompleteTikTokPaths\(preferredTiktokStoragePaths\)/);
-  assert.match(route, /hasCompleteTikTokPaths\(fallbackTiktokStoragePaths\)/);
+  assert.match(route, /hasCompleteTikTokPaths\(socialStoragePaths\)/);
+  assert.match(route, /hasCompleteTikTokPaths\(sourceStoragePaths\)/);
   assert.match(route, /photo_locked/);
 });
 

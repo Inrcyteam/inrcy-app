@@ -35,8 +35,7 @@ type PublishVideoAdapterPanelProps = {
   videoPreviewVariantsPreparing?: boolean;
   onApplyVideoFormatForChannel?: (channel: ChannelKey) => void;
   onApplyVideoFormatToAllChannels?: (channel: ChannelKey) => void;
-  onRemoveMediaFromChannel: (channel: ChannelKey) => void;
-  onDeleteVideo: () => void;
+  onRemoveChannel: (channel: ChannelKey) => void;
 };
 
 export default function PublishVideoAdapterPanel({
@@ -56,8 +55,7 @@ export default function PublishVideoAdapterPanel({
   videoPreviewVariantsPreparing = false,
   onApplyVideoFormatForChannel,
   onApplyVideoFormatToAllChannels,
-  onRemoveMediaFromChannel,
-  onDeleteVideo,
+  onRemoveChannel,
 }: PublishVideoAdapterPanelProps) {
   const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
 
@@ -102,8 +100,7 @@ export default function PublishVideoAdapterPanel({
           ? () => onApplyVideoFormatToAllChannels(activeChannel)
           : undefined
       }
-      onRemoveFromChannel={() => onRemoveMediaFromChannel(activeChannel)}
-      onDeleteVideo={onDeleteVideo}
+      onRemoveFromChannel={() => onRemoveChannel(activeChannel)}
       buttonClassName={styles.secondaryBtn}
     />
   );

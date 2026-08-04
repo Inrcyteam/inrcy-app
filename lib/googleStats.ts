@@ -49,33 +49,6 @@ export async function refreshGoogleAccessToken(refreshToken: string) {
   return { accessToken, expiresAtIso };
 }
 
-function isGoogleRefreshAuthenticationError(error: unknown) {
-  const message = String(error instanceof Error ? error.message : error || "").toLowerCase();
-  return /invalid_grant|invalid_client|unauthorized_client|invalid refresh token|token has been expired|token has been revoked|refresh token.*(expired|revoked)|revoked.*refresh token/.test(
-    message,
-  );
-}
-
-async function markGoogleIntegrationDisconnected(row: GoogleTokenRow, userId: string) {
-  const { error } = await supabaseAdmin
-    .from("integrations")
-    .update({
-      status: "disconnected",
-      access_token_enc: null,
-      expires_at: null,
-    })
-    .eq("id", row.id)
-    .eq("user_id", userId);
-
-  if (error) {
-    console.error("[googleStats] Unable to mark revoked Google integration disconnected", {
-      integrationId: row.id,
-      userId,
-      error: error.message,
-    });
-  }
-}
-
 export function isExpired(expiresAtIso: string | null) {
   if (!expiresAtIso) return true;
   const t = new Date(expiresAtIso).getTime();
@@ -176,19 +149,7 @@ export async function getGoogleTokenFor(
   let expiresAt = row.expires_at;
 
   if (!accessToken || isExpired(expiresAt)) {
-    let refreshed: Awaited<ReturnType<typeof refreshGoogleAccessToken>>;
-    try {
-      refreshed = await refreshGoogleAccessToken(refreshToken);
-    } catch (error) {
-      // A revoked/expired refresh token is a reconnect condition, not an
-      // anonymous-session error. Persist that state so publication can return
-      // a clear reconnect action instead of retrying a dead token forever.
-      if (isGoogleRefreshAuthenticationError(error)) {
-        await markGoogleIntegrationDisconnected(row, effectiveUserId);
-        return null;
-      }
-      throw error;
-    }
+    const refreshed = await refreshGoogleAccessToken(refreshToken);
     accessToken = refreshed.accessToken;
     expiresAt = refreshed.expiresAtIso;
 
@@ -485,29 +446,13 @@ export async function getGoogleTokenForAnyGoogle(
   let expiresAt = row.expires_at;
 
   if (!accessToken || isExpired(expiresAt)) {
-    let refreshed: Awaited<ReturnType<typeof refreshGoogleAccessToken>>;
-    try {
-      refreshed = await refreshGoogleAccessToken(refreshToken);
-    } catch (error) {
-      // A revoked/expired refresh token is a reconnect condition. Persist it
-      // as disconnected so the caller can ask the user to reconnect once,
-      // instead of returning the same failure on every publication retry.
-      if (isGoogleRefreshAuthenticationError(error)) {
-        await markGoogleIntegrationDisconnected(row, userId);
-        return null;
-      }
-      throw error;
-    }
+    const refreshed = await refreshGoogleAccessToken(refreshToken);
     accessToken = refreshed.accessToken;
     expiresAt = refreshed.expiresAtIso;
 
     const { error: tokenUpdateError } = await supabaseAdmin
       .from("integrations")
-      .update({
-        access_token_enc: accessToken ? encryptToken(accessToken) : null,
-        expires_at: expiresAt,
-        status: "connected",
-      })
+      .update({ access_token_enc: accessToken ? encryptToken(accessToken) : null, expires_at: expiresAt })
       .eq("id", row.id)
       .eq("user_id", userId);
 

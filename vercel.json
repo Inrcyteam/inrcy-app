@@ -55,10 +55,6 @@
     {
       "path": "/api/cron/booster-publications",
       "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/cron/tiktok-publications",
-      "schedule": "*/1 * * * *"
     }
   ],
   "functions": {

@@ -83,28 +83,6 @@ import {
   type MailboxDetailsModalProps,
 } from "../_lib/mailboxDetails.foundations";
 
-function formatTiktokBytes(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "";
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} Ko`;
-  return `${Math.round(bytes)} octets`;
-}
-
-function formatTiktokDuration(seconds: number) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "";
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return minutes
-    ? `${minutes} min ${String(remainingSeconds).padStart(2, "0")} s`
-    : `${remainingSeconds} s`;
-}
-
-function formatTiktokDate(value: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString() : "";
-}
-
 export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const {
     open,
@@ -697,10 +675,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                     activePublicationResult,
                     activePublicationEntry?.key || "",
                   );
-                  const activePublicationWarning = isWarningChannelResult(
-                    activePublicationResult,
-                    activePublicationEntry?.key || "",
-                  );
+                  const activePublicationWarning = isWarningChannelResult(activePublicationResult);
                   const activePublicationWarningMessage = getWarningChannelMessage(
                     activePublicationResult,
                     activePublicationEntry?.key || "",
@@ -1090,10 +1065,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     const entryResult = detailsItem.source === "app_events" && payload?.results && typeof payload.results === "object"
                                       ? ((payload.results as any)[entry.key] || null)
                                       : null;
-                                    const entryIndicator = getChannelIndicatorMeta(
-                                      entryResult,
-                                      entry.key,
-                                    );
+                                    const entryIndicator = getChannelIndicatorMeta(entryResult);
                                     return (
                                       <button
                                         key={`${entry.key}-${idx}`}
@@ -1284,30 +1256,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 ) : null}
                                 {tiktokStatusMeta?.uploadedBytes ? (
                                   <span style={{ opacity: 0.72 }}>
-                                    Reçu par TikTok : {formatTiktokBytes(tiktokStatusMeta.uploadedBytes)}
-                                  </span>
-                                ) : null}
-                                {tiktokStatusMeta?.downloadedBytes ? (
-                                  <span style={{ opacity: 0.72 }}>
-                                    Téléchargé : {formatTiktokBytes(tiktokStatusMeta.downloadedBytes)}
-                                  </span>
-                                ) : null}
-                                {tiktokStatusMeta?.checkCount ? (
-                                  <span style={{ opacity: 0.72 }}>
-                                    Vérifications : {tiktokStatusMeta.checkCount}
-                                  </span>
-                                ) : null}
-                                {tiktokStatusMeta?.processingDurationSeconds ? (
-                                  <span style={{ opacity: 0.72 }}>
-                                    Durée : {formatTiktokDuration(tiktokStatusMeta.processingDurationSeconds)}
+                                    Reçu par TikTok : {(tiktokStatusMeta.uploadedBytes / (1024 * 1024)).toFixed(1)} Mo
                                   </span>
                                 ) : null}
                               </div>
-                              {tiktokStatusMeta?.checkedAt ? (
-                                <div style={{ marginTop: 5, opacity: 0.72 }}>
-                                  Dernier contrôle : {formatTiktokDate(tiktokStatusMeta.checkedAt)}
-                                </div>
-                              ) : null}
                               <div style={{ marginTop: 6, color: tiktokStatusMeta?.failed ? "#fecaca" : tiktokStatusMeta?.cancelled ? "#e9d5ff" : tiktokStatusMeta?.pending ? "#fde68a" : "rgba(225,245,255,0.88)" }}>
                                 {tiktokStatusMeta?.message ||
                                   (tiktokStatusMeta?.cancelled
@@ -1319,11 +1271,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                               {tiktokStatusMeta?.failReason ? (
                                 <div style={{ marginTop: 5, opacity: 0.8 }}>
                                   Motif technique TikTok : <code>{tiktokStatusMeta.failReason}</code>
-                                </div>
-                              ) : null}
-                              {tiktokStatusMeta?.providerErrorCode ? (
-                                <div style={{ marginTop: 5, opacity: 0.8 }}>
-                                  Code TikTok : <code>{tiktokStatusMeta.providerErrorCode}</code>
                                 </div>
                               ) : null}
                             </div>
@@ -1876,7 +1823,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     onAdaptationModeChange={detailsEditMode ? (mode) => { markPublicationEditDirty(); setPublicationVideoAdaptationModeForChannel(activePublicationEntry.key, mode); } : undefined}
                                     onApplyFormat={detailsEditMode ? async () => { markPublicationEditDirty(); await applyPublicationVideoFormatForChannel(activePublicationEntry.key); } : undefined}
                                     onDeleteVideo={detailsEditMode ? () => { markPublicationEditDirty(); removePublicationVideo(activePublicationEntry.key); } : undefined}
-                                    deleteVideoLabel="Retirer la vidéo de ce canal"
                                     onPickVideoClick={detailsEditMode ? () => document.getElementById(publicationVideoInputId)?.click() : undefined}
                                     showApplyAll={false}
                                     buttonClassName={styles.btnGhost}
