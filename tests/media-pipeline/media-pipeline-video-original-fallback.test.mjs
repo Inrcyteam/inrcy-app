@@ -15,6 +15,7 @@ test("normal publication reuses a prepared variant and limits original fallback 
   ]);
   const publish = `${publishRoute}\n${channelContext}`;
 
+  assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.match(modal, /generateMissingVideoVariants:\s*false,[\s\S]{0,100}allowOriginalVideoFallback:\s*true/);
   assert.match(modal, /generateMissingVideoVariants:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/);
   assert.match(

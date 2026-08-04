@@ -1193,7 +1193,7 @@ export function isFailedChannelResult(result: any): boolean {
   return status === "failed" || status === "error";
 }
 
-export function isWarningChannelResult(result: any): boolean {
+export function isWarningChannelResult(result: any, channel = ""): boolean {
   if (!result || typeof result !== "object") return false;
   if (
     isFailedChannelResult(result) ||
@@ -1202,12 +1202,42 @@ export function isWarningChannelResult(result: any): boolean {
   ) {
     return false;
   }
+  const normalizedChannel = normalizeChannelKey(channel);
+  const tiktokStatus = String(
+    result?.tiktok_status ||
+      result?.status ||
+      result?.diagnostics?.status?.status ||
+      "",
+  ).toUpperCase();
+  const tiktokTerminal = [
+    "PUBLISH_COMPLETE",
+    "DONE",
+    "SUCCESS",
+    "FAILED",
+    "PUBLISH_FAILED",
+    "ERROR",
+    "PROCESSING_TIMEOUT",
+    "CANCELLED",
+    "CANCELED",
+  ].includes(tiktokStatus);
+  if (
+    normalizedChannel === "tiktok" &&
+    !tiktokTerminal &&
+    Boolean(
+      tiktokStatus ||
+        result?.external_id ||
+        result?.publish_id ||
+        result?.diagnostics?.publish_id,
+    )
+  ) {
+    return false;
+  }
   const warning = String(result.warning || result.code || "").trim();
   return Boolean(warning || result.warning_message || result.warningMessage);
 }
 
 export function getWarningChannelMessage(result: any, channel = ""): string {
-  if (!isWarningChannelResult(result)) return "";
+  if (!isWarningChannelResult(result, channel)) return "";
   const message =
     result?.warning_message ??
     result?.warningMessage ??
@@ -1243,7 +1273,7 @@ export function getChannelIndicatorMeta(result: any, channel = ""): { kind: "fai
       className: styles.channelFailedDot,
     };
   }
-  if (isWarningChannelResult(result)) {
+  if (isWarningChannelResult(result, channel)) {
     return {
       kind: "warning",
       title: getWarningChannelMessage(result, channel) || "Publication publiée avec avertissement",

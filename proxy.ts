@@ -414,6 +414,17 @@ export async function proxy(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-request-id", requestId);
 
+  // TikTok downloads photos anonymously from this signed public endpoint.
+  // Do not run session refresh, subscription checks or rate limiting on the
+  // media transfer itself: any 401/403/429 or rewritten cache header leaves
+  // TikTok indefinitely in PROCESSING_DOWNLOAD. The route still validates
+  // the HMAC signature and expiry before returning a byte.
+  if (pathname === "/api/media/tiktok") {
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set("x-request-id", requestId);
+    return response;
+  }
+
   const { supabase, getResponse: getSupabaseResponse } = createProxySupabaseClient(
     req,
     requestHeaders,

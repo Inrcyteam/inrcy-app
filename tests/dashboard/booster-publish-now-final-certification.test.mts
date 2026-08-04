@@ -109,7 +109,7 @@ const branchDefinitions = [
       "getTiktokAccessToken",
       "tiktokDirectPostVideoFileUpload",
       "tiktokDirectPostPhotos",
-      "loadStorageVideoForTikTok",
+      "loadFirstAvailableTikTokVideo",
       "setDelivery",
     ],
   },

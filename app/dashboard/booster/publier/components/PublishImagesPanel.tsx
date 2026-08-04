@@ -86,7 +86,7 @@ type PublishImagesPanelProps = {
   publicationMediaType: PublicationMediaType;
   channelMediaModes: Partial<Record<ChannelKey, ChannelMediaMode>>;
   setChannelMediaMode: (channel: ChannelKey, mode: ChannelMediaMode) => void;
-  onRemoveChannel: (channel: ChannelKey) => void;
+  onRemoveMediaFromChannel: (channel: ChannelKey) => void;
   videoFormatByChannel: Partial<Record<ChannelKey, VideoFormat>>;
   setVideoFormatForChannel: (channel: ChannelKey, format: VideoFormat) => void;
   videoAdaptationModeByChannel: Partial<Record<ChannelKey, VideoAdaptationMode>>;
@@ -101,6 +101,7 @@ type PublishImagesPanelProps = {
   videoPreviewVariantsPreparing?: boolean;
   onApplyVideoFormatForChannel?: (channel: ChannelKey) => void;
   onApplyVideoFormatToAllChannels?: (channel: ChannelKey) => void;
+  removeVideo: () => void;
   imgError: string;
   selectedChannels: ChannelKey[];
   activeImageChannel: ChannelKey;
@@ -132,7 +133,7 @@ export default function PublishImagesPanel({
   publicationMediaType: _publicationMediaType,
   channelMediaModes,
   setChannelMediaMode,
-  onRemoveChannel,
+  onRemoveMediaFromChannel,
   videoFormatByChannel,
   setVideoFormatForChannel,
   videoAdaptationModeByChannel,
@@ -147,6 +148,7 @@ export default function PublishImagesPanel({
   videoPreviewVariantsPreparing = false,
   onApplyVideoFormatForChannel,
   onApplyVideoFormatToAllChannels,
+  removeVideo,
   imgError,
   selectedChannels,
   activeImageChannel,
@@ -188,7 +190,10 @@ export default function PublishImagesPanel({
 
     if (explicit === "video" && hasVideoMedia) return "video";
     if (explicit === "images" && hasImages && channelSupportsImages(channel)) return "images";
-    if (explicit === "none" && channelSupportsTextOnly(channel)) return "none";
+    // Keep a selected channel visible after its media is removed. Required
+    // media channels stay active and are blocked only until a replacement is
+    // chosen.
+    if (explicit === "none") return "none";
     if (hasImages && channelSupportsImages(channel)) return "images";
     if (hasVideoMedia) return "video";
     return "none";
@@ -654,7 +659,8 @@ export default function PublishImagesPanel({
               videoPreviewVariantsPreparing={videoPreviewVariantsPreparing}
               onApplyVideoFormatForChannel={onApplyVideoFormatForChannel}
               onApplyVideoFormatToAllChannels={onApplyVideoFormatToAllChannels}
-              onRemoveChannel={onRemoveChannel}
+              onRemoveMediaFromChannel={onRemoveMediaFromChannel}
+              onDeleteVideo={removeVideo}
             />
           ) : !images.length ? (
             <div style={{ fontSize: 13, opacity: 0.75 }}>

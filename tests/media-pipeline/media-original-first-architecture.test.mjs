@@ -9,7 +9,7 @@ test("channel variants use the new original-first cache generation", async () =>
     read("lib/boosterImageServerPreparation.ts"),
     read("lib/boosterVideoVariantServer.ts"),
   ]);
-  assert.match(images, /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7/);
+  assert.match(images, /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/);
   assert.match(images, /initialDecision\.mode === "original"[\s\S]{0,160}originalReferenceTransform/);
   assert.match(images, /getBoosterImageSafetyBackgroundMode/);
   assert.doesNotMatch(images, /\.blur\(/);

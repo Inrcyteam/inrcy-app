@@ -362,7 +362,11 @@ export default function PublishContentEditorPanel({
                     value={getDisplayPost(activeCard).title}
                     onKeyDown={keepEditorTypingInsideField}
                     onChange={(e) =>
-                      updatePost(activeCard, { title: e.target.value })
+                      updatePost(
+                        activeCard,
+                        { title: e.target.value },
+                        { sanitize: false },
+                      )
                     }
                     style={{
                       ...inputStyle,
@@ -382,7 +386,11 @@ export default function PublishContentEditorPanel({
                     value={getDisplayPost(activeCard).title}
                     onKeyDown={keepEditorTypingInsideField}
                     onChange={(e) =>
-                      updatePost(activeCard, { title: e.target.value })
+                      updatePost(
+                        activeCard,
+                        { title: e.target.value },
+                        { sanitize: false },
+                      )
                     }
                     style={inputStyle}
                     placeholder="Titre"

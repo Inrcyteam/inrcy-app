@@ -52,7 +52,7 @@ test("les canaux sociaux opaques restent en JPEG léger", () => {
 
 test("le cache image est invalidé et le rendu original choisit PNG ou JPEG", () => {
   const source = read("lib/boosterImageServerPreparation.ts");
-  assert.match(source, /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7/);
+  assert.match(source, /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/);
   assert.match(source, /shouldPreserveBoosterOriginalAlpha/);
   assert.match(source, /\.png\(\{ compressionLevel: 9/);
   assert.match(source, /\.flatten\(\{ background: "#ffffff" \}\)/);

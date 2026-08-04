@@ -116,6 +116,10 @@ const optionalButRecommended = [
   "MICROSOFT_CLIENT_ID",
   "MICROSOFT_CLIENT_SECRET",
   "MICROSOFT_REDIRECT_URI",
+
+  // TikTok media pull endpoint (must stay on the verified public origin)
+  "TIKTOK_MEDIA_BASE_URL",
+  "TIKTOK_MEDIA_SIGNING_SECRET",
 ];
 
 function hasValue(key) {
