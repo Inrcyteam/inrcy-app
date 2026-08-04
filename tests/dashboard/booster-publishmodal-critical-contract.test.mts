@@ -68,15 +68,17 @@ test("strict cutover sends workspace references instead of browser media binarie
   assert.match(publishRoute, /strictMediaCutover/);
 });
 
-test("legacy uploads remain isolated behind the cutover-off branch", () => {
+test("legacy uploads stay disabled unless a mixed publication needs the media type absent from the workspace", () => {
   assert.match(
     publishModal,
-    /hasAnyImagePublish\s*&&\s*!mediaPipelineCutoverEnabled/,
+    /shouldBuildImageFallbackPayload\s*=\s*hasAnyImagePublish\s*&&\s*!workspaceCarriesImagesForPublish/,
   );
   assert.match(
     publishModal,
-    /hasAnyVideoPublish\s*&&\s*!mediaPipelineCutoverEnabled/,
+    /shouldBuildVideoFallbackPayload\s*=\s*hasAnyVideoPublish\s*&&\s*!workspaceCarriesVideoForPublish/,
   );
+  assert.match(publishModal, /if \(shouldBuildImageFallbackPayload\)/);
+  assert.match(publishModal, /if \(shouldBuildVideoFallbackPayload\)/);
   assert.match(publishModal, /uploadPublicationVideoForPublish\(\)/);
   assert.match(publishModal, /uploadOriginalImagesForPublication\(/);
 });

@@ -44,7 +44,8 @@ test("Publier recrée images et vidéos côté serveur depuis le workspace", () 
   const videoServer = read("lib/boosterVideoVariantServer.ts");
   assert.match(publish, /prepareBoosterImagesByChannelOnServer\(/);
   assert.match(publish, /prepareBoosterVideoVariantsOnServer\(/);
-  assert.match(publish, /hasAnyVideoChannel && !strictMediaCutover/);
+  assert.match(publish, /const legacyVideoResult = hasAnyVideoChannel/);
+  assert.match(publish, /hasVideoFallbackPayload/);
   assert.match(publish, /code:\s*"media_workspace_required"/);
   assert.match(publish, /workspace_media_mismatch/);
   assert.match(publish, /workspace_image_preparation_failed/);
@@ -69,8 +70,10 @@ test("Booster n'envoie plus de médias historiques quand le cutover client est a
     /useWorkspaceMediaForAI:[\s\S]*shouldPrepareMediaForAi/,
   );
   assert.match(modal, /imagesForAI:\s*mediaPipelineCutoverEnabled \? \[\] : imagesForAI/);
-  assert.match(modal, /hasAnyImagePublish && !mediaPipelineCutoverEnabled/);
-  assert.match(modal, /hasAnyVideoPublish && !mediaPipelineCutoverEnabled/);
+  assert.match(modal, /shouldBuildImageFallbackPayload/);
+  assert.match(modal, /shouldBuildVideoFallbackPayload/);
+  assert.match(modal, /workspaceCarriesImagesForPublish/);
+  assert.match(modal, /workspaceCarriesVideoForPublish/);
   assert.match(modal, /channelSettings:\s*buildChannelImageSettingsPayload\(\)/);
   assert.match(controller, /buildChannelImageSettingsPayload/);
   assert.doesNotMatch(controller, /buildChannelImageSettingsPayload[\s\S]{0,250}uploadPreparedImages/);

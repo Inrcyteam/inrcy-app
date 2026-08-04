@@ -236,7 +236,6 @@ export async function POST(request: Request) {
         if (!variant?.publicUrl || !variant?.storagePath) {
           if (
             allowOriginalVideoFallback &&
-            generateMissingVideoVariants &&
             allowsOriginalVideoFallback(request.channel) &&
             sourceValidation.ok
           ) {
@@ -272,7 +271,6 @@ export async function POST(request: Request) {
         if (validation.ok) return [];
         if (
           allowOriginalVideoFallback &&
-          generateMissingVideoVariants &&
           allowsOriginalVideoFallback(request.channel) &&
           sourceValidation.ok
         ) {

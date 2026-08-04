@@ -429,6 +429,38 @@ async function publishNowHandler(req: Request) {
     const hasAnyVideoChannel = selected.some(
       (channel) => mediaModeByChannel[channel] === "video",
     );
+    const rawImagesByChannelPayload = asRecord(body.imagesByChannel);
+    const rawBaseImagesPayload: unknown[] = Array.isArray(body.images)
+      ? body.images
+      : [];
+    const hasUsableImagePayload = (value: unknown) => {
+      const image = asRecord(value);
+      return Boolean(
+        image.storagePath ||
+          image.publicUrl ||
+          image.renderedUrl ||
+          image.originalPublicUrl ||
+          image.originalUrl ||
+          image.url ||
+          image.dataUrl,
+      );
+    };
+    const hasImageFallbackForChannel = (channel: ChannelKey) => {
+      const channelImages = rawImagesByChannelPayload[channel];
+      return (
+        (Array.isArray(channelImages) &&
+          channelImages.some((image: unknown) => hasUsableImagePayload(image))) ||
+        rawBaseImagesPayload.some((image: unknown) =>
+          hasUsableImagePayload(image),
+        )
+      );
+    };
+    const rawVideoFallbackPayload = asRecord(body.video);
+    const hasVideoFallbackPayload = Boolean(
+      rawVideoFallbackPayload.storagePath ||
+        rawVideoFallbackPayload.publicUrl ||
+        rawVideoFallbackPayload.url,
+    );
 
     if (strictMediaCutover) {
       selected.forEach((channel) => {
@@ -440,6 +472,12 @@ async function publishNowHandler(req: Request) {
           return;
         }
         if (workspaceConsumption?.mediaType === expectedMode) return;
+        if (expectedMode === "images" && hasImageFallbackForChannel(channel)) {
+          return;
+        }
+        if (expectedMode === "video" && hasVideoFallbackPayload) {
+          return;
+        }
         setPreflightFailure(channel, {
           code: "workspace_media_mismatch",
           error:
@@ -500,7 +538,9 @@ async function publishNowHandler(req: Request) {
       });
     }
 
-    const legacyVideoResult = hasAnyVideoChannel && !strictMediaCutover
+    // Même en cutover strict, le payload vidéo reste un secours légitime
+    // lorsqu'un workspace actif contient les images d'une publication mixte.
+    const legacyVideoResult = hasAnyVideoChannel
       ? await normalizeVideoPayload(body.video)
       : {
           video: null as PersistedVideoAttachment | null,

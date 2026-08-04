@@ -1357,6 +1357,30 @@ export default function PublishModal({
         throw new Error("Impossible de préparer l’espace média.");
       }
 
+      if (expectedMediaType === "video" && purpose !== "generate") {
+        const initialSnapshot = await loadMediaPublicationWorkspace({
+          workspaceId: activeWorkspaceId,
+          includeUrls: false,
+        });
+        const initialVideo = (initialSnapshot.media || [])
+          .filter((item) => item.mediaType === "video")
+          .sort((a, b) => a.position - b.position)[0];
+        const directVideoSource =
+          initialVideo?.uploadStatus === "uploaded" &&
+          Boolean(videoFile) &&
+          canPublishVideoSourceDirectly({
+            name: videoFile?.name,
+            type: videoFile?.type,
+            storagePath: initialVideo?.storagePath,
+            sizeBytes: initialVideo?.sizeBytes || videoFile?.size,
+            maxBytes: BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
+          });
+        if (directVideoSource) {
+          onProgress?.(42, "Vidéo originale compatible · prête à publier");
+          return activeWorkspaceId;
+        }
+      }
+
       onProgress?.(
         25,
         purpose === "generate"
@@ -3908,6 +3932,22 @@ export default function PublishModal({
     const hasAnyImagePublish = publishableChannels.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
+    // Le workspace persistant contient le dernier type de média activé.
+    // Une publication peut toutefois utiliser des images sur certains canaux
+    // et une vidéo sur d'autres. Dans ce cas, le type absent du workspace est
+    // envoyé via le payload de secours déjà stocké, sans bloquer les canaux.
+    const workspaceCarriesImagesForPublish =
+      mediaPipelineCutoverEnabled &&
+      publicationMediaType === "images" &&
+      images.length > 0;
+    const workspaceCarriesVideoForPublish =
+      mediaPipelineCutoverEnabled &&
+      publicationMediaType === "video" &&
+      Boolean(videoFile);
+    const shouldBuildImageFallbackPayload =
+      hasAnyImagePublish && !workspaceCarriesImagesForPublish;
+    const shouldBuildVideoFallbackPayload =
+      hasAnyVideoPublish && !workspaceCarriesVideoForPublish;
     const publishVideoSettingsByChannel = Object.fromEntries(
       publishableChannels.map((channel) => [
         channel,
@@ -4007,7 +4047,7 @@ export default function PublishModal({
           setPublishProgressLabel(label || "Vérification des médias...");
         });
 
-      if (hasAnyVideoPublish && mediaPipelineCutoverEnabled) {
+      if (hasAnyVideoPublish && workspaceCarriesVideoForPublish) {
         const videoChannels = publishableChannels.filter(
           (channel) => publishMediaModeByChannel[channel] === "video",
         );
@@ -4039,7 +4079,7 @@ export default function PublishModal({
             channelImages: emptyChannelImages,
             channelSettings: emptyChannelSettings,
           }
-        : mediaPipelineCutoverEnabled
+        : workspaceCarriesImagesForPublish
           ? {
               channelImages: emptyChannelImages,
               channelSettings: buildChannelImageSettingsPayload(),
@@ -4060,7 +4100,7 @@ export default function PublishModal({
           });
 
       const originalImageByKey: Record<string, ImagePayload> =
-        !hasAnyImagePublish || mediaPipelineCutoverEnabled
+        !shouldBuildImageFallbackPayload
           ? {}
           : await (async () => {
               setPublishProgress((prev) => Math.max(prev, 35));
@@ -4095,7 +4135,7 @@ export default function PublishModal({
             0,
           );
       let uploadedCount = 0;
-      if (hasAnyImagePublish && !mediaPipelineCutoverEnabled) {
+      if (shouldBuildImageFallbackPayload) {
         for (const channel of publishableChannels) {
           if (publishMediaModeByChannel[channel] !== "images") continue;
           const uploadedImages = await uploadPreparedImages(
@@ -4152,7 +4192,7 @@ export default function PublishModal({
       }
 
       let publicationVideo: any = null;
-      if (hasAnyVideoPublish && !mediaPipelineCutoverEnabled) {
+      if (shouldBuildVideoFallbackPayload) {
         setPublishProgress((prev) => Math.max(prev, 35));
         setPublishProgressLabel("Upload de la vidéo...");
         publicationVideo = await uploadPublicationVideoForPublish();
@@ -4662,6 +4702,18 @@ export default function PublishModal({
     const hasAnyImagePublish = channelsToSchedule.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
+    const workspaceCarriesImagesForSchedule =
+      mediaPipelineCutoverEnabled &&
+      publicationMediaType === "images" &&
+      images.length > 0;
+    const workspaceCarriesVideoForSchedule =
+      mediaPipelineCutoverEnabled &&
+      publicationMediaType === "video" &&
+      Boolean(videoFile);
+    const shouldBuildScheduleImageFallback =
+      hasAnyImagePublish && !workspaceCarriesImagesForSchedule;
+    const shouldBuildScheduleVideoFallback =
+      hasAnyVideoPublish && !workspaceCarriesVideoForSchedule;
     const scheduleVideoSettingsByChannel = Object.fromEntries(
       channelsToSchedule.map((channel) => [
         channel,
@@ -4700,7 +4752,7 @@ export default function PublishModal({
           setPublishProgressLabel(label || "Vérification des médias...");
         });
 
-      if (hasAnyVideoPublish && mediaPipelineCutoverEnabled) {
+      if (hasAnyVideoPublish && workspaceCarriesVideoForSchedule) {
         const videoChannels = channelsToSchedule.filter(
           (channel) => publishMediaModeByChannel[channel] === "video",
         );
@@ -4732,7 +4784,7 @@ export default function PublishModal({
             channelImages: emptyChannelImages,
             channelSettings: emptyChannelSettings,
           }
-        : mediaPipelineCutoverEnabled
+        : workspaceCarriesImagesForSchedule
           ? {
               channelImages: emptyChannelImages,
               channelSettings: buildChannelImageSettingsPayload(),
@@ -4753,7 +4805,7 @@ export default function PublishModal({
           });
 
       const originalImageByKey: Record<string, ImagePayload> =
-        !hasAnyImagePublish || mediaPipelineCutoverEnabled
+        !shouldBuildScheduleImageFallback
           ? {}
           : await (async () => {
               setPublishProgress((current) => Math.max(current, 32));
@@ -4773,7 +4825,7 @@ export default function PublishModal({
             })();
 
       const uploadedChannelImages = {} as ChannelImagePayload;
-      if (hasAnyImagePublish && !mediaPipelineCutoverEnabled) {
+      if (shouldBuildScheduleImageFallback) {
         setPublishProgress((current) => Math.max(current, 48));
         setPublishProgressLabel("Upload des images adaptées...");
         let uploadedCount = 0;
@@ -4833,7 +4885,7 @@ export default function PublishModal({
       }
 
       let publicationVideo: any = null;
-      if (hasAnyVideoPublish && !mediaPipelineCutoverEnabled) {
+      if (shouldBuildScheduleVideoFallback) {
         setPublishProgress(48);
         setPublishProgressLabel("Upload de la vidéo...");
         publicationVideo = await uploadPublicationVideoForPublish();
