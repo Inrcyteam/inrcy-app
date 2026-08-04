@@ -100,7 +100,7 @@ test("TikTok applique la limite réelle du compte et bloque si elle ne peut pas 
   }
 });
 
-test("YouTube choisit automatiquement Short jusqu'à 3 minutes et vidéo ensuite", () => {
+test("YouTube choisit le type par durée sans imposer une conversion 9:16", () => {
   assert.equal(getYoutubePublicationTypeForDuration(180), "short");
   assert.equal(getYoutubePublicationTypeForDuration(181), "video");
   assert.deepEqual(
@@ -109,7 +109,7 @@ test("YouTube choisit automatiquement Short jusqu'à 3 minutes et vidéo ensuite
       settings: { format: "original", adaptationMode: "cover_crop" },
       durationSeconds: 180,
     }),
-    { format: "9_16", adaptationMode: "safe_frame" },
+    { format: "original", adaptationMode: "cover_crop" },
   );
   assert.deepEqual(
     getAutomaticVideoSettingsForPublication({

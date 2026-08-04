@@ -12,6 +12,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
+import { listAccessibleFacebookPagesDetailed } from "@/lib/metaBusinessAssets";
 type TokenResponse = {
   access_token?: string;
   expires_in?: number;
@@ -49,7 +50,9 @@ export async function GET(req: Request) {
     const rawReturnTo = safeInternalPath(st.returnTo || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
     const returnToUrl = new URL(rawReturnTo, siteUrl);
     const loginMode = returnToUrl.searchParams.get("ig_mode") === "business" ? "business" : "standard";
+    const repairMode = returnToUrl.searchParams.get("ig_repair") === "1";
     returnToUrl.searchParams.delete("ig_mode");
+    returnToUrl.searchParams.delete("ig_repair");
     const returnTo = `${returnToUrl.pathname}${returnToUrl.search}`;
     oauthCallbackEvent(req, { provider: "instagram", outcome: "started", return_to: returnTo });
     const clearStateCookie = (res: NextResponse) => {
@@ -152,39 +155,85 @@ export async function GET(req: Request) {
 const encryptedToken = encryptToken(longUserToken);
 const { data: existingIntegration } = await supabaseAdmin
   .from("integrations")
-  .select("meta")
+  .select("status,access_token_enc,refresh_token_enc,expires_at,resource_id,resource_label,meta")
   .eq("user_id", userId)
   .eq("provider", "instagram")
   .eq("source", "instagram")
   .eq("product", "instagram")
   .maybeSingle();
 
-const previousMeta = asRecord(asRecord(existingIntegration)["meta"]);
+const existingRec = asRecord(existingIntegration);
+const previousMeta = asRecord(existingRec["meta"]);
+const previousStatus = asString(existingRec["status"]);
+const previousAccessTokenEnc = asString(existingRec["access_token_enc"]);
+const previousRefreshTokenEnc = asString(existingRec["refresh_token_enc"]);
+const previousExpiresAt = asString(existingRec["expires_at"]);
+const previousResourceId = asString(existingRec["resource_id"]);
+const previousResourceLabel = asString(existingRec["resource_label"]);
+const previousPageId = asString(previousMeta["page_id"]);
+const preserveSelection = repairMode && previousStatus === "connected" && !!previousResourceId;
+
+let refreshedSelectedPage: Awaited<ReturnType<typeof listAccessibleFacebookPagesDetailed>>["pages"][number] | null = null;
+if (preserveSelection) {
+  try {
+    const discovery = await listAccessibleFacebookPagesDetailed(longUserToken);
+    refreshedSelectedPage =
+      discovery.pages.find((page) => page.instagram_business_account?.id === previousResourceId) || null;
+  } catch {
+    // Non destructif : si Meta ne confirme pas la Page pendant la réparation,
+    // on conserve la sélection et le token de Page existants.
+  }
+}
+
+const refreshedPageTokenEnc = refreshedSelectedPage?.access_token
+  ? encryptToken(refreshedSelectedPage.access_token)
+  : null;
+const selectedUsername =
+  refreshedSelectedPage?.instagram_business_account?.username || previousResourceLabel || null;
+const selectedPageId = refreshedSelectedPage?.id || previousPageId || null;
+
+const repairedMeta: Record<string, unknown> = {
+  ...previousMeta,
+  user_access_token_enc: encryptedToken,
+  standard_user_access_token_enc: loginMode === "standard"
+    ? encryptedToken
+    : asString(previousMeta["standard_user_access_token_enc"]) || null,
+  business_user_access_token_enc: loginMode === "business"
+    ? encryptedToken
+    : asString(previousMeta["business_user_access_token_enc"]) || null,
+  last_login_mode: loginMode,
+  ...withCurrentConnectionVersion("channel:instagram", {}),
+};
+
+if (preserveSelection) {
+  if (selectedPageId) repairedMeta.page_id = selectedPageId;
+  if (refreshedSelectedPage?.name) repairedMeta.page_name = refreshedSelectedPage.name;
+  if (refreshedSelectedPage?.source) repairedMeta.page_source = refreshedSelectedPage.source;
+  if (refreshedSelectedPage?.business_name) repairedMeta.business_name = refreshedSelectedPage.business_name;
+  if (refreshedPageTokenEnc) repairedMeta.page_access_token_enc = refreshedPageTokenEnc;
+} else {
+  repairedMeta.picked = "none";
+}
+
 const payload: Record<string, unknown> = {
   user_id: userId,
   provider: "instagram",
   category: "social",
   source: "instagram",
   product: "instagram",
-  status: "account_connected",
-  access_token_enc: encryptedToken,
-  refresh_token_enc: null,
-  expires_at: expiresAt,
-  resource_id: null,
-  resource_label: null,
-  meta: {
-    ...previousMeta,
-    picked: "none",
-    user_access_token_enc: encryptedToken,
-    standard_user_access_token_enc: loginMode === "standard"
-      ? encryptedToken
-      : asString(previousMeta["standard_user_access_token_enc"]) || null,
-    business_user_access_token_enc: loginMode === "business"
-      ? encryptedToken
-      : asString(previousMeta["business_user_access_token_enc"]) || null,
-    last_login_mode: loginMode,
-    ...withCurrentConnectionVersion("channel:instagram", {}),
-  },
+  status: preserveSelection ? "connected" : "account_connected",
+  access_token_enc: preserveSelection
+    ? refreshedPageTokenEnc || previousAccessTokenEnc || encryptedToken
+    : encryptedToken,
+  refresh_token_enc: preserveSelection ? previousRefreshTokenEnc || null : null,
+  expires_at: preserveSelection
+    ? refreshedPageTokenEnc
+      ? null
+      : previousExpiresAt || null
+    : expiresAt,
+  resource_id: preserveSelection ? previousResourceId : null,
+  resource_label: preserveSelection ? selectedUsername : null,
+  meta: repairedMeta,
 };
 
 const { error: upsertErr } = await supabaseAdmin
@@ -200,17 +249,30 @@ if (upsertErr) return fail("db_upsert_failed", "Le service est momentanément in
     try {
       const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = asRecord(asRecord(scRow)["settings"]);
+      const currentInstagram = asRecord(current["instagram"]);
       const merged = {
         ...current,
-        instagram: {
-          ...asRecord(current["instagram"]),
-          accountConnected: true,
-          connected: false,
-          username: null,
-          url: null,
-          pageId: null,
-          igId: null,
-        },
+        instagram: preserveSelection
+          ? {
+              ...currentInstagram,
+              accountConnected: true,
+              connected: true,
+              username: selectedUsername || asString(currentInstagram["username"]) || null,
+              url: selectedUsername
+                ? `https://www.instagram.com/${selectedUsername}/`
+                : asString(currentInstagram["url"]) || null,
+              pageId: selectedPageId || asString(currentInstagram["pageId"]) || null,
+              igId: previousResourceId || asString(currentInstagram["igId"]) || null,
+            }
+          : {
+              ...currentInstagram,
+              accountConnected: true,
+              connected: false,
+              username: null,
+              url: null,
+              pageId: null,
+              igId: null,
+            },
       };
       await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: userId, settings: merged }, { onConflict: "user_id" });
     } catch {}

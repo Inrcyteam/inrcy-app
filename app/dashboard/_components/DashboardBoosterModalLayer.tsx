@@ -235,7 +235,10 @@ export default function DashboardBoosterModalLayer({
         }
         return json;
       } finally {
-        await refreshMetrics();
+        // Metrics are secondary to the publishing acknowledgement. Refresh
+        // them in the background so a slow dashboard request never keeps the
+        // publication progress modal open.
+        void Promise.resolve(refreshMetrics()).catch(() => undefined);
       }
     },
     [refreshMetrics],

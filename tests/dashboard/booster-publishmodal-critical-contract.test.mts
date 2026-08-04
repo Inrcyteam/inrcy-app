@@ -144,7 +144,7 @@ test("manual publication remains idempotent, asynchronous and partially retryabl
   );
   assert.match(
     publishModal,
-    /options\?\.closeOnSuccess !== false && publicationComplete/,
+    /options\?\.closeOnSuccess !== false && publicationAccepted/,
   );
 });
 

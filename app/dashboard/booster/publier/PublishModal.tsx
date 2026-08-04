@@ -16,6 +16,7 @@ import {
   isAutomaticBoosterGenerationRetryEligible,
 } from "@/lib/boosterGenerationErrorPolicy";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { BOOSTER_PUBLISH_RESULT_GRACE_MS } from "@/lib/boosterPublishClient";
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
   getAiEngineOption,
@@ -174,7 +175,6 @@ import {
   type BoosterCreationMode,
 } from "@/lib/boosterCreationMode";
 import {
-  YOUTUBE_SHORT_MAX_DURATION_SECONDS,
   normalizeYoutubeLongUploadsStatus,
   type YoutubeLongUploadsStatus,
 } from "@/lib/videoPublicationPolicy";
@@ -1294,38 +1294,6 @@ export default function PublishModal({
     };
   }, [connected.youtube_shorts]);
 
-  useEffect(() => {
-    const duration = Number(
-      videoDurationSeconds ?? videoSourceMetadata?.duration ?? 0,
-    );
-    if (
-      !videoFile ||
-      !channels.youtube_shorts ||
-      !Number.isFinite(duration) ||
-      duration <= 0 ||
-      duration > YOUTUBE_SHORT_MAX_DURATION_SECONDS
-    ) {
-      return;
-    }
-    setVideoFormatByChannel((current) =>
-      current.youtube_shorts === "9_16"
-        ? current
-        : { ...current, youtube_shorts: "9_16" },
-    );
-    setVideoAdaptationModeByChannel((current) =>
-      current.youtube_shorts === "safe_frame"
-        ? current
-        : { ...current, youtube_shorts: "safe_frame" },
-    );
-  }, [
-    channels.youtube_shorts,
-    setVideoAdaptationModeByChannel,
-    setVideoFormatByChannel,
-    videoDurationSeconds,
-    videoFile,
-    videoSourceMetadata?.duration,
-  ]);
-
   const waitForPersistentWorkspaceReadiness = useCallback(
     async (
       purpose: "generate" | "publish" | "schedule",
@@ -1341,12 +1309,31 @@ export default function PublishModal({
         publicationMediaType === "video" && videoFile ? "video" : "image";
       const mediaLabel = expectedCount > 1 ? "médias" : "média";
 
-      await waitForPersistentWorkspaceIdle((progress, label) => {
+      let uploadVisualProgress = 6;
+      const uploadPulse = window.setInterval(() => {
+        uploadVisualProgress = Math.min(23, uploadVisualProgress + 1);
         onProgress?.(
-          Math.max(6, Math.min(24, Math.round(progress * 0.24))),
-          label || `Upload des ${mediaLabel}...`,
+          uploadVisualProgress,
+          uploadVisualProgress < 12
+            ? "Initialisation des envois sécurisés..."
+            : `Upload des ${mediaLabel} en cours...`,
         );
-      });
+      }, 700);
+      try {
+        await waitForPersistentWorkspaceIdle((progress, label) => {
+          const mappedProgress = Math.max(
+            6,
+            Math.min(24, Math.round(progress * 0.24)),
+          );
+          uploadVisualProgress = Math.max(uploadVisualProgress, mappedProgress);
+          onProgress?.(
+            uploadVisualProgress,
+            label || `Upload des ${mediaLabel}...`,
+          );
+        });
+      } finally {
+        window.clearInterval(uploadPulse);
+      }
 
       const ensuredWorkspace = mediaWorkspaceId
         ? null
@@ -1528,13 +1515,26 @@ export default function PublishModal({
                 String(item.processingStatus || ""),
               ),
             );
+          const elapsedPreparationMs = Date.now() - startedAt;
+          const visualPreparationFloor = Math.min(
+            39,
+            25 + Math.floor(elapsedPreparationMs / 2_500),
+          );
+          const actualPreparationProgress = Math.max(
+            25,
+            Math.min(41, 25 + Math.round(processingProgress * 0.16)),
+          );
           onProgress?.(
-            Math.max(25, Math.min(41, 25 + Math.round(processingProgress * 0.16))),
+            Math.max(visualPreparationFloor, actualPreparationProgress),
             !allProcessed
               ? processingStarting
                 ? "Démarrage du traitement vidéo sur le serveur..."
-                : `Préparation des ${mediaLabel} sur le serveur ${processingProgress}%`
-              : `Finalisation des ${mediaLabel} pour la publication...`,
+                : purpose === "generate"
+                  ? `Analyse des ${mediaLabel} ${processingProgress}%`
+                  : `Contrôle des ${mediaLabel} ${processingProgress}%`
+              : purpose === "generate"
+                ? `Finalisation des ${mediaLabel} pour l’analyse...`
+                : `Finalisation des ${mediaLabel} pour la publication...`,
           );
 
           const now = Date.now();
@@ -1721,6 +1721,30 @@ export default function PublishModal({
     },
   ) {
     if (!mediaPipelineCutoverEnabled || !channels.length) return null;
+
+    const originalSelectedForEveryChannel = channels.every(
+      (channel) => (settingsByChannel[channel]?.format || "original") === "original",
+    );
+    const directOriginalAvailable =
+      Boolean(videoFile) &&
+      canPublishVideoSourceDirectly({
+        name: videoFile?.name,
+        type: videoFile?.type,
+        sizeBytes: videoFile?.size,
+        maxBytes: BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
+      });
+    if (
+      options?.allowOriginalVideoFallback === true &&
+      originalSelectedForEveryChannel &&
+      directOriginalAvailable
+    ) {
+      return {
+        ok: true,
+        status: "ready",
+        source: "original",
+        invalidChannels: [],
+      };
+    }
 
     await waitForPersistentWorkspaceIdle();
     const workspace = await ensurePersistentMediaWorkspace();
@@ -4217,13 +4241,10 @@ export default function PublishModal({
 
       const publishStartedAt = Date.now();
       const publishChannels = [...publishableChannels];
-      const estimatedPublishMs = Math.max(
-        9000,
-        5500 +
-          publishChannels.length * 6500 +
-          (uploadTargets ? 2500 : 0) +
-          (hasAnyVideoPublish ? 2500 : 0),
-      );
+      // The editor waits at most 30 seconds for the ordinary channels. Align
+      // the visual pulse with that grace window so the bar reaches the result
+      // phase progressively instead of looking frozen on large publications.
+      const estimatedPublishMs = BOOSTER_PUBLISH_RESULT_GRACE_MS;
       const getPublishPulseLabel = (ratio: number) => {
         if (ratio < 0.08) return "Création de l’historique iNr’Send...";
         if (ratio < 0.78 && publishChannels.length) {
@@ -4331,6 +4352,15 @@ export default function PublishModal({
         0,
         Number(result?.summary?.failureCount || retryFailedChannels.length),
       );
+      const pendingCount = Math.max(
+        0,
+        Number(
+          result?.summary?.pendingCount ||
+            resultEntries.filter((entry: any) =>
+              ["queued", "processing"].includes(String(entry?.status || "")),
+            ).length,
+        ),
+      );
       const warningCount = Math.max(
         0,
         Number(
@@ -4340,20 +4370,24 @@ export default function PublishModal({
             ).length,
         ),
       );
-      const publicationComplete = failureCount === 0;
+      const publicationAccepted =
+        result?.summary?.allFailed !== true && failureCount === 0;
+      const publicationComplete = publicationAccepted && pendingCount === 0;
 
       setPublishProgress(100);
       setPublishProgressLabel(
         result?.summary?.allFailed
           ? "Échec"
-          : publicationComplete
-            ? warningCount > 0
-              ? "Publié avec avertissement"
-              : "Publié"
-            : "Publication partielle",
+          : pendingCount > 0
+            ? "Envoi lancé"
+            : publicationComplete
+              ? warningCount > 0
+                ? "Publié avec avertissement"
+                : "Publié"
+              : "Publication partielle",
       );
       await sleep(220);
-      if (publicationComplete) {
+      if (publicationAccepted) {
         onUnsavedChange?.(false);
       }
       const channelLinks = Object.fromEntries(
@@ -4392,7 +4426,7 @@ export default function PublishModal({
           retryFailed,
         });
       }
-      if (options?.closeOnSuccess !== false && publicationComplete) {
+      if (options?.closeOnSuccess !== false && publicationAccepted) {
         onClose();
       }
     } catch (e) {

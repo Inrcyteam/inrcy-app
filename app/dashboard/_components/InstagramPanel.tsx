@@ -35,6 +35,10 @@ export default function InstagramPanel(props: any) {
     connectInstagramAccount();
   };
 
+  const repairStandardAuthorization = () => {
+    connectInstagramAccount({ repair: true });
+  };
+
   const startBusiness = () => {
     connectInstagramBusinessAccount();
   };
@@ -185,7 +189,7 @@ export default function InstagramPanel(props: any) {
           {instagramAccountConnected ? (
             <>
               {instagramNeedsUpdate ? (
-                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={startStandard} disabled={instagramAccountBusy} style={{ width: "100%" }}>
+                <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={repairStandardAuthorization} disabled={instagramAccountBusy} style={{ width: "100%" }}>
                   Actualiser
                 </button>
               ) : null}
@@ -294,7 +298,20 @@ export default function InstagramPanel(props: any) {
             )}
           </div>
 
-          {displayAccountsError && <StatusMessage variant="error">{displayAccountsError}</StatusMessage>}
+          {displayAccountsError ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              <StatusMessage variant="error">{displayAccountsError}</StatusMessage>
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                onClick={repairStandardAuthorization}
+                disabled={igAccountsLoading || instagramProfileBusy}
+                style={{ width: "100%" }}
+              >
+                Actualiser les autorisations Meta
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

@@ -1,3 +1,4 @@
+import { fetchWithRetry } from "@/lib/observability/fetch";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 
@@ -21,24 +22,170 @@ type GraphListResponse<T> = {
   };
 };
 
-async function fetchGraphJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { cache: "no-store" });
-  const data = (await res.json()) as unknown;
+type MetaDiscoveryStage =
+  | "me_accounts_enriched"
+  | "me_accounts_basic"
+  | "assigned_pages"
+  | "businesses"
+  | "business_owned_pages"
+  | "business_client_pages"
+  | "page_lookup"
+  | "permissions";
+
+export type MetaDiscoveryIssue = {
+  stage: MetaDiscoveryStage;
+  status: number | null;
+  code: number | null;
+  subcode: number | null;
+  type: string | null;
+  fbtrace_id: string | null;
+  message: string;
+  optional: boolean;
+};
+
+export type FacebookPageDiscoveryResult = {
+  pages: FacebookPageAsset[];
+  diagnostics: {
+    primary_request_succeeded: boolean;
+    primary_fallback_used: boolean;
+    issues: MetaDiscoveryIssue[];
+  };
+};
+
+export type FacebookPageTokenDiscoveryResult = {
+  pages: FacebookPageAsset[];
+  diagnostics: {
+    token_count: number;
+    successful_token_count: number;
+    recovered_token_count: number;
+    issues: MetaDiscoveryIssue[];
+  };
+};
+
+export type MetaPermissionInspection = {
+  permissions: Record<string, string>;
+  issue: MetaDiscoveryIssue | null;
+};
+
+class MetaGraphApiError extends Error {
+  readonly status: number | null;
+  readonly code: number | null;
+  readonly subcode: number | null;
+  readonly type: string | null;
+  readonly fbtraceId: string | null;
+
+  constructor(input: {
+    message: string;
+    status?: number | null;
+    code?: number | null;
+    subcode?: number | null;
+    type?: string | null;
+    fbtraceId?: string | null;
+  }) {
+    super(input.message);
+    this.name = "MetaGraphApiError";
+    this.status = input.status ?? null;
+    this.code = input.code ?? null;
+    this.subcode = input.subcode ?? null;
+    this.type = input.type ?? null;
+    this.fbtraceId = input.fbtraceId ?? null;
+  }
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function sanitizeMetaMessage(value: unknown, fallback = "Erreur Meta inconnue."): string {
+  const raw = value instanceof Error ? value.message : String(value || "");
+  const withoutTokens = raw
+    .replace(/access_token=[^&\s]+/gi, "access_token=[masque]")
+    .replace(/bearer\s+[a-z0-9._-]+/gi, "Bearer [masque]")
+    .trim();
+  return (withoutTokens || fallback).slice(0, 500);
+}
+
+function toDiscoveryIssue(error: unknown, stage: MetaDiscoveryStage, optional: boolean): MetaDiscoveryIssue {
+  if (error instanceof MetaGraphApiError) {
+    return {
+      stage,
+      status: error.status,
+      code: error.code,
+      subcode: error.subcode,
+      type: error.type,
+      fbtrace_id: error.fbtraceId,
+      message: sanitizeMetaMessage(error),
+      optional,
+    };
+  }
+
+  return {
+    stage,
+    status: null,
+    code: null,
+    subcode: null,
+    type: null,
+    fbtrace_id: null,
+    message: sanitizeMetaMessage(error),
+    optional,
+  };
+}
+
+type GraphFetchOptions = {
+  retries?: number;
+  timeoutMs?: number;
+  deadlineAt?: number;
+};
+
+async function fetchGraphJson<T>(url: string, options: GraphFetchOptions = {}): Promise<T> {
+  const res = await fetchWithRetry(url, {
+    cache: "no-store",
+    retries: options.retries ?? 0,
+    timeoutMs: options.timeoutMs ?? 8_000,
+    deadlineAt: options.deadlineAt,
+    retryStatuses: [408, 429, 500, 502, 503, 504],
+    route: "meta_business_assets",
+  });
+
+  const data = (await res.json().catch(() => null)) as unknown;
   if (!res.ok) {
     const rec = asRecord(data);
     const err = asRecord(rec["error"]);
-    const msg = asString(err["message"]) || `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new MetaGraphApiError({
+      message: asString(err["message"]) || `HTTP ${res.status}`,
+      status: res.status,
+      code: asFiniteNumber(err["code"]),
+      subcode: asFiniteNumber(err["error_subcode"]),
+      type: asString(err["type"]) || null,
+      fbtraceId: asString(err["fbtrace_id"]) || null,
+    });
   }
+
+  if (data === null) {
+    throw new MetaGraphApiError({
+      message: "Meta a renvoyé une réponse illisible.",
+      status: res.status,
+    });
+  }
+
   return data as T;
 }
 
-async function fetchAllGraphPages<T>(initialUrl: string, maxPages = 10): Promise<T[]> {
+async function fetchAllGraphPages<T>(
+  initialUrl: string,
+  maxPages = 10,
+  options: GraphFetchOptions = {},
+): Promise<T[]> {
   const all: T[] = [];
   let nextUrl: string | null = initialUrl;
   let count = 0;
   while (nextUrl && count < maxPages) {
-    const resp: GraphListResponse<T> = await fetchGraphJson<GraphListResponse<T>>(nextUrl);
+    const resp: GraphListResponse<T> = await fetchGraphJson<GraphListResponse<T>>(nextUrl, options);
     all.push(...(resp.data || []));
     nextUrl = resp.paging?.next || null;
     count += 1;
@@ -56,7 +203,11 @@ function normalizeInstagramBusinessAccount(value: unknown): FacebookPageAsset["i
   };
 }
 
-function normalizePage(raw: unknown, source: FacebookPageAsset["source"], business?: { id?: string | null; name?: string | null }): FacebookPageAsset | null {
+function normalizePage(
+  raw: unknown,
+  source: FacebookPageAsset["source"],
+  business?: { id?: string | null; name?: string | null },
+): FacebookPageAsset | null {
   const rec = asRecord(raw);
   const id = asString(rec["id"]);
   if (!id) return null;
@@ -71,80 +222,148 @@ function normalizePage(raw: unknown, source: FacebookPageAsset["source"], busine
   };
 }
 
-async function enrichPageWithLookup(page: FacebookPageAsset, userToken: string): Promise<FacebookPageAsset> {
-  if (page.access_token && page.instagram_business_account?.id) return page;
-  try {
-    const url = `${buildMetaGraphUrl(encodeURIComponent(page.id))}?${new URLSearchParams({
-      fields: "id,name,access_token,instagram_business_account{username,id}",
-      access_token: userToken,
-    }).toString()}`;
-    const info = await fetchGraphJson<unknown>(url);
-    const normalized = normalizePage(info, "page_lookup", {
-      id: page.business_id || null,
-      name: page.business_name || null,
-    });
-    if (!normalized) return page;
-    return {
-      ...page,
-      name: normalized.name || page.name,
-      access_token: normalized.access_token || page.access_token,
-      instagram_business_account: normalized.instagram_business_account || page.instagram_business_account || null,
-    };
-  } catch {
-    return page;
+function mergePageIntoMap(merged: Map<string, FacebookPageAsset>, page: FacebookPageAsset) {
+  const prev = merged.get(page.id);
+  if (!prev) {
+    merged.set(page.id, page);
+    return;
   }
+
+  merged.set(page.id, {
+    ...prev,
+    ...page,
+    name: page.name || prev.name,
+    access_token: page.access_token || prev.access_token,
+    business_id: page.business_id || prev.business_id,
+    business_name: page.business_name || prev.business_name,
+    instagram_business_account: page.instagram_business_account || prev.instagram_business_account || null,
+    source: prev.source === "me_accounts" ? prev.source : page.source,
+  });
 }
 
-export async function listAccessibleFacebookPages(userToken: string): Promise<FacebookPageAsset[]> {
-  const merged = new Map<string, FacebookPageAsset>();
+function mergePagesIntoMap(merged: Map<string, FacebookPageAsset>, pages: FacebookPageAsset[]) {
+  for (const page of pages) mergePageIntoMap(merged, page);
+}
 
-  const mergePages = (pages: FacebookPageAsset[]) => {
-    for (const page of pages) {
-      const prev = merged.get(page.id);
-      if (!prev) {
-        merged.set(page.id, page);
-        continue;
-      }
-      merged.set(page.id, {
-        ...prev,
-        ...page,
-        name: page.name || prev.name,
-        access_token: page.access_token || prev.access_token,
-        business_id: page.business_id || prev.business_id,
-        business_name: page.business_name || prev.business_name,
-        instagram_business_account: page.instagram_business_account || prev.instagram_business_account || null,
-        source: prev.source === "me_accounts" ? prev.source : page.source,
+async function enrichPageWithLookup(
+  page: FacebookPageAsset,
+  userToken: string,
+  issues: MetaDiscoveryIssue[],
+  deadlineAt: number,
+): Promise<FacebookPageAsset> {
+  if (page.access_token && page.instagram_business_account?.id) return page;
+
+  const lookupTokens = Array.from(new Set([page.access_token, userToken].filter((value): value is string => !!value)));
+  let lastError: unknown = null;
+
+  for (const lookupToken of lookupTokens) {
+    try {
+      const url = `${buildMetaGraphUrl(encodeURIComponent(page.id))}?${new URLSearchParams({
+        fields: "id,name,access_token,instagram_business_account{username,id}",
+        access_token: lookupToken,
+      }).toString()}`;
+      const info = await fetchGraphJson<unknown>(url, { retries: 1, timeoutMs: 5_000, deadlineAt });
+      const normalized = normalizePage(info, "page_lookup", {
+        id: page.business_id || null,
+        name: page.business_name || null,
       });
+      if (!normalized) return page;
+      return {
+        ...page,
+        name: normalized.name || page.name,
+        access_token: normalized.access_token || page.access_token,
+        instagram_business_account: normalized.instagram_business_account || page.instagram_business_account || null,
+      };
+    } catch (error) {
+      lastError = error;
     }
-  };
+  }
 
+  if (lastError) issues.push(toDiscoveryIssue(lastError, "page_lookup", true));
+  return page;
+}
+
+export async function listAccessibleFacebookPagesDetailed(userToken: string): Promise<FacebookPageDiscoveryResult> {
+  const merged = new Map<string, FacebookPageAsset>();
+  const issues: MetaDiscoveryIssue[] = [];
+  const primaryDeadlineAt = Date.now() + 14_000;
+  let primaryRequestSucceeded = false;
+  let primaryFallbackUsed = false;
+
+  // Chemin historique : on conserve exactement la requête enrichie actuelle.
   try {
     const url = `${buildMetaGraphUrl("me/accounts")}?${new URLSearchParams({
       fields: "id,name,access_token,instagram_business_account{username,id}",
       access_token: userToken,
       limit: "200",
     }).toString()}`;
-    const rows = await fetchAllGraphPages<unknown>(url);
-    mergePages(rows.map((row) => normalizePage(row, "me_accounts")).filter((row): row is FacebookPageAsset => !!row));
-  } catch {}
+    const rows = await fetchAllGraphPages<unknown>(url, 10, { retries: 1, timeoutMs: 6_000, deadlineAt: primaryDeadlineAt });
+    primaryRequestSucceeded = true;
+    mergePagesIntoMap(
+      merged,
+      rows.map((row) => normalizePage(row, "me_accounts")).filter((row): row is FacebookPageAsset => !!row),
+    );
+  } catch (error) {
+    issues.push(toDiscoveryIssue(error, "me_accounts_enriched", false));
+  }
 
+  // Renfort sans rupture : si Meta refuse le champ Instagram imbriqué ou renvoie vide,
+  // on redemande uniquement les Pages puis on enrichit chaque Page séparément.
+  if (!primaryRequestSucceeded || merged.size === 0) {
+    primaryFallbackUsed = true;
+    try {
+      const url = `${buildMetaGraphUrl("me/accounts")}?${new URLSearchParams({
+        fields: "id,name,access_token",
+        access_token: userToken,
+        limit: "200",
+      }).toString()}`;
+      const rows = await fetchAllGraphPages<unknown>(url, 10, { retries: 1, timeoutMs: 6_000, deadlineAt: primaryDeadlineAt });
+      primaryRequestSucceeded = true;
+      mergePagesIntoMap(
+        merged,
+        rows.map((row) => normalizePage(row, "me_accounts")).filter((row): row is FacebookPageAsset => !!row),
+      );
+    } catch (error) {
+      issues.push(toDiscoveryIssue(error, "me_accounts_basic", false));
+    }
+  }
+
+  // Priorité à la voie standard : dès que les Pages principales sont connues,
+  // on tente leur enrichissement avant les fallbacks facultatifs.
+  const primaryEnriched = await Promise.all(
+    Array.from(merged.values()).map((page) =>
+      enrichPageWithLookup(page, userToken, issues, Date.now() + 8_000),
+    ),
+  );
+  mergePagesIntoMap(merged, primaryEnriched);
+
+  const optionalDeadlineAt = Date.now() + 8_000;
+
+  // Fallback déjà présent avant le renfort. Il reste entièrement best-effort.
   try {
     const url = `${buildMetaGraphUrl("me/assigned_pages")}?${new URLSearchParams({
       fields: "id,name,instagram_business_account{username,id}",
       access_token: userToken,
       limit: "200",
     }).toString()}`;
-    const rows = await fetchAllGraphPages<unknown>(url);
-    mergePages(rows.map((row) => normalizePage(row, "assigned_pages")).filter((row): row is FacebookPageAsset => !!row));
-  } catch {}
+    const rows = await fetchAllGraphPages<unknown>(url, 10, { retries: 0, timeoutMs: 5_000, deadlineAt: optionalDeadlineAt });
+    mergePagesIntoMap(
+      merged,
+      rows.map((row) => normalizePage(row, "assigned_pages")).filter((row): row is FacebookPageAsset => !!row),
+    );
+  } catch (error) {
+    issues.push(toDiscoveryIssue(error, "assigned_pages", true));
+  }
 
+  // Ces fallbacks Business restent facultatifs. Aucune permission business_management
+  // n'est ajoutée ni requise par le chemin standard Instagram.
   try {
     const businessesUrl = `${buildMetaGraphUrl("me/businesses")}?${new URLSearchParams({
       fields: "id,name",
       access_token: userToken,
       limit: "200",
     }).toString()}`;
-    const businesses = await fetchAllGraphPages<unknown>(businessesUrl);
+    const businesses = await fetchAllGraphPages<unknown>(businessesUrl, 10, { retries: 0, timeoutMs: 5_000, deadlineAt: optionalDeadlineAt });
 
     for (const businessRaw of businesses) {
       const businessRec = asRecord(businessRaw);
@@ -152,33 +371,60 @@ export async function listAccessibleFacebookPages(userToken: string): Promise<Fa
       if (!businessId) continue;
       const business = { id: businessId, name: asString(businessRec["name"]) || null };
 
-      const edges: Array<{ edge: "owned_pages" | "client_pages"; source: FacebookPageAsset["source"] }> = [
-        { edge: "owned_pages", source: "business_owned_pages" },
-        { edge: "client_pages", source: "business_client_pages" },
+      const edges: Array<{
+        edge: "owned_pages" | "client_pages";
+        source: FacebookPageAsset["source"];
+        stage: "business_owned_pages" | "business_client_pages";
+      }> = [
+        { edge: "owned_pages", source: "business_owned_pages", stage: "business_owned_pages" },
+        { edge: "client_pages", source: "business_client_pages", stage: "business_client_pages" },
       ];
 
-      for (const { edge, source } of edges) {
+      for (const { edge, source, stage } of edges) {
         try {
           const edgeUrl = `${buildMetaGraphUrl(`${encodeURIComponent(businessId)}/${edge}`)}?${new URLSearchParams({
             fields: "id,name,instagram_business_account{username,id}",
             access_token: userToken,
             limit: "200",
           }).toString()}`;
-          const pages = await fetchAllGraphPages<unknown>(edgeUrl);
-          mergePages(pages.map((row) => normalizePage(row, source, business)).filter((row): row is FacebookPageAsset => !!row));
-        } catch {}
+          const pages = await fetchAllGraphPages<unknown>(edgeUrl, 10, { retries: 0, timeoutMs: 5_000, deadlineAt: optionalDeadlineAt });
+          mergePagesIntoMap(
+            merged,
+            pages.map((row) => normalizePage(row, source, business)).filter((row): row is FacebookPageAsset => !!row),
+          );
+        } catch (error) {
+          issues.push(toDiscoveryIssue(error, stage, true));
+        }
       }
     }
-  } catch {}
+  } catch (error) {
+    issues.push(toDiscoveryIssue(error, "businesses", true));
+  }
 
-  const enriched = await Promise.all(Array.from(merged.values()).map((page) => enrichPageWithLookup(page, userToken)));
-  return enriched.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, "fr", { sensitivity: "base" }));
+  const enriched = await Promise.all(
+    Array.from(merged.values()).map((page) =>
+      enrichPageWithLookup(page, userToken, issues, Date.now() + 8_000),
+    ),
+  );
+
+  return {
+    pages: enriched.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, "fr", { sensitivity: "base" })),
+    diagnostics: {
+      primary_request_succeeded: primaryRequestSucceeded,
+      primary_fallback_used: primaryFallbackUsed,
+      issues,
+    },
+  };
+}
+
+export async function listAccessibleFacebookPages(userToken: string): Promise<FacebookPageAsset[]> {
+  const result = await listAccessibleFacebookPagesDetailed(userToken);
+  return result.pages;
 }
 
 export function findAccessibleFacebookPage(pages: FacebookPageAsset[], pageId: string): FacebookPageAsset | null {
   return pages.find((page) => page.id === pageId) || null;
 }
-
 
 export function extractFacebookUserTokens(metaLike: unknown, fallbackTokenEnc?: string | null): string[] {
   const meta = asRecord(metaLike);
@@ -198,31 +444,66 @@ export function extractFacebookUserTokens(metaLike: unknown, fallbackTokenEnc?: 
   return unique;
 }
 
-export async function listAccessibleFacebookPagesFromTokens(userTokens: string[]): Promise<FacebookPageAsset[]> {
+export async function listAccessibleFacebookPagesFromTokensDetailed(
+  userTokens: string[],
+): Promise<FacebookPageTokenDiscoveryResult> {
   const merged = new Map<string, FacebookPageAsset>();
+  const issues: MetaDiscoveryIssue[] = [];
+  let successfulTokenCount = 0;
+  let recoveredTokenCount = 0;
+
   for (const token of userTokens) {
     if (!token) continue;
     try {
-      const pages = await listAccessibleFacebookPages(token);
-      for (const page of pages) {
-        const prev = merged.get(page.id);
-        if (!prev) {
-          merged.set(page.id, page);
-          continue;
-        }
-        merged.set(page.id, {
-          ...prev,
-          ...page,
-          name: page.name || prev.name,
-          access_token: page.access_token || prev.access_token,
-          business_id: page.business_id || prev.business_id,
-          business_name: page.business_name || prev.business_name,
-          instagram_business_account: page.instagram_business_account || prev.instagram_business_account || null,
-          source: prev.source === "me_accounts" ? prev.source : page.source,
-        });
-      }
-    } catch {}
+      const result = await listAccessibleFacebookPagesDetailed(token);
+      if (result.diagnostics.primary_request_succeeded) successfulTokenCount += 1;
+      if (result.diagnostics.primary_fallback_used && result.pages.length > 0) recoveredTokenCount += 1;
+      issues.push(...result.diagnostics.issues);
+      mergePagesIntoMap(merged, result.pages);
+    } catch (error) {
+      issues.push(toDiscoveryIssue(error, "me_accounts_enriched", false));
+    }
   }
 
-  return Array.from(merged.values()).sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, "fr", { sensitivity: "base" }));
+  return {
+    pages: Array.from(merged.values()).sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, "fr", { sensitivity: "base" })),
+    diagnostics: {
+      token_count: userTokens.filter(Boolean).length,
+      successful_token_count: successfulTokenCount,
+      recovered_token_count: recoveredTokenCount,
+      issues,
+    },
+  };
+}
+
+export async function listAccessibleFacebookPagesFromTokens(userTokens: string[]): Promise<FacebookPageAsset[]> {
+  const result = await listAccessibleFacebookPagesFromTokensDetailed(userTokens);
+  return result.pages;
+}
+
+export async function inspectFacebookUserTokenPermissions(userToken: string): Promise<MetaPermissionInspection> {
+  try {
+    const url = `${buildMetaGraphUrl("me/permissions")}?${new URLSearchParams({
+      access_token: userToken,
+      limit: "200",
+    }).toString()}`;
+    const rows = await fetchAllGraphPages<unknown>(url, 10, {
+      retries: 1,
+      timeoutMs: 4_000,
+      deadlineAt: Date.now() + 8_000,
+    });
+    const permissions: Record<string, string> = {};
+    for (const row of rows) {
+      const rec = asRecord(row);
+      const permission = asString(rec["permission"]);
+      const status = asString(rec["status"]);
+      if (permission && status) permissions[permission] = status;
+    }
+    return { permissions, issue: null };
+  } catch (error) {
+    return {
+      permissions: {},
+      issue: toDiscoveryIssue(error, "permissions", true),
+    };
+  }
 }

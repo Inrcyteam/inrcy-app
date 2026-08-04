@@ -10,6 +10,7 @@ type BoosterPublishRequestOptions = {
   sleepImpl?: (ms: number) => Promise<void>;
   maxAttempts?: number;
   maxPollingMs?: number;
+  nowImpl?: () => number;
 };
 
 export class BoosterPublishError extends Error {
@@ -29,6 +30,8 @@ export class BoosterPublishError extends Error {
       : [];
   }
 }
+
+export const BOOSTER_PUBLISH_RESULT_GRACE_MS = 30_000;
 
 const TRANSIENT_STATUS_CODES = new Set([425, 502, 503, 504]);
 
@@ -78,16 +81,28 @@ function buildConnectionInterruptedError() {
 
 async function pollQueuedPublication(
   publicationId: string,
-  options: Required<Pick<BoosterPublishRequestOptions, "fetchImpl" | "sleepImpl">> & {
+  initialPayload: JsonRecord,
+  options: Required<
+    Pick<BoosterPublishRequestOptions, "fetchImpl" | "sleepImpl" | "nowImpl">
+  > & {
     maxPollingMs: number;
   },
 ) {
-  const startedAt = Date.now();
+  const startedAt = options.nowImpl();
   let consecutiveNetworkErrors = 0;
+  let latestPayload: JsonRecord = {
+    ...initialPayload,
+    ok: true,
+    queued: true,
+    done: false,
+    publication_id: publicationId,
+  };
 
-  while (Date.now() - startedAt < options.maxPollingMs) {
-    const elapsed = Date.now() - startedAt;
-    await options.sleepImpl(elapsed < 60_000 ? 2_000 : 5_000);
+  while (options.nowImpl() - startedAt < options.maxPollingMs) {
+    const elapsed = options.nowImpl() - startedAt;
+    const remainingMs = Math.max(0, options.maxPollingMs - elapsed);
+    const nextDelayMs = elapsed < 12_000 ? 1_500 : 2_500;
+    await options.sleepImpl(Math.min(nextDelayMs, remainingMs));
 
     try {
       const response = await options.fetchImpl(
@@ -97,13 +112,14 @@ async function pollQueuedPublication(
       const payload = asRecord(await response.json().catch(() => ({})));
       if (response.ok && payload.done === true) return payload;
       if (response.ok && payload.queued === true) {
+        latestPayload = { ...latestPayload, ...payload };
         consecutiveNetworkErrors = 0;
         continue;
       }
-      if (response.status === 404 && elapsed < 15_000) continue;
+      if (response.status === 404 && elapsed < 12_000) continue;
       if (response.status >= 500) {
         consecutiveNetworkErrors += 1;
-        if (consecutiveNetworkErrors <= 5) continue;
+        continue;
       }
       throw new Error(
         String(
@@ -114,14 +130,22 @@ async function pollQueuedPublication(
       );
     } catch (error) {
       consecutiveNetworkErrors += 1;
+      // The dispatch has already been accepted. A temporary status-read error
+      // must never keep the publishing modal blocked for several minutes.
       if (consecutiveNetworkErrors <= 5) continue;
-      throw error instanceof Error ? error : buildConnectionInterruptedError();
+      break;
     }
   }
 
-  throw new Error(
-    "La publication continue en arrière-plan. Consultez iNr’Send avant toute nouvelle tentative.",
-  );
+  return {
+    ...latestPayload,
+    ok: true,
+    done: false,
+    queued: true,
+    asyncDispatch: true,
+    publication_id: publicationId,
+    releasedToBackground: true,
+  };
 }
 
 export async function postBoosterPublication(
@@ -130,6 +154,7 @@ export async function postBoosterPublication(
 ) {
   const fetchImpl = options.fetchImpl || globalThis.fetch.bind(globalThis);
   const sleepImpl = options.sleepImpl || sleep;
+  const nowImpl = options.nowImpl || Date.now;
   const maxAttempts = Math.max(1, Math.min(4, options.maxAttempts || 3));
   const idempotencyKey = String(
     payload.idempotencyKey || payload.idempotency_key || createBoosterPublishIdempotencyKey(),
@@ -166,10 +191,14 @@ export async function postBoosterPublication(
     const json = asRecord(await response.json().catch(() => ({})));
     if (response.ok) {
       if (json.queued === true && typeof json.publication_id === "string") {
-        return pollQueuedPublication(String(json.publication_id), {
+        return pollQueuedPublication(String(json.publication_id), json, {
           fetchImpl,
           sleepImpl,
-          maxPollingMs: Math.max(60_000, options.maxPollingMs || 8 * 60_000),
+          // Keep a 30-second grace window so ordinary channels can return a
+          // useful final balance. Only the genuinely slow channels are then
+          // released to the durable worker and iNrSend in the background.
+          maxPollingMs: Math.max(8_000, options.maxPollingMs || BOOSTER_PUBLISH_RESULT_GRACE_MS),
+          nowImpl,
         });
       }
       return json;

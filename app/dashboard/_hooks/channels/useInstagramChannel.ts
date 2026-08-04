@@ -118,9 +118,10 @@ export function useInstagramChannel({
     }
   }, [patchChannelConnectionLocally]);
 
-  const connectInstagramAccount = useCallback(async () => {
+  const connectInstagramAccount = useCallback(async (options?: { repair?: boolean }) => {
     const returnTo = encodeURIComponent("/dashboard?panel=instagram");
-    window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}&mode=standard`;
+    const repairParam = options?.repair ? "&repair=1" : "";
+    window.location.href = `/api/integrations/instagram/start?returnTo=${returnTo}&mode=standard${repairParam}`;
   }, []);
 
   const connectInstagramBusinessAccount = useCallback(async () => {
@@ -235,7 +236,7 @@ export function useInstagramChannel({
         setPanelSuccess("Compte Instagram enregistré.");
       return true;
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       setIgAccountsError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos comptes Instagram."));
     } finally {
       setIgAccountsLoading(false);

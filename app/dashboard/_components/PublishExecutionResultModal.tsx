@@ -24,7 +24,8 @@ type PublishExecutionSummary = {
     channel: string;
     label: string;
     ok?: boolean;
-    status?: "published" | "published_with_warning" | "processing" | "failed" | string;
+    status?: "published" | "published_with_warning" | "queued" | "processing" | "failed" | string;
+    technicalStatus?: string | null;
     code?: string | null;
     retryable?: boolean;
     error?: string | null;
@@ -65,6 +66,60 @@ export default function PublishExecutionResultModal({
   const liveEntries = Array.isArray(liveSummary?.entries)
     ? liveSummary.entries
     : [];
+  const hasPendingAsyncJob = liveEntries.some((entry) => {
+    const technicalStatus = String(entry.technicalStatus || "").toLowerCase();
+    const status = String(entry.status || "").toLowerCase();
+    return (
+      status === "queued" ||
+      technicalStatus === "queued" ||
+      technicalStatus === "processing"
+    );
+  });
+
+  useEffect(() => {
+    if (!publicationId || !hasPendingAsyncJob) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
+
+    const schedule = (delayMs: number) => {
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        let shouldContinue = true;
+        try {
+          const response = await fetch(
+            `/api/booster/publications/${encodeURIComponent(publicationId)}/status`,
+            { method: "GET", cache: "no-store" },
+          );
+          const payload = await response.json().catch(() => ({}));
+          if (response.ok && payload?.summary) {
+            setLiveSummary((current) => ({
+              ...(current || {}),
+              ...payload.summary,
+              publicationId,
+              publication_id: publicationId,
+              channelLinks: current?.channelLinks || {},
+              retryableFailureCount: current?.retryableFailureCount || 0,
+            }));
+            shouldContinue = payload?.done !== true;
+          }
+        } catch {
+          shouldContinue = true;
+        }
+
+        if (!cancelled && shouldContinue && Date.now() - startedAt < 8 * 60_000) {
+          schedule(Date.now() - startedAt < 60_000 ? 3_000 : 10_000);
+        }
+      }, delayMs);
+    };
+
+    schedule(2_000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [publicationId, hasPendingAsyncJob]);
   const pendingTiktokEntry = liveEntries.find(
     (entry) => entry.channel === "tiktok" && entry.status === "processing",
   );
@@ -198,14 +253,16 @@ export default function PublishExecutionResultModal({
   );
   const pendingCount = Math.max(
     Number(effectiveSummary?.pendingCount || 0),
-    entries.filter((entry) => entry.status === "processing").length,
+    entries.filter((entry) =>
+      ["queued", "processing"].includes(String(entry.status || "")),
+    ).length,
   );
   const skippedCount = Math.max(
     Number(effectiveSummary?.skippedCount || 0),
     entries.filter((entry) => entry.status === "skipped").length,
   );
-  const pendingEntries = entries.filter(
-    (entry) => entry.status === "processing",
+  const pendingEntries = entries.filter((entry) =>
+    ["queued", "processing"].includes(String(entry.status || "")),
   );
   const pendingLabels = Array.from(
     new Set(pendingEntries.map((entry) => entry.label).filter(Boolean)),

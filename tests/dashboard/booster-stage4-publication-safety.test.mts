@@ -23,7 +23,7 @@ test("partial publishing retries only retryable failed channels and keeps the wo
   assert.match(publishModal, /entry\?\.retryable !== false/);
   assert.match(publishModal, /channels: retryFailedChannels/);
   assert.match(publishModal, /if \(publicationComplete\) \{[\s\S]*archivePersistentMediaWorkspace/);
-  assert.match(publishModal, /options\?\.closeOnSuccess !== false && publicationComplete/);
+  assert.match(publishModal, /options\?\.closeOnSuccess !== false && publicationAccepted/);
 });
 
 test("the result modal exposes a dedicated retry for failed channels", () => {

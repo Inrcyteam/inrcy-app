@@ -89,17 +89,54 @@ function sanitizeTags(input: unknown) {
   )).slice(0, 12);
 }
 
-async function fetchVideoBlob(videoUrl: string) {
+type YoutubeVideoSource = {
+  body: BodyInit;
+  size: number;
+  mimeType: string;
+  streamed: boolean;
+};
+
+async function fetchVideoSource(videoUrl: string): Promise<YoutubeVideoSource> {
   const res = await fetch(videoUrl, {
     method: "GET",
     redirect: "follow",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Vidéo iNrCy inaccessible pour YouTube (${res.status}).`);
+  if (!res.ok) {
+    throw new Error(`Vidéo iNrCy inaccessible pour YouTube (${res.status}).`);
+  }
+
+  const contentLength = Number(res.headers.get("content-length") || 0);
+  const mimeType =
+    String(res.headers.get("content-type") || "video/mp4").split(";")[0].trim() ||
+    "video/mp4";
+  if (Number.isFinite(contentLength) && contentLength > 512 * 1024 * 1024) {
+    throw new Error("Vidéo trop lourde pour l'upload YouTube depuis iNrCy.");
+  }
+
+  // Supabase exposes a stable Content-Length. Stream the response directly to
+  // YouTube so Vercel does not first buffer the whole file in memory and then
+  // start a second transfer. This removes the long cold path and timeout risk.
+  if (res.body && Number.isFinite(contentLength) && contentLength > 0) {
+    return {
+      body: res.body as unknown as BodyInit,
+      size: contentLength,
+      mimeType,
+      streamed: true,
+    };
+  }
+
   const blob = await res.blob();
   if (!blob.size) throw new Error("Vidéo iNrCy vide ou introuvable.");
-  if (blob.size > 512 * 1024 * 1024) throw new Error("Vidéo trop lourde pour l'upload YouTube depuis iNrCy.");
-  return blob;
+  if (blob.size > 512 * 1024 * 1024) {
+    throw new Error("Vidéo trop lourde pour l'upload YouTube depuis iNrCy.");
+  }
+  return {
+    body: blob,
+    size: blob.size,
+    mimeType: String(blob.type || mimeType || "video/mp4"),
+    streamed: false,
+  };
 }
 
 export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promise<YoutubeShortsUploadResult> {
@@ -109,8 +146,10 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
   if (!videoUrl) return { ok: false, error: "Vidéo YouTube introuvable." };
 
   try {
-    const blob = await fetchVideoBlob(videoUrl);
-    const mimeType = String(input.mimeType || blob.type || "video/mp4").trim() || "video/mp4";
+    const source = await fetchVideoSource(videoUrl);
+    const mimeType =
+      String(input.mimeType || source.mimeType || "video/mp4").trim() ||
+      "video/mp4";
     const metadata = {
       snippet: {
         title: sanitizeTitle(input.title),
@@ -135,7 +174,7 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json; charset=UTF-8",
         "X-Upload-Content-Type": mimeType,
-        "X-Upload-Content-Length": String(blob.size),
+        "X-Upload-Content-Length": String(source.size),
       },
       body: JSON.stringify(metadata),
       cache: "no-store",
@@ -155,16 +194,19 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
     const location = initRes.headers.get("location") || "";
     if (!location) return { ok: false, error: "YouTube n'a pas renvoyé d'URL d'upload." };
 
-    const uploadRes = await fetch(location, {
+    const uploadRequest: RequestInit & { duplex?: "half" } = {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": mimeType,
-        "Content-Length": String(blob.size),
+        "Content-Length": String(source.size),
       },
-      body: blob,
+      body: source.body,
       cache: "no-store",
-    });
+    };
+    if (source.streamed) uploadRequest.duplex = "half";
+
+    const uploadRes = await fetch(location, uploadRequest);
 
     const data = await uploadRes.json().catch(() => ({}));
     if (!uploadRes.ok) {

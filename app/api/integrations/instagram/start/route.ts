@@ -21,8 +21,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestedReturnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=instagram", "/dashboard?panel=instagram");
   const mode = searchParams.get("mode") === "business" ? "business" : "standard";
+  const repair = searchParams.get("repair") === "1";
   const returnUrl = new URL(requestedReturnTo, siteUrl);
   returnUrl.searchParams.set("ig_mode", mode);
+  if (repair) returnUrl.searchParams.set("ig_repair", "1");
   const returnTo = `${returnUrl.pathname}${returnUrl.search}`;
 
   const { stateB64, cookieValue, cookieName } = makeOAuthState("instagram", returnTo, { accountId });
@@ -46,6 +48,7 @@ export async function GET(request: Request) {
   });
 
   if (mode === "business" && configId) params.set("config_id", configId);
+  if (repair) params.set("auth_type", "rerequest");
 
   const url = `${buildMetaOAuthUrl("dialog/oauth")}?${params.toString()}`;
   const res = NextResponse.redirect(url);
