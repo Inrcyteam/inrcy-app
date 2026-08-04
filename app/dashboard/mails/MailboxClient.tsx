@@ -4339,8 +4339,12 @@ export default function MailboxClient() {
       if (!res.ok) throw new Error(json?.error || "Suppression impossible.");
       setDetailsActionSuccess(`Publication ${label} supprimée.`);
       setDetailsEditMode(false);
-      await loadHistory();
+      // Release the action immediately. The history refresh can continue in
+      // the background so the professional may inspect another channel while
+      // the remote deletion is being reflected in iNrSend.
+      setDetailsActionBusy(false);
       setDetailsChannelKey(channel);
+      void loadHistory();
     } catch (e: any) {
       const baseMessage = getSimpleFrenchErrorMessage(
         e,

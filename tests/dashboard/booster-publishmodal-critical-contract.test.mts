@@ -32,10 +32,11 @@ test("PublishModal keeps the three dedicated media controllers", () => {
   assert.match(publishModal, /isLegacyMediaTransportCutoverClientEnabled\(\)/);
 });
 
-test("generation, publication and scheduling all wait for the persistent workspace", () => {
+test("generation waits only for selected AI media while publication and scheduling always wait", () => {
+  assert.match(publishModal, /const shouldPrepareMediaForAi =/);
   assert.match(
     publishModal,
-    /waitForPersistentWorkspaceReadiness\("generate"/,
+    /shouldPrepareMediaForAi[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"generate"/,
   );
   assert.match(
     publishModal,
@@ -46,7 +47,7 @@ test("generation, publication and scheduling all wait for the persistent workspa
     /waitForPersistentWorkspaceReadiness\("schedule"/,
   );
   assert.match(publishModal, /loadMediaPublicationWorkspace\(/);
-  assert.match(publishModal, /prepareMediaPublicationWorkspace\(/);
+  assert.match(persistentWorkspace, /prepareMediaPublicationWorkspace\(/);
 });
 
 test("strict cutover sends workspace references instead of browser media binaries", () => {
@@ -81,12 +82,12 @@ test("legacy uploads remain isolated behind the cutover-off branch", () => {
 });
 
 test("compatible MP4 or M4V sources bypass a second silent re-encode", () => {
-  assert.match(persistentWorkspace, /canPublishVideoSourceDirectly\(/);
+  assert.match(publishModal, /canPublishVideoSourceDirectly\(/);
   assert.match(
-    persistentWorkspace,
-    /mediaType === "video"\s*&&\s*request\.directVideoSource/,
+    publishModal,
+    /allUploaded\s*&&\s*directVideoSource\s*&&\s*purpose !== "generate"/,
   );
-  assert.match(persistentWorkspace, /corePreparationReadyRef\.current = true/);
+  assert.match(persistentWorkspace, /preparePublicationMedia/);
   assert.match(
     publishModal,
     /generateMissingVideoVariants:\s*false,[\s\S]*allowOriginalVideoFallback:\s*true/,

@@ -78,10 +78,10 @@ test("video publication keeps the request path fast and isolates invalid channel
   assert.match(route, /buildVideoTransformSignature\(/);
   assert.match(route, /validateVideoPublicationForChannel\(/);
   assert.match(route, /canPublishVideoSourceDirectly\(/);
-  assert.match(route, /requiresPreparedNetworkVideoVariant\(/);
+  assert.doesNotMatch(route, /requiresPreparedNetworkVideoVariant\(/);
   assert.match(route, /preflightFailuresByChannel/);
   assert.match(route, /buildBoosterPublicationDispatchPlan\(/);
-  assert.doesNotMatch(route, /if \(sourceValidation\.ok\) return \[\]/);
+  assert.match(route, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
 });
 
 test("scheduled duplicate protection runs before parent idempotency acquisition", () => {

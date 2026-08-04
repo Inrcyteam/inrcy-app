@@ -5,6 +5,7 @@ import type {
   SetStateAction,
 } from "react";
 import { useRef } from "react";
+import type { BoosterCreationMode } from "@/lib/boosterCreationMode";
 import { editableHtmlToSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import EmojiPickerButton from "@/app/dashboard/_components/EmojiPickerButton";
@@ -34,6 +35,7 @@ import {
   textAreaStyle,
 } from "../publishModal.styles";
 import RichSiteContentEditor from "./RichSiteContentEditor";
+import PublishStepTitle from "./PublishStepTitle";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
 
@@ -45,6 +47,8 @@ type DuplicateFeedback = {
 type PublishContentEditorPanelProps = {
   styles: PublishModalStyles;
   isMobile: boolean;
+  creationMode: BoosterCreationMode | null;
+  stepNumber: number;
   displayCards: DisplayKey[];
   activeCard: DisplayKey;
   setSynchronizedActiveChannel: (channel: ChannelKey) => void;
@@ -77,6 +81,8 @@ type PublishContentEditorPanelProps = {
 export default function PublishContentEditorPanel({
   styles,
   isMobile,
+  creationMode,
+  stepNumber,
   displayCards,
   activeCard,
   setSynchronizedActiveChannel,
@@ -177,40 +183,22 @@ export default function PublishContentEditorPanel({
       className={styles.blockCard}
       style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
     >
-      <div
-        className={styles.blockTitle}
-        style={{
-          marginBottom: 8,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-        }}
+      <PublishStepTitle
+        styles={styles}
+        step={stepNumber}
+        style={{ marginBottom: 8 }}
       >
-        <span
-          aria-hidden="true"
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 999,
-            display: "inline-grid",
-            placeItems: "center",
-            border: "1px solid rgba(76,195,255,0.38)",
-            background: "rgba(76,195,255,0.12)",
-            color: "#dff6ff",
-            fontSize: 12,
-            fontWeight: 950,
-            flex: "0 0 auto",
-          }}
-        >
-          3
-        </span>
-        Contenus par canal
-      </div>
+        {creationMode === "manual"
+          ? "Textes par canal"
+          : "Contenus générés par canal"}
+      </PublishStepTitle>
       <div
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Vérifiez chaque contenu et adaptez le si besoin.
+        {creationMode === "manual"
+          ? "Rédigez directement le texte de chaque canal. Aucun appel IA n'est effectué dans ce parcours."
+          : "Vérifiez les contenus générés et adaptez-les si besoin avant de choisir les médias de publication."}
       </div>
       {displayCards.length ? (
         <>

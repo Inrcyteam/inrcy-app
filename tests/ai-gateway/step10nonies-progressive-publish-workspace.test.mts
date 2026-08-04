@@ -6,64 +6,74 @@ import { resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "../..");
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf8");
 
-test("Step 10 nonies hides advanced publishing blocks until generation or manual creation", () => {
+test("Step 10 nonies keeps advanced publishing blocks behind an explicit creation mode", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
-  assert.match(modal, /const \[contentWorkspaceOpen, setContentWorkspaceOpen\] = useState\(false\)/);
-  assert.match(modal, /\{contentWorkspaceOpen \? \(/);
+  assert.match(
+    modal,
+    /const \[creationMode, setCreationMode\][\s\S]*useState<BoosterCreationMode \| null>\(null\)/,
+  );
+  assert.match(modal, /<PublishCreationModePanel/);
+  assert.match(modal, /creationMode === "ai" && workflowSteps\?\.intention/);
+  assert.match(modal, /showContentWorkspace && workflowSteps/);
   assert.match(modal, /<PublishContentEditorPanel/);
   assert.match(modal, /<PublishImagesPanel/);
   assert.match(modal, /<PublishPreviewPanel/);
   assert.match(modal, /<PublishFooterActions/);
 });
 
-test("Step 10 nonies opens empty manual content without disabling later AI generation", () => {
+test("Step 10 nonies opens the manual workspace directly without duplicating publishing", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
-  const panel = read(
+  const modePanel = read(
+    "app/dashboard/booster/publier/components/PublishCreationModePanel.tsx",
+  );
+  const intentPanel = read(
     "app/dashboard/booster/publier/components/PublishIntentPanel.tsx",
   );
 
-  assert.match(modal, /const onCreateManually = \(\) => \{/);
-  assert.match(modal, /setContentWorkspaceOpen\(true\)/);
-  assert.match(modal, /onCreateManually=\{onCreateManually\}/);
-  assert.match(panel, /onCreateManually:\s*\(\) => void/);
-  assert.match(panel, /Créer manuellement/);
-
-  const buttons = panel.match(
-    /Générer avec iNrCy[\s\S]*?Réinitialiser[\s\S]*?Créer manuellement/,
-  );
-  assert.ok(buttons, "The three actions stay ordered: AI, reset, manual");
-  assert.match(panel, /onClick=\{onGenerate\}/);
+  assert.match(modal, /const onSelectCreationMode = async/);
+  assert.match(modal, /setContentWorkspaceOpen\(nextMode === "manual"\)/);
+  assert.match(modePanel, /Créer avec iNrCy/);
+  assert.match(modePanel, /Créer manuellement/);
+  assert.doesNotMatch(intentPanel, /onCreateManually/);
+  assert.equal((modal.match(/<PublishFooterActions/g) || []).length, 1);
 });
 
-test("Step 10 nonies protects existing manual text before an AI replacement", () => {
+test("Step 10 nonies protects current branch work before changing mode or regenerating", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
+  assert.match(modal, /if \(creationMode && hasCurrentCreationModeWork\)/);
+  assert.match(modal, /Passer à la création manuelle/);
+  assert.match(modal, /Passer à la création avec iNrCy/);
+  assert.match(modal, /Vos canaux et vos médias seront conservés/);
   assert.match(modal, /if \(hasWrittenChannelContent\)/);
   assert.match(modal, /Générer de nouveaux contenus \?/);
-  assert.match(modal, /Les textes déjà saisis ou générés seront remplacés/);
-  assert.match(modal, /Conserver mes textes/);
-  assert.match(modal, /Générer et remplacer/);
 });
 
-test("Step 10 nonies restores advanced blocks for drafts with content and closes them on reset", () => {
+test("Step 10 nonies restores a saved creation mode and closes every branch on reset", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
-  assert.match(modal, /if \(hasWrittenChannelContent\) setContentWorkspaceOpen\(true\)/);
+  assert.match(modal, /inferBoosterCreationMode\(\{/);
+  assert.match(modal, /setCreationMode\(nextCreationMode\)/);
+  assert.match(modal, /setContentWorkspaceOpen\([\s\S]*nextCreationMode === "manual"/);
+  assert.match(modal, /setCreationMode\(null\)/);
   assert.match(modal, /setContentWorkspaceOpen\(false\)/);
-  assert.match(modal, /setPostsByChannel\(\{\}\)/);
+  assert.match(modal, /clearChannelCreationWork\(\)/);
 });
 
-test("Step 10 nonies numbers the five publishing blocks in order", () => {
-  const sources = [
-    read("app/dashboard/booster/publier/components/PublishChannelSelector.tsx"),
-    read("app/dashboard/booster/publier/components/PublishIntentPanel.tsx"),
-    read("app/dashboard/booster/publier/components/PublishContentEditorPanel.tsx"),
-    read("app/dashboard/booster/publier/components/PublishImagesPanel.tsx"),
-    read("app/dashboard/booster/publier/components/PublishPreviewPanel.tsx"),
-  ];
+test("Step 10 nonies derives dynamic numbering for AI and manual paths", () => {
+  const workflow = read("lib/boosterCreationMode.ts");
+  const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
-  sources.forEach((source, index) => {
-    assert.match(source, new RegExp(`>\\s*${index + 1}\\s*<\\/span>`));
-  });
+  assert.match(
+    workflow,
+    /mode === "ai"[\s\S]*intention: 3[\s\S]*content: 4[\s\S]*media: 5[\s\S]*preview: 6/,
+  );
+  assert.match(
+    workflow,
+    /intention: null[\s\S]*content: 3[\s\S]*media: 4[\s\S]*preview: 5/,
+  );
+  assert.match(modal, /stepNumber=\{workflowSteps\.content\}/);
+  assert.match(modal, /stepNumber=\{workflowSteps\.media\}/);
+  assert.match(modal, /stepNumber=\{workflowSteps\.preview\}/);
 });

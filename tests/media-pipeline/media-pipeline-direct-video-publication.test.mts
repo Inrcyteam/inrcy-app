@@ -72,12 +72,15 @@ test("publier et programmer contrôlent le workspace au clic et gardent une seul
   const uploadEvent = await readSource(
     "app/api/media-pipeline/upload-event/route.ts",
   );
+  const prepareRoute = await readSource(
+    "app/api/media-pipeline/workspace/prepare/route.ts",
+  );
   const publishRoute = await readSource(
     "app/api/booster/publish-now/route.ts",
   );
 
-  assert.match(modal, /if \(allUploaded && directVideoSource\)/);
-  assert.match(modal, /Vidéo sécurisée/);
+  assert.match(modal, /waitForPersistentWorkspaceReadiness\("publish"/);
+  assert.match(modal, /waitForPersistentWorkspaceReadiness\("schedule"/);
   assert.match(modal, /async function prepareCutoverVideoVariants/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.equal(
@@ -91,5 +94,7 @@ test("publier et programmer contrôlent le workspace au clic et gardent une seul
   );
   assert.match(uploadEvent, /!directVideoSource/);
   assert.match(uploadEvent, /reason:\s*"source_direct_ready"/);
+  assert.match(prepareRoute, /function isDirectPublicationVideo/);
+  assert.match(prepareRoute, /if \(isDirectPublicationVideo\(params\.media\)\) return true/);
   assert.doesNotMatch(publishRoute, /oversizedPublicationVideo/);
 });

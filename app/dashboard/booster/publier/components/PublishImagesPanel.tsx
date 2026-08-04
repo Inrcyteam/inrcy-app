@@ -30,13 +30,13 @@ import {
   type ChannelImageEditorState,
   type ChannelKey,
   type ImageMeta,
-  type PublicationMediaType,
   type ChannelMediaMode,
   type VideoAdaptationMode,
   type BoosterVideoSourceMetadata,
   type VideoFormat,
 } from "../publishModal.shared";
 import { pillBtn, pillBtnActive } from "../publishModal.styles";
+import PublishStepTitle from "./PublishStepTitle";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
 
@@ -83,7 +83,7 @@ type ImageAdapterTab = {
 type PublishImagesPanelProps = {
   styles: PublishModalStyles;
   isMobile: boolean;
-  publicationMediaType: PublicationMediaType;
+  stepNumber: number;
   channelMediaModes: Partial<Record<ChannelKey, ChannelMediaMode>>;
   setChannelMediaMode: (channel: ChannelKey, mode: ChannelMediaMode) => void;
   onRemoveMediaFromChannel: (channel: ChannelKey) => void;
@@ -130,7 +130,7 @@ type PublishImagesPanelProps = {
 export default function PublishImagesPanel({
   styles,
   isMobile,
-  publicationMediaType: _publicationMediaType,
+  stepNumber,
   channelMediaModes,
   setChannelMediaMode,
   onRemoveMediaFromChannel,
@@ -178,6 +178,11 @@ export default function PublishImagesPanel({
   const getModeForChannel = (channel: ChannelKey): ChannelMediaMode => {
     const explicit = channelMediaModes[channel];
 
+    // A deliberate per-channel removal must always win, including TikTok and
+    // YouTube. The channel remains selected and its readiness explains whether
+    // a replacement media is required.
+    if (explicit === "none") return "none";
+
     if (channel === "youtube_shorts") return hasVideoMedia ? "video" : "none";
 
     if (channel === "tiktok") {
@@ -193,7 +198,6 @@ export default function PublishImagesPanel({
     // Keep a selected channel visible after its media is removed. Required
     // media channels stay active and are blocked only until a replacement is
     // chosen.
-    if (explicit === "none") return "none";
     if (hasImages && channelSupportsImages(channel)) return "images";
     if (hasVideoMedia) return "video";
     return "none";
@@ -308,30 +312,9 @@ export default function PublishImagesPanel({
           marginBottom: 8,
         }}
       >
-        <div
-          className={styles.blockTitle}
-          style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 999,
-              display: "inline-grid",
-              placeItems: "center",
-              border: "1px solid rgba(76,195,255,0.38)",
-              background: "rgba(76,195,255,0.12)",
-              color: "#dff6ff",
-              fontSize: 12,
-              fontWeight: 950,
-              flex: "0 0 auto",
-            }}
-          >
-            4
-          </span>
+        <PublishStepTitle styles={styles} step={stepNumber}>
           Médias de la publication
-        </div>
+        </PublishStepTitle>
       </div>
       <div
         className={styles.subtitle}
@@ -339,9 +322,9 @@ export default function PublishImagesPanel({
       >
         Ajoutez jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
         {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
-        total) ou 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}. iNrCy
-        conserve la source, puis prépare et compresse automatiquement une version
-        adaptée à chaque canal.
+        total) ou 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}. Le média
+        déjà utilisé pour la génération est réutilisé ici. Les contrôles et
+        conversions restent limités aux canaux qui en ont réellement besoin.
       </div>
       <div
         style={{

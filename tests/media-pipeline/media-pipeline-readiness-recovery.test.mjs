@@ -38,11 +38,19 @@ test("Générer peut relancer immédiatement les workers du workspace", () => {
   assert.match(route, /processVideoNormalizationJobsForMedia\(/);
   assert.match(route, /priority: 10_000/);
   assert.match(client, /\/api\/media-pipeline\/workspace\/prepare/);
-  assert.match(modal, /prepareMediaPublicationWorkspace\(/);
+  assert.match(modal, /preparePersistentAiMedia\(\)/);
+  assert.match(modal, /preparePersistentPublicationMedia\(\)/);
   assert.match(modal, /processingProgress/);
   assert.match(modal, /let preparationKick: Promise<void> \| null = null/);
-  assert.match(modal, /preparationKick = prepareMediaPublicationWorkspace\(/);
-  assert.doesNotMatch(modal, /await prepareMediaPublicationWorkspace\(/);
+  assert.match(
+    modal,
+    /preparationKick = \(purpose === "generate"[\s\S]*preparePersistentAiMedia\(\)[\s\S]*preparePersistentPublicationMedia\(\)/,
+  );
+  assert.doesNotMatch(modal, /prepareMediaPublicationWorkspace\(/);
+  const hook = read(
+    "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+  );
+  assert.match(hook, /prepareMediaPublicationWorkspace\(\{[\s\S]*mission,/);
   assert.match(
     vercel.functions["app/api/media-pipeline/workspace/prepare/route.ts"]
       .includeFiles,

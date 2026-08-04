@@ -180,10 +180,6 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-function requiresPreparedNetworkVideoVariant(channel: ChannelKey) {
-  return !["inrcy_site", "site_web", "inr_search"].includes(channel);
-}
-
 async function publishNowHandler(req: Request) {
   let lifecycleWorkspaceId = "";
   let lifecycleUserId = "";
@@ -636,10 +632,7 @@ async function publishNowHandler(req: Request) {
             height: videoSource.sourceMetadata?.height,
           });
           if (!variant?.publicUrl || !variant?.storagePath) {
-            if (
-              sourceValidation.ok &&
-              !requiresPreparedNetworkVideoVariant(request.channel)
-            ) {
+            if (sourceValidation.ok) {
               return [];
             }
             return [{
@@ -664,10 +657,7 @@ async function publishNowHandler(req: Request) {
             height: variant.height,
           });
           if (validation.ok) return [];
-          if (
-            sourceValidation.ok &&
-            !requiresPreparedNetworkVideoVariant(request.channel)
-          ) {
+          if (sourceValidation.ok) {
             return [];
           }
           return [{
@@ -793,10 +783,7 @@ async function publishNowHandler(req: Request) {
               sizeBytes: publicationVideo.size,
               maxBytes: policy.maxBytes,
             }) && sourceValidation.ok;
-          if (
-            sourceDirectlyPublishable &&
-            !requiresPreparedNetworkVideoVariant(channel)
-          ) {
+          if (sourceDirectlyPublishable) {
             return [];
           }
 
@@ -3031,6 +3018,53 @@ async function publishNowHandler(req: Request) {
               },
             };
             continue;
+          }
+
+          if (!isVideo) {
+            const prewarmResults = await Promise.all(
+              tiktokImageUrls.map(async (imageUrl) => {
+                try {
+                  const response = await fetch(imageUrl, {
+                    method: "HEAD",
+                    cache: "no-store",
+                  });
+                  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+                  const contentLength = Number(response.headers.get("content-length") || 0);
+                  return {
+                    ok: response.ok &&
+                      (contentType === "image/jpeg" || contentType === "image/webp") &&
+                      contentLength > 0,
+                    status: response.status,
+                    contentType,
+                    contentLength,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false,
+                    status: 0,
+                    contentType: "",
+                    contentLength: 0,
+                    error: error instanceof Error ? error.message : String(error || ""),
+                  };
+                }
+              }),
+            );
+            const invalidPrewarm = prewarmResults.find((entry) => !entry.ok);
+            if (invalidPrewarm) {
+              const tiktokUserError =
+                "L'image TikTok n'a pas pu être préparée de façon stable. Réessayez avec une image JPEG ou WebP.";
+              await setDelivery(ch, { status: "failed", error: tiktokUserError });
+              results[ch] = {
+                ok: false,
+                error: tiktokUserError,
+                diagnostics: {
+                  provider: "tiktok",
+                  stage: "photo_prewarm",
+                  prewarmResults,
+                },
+              };
+              continue;
+            }
           }
 
           const tiktokResult = isVideo

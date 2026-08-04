@@ -45,9 +45,8 @@ test("le normaliseur produit le canonique et tous les dérivés sans recadrage",
   assert.match(source, /key:\s*"canonical"/);
   assert.match(source, /key:\s*"ai_preview"/);
   assert.match(source, /key:\s*"thumbnail"/);
-  assert.match(source, /key:\s*"frame_01"/);
-  assert.match(source, /key:\s*"frame_02"/);
-  assert.match(source, /key:\s*"frame_03"/);
+  assert.match(source, /requestedFrameIndexes/);
+  assert.match(source, /`frame_0\$\{index \+ 1\}`/);
   assert.match(source, /key:\s*"audio_track"/);
   assert.match(source, /canFastPrepareCanonical/);
   assert.match(source, /mode:\s*copyAudio \? "stream_copy" : "video_copy_audio_transcode"/);
@@ -69,15 +68,17 @@ test("la piste audio est facultative et ne bloque pas une vidéo silencieuse", (
   assert.match(source, /available:\s*audioAvailable/);
 });
 
-test("l'upload normalise les conteneurs non directs et valide immédiatement MP4/M4V", () => {
+test("l'upload conserve toute vidéo comme source et la préparation choisit ensuite les dérivés", () => {
   const event = read("app/api/media-pipeline/upload-event/route.ts");
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
-  assert.match(event, /current\.data\.media_type === "video" &&[\s\S]{0,80}!directVideoSource/);
-  assert.match(event, /enqueueVideoNormalization\(/);
-  assert.match(event, /reason:\s*"source_direct_ready"/);
-  assert.match(intent, /alreadyUploaded && mediaType === "video" && directVideoSource/);
-  assert.match(intent, /alreadyUploaded && mediaType === "video" && !directVideoSource/);
-  assert.match(intent, /enqueueVideoNormalization\(/);
+  const prepare = read("app/api/media-pipeline/workspace/prepare/route.ts");
+  assert.match(event, /sourceMetadataOnly/);
+  assert.match(event, /reason:\s*"source_metadata_only"/);
+  assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
+  assert.match(intent, /preparation_scope:\s*"source_only"/);
+  assert.doesNotMatch(intent, /enqueueVideoNormalization\(/);
+  assert.match(prepare, /enqueueVideoNormalization\(\{/);
+  assert.match(prepare, /mission,/);
 });
 
 
@@ -85,9 +86,15 @@ test("le cutover évite l’extraction locale lourde à l’insertion d’une vi
   const publishModal = read(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
+  const addVideoBlock = publishModal.slice(
+    publishModal.indexOf("const addVideoFile"),
+    publishModal.indexOf("const onVideoChange"),
+  );
+  assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
+  assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoAudioFileForAI/);
   assert.match(
     publishModal,
-    /if \(!mediaPipelineCutoverEnabled\) \{[\s\S]*?getOrPrepareVideoFramesForAI\(normalizedFile\)[\s\S]*?getOrPrepareVideoAudioFileForAI\(normalizedFile\)/,
+    /!mediaPipelineCutoverEnabled[\s\S]*getOrPrepareVideoAudioFileForAI\(videoFile\)[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
   );
 });
 

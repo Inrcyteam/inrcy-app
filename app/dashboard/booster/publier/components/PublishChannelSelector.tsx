@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, type Dispatch, type SetStateAction } from "react";
 import {
   BOOSTER_CHANNEL_ORDER,
   CHANNEL_LABELS,
@@ -8,6 +8,7 @@ import {
   channelBtn,
   channelBtnDisabled,
 } from "../publishModal.styles";
+import PublishStepTitle from "./PublishStepTitle";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
 
@@ -91,6 +92,17 @@ export default function PublishChannelSelector({
   const allConnectedSelected = hasConnectedChannels && selectedConnectedCount === connectedChannelKeys.length;
   const bulkLabel = allConnectedSelected ? "Tout désélectionner" : "Tout sélectionner";
 
+  useEffect(() => {
+    // Warm every icon as soon as Booster opens so the channel row never
+    // appears with late or missing logos. Reusing the same URLs keeps this
+    // operation in the browser cache.
+    Object.values(CHANNEL_ICON_SRC).forEach((src) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = src;
+    });
+  }, []);
+
   return (
     <div
       className={styles.blockCard}
@@ -105,30 +117,9 @@ export default function PublishChannelSelector({
           marginBottom: 8,
         }}
       >
-        <div
-          className={styles.blockTitle}
-          style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 999,
-              display: "inline-grid",
-              placeItems: "center",
-              border: "1px solid rgba(76,195,255,0.38)",
-              background: "rgba(76,195,255,0.12)",
-              color: "#dff6ff",
-              fontSize: 12,
-              fontWeight: 950,
-              flex: "0 0 auto",
-            }}
-          >
-            1
-          </span>
+        <PublishStepTitle styles={styles} step={1}>
           Canaux
-        </div>
+        </PublishStepTitle>
         <button
           type="button"
           aria-label={bulkLabel}

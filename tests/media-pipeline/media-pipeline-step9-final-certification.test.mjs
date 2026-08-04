@@ -99,7 +99,7 @@ test("le clic immédiat absorbe l'upload dans Générer, Publier et Programmer",
   assert.match(workspaceHook, /Upload du média/);
   assert.match(
     modal,
-    /readyMediaWorkspaceId\s*=\s*await waitForPersistentWorkspaceReadiness\("generate"/,
+    /readyMediaWorkspaceId\s*=\s*shouldPrepareMediaForAi[\s\S]*await waitForPersistentWorkspaceReadiness\([\s\S]*"generate"/,
   );
   assert.match(
     modal,

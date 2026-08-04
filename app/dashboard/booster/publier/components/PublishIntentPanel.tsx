@@ -26,12 +26,10 @@ import {
   BOOSTER_VIDEO_LIMITS_LABEL,
   getBoosterSelectedMediaSummary,
   THEME_PLACEHOLDERS,
-  type ChannelKey,
-  type ChannelMediaMode,
-  type PublicationMediaType,
   type ThemeKey,
 } from "../publishModal.shared";
 import { textAreaStyle } from "../publishModal.styles";
+import PublishStepTitle from "./PublishStepTitle";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
 
@@ -221,6 +219,7 @@ async function warmupVoiceMicrophoneIfNeeded() {
 type PublishIntentPanelProps = {
   styles: PublishModalStyles;
   isMobile: boolean;
+  stepNumber: number;
   theme: ThemeKey;
   idea: string;
   setIdea: Dispatch<SetStateAction<string>>;
@@ -234,9 +233,6 @@ type PublishIntentPanelProps = {
   onPickVideoClick: () => void;
   onTakePhotoClick: () => void;
   onOpenMediaLibrary: () => void;
-  publicationMediaType: PublicationMediaType;
-  channelMediaModes: Partial<Record<ChannelKey, ChannelMediaMode>>;
-  setChannelMediaMode: (channel: ChannelKey, mode: ChannelMediaMode) => void;
   images: File[];
   imagePreviews: string[];
   videoFile: File | null;
@@ -256,14 +252,13 @@ type PublishIntentPanelProps = {
   defaultAiPreferredEngine: AiPreferredEngine;
   onAiPreferredEngineChange: (engine: AiPreferredEngine) => void;
   onGenerate: () => void;
-  onReset: () => void;
-  onCreateManually: () => void;
   onOpenAiConfiguration: () => void;
 };
 
 export default function PublishIntentPanel({
   styles,
   isMobile,
+  stepNumber,
   theme,
   idea,
   setIdea,
@@ -277,9 +272,6 @@ export default function PublishIntentPanel({
   onPickVideoClick,
   onTakePhotoClick,
   onOpenMediaLibrary,
-  publicationMediaType,
-  channelMediaModes: _channelMediaModes,
-  setChannelMediaMode: _setChannelMediaMode,
   images,
   imagePreviews,
   videoFile,
@@ -299,8 +291,6 @@ export default function PublishIntentPanel({
   defaultAiPreferredEngine,
   onAiPreferredEngineChange,
   onGenerate,
-  onReset,
-  onCreateManually,
   onOpenAiConfiguration,
 }: PublishIntentPanelProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -986,45 +976,28 @@ export default function PublishIntentPanel({
           flexWrap: "wrap",
         }}
       >
-        <div
-          className={styles.blockTitle}
-          data-testid="booster-intention-title"
-          style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+        <PublishStepTitle
+          styles={styles}
+          step={stepNumber}
+          testId="booster-intention-title"
         >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 999,
-              display: "inline-grid",
-              placeItems: "center",
-              border: "1px solid rgba(76,195,255,0.38)",
-              background: "rgba(76,195,255,0.12)",
-              color: "#dff6ff",
-              fontSize: 12,
-              fontWeight: 950,
-              flex: "0 0 auto",
-            }}
-          >
-            2
-          </span>
           Votre intention
-        </div>
+        </PublishStepTitle>
       </div>
       <div
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
         Décrivez le sujet de cette publication et ajoutez, si nécessaire, une
-        consigne ponctuelle prioritaire. {" "}
+        consigne ponctuelle prioritaire. Le média est facultatif pour la
+        génération. {" "}
         <strong>
-          Ajoutez jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
+          Jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
           {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
           total) ou 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}.
         </strong>{" "}
-        iNrCy prépare, compresse et adapte automatiquement les médias aux canaux
-        sélectionnés.
+        Le même original sera réutilisé ensuite dans les Médias de la
+        publication, sans nouvel upload.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
         <div
@@ -1616,25 +1589,6 @@ export default function PublishIntentPanel({
                 : voiceState !== "idle"
                   ? "Vocal en cours..."
                   : "✨ Générer avec iNrCy"}
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryBtn}
-              onClick={onReset}
-            >
-              Réinitialiser
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryBtn}
-              onClick={onCreateManually}
-              disabled={generationDisabled}
-              style={{
-                opacity: generationDisabled ? 0.6 : 1,
-                cursor: generationDisabled ? "wait" : "pointer",
-              }}
-            >
-              Créer manuellement
             </button>
           </div>
           {generating ? (

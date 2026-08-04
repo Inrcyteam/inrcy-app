@@ -5,7 +5,7 @@ import test from "node:test";
 const read = (path) =>
   readFile(new URL(`../../${path}`, import.meta.url), "utf8");
 
-test("normal publication reuses a prepared variant and limits original fallback to iNrCy surfaces", async () => {
+test("normal publication prefers a compatible original and reuses a valid prepared variant when needed", async () => {
   const [modal, prewarm, publishRoute, channelContext, workspaceHook] = await Promise.all([
     read("app/dashboard/booster/publier/PublishModal.tsx"),
     read("app/api/media-pipeline/workspace/prewarm/route.ts"),
@@ -23,8 +23,8 @@ test("normal publication reuses a prepared variant and limits original fallback 
     /allowsOriginalVideoFallback\(request\.channel\)[\s\S]{0,120}sourceValidation\.ok/,
   );
   assert.match(prewarm, /const ready = invalidChannels\.length === 0/);
-  assert.match(publishRoute, /requiresPreparedNetworkVideoVariant/);
-  assert.match(publishRoute, /video_variant_required/);
+  assert.doesNotMatch(publishRoute, /requiresPreparedNetworkVideoVariant/);
+  assert.match(publishRoute, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
   assert.match(publish, /if \(!variantValidation\.ok\)[\s\S]{0,100}return sourceValidation\.ok \? publicationVideo : null/);
   assert.doesNotMatch(publish, /preparePublicationVariants\(true\)/);
   assert.doesNotMatch(publish, /if \(!variantResult\.ok \|\| invalidVideoChannels\.length > 0\)/);

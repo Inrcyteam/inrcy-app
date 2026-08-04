@@ -23,11 +23,7 @@ import {
   type UniversalUploadMediaType,
 } from "@/lib/mediaUploadPolicy";
 import { UNIVERSAL_MEDIA_PIPELINE_VERSION } from "@/lib/mediaPipelineRegistry";
-import { enqueueImageNormalization } from "@/lib/mediaImageNormalizationQueue";
-import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
-import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
-import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 
@@ -105,6 +101,42 @@ function cleanJsonObject(value: unknown): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).slice(0, 80),
   );
+}
+
+function positiveNumber(value: unknown) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function resolveSourceRegistryMetadata(
+  metadata: Record<string, unknown>,
+  mediaType: UniversalUploadMediaType,
+) {
+  const nested = cleanJsonObject(metadata.source_metadata);
+  const source = { ...metadata, ...nested };
+  const width = positiveNumber(source.width);
+  const height = positiveNumber(source.height);
+  const durationSeconds =
+    mediaType === "video"
+      ? positiveNumber(source.duration_seconds ?? source.duration)
+      : null;
+
+  return {
+    width,
+    height,
+    durationSeconds,
+    metadata: {
+      ...metadata,
+      source_metadata: {
+        ...nested,
+        width,
+        height,
+        duration_seconds: durationSeconds,
+      },
+      pipeline_mission: "source_metadata",
+      preparation_scope: "source_only",
+    },
+  };
 }
 
 function safeAccountSegment(accountId: string) {
@@ -292,7 +324,7 @@ async function getExistingRegisteredMedia(
   const result = await supabaseAdmin
     .from("pro_media_library")
     .select(
-      "id,user_id,bucket_name,storage_path,media_type,mime_type,size_bytes,upload_status,upload_protocol,client_media_key,original_file_name",
+      "id,user_id,bucket_name,storage_path,media_type,mime_type,size_bytes,upload_status,upload_protocol,client_media_key,original_file_name,width,height,duration_seconds,media_metadata",
     )
     .eq("user_id", activeUserId)
     .eq("client_media_key", clientMediaKey)
@@ -320,6 +352,10 @@ async function createOrReuseRegistryRow(params: {
     params.activeUserId,
     params.clientMediaKey,
   );
+  const sourceRegistry = resolveSourceRegistryMetadata(
+    params.metadata,
+    params.mediaType,
+  );
 
   if (existing) {
     const uploaded = existing.upload_status === "uploaded";
@@ -335,8 +371,13 @@ async function createOrReuseRegistryRow(params: {
         original_retention_until: null,
         original_deleted_at: null,
         upload_started_at: uploaded ? undefined : new Date().toISOString(),
+        width: sourceRegistry.width ?? existing.width ?? null,
+        height: sourceRegistry.height ?? existing.height ?? null,
+        duration_seconds:
+          sourceRegistry.durationSeconds ?? existing.duration_seconds ?? null,
         media_metadata: {
-          ...params.metadata,
+          ...cleanJsonObject(existing.media_metadata),
+          ...sourceRegistry.metadata,
           workspace_id: params.workspaceId || null,
           upload_target: "workspace_source",
         },
@@ -373,10 +414,13 @@ async function createOrReuseRegistryRow(params: {
       processing_status: "not_requested",
       publication_status: "not_requested",
       processing_progress: 0,
+      width: sourceRegistry.width,
+      height: sourceRegistry.height,
+      duration_seconds: sourceRegistry.durationSeconds,
       pipeline_version: UNIVERSAL_MEDIA_PIPELINE_VERSION,
       upload_started_at: new Date().toISOString(),
       media_metadata: {
-        ...params.metadata,
+        ...sourceRegistry.metadata,
         workspace_id: params.workspaceId || null,
         upload_target: "workspace_source",
       },
@@ -585,84 +629,14 @@ export async function POST(request: Request) {
           metadata,
         });
 
-        // Une reprise peut retrouver une source déjà uploadée et ne repassera
-        // donc pas par /upload-event. On répare ici la mise en file image de
-        // manière idempotente, sans refaire l'upload ni créer de doublon.
-        if (alreadyUploaded && mediaType === "image") {
-          try {
-            await enqueueImageNormalization({
-              mediaId,
-              accountId: activeUserId,
-              workspaceId,
-            });
-            await refreshPublicationWorkspaceMediaStatus({
-              workspaceId,
-              accountId: activeUserId,
-            });
-          } catch (queueError) {
-            console.error(
-              "[media-pipeline] reused image normalization enqueue failed",
-              { mediaId, workspaceId, error: queueError },
-            );
-          }
-        }
-
-        const directVideoSource =
-          mediaType === "video" &&
-          canPublishVideoSourceDirectly({
-            name: fileName,
-            mimeType: contentType,
-            storagePath,
-            sizeBytes: sizeBytes,
-            maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+        // Mission 1 uniquement : une reprise réattache la source et ses
+        // métadonnées, sans lancer de normalisation ni de variante. Les
+        // missions IA et publication sont déclenchées explicitement ensuite.
+        if (alreadyUploaded) {
+          await refreshPublicationWorkspaceMediaStatus({
+            workspaceId,
+            accountId: activeUserId,
           });
-
-        if (alreadyUploaded && mediaType === "video" && directVideoSource) {
-          try {
-            const now = new Date().toISOString();
-            const markedReady = await supabaseAdmin
-              .from("pro_media_library")
-              .update({
-                processing_status: "ready",
-                processing_progress: 100,
-                publication_status: "ready",
-                detected_mime_type: contentType || "video/mp4",
-                processing_error_code: null,
-                processing_error_message: null,
-                processing_completed_at: now,
-              })
-              .eq("id", mediaId)
-              .eq("user_id", activeUserId);
-            if (markedReady.error) throw markedReady.error;
-            await refreshPublicationWorkspaceMediaStatus({
-              workspaceId,
-              accountId: activeUserId,
-            });
-          } catch (readyError) {
-            console.error(
-              "[media-pipeline] reused direct video readiness failed",
-              { mediaId, workspaceId, error: readyError },
-            );
-          }
-        }
-
-        if (alreadyUploaded && mediaType === "video" && !directVideoSource) {
-          try {
-            await enqueueVideoNormalization({
-              mediaId,
-              accountId: activeUserId,
-              workspaceId,
-            });
-            await refreshPublicationWorkspaceMediaStatus({
-              workspaceId,
-              accountId: activeUserId,
-            });
-          } catch (queueError) {
-            console.error(
-              "[media-pipeline] reused video normalization enqueue failed",
-              { mediaId, workspaceId, error: queueError },
-            );
-          }
         }
       }
     }

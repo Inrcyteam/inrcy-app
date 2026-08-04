@@ -30,21 +30,29 @@ const transcribeRoute = await readFile(
   "utf8",
 );
 
-test("les captures vidéo sont préchauffées et mises en cache par fichier", () => {
+test("les captures vidéo restent mises en cache mais ne sont plus préparées à l'insertion", () => {
   assert.match(foundations, /type VideoFramesPreparationCache = \{/);
   assert.match(source, /const getOrPrepareVideoFramesForAI = useCallback/);
-  assert.match(source, /void getOrPrepareVideoFramesForAI\(normalizedFile\)/);
-  assert.match(source, /void getOrPrepareVideoFramesForAI\(videoFile\)/);
   assert.match(source, /videoFramesForAiCacheRef\.current = null/);
+  const addVideoBlock = source.slice(
+    source.indexOf("const addVideoFile"),
+    source.indexOf("const onVideoChange"),
+  );
+  assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
+  assert.match(source, /preparePersistentAiMedia\(\)/);
 });
 
-test("l'audio local et les captures sont préparés avant puis attendus en parallèle", () => {
+test("l'audio local et les captures ne subsistent que dans le fallback de génération", () => {
   assert.match(source, /const getOrPrepareVideoAudioFileForAI = useCallback/);
-  assert.match(source, /void getOrPrepareVideoAudioFileForAI\(normalizedFile\)/);
-  assert.match(source, /void getOrPrepareVideoAudioFileForAI\(videoFile\)/);
+  const addVideoBlock = source.slice(
+    source.indexOf("const addVideoFile"),
+    source.indexOf("const onVideoChange"),
+  );
+  assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoAudioFileForAI/);
+  assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
   assert.match(
     source,
-    /const transcriptionPromise = cachedTranscript[\s\S]*getOrPrepareVideoAudioFileForAI\(videoFile\)[\s\S]*transcribeVideoAudioForAI\(videoFile, preparedAudio\)/,
+    /!mediaPipelineCutoverEnabled[\s\S]*const transcriptionPromise = cachedTranscript[\s\S]*getOrPrepareVideoAudioFileForAI\(videoFile\)[\s\S]*transcribeVideoAudioForAI\(videoFile, preparedAudio\)/,
   );
   assert.match(
     source,

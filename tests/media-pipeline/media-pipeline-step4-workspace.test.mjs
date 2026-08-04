@@ -40,12 +40,16 @@ test("les images et vidéos déclenchent la persistance dès insertion", () => {
   const hook = read(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
+  const missions = read("lib/boosterMediaPipelineMissions.ts");
 
   const imageAddBlock = image.slice(
     image.indexOf("const addImageFiles"),
     image.indexOf("const onImagesChange"),
   );
-  assert.match(imageAddBlock, /syncPersistentWorkspaceImages\?\.\(nextFiles\)/);
+  assert.match(
+    imageAddBlock,
+    /syncPersistentWorkspaceImages\?\.\([\s\S]*nextFiles[\s\S]*source_metadata/,
+  );
   assert.doesNotMatch(imageAddBlock, /\/api\/booster\/generate/);
 
   const videoAddBlock = modal.slice(
@@ -58,6 +62,10 @@ test("les images et vidéos déclenchent la persistance dès insertion", () => {
   assert.match(hook, /target:\s*"workspace_source"/);
   assert.match(hook, /workspacePosition:\s*position/);
   assert.match(hook, /persistProgress:\s*true/);
+  assert.match(hook, /buildBoosterSourceMediaMetadata\(/);
+  assert.match(missions, /pipeline_mission:\s*"source_metadata"/);
+  assert.match(missions, /preparation_scope:\s*"source_only"/);
+  assert.doesNotMatch(hook, /queueBackgroundPreparation/);
 });
 
 

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 
@@ -19,6 +21,30 @@ function safeStoragePath(input: string) {
   if (!path) return "";
   if (path.includes("..") || path.startsWith("/") || path.includes("\\")) return "";
   return path;
+}
+
+
+function cachedVariantPath(sourcePath: string, variant: string) {
+  const digest = createHash("sha256")
+    .update(`${sourcePath}:${variant}:v2`)
+    .digest("hex")
+    .slice(0, 40);
+  return `tiktok-ready/${digest}.jpg`;
+}
+
+async function downloadCachedVariant(path: string) {
+  const { data, error } = await supabaseAdmin.storage.from("booster").download(path);
+  if (error || !data) return null;
+  return data;
+}
+
+async function persistCachedVariant(path: string, buffer: Buffer) {
+  const { error } = await supabaseAdmin.storage.from("booster").upload(path, buffer, {
+    contentType: "image/jpeg",
+    cacheControl: "31536000",
+    upsert: true,
+  });
+  if (error) throw error;
 }
 
 function normalizeVariant(input: unknown) {
@@ -170,10 +196,31 @@ async function loadMedia(request: Request, includeBody: boolean) {
   if (variant === "photo" || variant === "photo_locked") {
     try {
       const geometryLocked = variant === "photo_locked";
-      const prepared = await toTikTokPhotoBuffer(data, geometryLocked);
-      body = prepared.buffer;
-      contentType = prepared.mime;
-      contentLength = prepared.buffer.length;
+      const sourceBuffer = Buffer.from(await data.arrayBuffer());
+      const sourceMime = String(data.type || "").toLowerCase() === "image/jpg"
+        ? "image/jpeg"
+        : String(data.type || "").toLowerCase();
+      const canServeStoredBytes = geometryLocked &&
+        await isDirectTikTokPhotoPublishable(sourceBuffer, sourceMime);
+
+      if (canServeStoredBytes) {
+        body = sourceBuffer;
+        contentType = sourceMime;
+        contentLength = sourceBuffer.length;
+      } else {
+        const cachePath = cachedVariantPath(path, variant);
+        let cached = await downloadCachedVariant(cachePath);
+        if (!cached) {
+          const prepared = await toTikTokPhotoBuffer(data, geometryLocked);
+          await persistCachedVariant(cachePath, prepared.buffer);
+          const preparedBytes = new Uint8Array(prepared.buffer.length);
+          preparedBytes.set(prepared.buffer);
+          cached = new Blob([preparedBytes.buffer], { type: prepared.mime });
+        }
+        body = cached;
+        contentType = cached.type || "image/jpeg";
+        contentLength = cached.size;
+      }
     } catch {
       return NextResponse.json({ error: "Image TikTok impossible à préparer." }, { status: 422 });
     }
@@ -182,7 +229,7 @@ async function loadMedia(request: Request, includeBody: boolean) {
   const headers = new Headers();
   headers.set("Content-Type", contentType);
   headers.set("Content-Length", String(contentLength));
-  headers.set("Cache-Control", "public, max-age=300");
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
   headers.set("X-Content-Type-Options", "nosniff");
 
   if (!includeBody) return new NextResponse(null, { status: 200, headers });

@@ -27,7 +27,10 @@ test("Générer coupe les binaires navigateur et échoue fermé sans workspace",
   assert.match(generate, /imagesForAI:\s*\[\]/);
   assert.match(generate, /videoForAI:\s*null/);
   assert.match(generate, /mediaWorkspaceExpected\?: boolean/);
-  assert.match(generate, /strictMediaCutover && mediaWorkspaceExpected && !mediaWorkspaceId/);
+  assert.match(
+    generate,
+    /strictMediaCutover\s*&&\s*mediaWorkspaceExpected\s*&&\s*\(!useWorkspaceMediaForAI \|\| !mediaWorkspaceId\)/,
+  );
   assert.match(generate, /code:\s*"media_workspace_required"/);
   assert.match(generate, /workspaceError instanceof MediaWorkspaceConsumptionError/);
   assert.match(generate, /workspace_cutover_v1/);
@@ -60,7 +63,11 @@ test("Booster n'envoie plus de médias historiques quand le cutover client est a
   assert.match(modal, /isLegacyMediaTransportCutoverClientEnabled/);
   assert.match(modal, /const mediaPipelineCutoverEnabled = legacyMediaCutoverClientAvailable/);
   assert.match(modal, /mediaPipelineCutoverV1:\s*mediaPipelineCutoverEnabled/);
-  assert.match(modal, /mediaWorkspaceExpected:[\s\S]*hasVideoForGeneration \|\| images\.length > 0/);
+  assert.match(modal, /mediaWorkspaceExpected:\s*shouldPrepareMediaForAi/);
+  assert.match(
+    modal,
+    /useWorkspaceMediaForAI:[\s\S]*shouldPrepareMediaForAi/,
+  );
   assert.match(modal, /imagesForAI:\s*mediaPipelineCutoverEnabled \? \[\] : imagesForAI/);
   assert.match(modal, /hasAnyImagePublish && !mediaPipelineCutoverEnabled/);
   assert.match(modal, /hasAnyVideoPublish && !mediaPipelineCutoverEnabled/);

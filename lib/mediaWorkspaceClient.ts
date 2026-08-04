@@ -1,4 +1,5 @@
 import { isUniversalMediaUploadEnabled } from "@/lib/universalMediaUploadClient";
+import type { BoosterMediaPipelineMission } from "@/lib/boosterMediaPipelineMissions";
 
 export type MediaWorkspaceReference = {
   workspaceId: string;
@@ -39,6 +40,7 @@ export type MediaWorkspaceSnapshot = MediaWorkspaceReference & {
 export type MediaWorkspacePreparationResult = {
   ok: true;
   workspaceId: string;
+  mission?: BoosterMediaPipelineMission;
   status: "uploading" | "processing" | "ready" | "failed";
   message?: string | null;
   media: MediaWorkspaceMediaSummary[];
@@ -251,14 +253,38 @@ export async function loadMediaPublicationWorkspace(params: {
   return json.workspace as MediaWorkspaceSnapshot;
 }
 
+export async function prepareMediaWorkspaceSourcePreviews(params: {
+  workspaceId: string;
+  signal?: AbortSignal;
+}) {
+  const response = await fetch(
+    "/api/media-pipeline/workspace/source-preview",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspaceId: params.workspaceId }),
+      signal: params.signal,
+      cache: "no-store",
+    },
+  );
+  return await readWorkspaceResponse(
+    response,
+    "Impossible de préparer la miniature du média.",
+  );
+}
+
 export async function prepareMediaPublicationWorkspace(params: {
   workspaceId: string;
+  mission: Exclude<BoosterMediaPipelineMission, "source_metadata">;
   signal?: AbortSignal;
 }): Promise<MediaWorkspacePreparationResult> {
   const response = await fetch("/api/media-pipeline/workspace/prepare", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ workspaceId: params.workspaceId }),
+    body: JSON.stringify({
+      workspaceId: params.workspaceId,
+      mission: params.mission,
+    }),
     signal: params.signal,
     cache: "no-store",
   });

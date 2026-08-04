@@ -114,15 +114,16 @@ test("les uploads ne forcent plus une compression globale au-dessus de 40 Mo", a
     rules,
     /INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL/,
   );
-  for (const source of [intent, event, workspace, hook]) {
+  assert.match(intent, /getUniversalMediaProductMaxBytes\(mediaType\)/);
+  for (const source of [event, workspace]) {
     assert.match(source, /maxBytes:\s*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES/);
   }
+  assert.doesNotMatch(intent, /40\s*\*\s*1024\s*\*\s*1024|40894464/);
+  assert.doesNotMatch(event, /40\s*\*\s*1024\s*\*\s*1024|40894464/);
   assert.doesNotMatch(hook, /background video prewarm skipped/);
-  assert.match(hook, /request\.mediaType === "image"/);
-  assert.doesNotMatch(
-    hook,
-    /request\.mediaType === "image" \|\| request\.mediaType === "video"/,
-  );
+  assert.match(hook, /buildBoosterSourceMediaMetadata/);
+  assert.match(hook, /target:\s*"workspace_source"/);
+  assert.match(hook, /runPreparationMission\("publication_preparation"\)/);
 });
 
 test("la préparation réseau et la validation par canal précèdent la publication", async () => {

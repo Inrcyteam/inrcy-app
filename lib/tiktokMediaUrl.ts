@@ -69,15 +69,45 @@ export function verifyTiktokMediaSignature(path: string, exp: number, signature:
   }
 }
 
+function isPublicHttpOrigin(input: string | undefined) {
+  const origin = safeOrigin(input);
+  if (!origin) return false;
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname.toLowerCase();
+    if (url.protocol !== "https:") return false;
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal")
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getAppBaseUrl(requestUrl?: string) {
-  const base =
-    process.env.TIKTOK_MEDIA_BASE_URL ||
-    safeOrigin(process.env.TIKTOK_REDIRECT_URI) ||
-    safeOrigin(requestUrl) ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.APP_URL ||
-    "";
-  return base.replace(/\/+$/g, "");
+  const candidates = [
+    process.env.TIKTOK_MEDIA_BASE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.APP_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "",
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+    process.env.TIKTOK_REDIRECT_URI,
+    requestUrl,
+    "https://app.inrcy.com",
+  ];
+
+  const publicBase = candidates.find((candidate) => isPublicHttpOrigin(candidate));
+  return safeOrigin(publicBase).replace(/\/+$/g, "");
 }
 
 export function buildTiktokMediaProxyUrl(

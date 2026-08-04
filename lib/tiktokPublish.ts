@@ -450,12 +450,13 @@ export async function fetchTiktokPublishStatus(accessToken: string, publishId: s
 async function waitForTiktokInitialStatus(accessToken: string, publishId: string) {
   let lastStatus: TiktokPublishStatus | null = null;
 
-  // TikTok traite les publications de façon asynchrone. Dès que /init renvoie
-  // un publish_id, l'envoi est accepté côté TikTok. On fait seulement quelques
-  // contrôles rapides pour capter un échec immédiat, puis on laisse l'interface
-  // afficher un succès d'envoi avec état "en traitement".
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    if (attempt > 0) await sleep(1500);
+  // TikTok traite les publications de façon asynchrone. Les photos passent par
+  // PULL_FROM_URL et demandent souvent plus de quelques secondes. On attend
+  // assez longtemps pour absorber les finalisations rapides, sans bloquer le
+  // moteur global pendant une minute entière. Le watcher cron prend ensuite le relais.
+  const delays = [0, 1500, 2500, 3500, 4500, 5500, 6500];
+  for (const delay of delays) {
+    if (delay > 0) await sleep(delay);
     lastStatus = await fetchTiktokPublishStatus(accessToken, publishId);
     if (lastStatus.complete || lastStatus.failed) return lastStatus;
   }

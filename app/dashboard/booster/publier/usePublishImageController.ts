@@ -126,7 +126,10 @@ type UsePublishImageControllerParams = {
   >;
   preservePublishScroll: () => void;
   restorePublishScroll: () => void;
-  syncPersistentWorkspaceImages?: (files: readonly File[]) => Promise<void> | void;
+  syncPersistentWorkspaceImages?: (
+    files: readonly File[],
+    metadataByIndex?: readonly Record<string, unknown>[],
+  ) => Promise<void> | void;
 };
 
 export default function usePublishImageController({
@@ -487,8 +490,14 @@ export default function usePublishImageController({
 
     setImages(nextFiles);
     setImagePreviews(nextPreviews);
+    const combinedMetaMap = { ...imageMetaByKey, ...nextMetaMap };
     setImageMetaByKey((prev) => ({ ...prev, ...nextMetaMap }));
-    void syncPersistentWorkspaceImages?.(nextFiles);
+    void syncPersistentWorkspaceImages?.(
+      nextFiles,
+      nextFiles.map((file) => ({
+        source_metadata: combinedMetaMap[makeImageKey(file)] || null,
+      })),
+    );
 
     if (!hasVideoMedia) {
       setChannelMediaModes((prev) => {
@@ -567,7 +576,12 @@ export default function usePublishImageController({
 
     setImages(nextFiles);
     setImagePreviews(nextPreviews);
-    void syncPersistentWorkspaceImages?.(nextFiles);
+    void syncPersistentWorkspaceImages?.(
+      nextFiles,
+      nextFiles.map((file) => ({
+        source_metadata: imageMetaByKey[makeImageKey(file)] || null,
+      })),
+    );
     setImageMetaByKey((prev) => {
       const next = { ...prev };
       delete next[removedKey];

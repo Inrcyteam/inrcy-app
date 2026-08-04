@@ -57,7 +57,10 @@ test("les formats annoncés disposent d'un décodeur serveur", () => {
   assert.equal(pkg.dependencies["bmp-js"], "^0.1.0");
   assert.match(normalizer, /import bmp from "bmp-js"/);
   assert.match(normalizer, /convertBmpSource/);
-  assert.match(normalizer, /normalizeWithSharp\(converted,\s*"bmp-js"\)/);
+  assert.match(
+    normalizer,
+    /normalizeWithSharp\(converted,\s*"bmp-js",\s*params\.purposes\)/,
+  );
   assert.match(policy, /IMAGE_NORMALIZATION_BMP_MAX_INPUT_PIXELS\s*=\s*25_000_000/);
 });
 
@@ -70,21 +73,22 @@ test("les dépendances de production médias sont corrigées et verrouillées", 
   assert.equal(pkg.overrides["fast-uri"], "3.1.4");
 });
 
-test("les sources image partent en parallèle et les MP4 directs évitent FFmpeg", () => {
+test("les sources partent en parallèle sans préparation lourde et les MP4 directs évitent FFmpeg", () => {
   const hook = read(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
+  const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
   const prepare = read(
     "app/api/media-pipeline/workspace/prepare/route.ts",
   );
   const imageWorker = read("lib/mediaImageNormalizationWorker.ts");
   assert.match(hook, /mediaType\s*===\s*"video"\s*\?\s*1\s*:\s*3/);
   assert.match(hook, /Promise\.all\(/);
-  assert.match(hook, /queueBackgroundPreparation/);
-  assert.match(
-    hook,
-    /request\.mediaType === "video" &&[\s\S]{0,120}request\.directVideoSource/,
-  );
+  assert.doesNotMatch(hook, /queueBackgroundPreparation/);
+  assert.match(hook, /target:\s*"workspace_source"/);
+  assert.match(hook, /prepareAiMedia/);
+  assert.match(hook, /preparePublicationMedia/);
+  assert.match(modal, /allUploaded && directVideoSource && purpose !== "generate"/);
   assert.match(hook, /loadMediaPublicationWorkspace\(/);
   assert.match(prepare, /processImageNormalizationJobsForMedia/);
   assert.match(prepare, /limit:\s*120/);
@@ -147,8 +151,9 @@ test("les variantes par canal sont persistantes et la publication reste légère
   );
   assert.match(publish, /preparePublicationVariants\(false\)/);
   assert.doesNotMatch(publish, /preparePublicationVariants\(true\)/);
-  assert.match(publish, /requiresPreparedNetworkVideoVariant/);
-  assert.match(publish, /video_variant_required/);
+  assert.doesNotMatch(publish, /requiresPreparedNetworkVideoVariant/);
+  assert.match(publish, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
+  assert.match(publish, /invalidVideoChannels\.forEach/);
   assert.match(publish, /preflightFailuresByChannel/);
   assert.match(publish, /img\.publicationReady\s*===\s*true/);
   assert.match(publish, /strictMediaCutover\s*\?\s*\[\]\s*:\s*images/);

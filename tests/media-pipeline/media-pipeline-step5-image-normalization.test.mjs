@@ -29,8 +29,9 @@ test("la migration étape 5 est additive, idempotente et réservée au worker", 
 test("le normaliseur produit trois variantes sans recadrer la composition", () => {
   const source = read("lib/mediaImageNormalizer.ts");
   assert.match(source, /purpose:\s*"canonical"/);
-  assert.match(source, /purpose:\s*"ai_preview"/);
-  assert.match(source, /purpose:\s*"thumbnail"/);
+  assert.match(source, /purpose === "ai_preview"/);
+  assert.match(source, /purposes:\s*\["canonical", "ai_preview", "thumbnail"\]/);
+  assert.match(source, /purposes:\s*\["thumbnail"\]/);
   assert.match(source, /\.rotate\(\)/);
   assert.match(source, /fit:\s*"inside"/);
   assert.match(source, /withoutEnlargement:\s*true/);
@@ -40,13 +41,20 @@ test("le normaliseur produit trois variantes sans recadrer la composition", () =
   assert.match(source, /heicConvert/);
 });
 
-test("l'upload terminé met l'image en file et répare les reprises idempotentes", () => {
+test("l'upload source ne normalise plus l'image et la préparation explicite reste idempotente", () => {
   const event = read("app/api/media-pipeline/upload-event/route.ts");
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
-  assert.match(event, /event === "uploaded" && current\.data\.media_type === "image"/);
-  assert.match(event, /enqueueImageNormalization\(/);
-  assert.match(intent, /alreadyUploaded && mediaType === "image"/);
-  assert.match(intent, /enqueueImageNormalization\(/);
+  const prepare = read("app/api/media-pipeline/workspace/prepare/route.ts");
+  assert.match(event, /sourceMetadataOnly/);
+  assert.match(
+    event,
+    /current\.data\.media_type === "image" &&[\s\S]{0,40}!sourceMetadataOnly/,
+  );
+  assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
+  assert.match(intent, /preparation_scope:\s*"source_only"/);
+  assert.doesNotMatch(intent, /enqueueImageNormalization\(/);
+  assert.match(prepare, /enqueueImageNormalization\(\{/);
+  assert.match(prepare, /mission,/);
 });
 
 test("le worker ne reçoit aucun binaire navigateur et utilise la source privée", () => {

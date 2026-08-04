@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { BoosterCreationMode } from "@/lib/boosterCreationMode";
+import {
+  buildBoosterSourceMediaMetadata,
+  requiresBoosterServerImagePreview,
+  type BoosterMediaPipelineMission,
+} from "@/lib/boosterMediaPipelineMissions";
 import {
   archiveMediaPublicationWorkspace,
   buildWorkspaceMediaClientKey,
@@ -12,13 +18,13 @@ import {
   linkMediaPublicationWorkspaceDraft,
   loadMediaPublicationWorkspace,
   prepareMediaPublicationWorkspace,
+  prepareMediaWorkspaceSourcePreviews,
   prewarmMediaPublicationWorkspace,
   type MediaWorkspaceMediaSummary,
+  type MediaWorkspacePreparationResult,
   type MediaWorkspaceReference,
 } from "@/lib/mediaWorkspaceClient";
 import { uploadUniversalMediaFile } from "@/lib/universalMediaUploadClient";
-import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
-import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export type PersistentWorkspaceMediaState = {
   localKey: string;
@@ -33,10 +39,20 @@ export type PersistentWorkspaceMediaState = {
 
 type UsePersistentMediaWorkspaceParams = {
   draftId?: string | null;
+  creationMode: BoosterCreationMode | null;
   selectedChannels: readonly string[];
   imageSettingsByChannel?: Record<string, unknown>;
   onError?: (message: string) => void;
   onPreparedMedia?: (media: readonly MediaWorkspaceMediaSummary[]) => void;
+};
+
+type PublicationPreparationSettings = {
+  imageSettingsByChannel?: Record<string, unknown>;
+  videoSettingsByChannel?: Record<string, unknown>;
+  selectedChannels?: readonly string[];
+  deferUntilReady?: boolean;
+  generateMissingVideoVariants?: boolean;
+  allowOriginalVideoFallback?: boolean;
 };
 
 function isAbortError(error: unknown) {
@@ -46,8 +62,15 @@ function isAbortError(error: unknown) {
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 export default function usePersistentMediaWorkspace({
   draftId,
+  creationMode,
   selectedChannels,
   imageSettingsByChannel,
   onError,
@@ -68,22 +91,32 @@ export default function usePersistentMediaWorkspace({
   const operationVersionRef = useRef(0);
   const operationAbortRef = useRef<AbortController | null>(null);
   const activeTaskRef = useRef<Promise<void>>(Promise.resolve());
-  const backgroundPreparationTaskRef = useRef<Promise<void>>(Promise.resolve());
-  const backgroundPreparationRunningRef = useRef(false);
-  const backgroundPreparationRequestRef = useRef<{
-    workspaceId: string;
-    operationVersion: number;
-    mediaType: "image" | "video";
-    directVideoSource: boolean;
-  } | null>(null);
-  const corePreparationReadyRef = useRef(false);
+  const activePreparationRef = useRef<
+    Partial<
+      Record<
+        Exclude<BoosterMediaPipelineMission, "source_metadata">,
+        Promise<MediaWorkspacePreparationResult>
+      >
+    >
+  >({});
+  const missionReadyRef = useRef({
+    ai_preparation: false,
+    publication_preparation: false,
+  });
   const activeUploadFailureRef = useRef("");
   const selectedChannelsRef = useRef(selectedChannels);
   const imageSettingsByChannelRef = useRef(imageSettingsByChannel);
   const videoSettingsByChannelRef = useRef<
     Record<string, unknown> | undefined
   >(undefined);
+  const creationModeRef = useRef(creationMode);
   const onPreparedMediaRef = useRef(onPreparedMedia);
+
+  const resetMissionReadiness = useCallback(() => {
+    missionReadyRef.current.ai_preparation = false;
+    missionReadyRef.current.publication_preparation = false;
+    activePreparationRef.current = {};
+  }, []);
 
   const resolveClientWorkspaceKey = useCallback(() => {
     if (clientWorkspaceKeyRef.current) {
@@ -105,7 +138,7 @@ export default function usePersistentMediaWorkspace({
     const promise = ensureMediaPublicationWorkspace({
       clientWorkspaceKey,
       draftId,
-      selectedChannels,
+      selectedChannels: selectedChannelsRef.current,
     })
       .then((next) => {
         referenceRef.current = next;
@@ -117,7 +150,7 @@ export default function usePersistentMediaWorkspace({
       });
     ensurePromiseRef.current = promise;
     return await promise;
-  }, [draftId, enabled, resolveClientWorkspaceKey, selectedChannels]);
+  }, [draftId, enabled, resolveClientWorkspaceKey]);
 
   const adoptWorkspace = useCallback(
     (workspaceId: unknown, clientWorkspaceKey?: unknown) => {
@@ -126,11 +159,10 @@ export default function usePersistentMediaWorkspace({
       const cleanClientKey = String(clientWorkspaceKey || "").trim();
       const next: MediaWorkspaceReference = {
         workspaceId: cleanWorkspaceId,
-        clientWorkspaceKey:
-          cleanClientKey || resolveClientWorkspaceKey(),
+        clientWorkspaceKey: cleanClientKey || resolveClientWorkspaceKey(),
       };
       operationVersionRef.current += 1;
-      corePreparationReadyRef.current = false;
+      resetMissionReadiness();
       operationAbortRef.current?.abort();
       operationAbortRef.current = null;
       ensurePromiseRef.current = null;
@@ -139,117 +171,17 @@ export default function usePersistentMediaWorkspace({
       referenceRef.current = next;
       setReference(next);
     },
-    [resolveClientWorkspaceKey],
+    [resetMissionReadiness, resolveClientWorkspaceKey],
   );
 
-  const queueBackgroundPreparation = useCallback(
-    (
-      workspaceId: string,
-      operationVersion: number,
-      mediaType: "image" | "video",
-      directVideoSource: boolean,
-    ): Promise<void> => {
-      backgroundPreparationRequestRef.current = {
-        workspaceId,
-        operationVersion,
-        mediaType,
-        directVideoSource,
-      };
-      if (backgroundPreparationRunningRef.current) {
-        return backgroundPreparationTaskRef.current;
-      }
-
-      backgroundPreparationRunningRef.current = true;
-      const run = (async () => {
-        try {
-          do {
-            const request = backgroundPreparationRequestRef.current;
-            backgroundPreparationRequestRef.current = null;
-            if (!request) return;
-            if (request.operationVersion !== operationVersionRef.current) {
-              continue;
-            }
-
-            try {
-              if (
-                request.mediaType === "video" &&
-                request.directVideoSource
-              ) {
-                // Une source MP4/M4V déjà sécurisée est directement publiable.
-                // Ne jamais la télécharger puis la réencoder dans une fonction
-                // Vercel : les variantes restent réservées à une adaptation
-                // explicitement demandée par le pro.
-                corePreparationReadyRef.current = true;
-                const snapshot = await loadMediaPublicationWorkspace({
-                  workspaceId: request.workspaceId,
-                  includeUrls: true,
-                });
-                if (request.operationVersion === operationVersionRef.current) {
-                  onPreparedMediaRef.current?.(snapshot.media);
-                  // La source compatible reste immédiatement publiable.
-                  // Les variantes vidéo ne sont générées que sur action explicite
-                  // « Appliquer ce format », jamais silencieusement en arrière-plan.
-                }
-                continue;
-              }
-
-              const preparation = await prepareMediaPublicationWorkspace({
-                workspaceId: request.workspaceId,
-              });
-              if (
-                request.operationVersion !== operationVersionRef.current ||
-                preparation.status !== "ready"
-              ) {
-                continue;
-              }
-              corePreparationReadyRef.current = true;
-
-              const snapshot = await loadMediaPublicationWorkspace({
-                workspaceId: request.workspaceId,
-                includeUrls: true,
-              });
-              if (request.operationVersion !== operationVersionRef.current) {
-                continue;
-              }
-              onPreparedMediaRef.current?.(snapshot.media);
-
-              // Les variantes propres aux réseaux sont calculées tant que le pro
-              // travaille encore dans la modale. Une erreur ici ne bloque jamais
-              // l’upload ni la préparation canonique.
-              if (request.mediaType === "image") {
-                void prewarmMediaPublicationWorkspace({
-                  workspaceId: request.workspaceId,
-                  selectedChannels: selectedChannelsRef.current,
-                  imageSettingsByChannel: imageSettingsByChannelRef.current,
-                }).catch((error) => {
-                  console.warn(
-                    "[media-pipeline] background image prewarm skipped",
-                    error,
-                  );
-                });
-              }
-            } catch (error) {
-              if (!isAbortError(error)) {
-                console.warn(
-                  "[media-pipeline] background preparation deferred",
-                  error,
-                );
-              }
-            }
-          } while (backgroundPreparationRequestRef.current !== null);
-        } finally {
-          // Aucune attente entre la dernière condition de boucle et ce reset :
-          // une nouvelle demande voit donc soit la boucle active, soit un worker
-          // libre qu'elle peut relancer sans appel récursif.
-          backgroundPreparationRunningRef.current = false;
-        }
-      })();
-
-      backgroundPreparationTaskRef.current = run;
-      return run;
-    },
-    [],
-  );
+  const refreshPreparedMedia = useCallback(async (workspaceId: string) => {
+    const snapshot = await loadMediaPublicationWorkspace({
+      workspaceId,
+      includeUrls: true,
+    });
+    onPreparedMediaRef.current?.(snapshot.media);
+    return snapshot;
+  }, []);
 
   const scheduleSync = useCallback(
     async (
@@ -261,7 +193,7 @@ export default function usePersistentMediaWorkspace({
 
       const operationVersion = operationVersionRef.current + 1;
       operationVersionRef.current = operationVersion;
-      corePreparationReadyRef.current = false;
+      resetMissionReadiness();
       activeUploadFailureRef.current = "";
       operationAbortRef.current?.abort();
       const controller = new AbortController();
@@ -319,6 +251,17 @@ export default function usePersistentMediaWorkspace({
             nextPosition += 1;
             if (operationVersion !== operationVersionRef.current) return;
             const { file, position, localKey } = entries[entryIndex];
+            const rawSettings = asRecord(metadataByIndex?.[position]);
+            const nestedSource = asRecord(rawSettings.source_metadata);
+            const sourceMetadata = buildBoosterSourceMediaMetadata({
+              file,
+              mediaType,
+              creationMode: creationModeRef.current,
+              source: Object.keys(nestedSource).length
+                ? nestedSource
+                : rawSettings,
+              mediaSettings: rawSettings,
+            });
 
             try {
               const result = await uploadUniversalMediaFile(file, {
@@ -330,8 +273,10 @@ export default function usePersistentMediaWorkspace({
                 persistProgress: true,
                 signal: controller.signal,
                 metadata: {
-                  selected_channels: selectedChannels,
-                  media_settings: metadataByIndex?.[position] || {},
+                  ...sourceMetadata,
+                  selected_channels: selectedChannelsRef.current,
+                  media_settings: rawSettings,
+                  source_metadata: sourceMetadata,
                   inserted_from: "booster",
                   inserted_at: new Date().toISOString(),
                 },
@@ -368,18 +313,6 @@ export default function usePersistentMediaWorkspace({
                   error: "",
                 },
               }));
-              void queueBackgroundPreparation(
-                workspace.workspaceId,
-                operationVersion,
-                mediaType,
-                mediaType === "video" &&
-                  canPublishVideoSourceDirectly({
-                    name: file.name,
-                    type: file.type,
-                    sizeBytes: file.size,
-                    maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
-                  }),
-              );
             } catch (error) {
               if (
                 isAbortError(error) ||
@@ -408,7 +341,6 @@ export default function usePersistentMediaWorkspace({
                 },
               }));
               onError?.(message);
-              continue;
             }
           }
         };
@@ -420,20 +352,33 @@ export default function usePersistentMediaWorkspace({
         await Promise.all(
           Array.from({ length: uploadConcurrency }, () => uploadNext()),
         );
-        void queueBackgroundPreparation(
-          workspace.workspaceId,
-          operationVersion,
-          mediaType,
-          mediaType === "video" &&
-            entries.every(({ file }) =>
-              canPublishVideoSourceDirectly({
-                name: file.name,
-                type: file.type,
-                sizeBytes: file.size,
-                maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
-              }),
-            ),
-        );
+
+        if (
+          operationVersion === operationVersionRef.current &&
+          !activeUploadFailureRef.current
+        ) {
+          if (
+            mediaType === "image" &&
+            entries.some(({ file }) => requiresBoosterServerImagePreview(file))
+          ) {
+            await prepareMediaWorkspaceSourcePreviews({
+              workspaceId: workspace.workspaceId,
+              signal: controller.signal,
+            }).catch((error) => {
+              if (!isAbortError(error)) {
+                console.warn(
+                  "[media-pipeline] interface thumbnail deferred",
+                  error,
+                );
+              }
+            });
+          }
+          await refreshPreparedMedia(workspace.workspaceId).catch((error) => {
+            if (!isAbortError(error)) {
+              console.warn("[media-pipeline] source snapshot deferred", error);
+            }
+          });
+        }
       })().catch((error) => {
         if (!isAbortError(error)) {
           onError?.(
@@ -447,13 +392,7 @@ export default function usePersistentMediaWorkspace({
       activeTaskRef.current = task;
       await task;
     },
-    [
-      enabled,
-      ensureWorkspace,
-      onError,
-      queueBackgroundPreparation,
-      selectedChannels,
-    ],
+    [enabled, ensureWorkspace, onError, refreshPreparedMedia, resetMissionReadiness],
   );
 
   const syncImages = useCallback(
@@ -470,15 +409,67 @@ export default function usePersistentMediaWorkspace({
     [scheduleSync],
   );
 
-  const prewarmWorkspace = useCallback(
-    async (settings?: {
-      imageSettingsByChannel?: Record<string, unknown>;
-      videoSettingsByChannel?: Record<string, unknown>;
-      selectedChannels?: readonly string[];
-      deferUntilReady?: boolean;
-      generateMissingVideoVariants?: boolean;
-      allowOriginalVideoFallback?: boolean;
-    }) => {
+  const runPreparationMission = useCallback(
+    async (
+      mission: "ai_preparation" | "publication_preparation",
+    ): Promise<MediaWorkspacePreparationResult> => {
+      if (!enabled) {
+        throw new Error("Le workspace média persistant n’est pas activé.");
+      }
+      await activeTaskRef.current;
+      if (activeUploadFailureRef.current) {
+        throw new Error(activeUploadFailureRef.current);
+      }
+      const workspace = await ensureWorkspace();
+      if (!workspace) {
+        throw new Error("Impossible de préparer l’espace média.");
+      }
+
+      const existing = activePreparationRef.current[mission];
+      if (existing) return await existing;
+
+      const operationVersion = operationVersionRef.current;
+      let task: Promise<MediaWorkspacePreparationResult>;
+      task = prepareMediaPublicationWorkspace({
+        workspaceId: workspace.workspaceId,
+        mission,
+      })
+        .then(async (result) => {
+          if (result.status === "ready") {
+            missionReadyRef.current[mission] = true;
+          }
+          if (operationVersion === operationVersionRef.current) {
+            await refreshPreparedMedia(workspace.workspaceId).catch(() => undefined);
+          }
+          return result;
+        })
+        .finally(() => {
+          if (activePreparationRef.current[mission] === task) {
+            delete activePreparationRef.current[mission];
+          }
+        });
+      activePreparationRef.current[mission] = task;
+      return await task;
+    },
+    [enabled, ensureWorkspace, refreshPreparedMedia],
+  );
+
+  const prepareAiMedia = useCallback(async () => {
+    if (creationModeRef.current !== "ai") {
+      throw new Error(
+        "La préparation IA est disponible uniquement dans le mode Créer avec iNrCy.",
+      );
+    }
+    return await runPreparationMission("ai_preparation");
+  }, [runPreparationMission]);
+
+  const preparePublicationMedia = useCallback(
+    async () => await runPreparationMission("publication_preparation"),
+    [runPreparationMission],
+  );
+
+  const preparePublicationVariants = useCallback(
+    async (settings?: PublicationPreparationSettings) => {
       if (settings?.imageSettingsByChannel) {
         imageSettingsByChannelRef.current = settings.imageSettingsByChannel;
       }
@@ -487,7 +478,12 @@ export default function usePersistentMediaWorkspace({
       }
       const workspaceId = referenceRef.current?.workspaceId;
       if (!enabled || !workspaceId) return;
-      if (settings?.deferUntilReady && !corePreparationReadyRef.current) return;
+      if (
+        settings?.deferUntilReady &&
+        !missionReadyRef.current.publication_preparation
+      ) {
+        return;
+      }
       return await prewarmMediaPublicationWorkspace({
         workspaceId,
         selectedChannels:
@@ -496,8 +492,7 @@ export default function usePersistentMediaWorkspace({
         videoSettingsByChannel: videoSettingsByChannelRef.current,
         generateMissingVideoVariants:
           settings?.generateMissingVideoVariants,
-        allowOriginalVideoFallback:
-          settings?.allowOriginalVideoFallback,
+        allowOriginalVideoFallback: settings?.allowOriginalVideoFallback,
       });
     },
     [enabled],
@@ -508,20 +503,21 @@ export default function usePersistentMediaWorkspace({
     [scheduleSync],
   );
 
-  const linkDraft = useCallback(async (nextDraftId: string) => {
-    if (!enabled || !nextDraftId) return;
-    const workspace = await ensureWorkspace();
-    if (!workspace) return;
-    await linkMediaPublicationWorkspaceDraft({
-      workspaceId: workspace.workspaceId,
-      draftId: nextDraftId,
-    });
-  }, [enabled, ensureWorkspace]);
+  const linkDraft = useCallback(
+    async (nextDraftId: string) => {
+      if (!enabled || !nextDraftId) return;
+      const workspace = await ensureWorkspace();
+      if (!workspace) return;
+      await linkMediaPublicationWorkspaceDraft({
+        workspaceId: workspace.workspaceId,
+        draftId: nextDraftId,
+      });
+    },
+    [enabled, ensureWorkspace],
+  );
 
   const waitForIdle = useCallback(
-    async (
-      onProgress?: (progress: number, label: string) => void,
-    ) => {
+    async (onProgress?: (progress: number, label: string) => void) => {
       while (true) {
         if (activeUploadFailureRef.current) {
           throw new Error(activeUploadFailureRef.current);
@@ -598,9 +594,7 @@ export default function usePersistentMediaWorkspace({
         (item) => item.status === "failed",
       );
       if (failedMedia) {
-        throw new Error(
-          failedMedia.error || "L’envoi du média a échoué.",
-        );
+        throw new Error(failedMedia.error || "L’envoi du média a échoué.");
       }
     },
     [],
@@ -609,6 +603,7 @@ export default function usePersistentMediaWorkspace({
   const archiveWorkspace = useCallback(async () => {
     if (!enabled) return;
     operationVersionRef.current += 1;
+    resetMissionReadiness();
     operationAbortRef.current?.abort();
     await activeTaskRef.current.catch(() => undefined);
     const workspace = referenceRef.current;
@@ -617,7 +612,7 @@ export default function usePersistentMediaWorkspace({
       workspaceId: workspace.workspaceId,
     });
     clearBoosterWorkspaceClientKey();
-  }, [enabled]);
+  }, [enabled, resetMissionReadiness]);
 
   useEffect(() => {
     mediaStatesRef.current = mediaStates;
@@ -632,23 +627,8 @@ export default function usePersistentMediaWorkspace({
   }, [imageSettingsByChannel]);
 
   useEffect(() => {
-    const workspaceId = reference?.workspaceId;
-    if (!enabled || !workspaceId || !imageSettingsByChannel) return;
-    if (!corePreparationReadyRef.current) return;
-    const timeoutId = window.setTimeout(() => {
-      void prewarmMediaPublicationWorkspace({
-        workspaceId,
-        selectedChannels,
-        imageSettingsByChannel,
-      }).catch(() => undefined);
-    }, 900);
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    enabled,
-    imageSettingsByChannel,
-    reference?.workspaceId,
-    selectedChannels,
-  ]);
+    creationModeRef.current = creationMode;
+  }, [creationMode]);
 
   useEffect(() => {
     onPreparedMediaRef.current = onPreparedMedia;
@@ -675,7 +655,12 @@ export default function usePersistentMediaWorkspace({
     adoptWorkspace,
     syncImages,
     syncVideo,
-    prewarmWorkspace,
+    prepareAiMedia,
+    preparePublicationMedia,
+    preparePublicationVariants,
+    // Alias conservé pendant la transition : il représente désormais
+    // explicitement la mission 3 et n'est jamais déclenché à l'ajout.
+    prewarmWorkspace: preparePublicationVariants,
     clearWorkspaceMedia,
     linkDraft,
     waitForIdle,

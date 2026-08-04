@@ -183,7 +183,7 @@ test("la conversion réseau normalise codec, audio, FPS, dimensions et interdit 
   assert.match(server, /"-t"/);
   assert.match(server, /getVideoTargetBitrateKbps/);
   assert.match(server, /variant\.publicationProfile === "light_background"/);
-  assert.match(publish, /requiresPreparedNetworkVideoVariant/);
+  assert.doesNotMatch(publish, /requiresPreparedNetworkVideoVariant/);
   assert.match(publish, /video_conversion_failed|video_conversion_or_probe_failed/);
   assert.match(shared, /validateVideoDurationForChannel/);
   assert.match(shared, /mediaBlockerCodes/);

@@ -111,14 +111,15 @@ test("les vidéos MP4 directes contrôlent les variantes au clic et gardent une 
   const modal = await readSource(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
-
-  assert.match(hook, /const corePreparationReadyRef = useRef\(false\)/);
-  assert.match(hook, /corePreparationReadyRef\.current = true/);
-  assert.match(
-    hook,
-    /request\.mediaType === "video" &&[\s\S]{0,120}request\.directVideoSource/,
+  const prepareRoute = await readSource(
+    "app/api/media-pipeline/workspace/prepare/route.ts",
   );
+
+  assert.match(hook, /missionReadyRef/);
+  assert.match(hook, /runPreparationMission\("publication_preparation"\)/);
   assert.match(hook, /loadMediaPublicationWorkspace\(/);
+  assert.match(prepareRoute, /function isDirectPublicationVideo/);
+  assert.match(prepareRoute, /if \(isDirectPublicationVideo\(params\.media\)\) return true/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.match(modal, /async function prepareCutoverVideoVariants/);
   assert.equal(

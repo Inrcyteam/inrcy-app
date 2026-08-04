@@ -104,7 +104,12 @@
     "test:publication-system:optimization": "node --test --experimental-strip-types tests/publication-system/publication-system-media-optimization.test.mts",
     "test:publication-system:recovery": "node --test --experimental-strip-types tests/publication-system/video-variant-recovery-hotfix.test.mts",
     "test:publication-system:hotfix": "node --experimental-strip-types tests/publication-system/publication-system-hotfix-regressions.test.mts",
-    "qa:publication-system:optimization": "npm run qa:publication-system:step8 && npm run audit:publication-system:optimization && npm run test:publication-system:optimization && npm run test:publication-system:recovery && npm run typecheck"
+    "qa:publication-system:optimization": "npm run qa:publication-system:step8 && npm run audit:publication-system:optimization && npm run test:publication-system:optimization && npm run test:publication-system:recovery && npm run typecheck",
+    "test:booster-publish:step3": "node --test --experimental-strip-types tests/dashboard/booster-creation-paths-step3.test.mts tests/dashboard/booster-creation-mode-workflow.test.mts",
+    "test:booster-step5": "node --test --experimental-strip-types tests/certification/booster-step5-certification.test.mts",
+    "certify:booster-step5": "node --test --experimental-strip-types tests/certification/*.test.mts tests/dashboard/*.test.mts tests/publication-system/*.test.mts tests/pinterest/*.test.mts tests/inragent/*.test.mts tests/inrsend/*.test.mts tests/booster-content-safety/*.test.mts && node --test tests/media-rules/*.test.mjs tests/media-pipeline/*.test.mjs && node --test --experimental-strip-types tests/media-pipeline/*.test.mts",
+    "certify:booster-step5:full": "npm run certify:booster-step5 && npm run typecheck && npm run lint && npm run build",
+    "test:tiktok": "node --test tests/tiktok/*.test.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",

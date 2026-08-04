@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { normalizeImageSource } from "@/lib/mediaImageNormalizer";
+import { normalizeImageSourcePurposes } from "@/lib/mediaImageNormalizer";
+import {
+  BOOSTER_IMAGE_PREPARATION_PURPOSES,
+  type BoosterPreparationMission,
+} from "@/lib/boosterMediaPipelineMissions";
 import { claimTargetedProcessingJob } from "@/lib/mediaProcessingTargetedClaim";
 import {
   IMAGE_NORMALIZATION_DEFAULT_BATCH_SIZE,
@@ -60,6 +64,23 @@ type VariantRow = {
   id: string;
   purpose: ImageNormalizationPurpose;
   status: string;
+  bucket_name: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  width: number | null;
+  height: number | null;
+};
+
+type ImageVariantOutput = {
+  purpose: ImageNormalizationPurpose;
+  variantId: string;
+  bucket: string;
+  storagePath: string;
+  mimeType: "image/jpeg" | "image/png";
+  sizeBytes: number;
+  width: number;
+  height: number;
 };
 
 type ProcessedJobSummary = {
@@ -92,6 +113,25 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function readPreparationMission(
+  job: ClaimedImageJob,
+): BoosterPreparationMission | null {
+  const value = String(job.payload?.pipelineMission || "").trim();
+  return value === "ai_preparation" || value === "publication_preparation"
+    ? value
+    : null;
+}
+
+function requiredImagePurposes(job: ClaimedImageJob) {
+  const mission = readPreparationMission(job);
+  return {
+    mission,
+    purposes: mission
+      ? [...BOOSTER_IMAGE_PREPARATION_PURPOSES[mission]]
+      : [...IMAGE_NORMALIZATION_PURPOSES],
+  };
 }
 
 function classifyWorkerError(error: unknown) {
@@ -167,7 +207,9 @@ async function loadMedia(job: ClaimedImageJob): Promise<MediaRow> {
 async function loadVariants(job: ClaimedImageJob): Promise<VariantRow[]> {
   const result = await supabaseAdmin
     .from("media_variants")
-    .select("id,purpose,status")
+    .select(
+      "id,purpose,status,bucket_name,storage_path,mime_type,size_bytes,width,height",
+    )
     .eq("account_id", job.account_id)
     .eq("media_id", job.media_id)
     .is("workspace_id", null)
@@ -192,7 +234,35 @@ async function loadVariants(job: ClaimedImageJob): Promise<VariantRow[]> {
   return rows;
 }
 
+function readyVariantOutput(variant: VariantRow): ImageVariantOutput | null {
+  if (
+    variant.status !== "ready" ||
+    !variant.bucket_name ||
+    !variant.storage_path ||
+    !variant.size_bytes ||
+    !variant.width ||
+    !variant.height
+  ) {
+    return null;
+  }
+  const mimeType = variant.mime_type;
+  if (mimeType !== "image/jpeg" && mimeType !== "image/png") {
+    return null;
+  }
+  return {
+    purpose: variant.purpose,
+    variantId: variant.id,
+    bucket: variant.bucket_name,
+    storagePath: variant.storage_path,
+    mimeType,
+    sizeBytes: variant.size_bytes,
+    width: variant.width,
+    height: variant.height,
+  };
+}
+
 async function markVariantsProcessing(job: ClaimedImageJob, variants: VariantRow[]) {
+  if (!variants.length) return;
   const result = await supabaseAdmin
     .from("media_variants")
     .update({
@@ -305,8 +375,10 @@ async function downloadSourceToTemp(media: MediaRow, jobId: string) {
 async function uploadVariant(params: {
   job: ClaimedImageJob;
   variant: VariantRow;
-  normalized: Awaited<ReturnType<typeof normalizeImageSource>>["variants"][ImageNormalizationPurpose];
-}) {
+  normalized: NonNullable<
+    Awaited<ReturnType<typeof normalizeImageSourcePurposes>>["variants"][ImageNormalizationPurpose]
+  >;
+}): Promise<ImageVariantOutput> {
   const storagePath = buildImageNormalizationStoragePath({
     accountId: params.job.account_id,
     mediaId: params.job.media_id,
@@ -320,9 +392,9 @@ async function uploadVariant(params: {
       storagePath,
       toExactStorageArrayBuffer(params.normalized.buffer),
       {
-      upsert: true,
-      contentType: params.normalized.mimeType,
-      cacheControl: "31536000",
+        upsert: true,
+        contentType: params.normalized.mimeType,
+        cacheControl: "31536000",
       },
     );
   if (upload.error) {
@@ -419,6 +491,22 @@ async function markJobFailure(params: {
       getImageNormalizationRetryDelaySeconds(params.job.attempt_count) * 1_000,
   ).toISOString();
 
+  const pendingVariantIds = params.variants
+    .filter((variant) => variant.status !== "ready")
+    .map((variant) => variant.id);
+
+  const variantFailureUpdate = pendingVariantIds.length
+    ? supabaseAdmin
+        .from("media_variants")
+        .update({
+          status: "failed",
+          error_code: normalized.code,
+          error_message: normalized.message,
+        })
+        .in("id", pendingVariantIds)
+        .eq("account_id", params.job.account_id)
+    : Promise.resolve({ data: null, error: null });
+
   await Promise.all([
     supabaseAdmin
       .from("media_processing_jobs")
@@ -435,18 +523,7 @@ async function markJobFailure(params: {
       })
       .eq("id", params.job.id)
       .eq("account_id", params.job.account_id),
-    supabaseAdmin
-      .from("media_variants")
-      .update({
-        status: "failed",
-        error_code: normalized.code,
-        error_message: normalized.message,
-      })
-      .in(
-        "id",
-        params.variants.map((variant) => variant.id),
-      )
-      .eq("account_id", params.job.account_id),
+    variantFailureUpdate,
     supabaseAdmin
       .from("pro_media_library")
       .update({
@@ -499,32 +576,77 @@ async function processClaimedImageJob(
       );
     }
 
-    await markVariantsProcessing(job, variants);
+    const { mission, purposes } = requiredImagePurposes(job);
+    const requiredPurposeSet = new Set<ImageNormalizationPurpose>(purposes);
+    const hasReadyCanonicalVariant = variants.some(
+      (variant) =>
+        variant.purpose === "canonical" &&
+        variant.status === "ready" &&
+        Boolean(variant.bucket_name && variant.storage_path),
+    );
+    const selectedVariants = variants.filter((variant) =>
+      requiredPurposeSet.has(variant.purpose),
+    );
+    variants = selectedVariants;
+
+    const reusableOutputs = Object.fromEntries(
+      selectedVariants
+        .map((variant) => [variant.purpose, readyVariantOutput(variant)] as const)
+        .filter(
+          (entry): entry is readonly [
+            ImageNormalizationPurpose,
+            NonNullable<ReturnType<typeof readyVariantOutput>>,
+          ] => Boolean(entry[1]),
+        ),
+    ) as Partial<
+      Record<
+        ImageNormalizationPurpose,
+        NonNullable<ReturnType<typeof readyVariantOutput>>
+      >
+    >;
+    const pendingVariants = selectedVariants.filter(
+      (variant) => !reusableOutputs[variant.purpose],
+    );
+
+    await markVariantsProcessing(job, pendingVariants);
     await updateJobProgress(job, 5);
 
     const downloaded = await downloadSourceToTemp(media, job.id);
     workDir = downloaded.workDir;
     await updateJobProgress(job, 25);
 
-    const normalized = await normalizeImageSource({
+    const normalized = await normalizeImageSourcePurposes({
       inputPath: downloaded.inputPath,
       mimeType: media.detected_mime_type || media.mime_type || "",
       originalFileName: media.original_file_name,
+      purposes: pendingVariants.map((variant) => variant.purpose),
     });
     await updateJobProgress(job, 60);
 
-    const outputs: Record<string, Awaited<ReturnType<typeof uploadVariant>>> = {};
-    for (const variant of variants) {
+    const outputs: Partial<
+      Record<ImageNormalizationPurpose, Awaited<ReturnType<typeof uploadVariant>>>
+    > = {
+      ...reusableOutputs,
+    };
+    for (const variant of pendingVariants) {
+      const normalizedVariant = normalized.variants[variant.purpose];
+      if (!normalizedVariant) {
+        throw new ImageNormalizationError(
+          "image_variant_output_missing",
+          `La variante ${variant.purpose} n’a pas été produite.`,
+          true,
+        );
+      }
       outputs[variant.purpose] = await uploadVariant({
         job,
         variant,
-        normalized: normalized.variants[variant.purpose],
+        normalized: normalizedVariant,
       });
     }
     await updateJobProgress(job, 90);
 
     const canonical = outputs.canonical;
-    if (!canonical) {
+    if (mission === "publication_preparation" && !canonical) {
       throw new ImageNormalizationError(
         "image_canonical_missing",
         "La variante canonique n’a pas été produite.",
@@ -534,33 +656,49 @@ async function processClaimedImageJob(
 
     const completedAt = new Date().toISOString();
     const existingMetadata = asRecord(media.media_metadata);
-    const mediaUpdate = await supabaseAdmin
-      .from("pro_media_library")
-      .update({
+    const previousNormalization = asRecord(existingMetadata.image_normalization);
+    const previousVariants = asRecord(previousNormalization.variants);
+    const mediaPatch: Record<string, unknown> = {
+      width: normalized.source.width,
+      height: normalized.source.height,
+      content_hash_sha256: downloaded.sha256,
+      detected_mime_type:
+        media.detected_mime_type || media.mime_type || canonical?.mimeType || null,
+      processing_status: "ready",
+      publication_status: canonical || hasReadyCanonicalVariant
+        ? "ready"
+        : mission === "ai_preparation"
+          ? "not_requested"
+          : media.publication_status,
+      processing_progress: 100,
+      processing_error_code: null,
+      processing_error_message: null,
+      processing_completed_at: completedAt,
+      pipeline_version: IMAGE_NORMALIZATION_PIPELINE_VERSION,
+      media_metadata: {
+        ...existingMetadata,
+        image_normalization: {
+          ...previousNormalization,
+          version: IMAGE_NORMALIZATION_PIPELINE_VERSION,
+          source: normalized.source,
+          variants: { ...previousVariants, ...outputs },
+          last_mission: mission || "legacy_full_normalization",
+          completed_at: completedAt,
+        },
+      },
+    };
+    if (canonical) {
+      Object.assign(mediaPatch, {
         canonical_bucket_name: canonical.bucket,
         canonical_storage_path: canonical.storagePath,
         canonical_mime_type: canonical.mimeType,
         canonical_size_bytes: canonical.sizeBytes,
-        content_hash_sha256: downloaded.sha256,
-        detected_mime_type:
-          media.detected_mime_type || media.mime_type || canonical.mimeType,
-        processing_status: "ready",
-        publication_status: "ready",
-        processing_progress: 100,
-        processing_error_code: null,
-        processing_error_message: null,
-        processing_completed_at: completedAt,
-        pipeline_version: IMAGE_NORMALIZATION_PIPELINE_VERSION,
-        media_metadata: {
-          ...existingMetadata,
-          image_normalization: {
-            version: IMAGE_NORMALIZATION_PIPELINE_VERSION,
-            source: normalized.source,
-            variants: outputs,
-            completed_at: completedAt,
-          },
-        },
-      })
+      });
+    }
+
+    const mediaUpdate = await supabaseAdmin
+      .from("pro_media_library")
+      .update(mediaPatch)
       .eq("id", job.media_id)
       .eq("user_id", job.account_id);
     if (mediaUpdate.error) throw mediaUpdate.error;
@@ -572,6 +710,7 @@ async function processClaimedImageJob(
         progress: 100,
         result: {
           pipelineVersion: IMAGE_NORMALIZATION_PIPELINE_VERSION,
+          pipelineMission: mission || "legacy_full_normalization",
           sourceSha256: downloaded.sha256,
           sourceSizeBytes: downloaded.sizeBytes,
           source: normalized.source,

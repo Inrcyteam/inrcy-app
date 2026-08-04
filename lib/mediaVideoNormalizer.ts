@@ -69,7 +69,7 @@ export type NormalizedVideoVariant = {
 export type NormalizedVideoBundle = {
   source: VideoSourceProbe;
   warnings: string[];
-  variants: Record<VideoNormalizationVariantKey, NormalizedVideoVariant>;
+  variants: Partial<Record<VideoNormalizationVariantKey, NormalizedVideoVariant>>;
 };
 
 type CanonicalPreparation = {
@@ -825,6 +825,7 @@ export async function normalizeVideoSource(params: {
   fallbackWidth?: number | null;
   fallbackHeight?: number | null;
   fallbackDurationSeconds?: number | null;
+  keys?: readonly VideoNormalizationVariantKey[];
   onProgress?: (update: VideoNormalizationProgress) => void;
 }): Promise<NormalizedVideoBundle> {
   await mkdir(params.outputDirectory, { recursive: true });
@@ -835,6 +836,26 @@ export async function normalizeVideoSource(params: {
     lastProgress = safe;
     params.onProgress?.({ progress: safe, stage });
   };
+
+  const requestedKeys = new Set<VideoNormalizationVariantKey>(
+    params.keys
+      ? params.keys
+      : [
+          "canonical",
+          "ai_preview",
+          "thumbnail",
+          "frame_01",
+          "frame_02",
+          "frame_03",
+          "audio_track",
+        ],
+  );
+  const needsCanonical = requestedKeys.has("canonical");
+  const needsThumbnail = requestedKeys.has("thumbnail");
+  const needsAudio = requestedKeys.has("audio_track");
+  const requestedFrameIndexes = [0, 1, 2].filter((index) =>
+    requestedKeys.has(`frame_0${index + 1}` as VideoNormalizationVariantKey),
+  );
 
   emitProgress(1, "Initialisation de FFmpeg");
   const ffmpegPath = await resolveVideoNormalizationFfmpegPath();
@@ -852,31 +873,53 @@ export async function normalizeVideoSource(params: {
   const canonicalPath = path.join(params.outputDirectory, "canonical.mp4");
   const audioPath = path.join(params.outputDirectory, "audio-track.mp3");
   const framePaths = [1, 2, 3].map((index) =>
-    path.join(params.outputDirectory, `frame-${String(index).padStart(2, "0")}.jpg`),
+    path.join(
+      params.outputDirectory,
+      `frame-${String(index).padStart(2, "0")}.jpg`,
+    ),
   );
   const thumbnailPath = path.join(params.outputDirectory, "thumbnail.jpg");
   const captureTimes = buildVideoFrameCaptureTimes(source.durationSeconds);
 
-  let canonicalRatio = 0;
+  let canonicalRatio = needsCanonical ? 0 : 1;
   let derivativeCompleted = 0;
-  const derivativeTotal = source.hasAudio ? 5 : 4;
+  const derivativeTotal = Math.max(
+    1,
+    requestedFrameIndexes.length +
+      (needsThumbnail ? 1 : 0) +
+      (needsAudio && source.hasAudio ? 1 : 0),
+  );
   const recalculateProgress = (stage: string) => {
-    const combined = 8 + canonicalRatio * 58 + (derivativeCompleted / derivativeTotal) * 26;
+    const canonicalWeight = needsCanonical ? 58 : 0;
+    const derivativeWeight = needsCanonical ? 26 : 84;
+    const combined =
+      8 +
+      canonicalRatio * canonicalWeight +
+      (derivativeCompleted / derivativeTotal) * derivativeWeight;
     emitProgress(Math.min(92, combined), stage);
   };
 
-  const canonicalPromise = prepareCanonical({
-    ffmpegPath,
-    inputPath: params.inputPath,
-    outputPath: canonicalPath,
-    source,
-    sourceSizeBytes,
-    warnings,
-    onProgress: (ratio) => {
-      canonicalRatio = Math.max(canonicalRatio, normalizeProgressValue(ratio));
-      recalculateProgress(canonicalRatio >= 1 ? "Vidéo principale prête" : "Préparation de la vidéo principale");
-    },
-  });
+  const canonicalPromise: Promise<CanonicalPreparation | null> = needsCanonical
+    ? prepareCanonical({
+        ffmpegPath,
+        inputPath: params.inputPath,
+        outputPath: canonicalPath,
+        source,
+        sourceSizeBytes,
+        warnings,
+        onProgress: (ratio) => {
+          canonicalRatio = Math.max(
+            canonicalRatio,
+            normalizeProgressValue(ratio),
+          );
+          recalculateProgress(
+            canonicalRatio >= 1
+              ? "Vidéo principale prête"
+              : "Préparation de la vidéo principale",
+          );
+        },
+      })
+    : Promise.resolve(null);
 
   const frameSizes = [0, 0, 0];
   const frameAvailable = [false, false, false];
@@ -884,25 +927,32 @@ export async function normalizeVideoSource(params: {
   let thumbnailAvailable = false;
   let thumbnailFallbackFromFrame = false;
   let audioSizeBytes = 0;
-  let audioAvailable = source.hasAudio;
+  let audioAvailable = needsAudio && source.hasAudio;
 
-  const audioPromise = source.hasAudio
-    ? extractAudioTrack({ ffmpegPath, inputPath: params.inputPath, outputPath: audioPath })
-        .then((size) => {
-          audioSizeBytes = size;
-          derivativeCompleted += 1;
-          recalculateProgress("Piste audio extraite");
+  const audioPromise =
+    needsAudio && source.hasAudio
+      ? extractAudioTrack({
+          ffmpegPath,
+          inputPath: params.inputPath,
+          outputPath: audioPath,
         })
-        .catch((error) => {
-          audioAvailable = false;
-          warnings.push(`audio_track_unavailable:${compactError(error)}`);
-          derivativeCompleted += 1;
-          recalculateProgress("Piste audio indisponible, traitement poursuivi");
-        })
-    : Promise.resolve();
+          .then((size) => {
+            audioSizeBytes = size;
+            derivativeCompleted += 1;
+            recalculateProgress("Piste audio extraite");
+          })
+          .catch((error) => {
+            audioAvailable = false;
+            warnings.push(`audio_track_unavailable:${compactError(error)}`);
+            derivativeCompleted += 1;
+            recalculateProgress(
+              "Piste audio indisponible, traitement poursuivi",
+            );
+          })
+      : Promise.resolve();
 
   const visualPromise = (async () => {
-    for (let index = 0; index < framePaths.length; index += 1) {
+    for (const index of requestedFrameIndexes) {
       try {
         frameSizes[index] = await extractFrame({
           ffmpegPath,
@@ -926,16 +976,21 @@ export async function normalizeVideoSource(params: {
             });
             frameAvailable[index] = true;
           } catch (fallbackError) {
-            warnings.push(`frame_${index + 1}_unavailable:${compactError(fallbackError)}`);
+            warnings.push(
+              `frame_${index + 1}_unavailable:${compactError(fallbackError)}`,
+            );
           }
         } else {
-          warnings.push(`frame_${index + 1}_unavailable:${compactError(error)}`);
+          warnings.push(
+            `frame_${index + 1}_unavailable:${compactError(error)}`,
+          );
         }
       }
       derivativeCompleted += 1;
       recalculateProgress(`Capture vidéo ${index + 1}/3`);
     }
 
+    if (!needsThumbnail) return;
     try {
       thumbnailSize = await extractFrame({
         ffmpegPath,
@@ -954,15 +1009,26 @@ export async function normalizeVideoSource(params: {
         thumbnailAvailable = thumbnailSize > 0;
         thumbnailFallbackFromFrame = thumbnailAvailable;
       }
-      if (!thumbnailAvailable) warnings.push(`thumbnail_unavailable:${compactError(error)}`);
+      if (!thumbnailAvailable) {
+        warnings.push(`thumbnail_unavailable:${compactError(error)}`);
+      }
     }
     derivativeCompleted += 1;
     recalculateProgress("Miniature vidéo prête");
   })();
 
-  const [canonicalEncoding] = await Promise.all([canonicalPromise, visualPromise, audioPromise]);
-  if (!frameAvailable.some(Boolean)) {
-    throw new Error("video_frames_unavailable:aucune capture exploitable n'a pu être produite");
+  const [canonicalEncoding] = await Promise.all([
+    canonicalPromise,
+    visualPromise,
+    audioPromise,
+  ]);
+  if (
+    requestedFrameIndexes.length > 0 &&
+    !requestedFrameIndexes.some((index) => frameAvailable[index])
+  ) {
+    throw new Error(
+      "video_frames_unavailable:aucune capture exploitable n'a pu être produite",
+    );
   }
   canonicalRatio = 1;
   emitProgress(94, "Finalisation des fichiers vidéo");
@@ -996,189 +1062,182 @@ export async function normalizeVideoSource(params: {
     source_pixel_format: source.pixelFormat,
     source_container_formats: source.containerFormats,
     source_has_audio: source.hasAudio,
-    canonical_mode: canonicalEncoding.mode,
-    canonical_optimization_reason: canonicalEncoding.optimizationReason,
+    canonical_mode: canonicalEncoding?.mode || null,
+    canonical_optimization_reason:
+      canonicalEncoding?.optimizationReason || null,
     source_size_bytes: sourceSizeBytes,
-    canonical_size_bytes: canonicalEncoding.sizeBytes,
-    canonical_saved_bytes: Math.max(0, sourceSizeBytes - canonicalEncoding.sizeBytes),
-    canonical_compression_ratio: sourceSizeBytes
-      ? Number((canonicalEncoding.sizeBytes / sourceSizeBytes).toFixed(4))
+    canonical_size_bytes: canonicalEncoding?.sizeBytes || null,
+    canonical_saved_bytes: canonicalEncoding
+      ? Math.max(0, sourceSizeBytes - canonicalEncoding.sizeBytes)
       : null,
+    canonical_compression_ratio:
+      sourceSizeBytes && canonicalEncoding
+        ? Number((canonicalEncoding.sizeBytes / sourceSizeBytes).toFixed(4))
+        : null,
     metadata_stripped: true,
   };
 
-  emitProgress(100, "Préparation vidéo terminée");
-  return {
-    source,
-    warnings,
-    variants: {
-      canonical: buildVariant({
-        key: "canonical",
-        filePath: canonicalPath,
-        mimeType: "video/mp4",
-        extension: "mp4",
-        width: canonicalDimensions.width,
-        height: canonicalDimensions.height,
-        durationSeconds: source.durationSeconds,
-        sizeBytes: canonicalEncoding.sizeBytes,
-        transformSpec: {
-          operation: "normalize_video",
-          output: "mp4",
-          video_codec: "h264",
-          audio_codec: source.hasAudio ? "aac" : null,
-          max_side: VIDEO_CANONICAL_MAX_SIDE,
-          crop: false,
-          preserve_ratio: true,
-          without_enlargement: true,
-          auto_orient: true,
-          pixel_format:
-            canonicalEncoding.mode === "quality_transcode" ||
-            canonicalEncoding.mode === "size_cap_transcode"
-              ? "yuv420p"
-              : source.pixelFormat,
-          faststart: true,
-          bitrate_kbps: canonicalEncoding.bitrateKbps,
-          mode: canonicalEncoding.mode,
-          attempts: canonicalEncoding.attempts,
-          encoder_preset: canonicalEncoding.encoderPreset,
-          quality_crf: canonicalEncoding.qualityCrf,
-          optimization_reason: canonicalEncoding.optimizationReason,
-          source_size_bytes: sourceSizeBytes,
-          saved_bytes: Math.max(0, sourceSizeBytes - canonicalEncoding.sizeBytes),
-        },
-        metadata: sourceMetadata,
-      }),
-      ai_preview: buildVariant({
-        key: "ai_preview",
+  const variants: Partial<
+    Record<VideoNormalizationVariantKey, NormalizedVideoVariant>
+  > = {};
+
+  if (requestedKeys.has("canonical")) {
+    if (!canonicalEncoding) throw new Error("video_canonical_missing");
+    variants.canonical = buildVariant({
+      key: "canonical",
+      filePath: canonicalPath,
+      mimeType: "video/mp4",
+      extension: "mp4",
+      width: canonicalDimensions.width,
+      height: canonicalDimensions.height,
+      durationSeconds: source.durationSeconds,
+      sizeBytes: canonicalEncoding.sizeBytes,
+      transformSpec: {
+        operation: "normalize_video",
+        output: "mp4",
+        video_codec: "h264",
+        audio_codec: source.hasAudio ? "aac" : null,
+        max_side: VIDEO_CANONICAL_MAX_SIDE,
+        crop: false,
+        preserve_ratio: true,
+        without_enlargement: true,
+        auto_orient: true,
+        pixel_format:
+          canonicalEncoding.mode === "quality_transcode" ||
+          canonicalEncoding.mode === "size_cap_transcode"
+            ? "yuv420p"
+            : source.pixelFormat,
+        faststart: true,
+        bitrate_kbps: canonicalEncoding.bitrateKbps,
+        mode: canonicalEncoding.mode,
+        attempts: canonicalEncoding.attempts,
+        encoder_preset: canonicalEncoding.encoderPreset,
+        quality_crf: canonicalEncoding.qualityCrf,
+        optimization_reason: canonicalEncoding.optimizationReason,
+        source_size_bytes: sourceSizeBytes,
+        saved_bytes: Math.max(
+          0,
+          sourceSizeBytes - canonicalEncoding.sizeBytes,
+        ),
+      },
+      metadata: sourceMetadata,
+    });
+  }
+
+  if (requestedKeys.has("ai_preview")) {
+    variants.ai_preview = buildVariant({
+      key: "ai_preview",
+      available: false,
+      filePath: null,
+      mimeType: "video/mp4",
+      extension: "mp4",
+      width: null,
+      height: null,
+      durationSeconds: source.durationSeconds,
+      sizeBytes: 0,
+      transformSpec: {
+        operation: "video_ai_preview",
+        skipped: true,
+        reason: "ai_uses_server_frames_and_audio",
+        fallback_variant: canonicalEncoding ? "canonical" : "source",
+        requested_max_side: VIDEO_AI_PREVIEW_MAX_SIDE,
+        requested_fps: VIDEO_AI_PREVIEW_FPS,
+      },
+      metadata: {
+        ...sourceMetadata,
         available: false,
-        filePath: null,
-        mimeType: "video/mp4",
-        extension: "mp4",
-        width: null,
-        height: null,
-        durationSeconds: source.durationSeconds,
-        sizeBytes: 0,
-        transformSpec: {
-          operation: "video_ai_preview",
-          skipped: true,
-          reason: "ai_uses_server_frames_and_audio",
-          fallback_variant: "canonical",
-          requested_max_side: VIDEO_AI_PREVIEW_MAX_SIDE,
-          requested_fps: VIDEO_AI_PREVIEW_FPS,
-        },
-        metadata: {
-          ...sourceMetadata,
-          available: false,
-          fallback_variant: "canonical",
-          reason: "frames_and_audio_are_the_primary_ai_context",
-        },
-      }),
-      thumbnail: buildVariant({
-        key: "thumbnail",
-        available: thumbnailAvailable,
-        filePath: thumbnailAvailable ? thumbnailPath : null,
-        mimeType: "image/jpeg",
-        extension: "jpg",
-        width: thumbnailAvailable ? thumbnailDimensions.width : null,
-        height: thumbnailAvailable ? thumbnailDimensions.height : null,
-        durationSeconds: source.durationSeconds,
-        sizeBytes: thumbnailSize,
-        transformSpec: {
-          operation: "video_thumbnail",
-          output: "jpeg",
-          max_side: VIDEO_THUMBNAIL_MAX_SIDE,
-          crop: false,
-          capture_seconds: captureTimes[0],
-          fallback_from_frame: thumbnailFallbackFromFrame,
-        },
-        metadata: {
-          ...sourceMetadata,
-          capture_seconds: captureTimes[0],
-          fallback_from_frame: thumbnailFallbackFromFrame,
-        },
-      }),
-      frame_01: buildVariant({
-        key: "frame_01",
-        available: frameAvailable[0],
-        filePath: frameAvailable[0] ? framePaths[0] : null,
-        mimeType: "image/jpeg",
-        extension: "jpg",
-        width: frameAvailable[0] ? frameDimensions.width : null,
-        height: frameAvailable[0] ? frameDimensions.height : null,
-        durationSeconds: source.durationSeconds,
-        sizeBytes: frameSizes[0],
-        transformSpec: {
-          operation: "video_frame",
-          output: "jpeg",
-          max_side: VIDEO_FRAME_MAX_SIDE,
-          crop: false,
-          capture_seconds: captureTimes[0],
-        },
-        metadata: { ...sourceMetadata, frame_index: 1, capture_seconds: captureTimes[0] },
-      }),
-      frame_02: buildVariant({
-        key: "frame_02",
-        available: frameAvailable[1],
-        filePath: frameAvailable[1] ? framePaths[1] : null,
-        mimeType: "image/jpeg",
-        extension: "jpg",
-        width: frameAvailable[1] ? frameDimensions.width : null,
-        height: frameAvailable[1] ? frameDimensions.height : null,
-        durationSeconds: source.durationSeconds,
-        sizeBytes: frameSizes[1],
-        transformSpec: {
-          operation: "video_frame",
-          output: "jpeg",
-          max_side: VIDEO_FRAME_MAX_SIDE,
-          crop: false,
-          capture_seconds: captureTimes[1],
-        },
-        metadata: { ...sourceMetadata, frame_index: 2, capture_seconds: captureTimes[1] },
-      }),
-      frame_03: buildVariant({
-        key: "frame_03",
-        available: frameAvailable[2],
-        filePath: frameAvailable[2] ? framePaths[2] : null,
-        mimeType: "image/jpeg",
-        extension: "jpg",
-        width: frameAvailable[2] ? frameDimensions.width : null,
-        height: frameAvailable[2] ? frameDimensions.height : null,
-        durationSeconds: source.durationSeconds,
-        sizeBytes: frameSizes[2],
-        transformSpec: {
-          operation: "video_frame",
-          output: "jpeg",
-          max_side: VIDEO_FRAME_MAX_SIDE,
-          crop: false,
-          capture_seconds: captureTimes[2],
-        },
-        metadata: { ...sourceMetadata, frame_index: 3, capture_seconds: captureTimes[2] },
-      }),
-      audio_track: buildVariant({
-        key: "audio_track",
+        fallback_variant: canonicalEncoding ? "canonical" : "source",
+        reason: "frames_and_audio_are_the_primary_ai_context",
+      },
+    });
+  }
+
+  if (requestedKeys.has("thumbnail")) {
+    variants.thumbnail = buildVariant({
+      key: "thumbnail",
+      available: thumbnailAvailable,
+      filePath: thumbnailAvailable ? thumbnailPath : null,
+      mimeType: "image/jpeg",
+      extension: "jpg",
+      width: thumbnailAvailable ? thumbnailDimensions.width : null,
+      height: thumbnailAvailable ? thumbnailDimensions.height : null,
+      durationSeconds: source.durationSeconds,
+      sizeBytes: thumbnailSize,
+      transformSpec: {
+        operation: "video_thumbnail",
+        output: "jpeg",
+        max_side: VIDEO_THUMBNAIL_MAX_SIDE,
+        crop: false,
+        capture_seconds: captureTimes[0],
+        fallback_from_frame: thumbnailFallbackFromFrame,
+      },
+      metadata: {
+        ...sourceMetadata,
+        capture_seconds: captureTimes[0],
+        fallback_from_frame: thumbnailFallbackFromFrame,
+      },
+    });
+  }
+
+  for (const index of requestedFrameIndexes) {
+    const key = `frame_0${index + 1}` as VideoNormalizationVariantKey;
+    variants[key] = buildVariant({
+      key,
+      available: frameAvailable[index],
+      filePath: frameAvailable[index] ? framePaths[index] : null,
+      mimeType: "image/jpeg",
+      extension: "jpg",
+      width: frameAvailable[index] ? frameDimensions.width : null,
+      height: frameAvailable[index] ? frameDimensions.height : null,
+      durationSeconds: source.durationSeconds,
+      sizeBytes: frameSizes[index],
+      transformSpec: {
+        operation: "video_frame",
+        output: "jpeg",
+        max_side: VIDEO_FRAME_MAX_SIDE,
+        crop: false,
+        capture_seconds: captureTimes[index],
+      },
+      metadata: {
+        ...sourceMetadata,
+        frame_index: index + 1,
+        capture_seconds: captureTimes[index],
+      },
+    });
+  }
+
+  if (requestedKeys.has("audio_track")) {
+    variants.audio_track = buildVariant({
+      key: "audio_track",
+      available: audioAvailable,
+      filePath: audioAvailable ? audioPath : null,
+      mimeType: "audio/mpeg",
+      extension: "mp3",
+      width: null,
+      height: null,
+      durationSeconds: source.durationSeconds,
+      sizeBytes: audioSizeBytes,
+      transformSpec: {
+        operation: "video_audio_track",
+        output: "mp3",
+        audio_codec: "mp3",
+        sample_rate_hz: 16000,
+        channels: 1,
+        bitrate_kbps: 64,
         available: audioAvailable,
-        filePath: audioAvailable ? audioPath : null,
-        mimeType: "audio/mpeg",
-        extension: "mp3",
-        width: null,
-        height: null,
-        durationSeconds: source.durationSeconds,
-        sizeBytes: audioSizeBytes,
-        transformSpec: {
-          operation: "video_audio_track",
-          output: "mp3",
-          audio_codec: "mp3",
-          sample_rate_hz: 16000,
-          channels: 1,
-          bitrate_kbps: 64,
-          available: audioAvailable,
-        },
-        metadata: {
-          ...sourceMetadata,
-          available: audioAvailable,
-          reason: source.hasAudio ? (audioAvailable ? null : "extraction_failed") : "source_without_audio",
-        },
-      }),
-    },
-  };
+      },
+      metadata: {
+        ...sourceMetadata,
+        available: audioAvailable,
+        reason: source.hasAudio
+          ? audioAvailable
+            ? null
+            : "extraction_failed"
+          : "source_without_audio",
+      },
+    });
+  }
+
+  emitProgress(100, "Préparation vidéo terminée");
+  return { source, warnings, variants };
 }

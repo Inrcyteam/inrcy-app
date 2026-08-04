@@ -6,6 +6,10 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
+import {
+  BOOSTER_VIDEO_PREPARATION_KEYS,
+  type BoosterPreparationMission,
+} from "@/lib/boosterMediaPipelineMissions";
 import { claimTargetedProcessingJob } from "@/lib/mediaProcessingTargetedClaim";
 import {
   VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE,
@@ -18,6 +22,7 @@ import {
   VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
   buildVideoNormalizationStoragePath,
   getVideoNormalizationKeyFromSignature,
+  getVideoNormalizationPurpose,
   getVideoNormalizationRetryDelaySeconds,
   getVideoNormalizationSignature,
   isVideoNormalizationEnabled,
@@ -71,6 +76,14 @@ type VariantRow = {
   signature: string;
   status: string;
   key: VideoNormalizationVariantKey;
+  bucket_name: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  variant_metadata: Record<string, unknown> | null;
 };
 
 type ProcessedJobSummary = {
@@ -104,6 +117,25 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function readPreparationMission(
+  job: ClaimedVideoJob,
+): BoosterPreparationMission | null {
+  const value = String(job.payload?.pipelineMission || "").trim();
+  return value === "ai_preparation" || value === "publication_preparation"
+    ? value
+    : null;
+}
+
+function requiredVideoKeys(job: ClaimedVideoJob) {
+  const mission = readPreparationMission(job);
+  return {
+    mission,
+    keys: mission
+      ? [...BOOSTER_VIDEO_PREPARATION_KEYS[mission]]
+      : [...VIDEO_NORMALIZATION_VARIANT_KEYS],
+  };
 }
 
 function classifyWorkerError(error: unknown) {
@@ -187,7 +219,9 @@ async function loadVariants(job: ClaimedVideoJob): Promise<VariantRow[]> {
   );
   const result = await supabaseAdmin
     .from("media_variants")
-    .select("id,purpose,signature,status")
+    .select(
+      "id,purpose,signature,status,bucket_name,storage_path,mime_type,size_bytes,width,height,duration_seconds,variant_metadata",
+    )
     .eq("account_id", job.account_id)
     .eq("media_id", job.media_id)
     .is("workspace_id", null)
@@ -213,10 +247,43 @@ async function loadVariants(job: ClaimedVideoJob): Promise<VariantRow[]> {
   return rows;
 }
 
+function readyVariantOutput(variant: VariantRow) {
+  if (variant.status !== "ready") return null;
+  const metadata = asRecord(variant.variant_metadata);
+  const available = metadata.available !== false;
+  if (available && (!variant.bucket_name || !variant.storage_path)) return null;
+  const fallbackMimeType =
+    variant.key === "audio_track"
+      ? ("audio/mpeg" as const)
+      : variant.key.startsWith("frame_") || variant.key === "thumbnail"
+        ? ("image/jpeg" as const)
+        : ("video/mp4" as const);
+  const mimeType =
+    variant.mime_type === "video/mp4" ||
+    variant.mime_type === "image/jpeg" ||
+    variant.mime_type === "audio/mpeg"
+      ? variant.mime_type
+      : fallbackMimeType;
+  return {
+    key: variant.key,
+    purpose: getVideoNormalizationPurpose(variant.key),
+    variantId: variant.id,
+    available,
+    bucket: variant.bucket_name,
+    storagePath: variant.storage_path,
+    mimeType,
+    sizeBytes: Number(variant.size_bytes || 0),
+    width: variant.width,
+    height: variant.height,
+    durationSeconds: Number(variant.duration_seconds || 0),
+  };
+}
+
 async function markVariantsProcessing(
   job: ClaimedVideoJob,
   variants: VariantRow[],
 ) {
+  if (!variants.length) return;
   const result = await supabaseAdmin
     .from("media_variants")
     .update({
@@ -556,7 +623,38 @@ async function processClaimedVideoJob(
       );
     }
 
-    await markVariantsProcessing(job, variants);
+    const { mission, keys } = requiredVideoKeys(job);
+    const requiredKeySet = new Set<VideoNormalizationVariantKey>(keys);
+    const hasReadyCanonicalVariant = variants.some(
+      (variant) =>
+        variant.key === "canonical" &&
+        variant.status === "ready" &&
+        Boolean(variant.bucket_name && variant.storage_path),
+    );
+    const selectedVariants = variants.filter((variant) =>
+      requiredKeySet.has(variant.key),
+    );
+    variants = selectedVariants;
+    const reusableOutputs = Object.fromEntries(
+      selectedVariants
+        .map((variant) => [variant.key, readyVariantOutput(variant)] as const)
+        .filter(
+          (entry): entry is readonly [
+            VideoNormalizationVariantKey,
+            NonNullable<ReturnType<typeof readyVariantOutput>>,
+          ] => Boolean(entry[1]),
+        ),
+    ) as Partial<
+      Record<
+        VideoNormalizationVariantKey,
+        NonNullable<ReturnType<typeof readyVariantOutput>>
+      >
+    >;
+    const pendingVariants = selectedVariants.filter(
+      (variant) => !reusableOutputs[variant.key],
+    );
+
+    await markVariantsProcessing(job, pendingVariants);
     await updateJobProgress(job, 5);
 
     const downloaded = await downloadSourceToTemp(media, job.id);
@@ -604,6 +702,7 @@ async function processClaimedVideoJob(
       fallbackWidth: media.width,
       fallbackHeight: media.height,
       fallbackDurationSeconds: media.duration_seconds,
+      keys: pendingVariants.map((variant) => variant.key),
       onProgress: ({ progress, stage }) => {
         queueNormalizationProgress(progress, stage);
       },
@@ -611,31 +710,36 @@ async function processClaimedVideoJob(
     await progressWriteChain;
     await updateJobProgress(job, 72);
 
-    const byKey = new Map(variants.map((variant) => [variant.key, variant]));
-    const outputs: Record<string, Awaited<ReturnType<typeof uploadVariant>>> = {};
-    for (let index = 0; index < VIDEO_NORMALIZATION_VARIANT_KEYS.length; index += 1) {
-      const key = VIDEO_NORMALIZATION_VARIANT_KEYS[index];
-      const variant = byKey.get(key);
-      if (!variant) {
+    const outputs: Partial<
+      Record<VideoNormalizationVariantKey, Awaited<ReturnType<typeof uploadVariant>>>
+    > = { ...reusableOutputs };
+    for (let index = 0; index < pendingVariants.length; index += 1) {
+      const variant = pendingVariants[index];
+      const normalizedVariant = normalized.variants[variant.key];
+      if (!normalizedVariant) {
         throw new VideoNormalizationError(
-          "video_variant_missing",
-          `Variante ${key} absente au moment de l’upload.`,
+          "video_variant_output_missing",
+          `Variante ${variant.key} absente au moment de l’upload.`,
           true,
         );
       }
-      outputs[key] = await uploadVariant({
+      outputs[variant.key] = await uploadVariant({
         job,
         variant,
-        normalized: normalized.variants[key],
+        normalized: normalizedVariant,
       });
       await updateJobProgress(
         job,
-        74 + Math.round(((index + 1) / VIDEO_NORMALIZATION_VARIANT_KEYS.length) * 20),
+        74 +
+          Math.round(((index + 1) / Math.max(1, pendingVariants.length)) * 20),
       );
     }
 
     const canonical = outputs.canonical;
-    if (!canonical?.bucket || !canonical.storagePath) {
+    if (
+      mission === "publication_preparation" &&
+      (!canonical?.bucket || !canonical.storagePath)
+    ) {
       throw new VideoNormalizationError(
         "video_canonical_missing",
         "La variante canonique vidéo n’a pas été produite.",
@@ -645,35 +749,50 @@ async function processClaimedVideoJob(
 
     const completedAt = new Date().toISOString();
     const existingMetadata = asRecord(media.media_metadata);
-    const mediaUpdate = await supabaseAdmin
-      .from("pro_media_library")
-      .update({
-        width: normalized.source.orientedWidth,
-        height: normalized.source.orientedHeight,
-        duration_seconds: normalized.source.durationSeconds,
+    const previousNormalization = asRecord(existingMetadata.video_normalization);
+    const previousVariants = asRecord(previousNormalization.variants);
+    const mediaPatch: Record<string, unknown> = {
+      width: normalized.source.orientedWidth,
+      height: normalized.source.orientedHeight,
+      duration_seconds: normalized.source.durationSeconds,
+      detected_mime_type: media.detected_mime_type || media.mime_type || null,
+      content_hash_sha256: downloaded.sha256,
+      processing_status: "ready",
+      publication_status: canonical || hasReadyCanonicalVariant
+        ? "ready"
+        : mission === "ai_preparation"
+          ? "not_requested"
+          : media.publication_status,
+      processing_progress: 100,
+      processing_error_code: null,
+      processing_error_message: null,
+      processing_completed_at: completedAt,
+      pipeline_version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
+      media_metadata: {
+        ...existingMetadata,
+        video_normalization: {
+          ...previousNormalization,
+          version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
+          source: normalized.source,
+          variants: { ...previousVariants, ...outputs },
+          warnings: normalized.warnings,
+          last_mission: mission || "legacy_full_normalization",
+          completed_at: completedAt,
+        },
+      },
+    };
+    if (canonical?.bucket && canonical.storagePath) {
+      Object.assign(mediaPatch, {
         canonical_bucket_name: canonical.bucket,
         canonical_storage_path: canonical.storagePath,
         canonical_mime_type: canonical.mimeType,
         canonical_size_bytes: canonical.sizeBytes,
-        content_hash_sha256: downloaded.sha256,
-        processing_status: "ready",
-        publication_status: "ready",
-        processing_progress: 100,
-        processing_error_code: null,
-        processing_error_message: null,
-        processing_completed_at: completedAt,
-        pipeline_version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
-        media_metadata: {
-          ...existingMetadata,
-          video_normalization: {
-            version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
-            source: normalized.source,
-            variants: outputs,
-            warnings: normalized.warnings,
-            completed_at: completedAt,
-          },
-        },
-      })
+      });
+    }
+
+    const mediaUpdate = await supabaseAdmin
+      .from("pro_media_library")
+      .update(mediaPatch)
       .eq("id", job.media_id)
       .eq("user_id", job.account_id);
     if (mediaUpdate.error) throw mediaUpdate.error;
@@ -685,6 +804,7 @@ async function processClaimedVideoJob(
         progress: 100,
         result: {
           pipelineVersion: VIDEO_NORMALIZATION_PIPELINE_VERSION,
+          pipelineMission: mission || "legacy_full_normalization",
           sourceSha256: downloaded.sha256,
           sourceSizeBytes: downloaded.sizeBytes,
           source: normalized.source,

@@ -52,10 +52,12 @@ import {
 import stylesDash from "../../dashboard.module.css";
 import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
+  BOOSTER_IMAGE_ACCEPT,
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
+  BOOSTER_VIDEO_ACCEPT,
   BOOSTER_VIDEO_FORMATS_LABEL,
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
@@ -153,6 +155,7 @@ import PublishScheduleModal, {
   type PublishScheduleSelection,
 } from "./components/PublishScheduleModal";
 import PublishIntentPanel from "./components/PublishIntentPanel";
+import PublishCreationModePanel from "./components/PublishCreationModePanel";
 import PublishContentEditorPanel from "./components/PublishContentEditorPanel";
 import PublishImagesPanel from "./components/PublishImagesPanel";
 import PublishPreviewPanel from "./components/PublishPreviewPanel";
@@ -163,6 +166,13 @@ import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import {
+  getBoosterCreationWorkflow,
+  getBoosterPublicationWorkflowSteps,
+  inferBoosterCreationMode,
+  shouldPrepareBoosterMediaForAi,
+  type BoosterCreationMode,
+} from "@/lib/boosterCreationMode";
 import {
   YOUTUBE_SHORT_MAX_DURATION_SECONDS,
   normalizeYoutubeLongUploadsStatus,
@@ -175,7 +185,6 @@ import {
 } from "@/lib/boosterVideoPreparationRecovery";
 import {
   loadMediaPublicationWorkspace,
-  prepareMediaPublicationWorkspace,
   type MediaWorkspaceMediaSummary,
 } from "@/lib/mediaWorkspaceClient";
 import usePublishVideoController, {
@@ -228,6 +237,9 @@ export default function PublishModal({
   const [publicationInstruction, setPublicationInstruction] = useState("");
   const [theme, setTheme] = useState<ThemeKey>("");
   const [contentStyle, setContentStyle] = useState<StyleKey>("equilibre");
+  const [creationMode, setCreationMode] =
+    useState<BoosterCreationMode | null>(null);
+  const [creationModeError, setCreationModeError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStage, setGenerationStage] = useState("");
@@ -460,6 +472,7 @@ export default function PublishModal({
   const publishAreaRef = useRef<HTMLDivElement | null>(null);
   const contentTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const siteContentEditorRef = useRef<HTMLDivElement | null>(null);
+  const creationPathRef = useRef<HTMLDivElement | null>(null);
   const contentWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const publishPulseTimerRef = useRef<number | null>(null);
   const publishPulseProgressRef = useRef(0);
@@ -894,7 +907,7 @@ export default function PublishModal({
       }
       return changed ? next : prev;
     });
-  }, [ctaDefaults, postsByChannel]);
+  }, [ctaDefaults]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1138,7 +1151,9 @@ export default function PublishModal({
     adoptWorkspace: adoptMediaWorkspace,
     syncImages: syncPersistentWorkspaceImages,
     syncVideo: syncPersistentWorkspaceVideo,
-    prewarmWorkspace: prewarmPersistentMediaWorkspace,
+    prepareAiMedia: preparePersistentAiMedia,
+    preparePublicationMedia: preparePersistentPublicationMedia,
+    preparePublicationVariants: prewarmPersistentMediaWorkspace,
     clearWorkspaceMedia: clearPersistentWorkspaceMedia,
     linkDraft: linkPersistentWorkspaceDraft,
     ensureWorkspace: ensurePersistentMediaWorkspace,
@@ -1146,6 +1161,7 @@ export default function PublishModal({
     archiveWorkspace: archivePersistentMediaWorkspace,
   } = usePersistentMediaWorkspace({
     draftId: publicationDraftIdParam,
+    creationMode,
     selectedChannels,
     imageSettingsByChannel: channelImageEditors as Record<string, unknown>,
     onError: setImgError,
@@ -1341,6 +1357,23 @@ export default function PublishModal({
         throw new Error("Impossible de préparer l’espace média.");
       }
 
+      onProgress?.(
+        25,
+        purpose === "generate"
+          ? "Préparation du média pour l’analyse IA..."
+          : "Contrôle du média pour la publication...",
+      );
+      const initialPreparation =
+        purpose === "generate"
+          ? await preparePersistentAiMedia()
+          : await preparePersistentPublicationMedia();
+      if (initialPreparation.status === "failed") {
+        throw new Error(
+          initialPreparation.message ||
+            "La préparation du média a échoué sur le serveur.",
+        );
+      }
+
       const timeoutMs =
         expectedMediaType === "video"
           ? purpose === "generate"
@@ -1392,15 +1425,13 @@ export default function PublishModal({
             maxBytes: BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
           });
 
-        if (allUploaded && directVideoSource) {
+        if (allUploaded && directVideoSource && purpose !== "generate") {
           // La source MP4/M4V est déjà stockée et exploitable par les canaux.
           // Publier et programmer ne doivent jamais attendre un second
           // téléchargement puis un réencodage complet dans une fonction Vercel.
           onProgress?.(
-            purpose === "generate" ? 32 : 42,
-            purpose === "generate"
-              ? "Vidéo envoyée · analyse locale rapide"
-              : "Vidéo sécurisée · prête à être utilisée",
+            42,
+            "Vidéo sécurisée · prête à être utilisée",
           );
           return activeWorkspaceId;
         }
@@ -1516,9 +1547,9 @@ export default function PublishModal({
 
           if (!preparationKick && now >= nextPreparationKickAt) {
             nextPreparationKickAt = now + 4_000;
-            preparationKick = prepareMediaPublicationWorkspace({
-              workspaceId: activeWorkspaceId,
-            })
+            preparationKick = (purpose === "generate"
+              ? preparePersistentAiMedia()
+              : preparePersistentPublicationMedia())
               .then((preparation) => {
                 if (preparation.status === "failed") {
                   throw new Error(
@@ -1573,6 +1604,8 @@ export default function PublishModal({
       images.length,
       mediaWorkspaceId,
       persistentMediaWorkspaceEnabled,
+      preparePersistentAiMedia,
+      preparePersistentPublicationMedia,
       publicationMediaType,
       unifiedMediaConsumptionClientAvailable,
       videoFile,
@@ -1580,37 +1613,9 @@ export default function PublishModal({
     ],
   );
 
-  useEffect(() => {
-    if (!videoFile || videoAiContextRef || mediaPipelineCutoverEnabled) return;
-
-    void getOrPrepareVideoFramesForAI(videoFile).catch(() => {
-      // Une extraction anticipée défaillante n'est jamais conservée : la
-      // génération retentera avec le comportement de secours historique.
-    });
-    void getOrPrepareVideoAudioFileForAI(videoFile);
-  }, [
-    getOrPrepareVideoAudioFileForAI,
-    getOrPrepareVideoFramesForAI,
-    videoAiContextRef,
-    videoFile,
-    mediaPipelineCutoverEnabled,
-  ]);
-
-  useEffect(() => {
-    if (!videoFile || videoAiContextRef || !mediaPipelineCutoverEnabled) return;
-
-    // Le nouveau pipeline conserve son upload direct. Seuls trois JPEG légers
-    // et une piste audio locale sont anticipés pour ne plus faire dépendre
-    // Générer du transcodage canonique sur le serveur.
-    void getOrPrepareVideoFramesForAI(videoFile).catch(() => undefined);
-    void getOrPrepareVideoAudioFileForAI(videoFile);
-  }, [
-    getOrPrepareVideoAudioFileForAI,
-    getOrPrepareVideoFramesForAI,
-    mediaPipelineCutoverEnabled,
-    videoAiContextRef,
-    videoFile,
-  ]);
+  // Les captures, l'audio et la transcription ne sont plus préparés lors
+  // de l'ajout. Ils appartiennent exclusivement à la mission IA déclenchée
+  // par le bouton Générer avec iNrCy.
 
   useEffect(() => {
     return () => {
@@ -1623,6 +1628,10 @@ export default function PublishModal({
     const explicit = channelMediaModes[channel];
     const hasVideo = Boolean(videoFile || videoPreviewUrl);
     const hasImages = images.length > 0;
+
+    // A scoped removal must keep the channel selected while explicitly
+    // leaving it without media. Readiness then explains what is missing.
+    if (explicit === "none") return "none";
 
     if (channel === "youtube_shorts") return hasVideo ? "video" : "none";
 
@@ -1637,7 +1646,6 @@ export default function PublishModal({
     if (explicit === "video" && hasVideo) return "video";
     if (explicit === "images" && hasImages && channelSupportsImages(channel))
       return "images";
-    if (explicit === "none" && channelSupportsTextOnly(channel)) return "none";
     if (hasImages && channelSupportsImages(channel)) return "images";
     if (hasVideo) return "video";
     return "none";
@@ -1647,6 +1655,12 @@ export default function PublishModal({
     if (mode === "images" && !channelSupportsImages(channel)) return;
     if (mode === "none" && !channelSupportsTextOnly(channel)) return;
     setChannelMediaModes((prev) => ({ ...prev, [channel]: mode }));
+    clearVideoVariantPreparationForChannel(channel);
+    clearPreparedVideoVariantsForChannel(channel);
+  };
+
+  const removeMediaFromChannel = (channel: ChannelKey) => {
+    setChannelMediaModes((prev) => ({ ...prev, [channel]: "none" }));
     clearVideoVariantPreparationForChannel(channel);
     clearPreparedVideoVariantsForChannel(channel);
   };
@@ -1898,7 +1912,10 @@ export default function PublishModal({
   }
 
   const syncActiveImagesToPersistentWorkspace = useCallback(
-    async (nextImages: readonly File[]) => {
+    async (
+      nextImages: readonly File[],
+      metadataByIndex?: readonly Record<string, unknown>[],
+    ) => {
       if (!persistentMediaWorkspaceEnabled) return;
       if (publicationMediaType === "video" && videoFile) {
         await syncPersistentWorkspaceVideo(videoFile, {
@@ -1908,7 +1925,7 @@ export default function PublishModal({
         return;
       }
       if (nextImages.length) {
-        await syncPersistentWorkspaceImages(nextImages);
+        await syncPersistentWorkspaceImages(nextImages, metadataByIndex);
       } else {
         await clearPersistentWorkspaceMedia();
       }
@@ -2017,7 +2034,7 @@ export default function PublishModal({
         const hasVideo = Boolean(videoFile || videoPreviewUrl);
         const hasImages = images.length > 0;
         const valid =
-          (current === "none" && channelSupportsTextOnly(channel)) ||
+          current === "none" ||
           (current === "video" && hasVideo) ||
           (current === "images" && hasImages && channelSupportsImages(channel));
         if (!valid) {
@@ -2069,8 +2086,56 @@ export default function PublishModal({
   );
 
   useEffect(() => {
-    if (hasWrittenChannelContent) setContentWorkspaceOpen(true);
+    if (!hasWrittenChannelContent) return;
+    setContentWorkspaceOpen(true);
+    setCreationMode((current) => current || "manual");
   }, [hasWrittenChannelContent]);
+
+  const creationWorkflow = useMemo(
+    () => (creationMode ? getBoosterCreationWorkflow(creationMode) : null),
+    [creationMode],
+  );
+
+  const workflowSteps = useMemo(
+    () =>
+      creationMode ? getBoosterPublicationWorkflowSteps(creationMode) : null,
+    [creationMode],
+  );
+
+  const hasAiCreationWork = useMemo(
+    () =>
+      Boolean(
+        idea.trim() ||
+          publicationInstruction.trim() ||
+          theme ||
+          contentStyle !== "equilibre" ||
+          hasWrittenChannelContent,
+      ),
+    [
+      idea,
+      publicationInstruction,
+      theme,
+      contentStyle,
+      hasWrittenChannelContent,
+    ],
+  );
+
+  const hasManualCreationWork = useMemo(
+    () =>
+      Boolean(hasWrittenChannelContent || instagramHashtagsInput.trim()),
+    [hasWrittenChannelContent, instagramHashtagsInput],
+  );
+
+  const hasCurrentCreationModeWork =
+    creationMode === "ai"
+      ? hasAiCreationWork
+      : creationMode === "manual"
+        ? hasManualCreationWork
+        : false;
+
+  const showContentWorkspace =
+    creationMode === "manual" ||
+    (creationMode === "ai" && contentWorkspaceOpen);
 
   const hasDraftablePublicationContent = useMemo(() => {
     const hasText =
@@ -2133,6 +2198,7 @@ export default function PublishModal({
         }
       : null;
     return JSON.stringify({
+      creationMode,
       mediaType: publicationMediaType,
       channelMediaModes,
       videoFormatByChannel,
@@ -2157,6 +2223,7 @@ export default function PublishModal({
       imageSettingsByChannel: channelImageEditors,
     });
   }, [
+    creationMode,
     publicationMediaType,
     channelMediaModes,
     videoFormatByChannel,
@@ -2480,11 +2547,30 @@ export default function PublishModal({
         const nextPinterestBoardName = String(
           payload.pinterestBoardName || "",
         ).trim();
+        const nextCreationMode = inferBoosterCreationMode({
+          explicitMode: payload.creationMode,
+          idea: nextIdea,
+          publicationInstruction: nextPublicationInstruction,
+          theme: nextTheme,
+          contentStyle: nextContentStyle,
+          postsByChannel: nextPostsByChannel,
+        });
 
         setIdea(nextIdea);
         setPublicationInstruction(nextPublicationInstruction);
         setTheme(nextTheme);
         setContentStyle(nextContentStyle);
+        setCreationMode(nextCreationMode);
+        setCreationModeError("");
+        setContentWorkspaceOpen(
+          nextCreationMode === "manual" ||
+            Object.values(nextPostsByChannel).some((post) => {
+              const normalized = normalizePost(post);
+              return Boolean(
+                normalized.title.trim() || normalized.content.trim(),
+              );
+            }),
+        );
         draftChannelsRestoredRef.current = true;
         setChannels(nextChannels);
         setPostsByChannel(nextPostsByChannel);
@@ -2540,6 +2626,7 @@ export default function PublishModal({
           : null;
         setLastPublicationDraftSnapshot(
           JSON.stringify({
+            creationMode: nextCreationMode,
             mediaType: effectiveMediaType,
             channelMediaModes: nextChannelMediaModes,
             videoFormatByChannel: nextCanonicalVideoFormatByChannel,
@@ -2692,23 +2779,39 @@ export default function PublishModal({
     setVideoAiContextRef(null);
   };
 
-  const clearPublicationWork = () => {
+  const clearChannelCreationWork = () => {
+    setPostsByChannel({});
+    setInstagramHashtagsInput("");
+    closeEmptyContentWarnings();
+    setDuplicateFeedback(null);
+    setFinalReviewOpen(false);
+    setFinalReviewPosts(null);
+    setScheduleReviewPosts(null);
+    setPendingScheduleRequest(null);
+    setPendingImmediatePublishAfterSchedule(null);
+    setShowPublicationPreview(false);
+  };
+
+  const clearAiCreationWork = () => {
     setIdea("");
     setPublicationInstruction("");
     setTheme("");
     setContentStyle("equilibre");
-    setPostsByChannel({});
-    setInstagramHashtagsInput("");
-    closeEmptyContentWarnings();
     setGenError("");
     setGenerationNotice("");
-    setDuplicateFeedback(null);
+    setGenerationProgress(0);
+    setGenerationStage("");
+    clearGenerationTimers();
+  };
+
+  const clearPublicationWork = () => {
+    clearAiCreationWork();
+    clearChannelCreationWork();
+    setCreationMode(null);
+    setCreationModeError("");
     setDraftMessage("");
     setLastPublicationDraftSnapshot(null);
-    setFinalReviewOpen(false);
-    setFinalReviewPosts(null);
     setContentWorkspaceOpen(false);
-    setShowPublicationPreview(false);
     setIsImageEditorOpen(false);
     clearImagesMedia();
     clearVideoMedia({ cleanupStorage: true, reason: "reset-publication" });
@@ -2736,20 +2839,62 @@ export default function PublishModal({
     }, 100);
   };
 
-  const onCreateManually = () => {
-    if (generating) return;
-    setGenError("");
-    setGenerationNotice("");
+  const scrollToCreationPath = () => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      creationPathRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  };
+
+  const onSelectCreationMode = async (nextMode: BoosterCreationMode) => {
+    if (generating || saving || draftSaving || scheduleSaving) return;
+    if (nextMode === creationMode) return;
+
     if (!selectedChannels.length) {
-      setGenError(
-        "Veuillez sélectionner au moins 1 canal avant de créer le contenu manuellement.",
+      setCreationModeError(
+        "Sélectionnez au moins 1 canal avant de choisir votre mode de création.",
       );
       return;
     }
 
-    setContentWorkspaceOpen(true);
+    if (creationMode && hasCurrentCreationModeWork) {
+      const switchingFromAi = creationMode === "ai";
+      const confirmed = await confirmInrcy({
+        eyebrow: "Changement de mode",
+        title: switchingFromAi
+          ? "Passer à la création manuelle ?"
+          : "Passer à la création avec iNrCy ?",
+        message: switchingFromAi
+          ? "Votre intention, vos consignes et les contenus générés ou modifiés seront supprimés. Vos canaux et vos médias seront conservés."
+          : "Les textes saisis manuellement seront supprimés. Vos canaux et vos médias seront conservés.",
+        cancelLabel: "Conserver mon travail",
+        confirmLabel: "Changer de mode",
+        variant: "warning",
+      });
+      if (!confirmed) return;
+    }
+
+    if (creationMode === "ai") {
+      clearAiCreationWork();
+      clearChannelCreationWork();
+    } else if (creationMode === "manual") {
+      clearChannelCreationWork();
+    }
+
+    setCreationModeError("");
+    setPublishError("");
+    setCreationMode(nextMode);
+    setContentWorkspaceOpen(nextMode === "manual");
     setSynchronizedActiveChannel(selectedChannels[0]);
-    scrollToContentWorkspace();
+
+    if (nextMode === "manual") {
+      scrollToContentWorkspace();
+    } else {
+      scrollToCreationPath();
+    }
   };
 
   const onGenerate = async () => {
@@ -2757,6 +2902,13 @@ export default function PublishModal({
     setGenError("");
     setImgError("");
     setGenerationNotice("");
+
+    if (creationMode !== "ai") {
+      setGenError(
+        "Sélectionnez « Créer avec iNrCy » avant de lancer une génération.",
+      );
+      return;
+    }
 
     const trimmed = idea.trim();
     const selectedAiEngineOption = getAiEngineOption(selectedAiPreferredEngine);
@@ -2790,9 +2942,15 @@ export default function PublishModal({
       storage: videoStorageContext,
     });
     const hasVideoForGeneration = !!videoGenerationContext?.enabled;
+    const shouldPrepareMediaForAi = shouldPrepareBoosterMediaForAi({
+      mode: creationMode,
+      mediaType: hasVideoForGeneration ? "video" : "images",
+      hasImages: images.length > 0,
+      hasVideo: hasVideoForGeneration,
+      useImagesForAI,
+    });
     const mediaPreflightIncluded =
-      persistentMediaWorkspaceEnabled &&
-      (images.length > 0 || Boolean(videoFile));
+      persistentMediaWorkspaceEnabled && shouldPrepareMediaForAi;
     const generationPercent = (withoutMedia: number, withMedia: number) =>
       mediaPreflightIncluded ? withMedia : withoutMedia;
 
@@ -2804,11 +2962,15 @@ export default function PublishModal({
 
     let didGenerate = false;
     try {
-      const readyMediaWorkspaceId =
-        await waitForPersistentWorkspaceReadiness("generate", (progress, label) => {
-          setGenerationProgress((current) => Math.max(current, progress));
-          setGenerationStage(label || "Préparation du média...");
-        });
+      const readyMediaWorkspaceId = shouldPrepareMediaForAi
+        ? await waitForPersistentWorkspaceReadiness(
+            "generate",
+            (progress, label) => {
+              setGenerationProgress((current) => Math.max(current, progress));
+              setGenerationStage(label || "Préparation du média...");
+            },
+          )
+        : mediaWorkspaceId;
 
       setGenerationProgress((current) =>
         Math.max(current, mediaPreflightIncluded ? 42 : 8),
@@ -2884,14 +3046,11 @@ export default function PublishModal({
       let videoRawAudioTranscript = "";
       let videoAudioTranscriptStatus: "pending" | "ready" | "unavailable" =
         "pending";
-      const useWorkspaceVideoFastAiPreview =
-        mediaPipelineCutoverEnabled && Boolean(readyMediaWorkspaceId);
-
       if (
         hasVideoForGeneration &&
         videoFile &&
         !videoAiContextRef &&
-        (!mediaPipelineCutoverEnabled || useWorkspaceVideoFastAiPreview)
+        !mediaPipelineCutoverEnabled
       ) {
         setGenerationProgress((current) => Math.max(current, 36));
         setGenerationStage("Analyse audio + images de la vidéo");
@@ -2952,13 +3111,17 @@ export default function PublishModal({
       }
 
       const generationPayload = {
+        creationMode: "ai" as const,
         mediaWorkspaceId:
           unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId
             ? readyMediaWorkspaceId
             : undefined,
         mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
-        mediaWorkspaceExpected:
-          hasVideoForGeneration || images.length > 0,
+        useWorkspaceMediaForAI:
+          unifiedMediaConsumptionClientAvailable &&
+          Boolean(readyMediaWorkspaceId) &&
+          shouldPrepareMediaForAi,
+        mediaWorkspaceExpected: shouldPrepareMediaForAi,
         idea: trimmed,
         publicationInstruction: publicationInstruction.trim(),
         theme,
@@ -2966,8 +3129,7 @@ export default function PublishModal({
         aiPreferredEngine: selectedAiPreferredEngine,
         channels: selectedForGeneration,
         mediaType: hasVideoForGeneration ? "video" : "images",
-        useImagesForAI:
-          !mediaPipelineCutoverEnabled && imagesForAI.length > 0,
+        useImagesForAI: shouldUseImagesForAI,
         imageCount: mediaPipelineCutoverEnabled ? 0 : imagesForAI.length,
         imagesForAI: mediaPipelineCutoverEnabled ? [] : imagesForAI,
         videoForAI:
@@ -3179,7 +3341,12 @@ export default function PublishModal({
     clearVideoMedia({ cleanupStorage: true, reason: "remove-video" });
     setPublicationMediaType("images");
     if (images.length) {
-      void syncPersistentWorkspaceImages(images);
+      void syncPersistentWorkspaceImages(
+        images,
+        images.map((file) => ({
+          source_metadata: imageMetaByKey[makeImageKey(file)] || null,
+        })),
+      );
     } else {
       void clearPersistentWorkspaceMedia();
     }
@@ -3216,13 +3383,6 @@ export default function PublishModal({
       type: file.type || "video/mp4",
       lastModified: file.lastModified || Date.now(),
     });
-    if (!mediaPipelineCutoverEnabled) {
-      void getOrPrepareVideoFramesForAI(normalizedFile).catch(() => {
-        // Le parcours historique conserve son fallback en cas d’échec local.
-      });
-      void getOrPrepareVideoAudioFileForAI(normalizedFile);
-    }
-
     let sourceMetadata: BoosterVideoSourceMetadata | null = null;
     try {
       sourceMetadata = await readVideoSourceMetadata(normalizedFile);
@@ -4057,6 +4217,7 @@ export default function PublishModal({
 
       publishDispatchStarted = true;
       const result = await trackEvent("publish", {
+        creationMode,
         mediaWorkspaceId:
           unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId
             ? readyMediaWorkspaceId
@@ -4300,6 +4461,7 @@ export default function PublishModal({
             loadedPublicationDraftId || publicationDraftIdParam || undefined,
           payload: {
             status: "draft",
+            creationMode,
             mediaWorkspaceId,
             mediaWorkspaceClientKey,
             mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
@@ -4733,6 +4895,7 @@ export default function PublishModal({
             timezone: "Europe/Paris",
             channels: groupChannels,
             payload: {
+              creationMode,
               origin: {
                 source: "booster_scheduled",
                 label: "Booster programmé",
@@ -4746,6 +4909,7 @@ export default function PublishModal({
                 createdFrom: "booster_publish_schedule",
               },
               publishPayload: {
+                creationMode,
                 mediaWorkspaceId:
                   unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId
                     ? readyMediaWorkspaceId
@@ -5434,52 +5598,94 @@ export default function PublishModal({
         getChannelDetailInfo={getChannelDetailInfo}
       />
 
-      <PublishIntentPanel
+      {creationMode !== "ai" ? (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={BOOSTER_IMAGE_ACCEPT}
+            multiple
+            style={{ display: "none" }}
+            onChange={(event) => {
+              onImagesChange(event.target.files);
+              event.currentTarget.value = "";
+            }}
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept={BOOSTER_VIDEO_ACCEPT}
+            style={{ display: "none" }}
+            onChange={(event) => {
+              onVideoChange(event.target.files);
+              event.currentTarget.value = "";
+            }}
+          />
+        </>
+      ) : null}
+
+      <PublishCreationModePanel
         styles={styles}
         isMobile={isMobile}
-        theme={theme}
-        idea={idea}
-        setIdea={setIdea}
-        publicationInstruction={publicationInstruction}
-        setPublicationInstruction={setPublicationInstruction}
-        fileInputRef={fileInputRef}
-        videoInputRef={videoInputRef}
-        onImagesChange={onImagesChange}
-        onVideoChange={onVideoChange}
-        onPickImagesClick={onPickImagesClick}
-        onPickVideoClick={onPickVideoClick}
-        onTakePhotoClick={() => onTakePhotoClick()}
-        onOpenMediaLibrary={() => setMediaLibraryPickerOpen(true)}
-        publicationMediaType={publicationMediaType}
-        channelMediaModes={channelMediaModes}
-        setChannelMediaMode={setChannelMediaMode}
-        images={images}
-        imagePreviews={imagePreviews}
-        videoFile={videoFile}
-        videoPreviewUrl={videoPreviewUrl}
-        videoDurationSeconds={videoDurationSeconds}
-        removeVideo={removeVideo}
-        removeImage={removeImage}
-        useImagesForAI={useImagesForAI}
-        setUseImagesForAI={setUseImagesForAI}
-        imgError={imgError}
-        genError={genError}
-        generationNotice={generationNotice}
-        generating={generating}
-        generationStage={generationStage}
-        generationProgress={generationProgress}
-        aiPreferredEngine={selectedAiPreferredEngine}
-        defaultAiPreferredEngine={defaultAiPreferredEngine}
-        onAiPreferredEngineChange={(engine) =>
-          setSelectedAiPreferredEngine(normalizeAiPreferredEngine(engine))
-        }
-        onGenerate={onGenerate}
-        onReset={onReset}
-        onCreateManually={onCreateManually}
-        onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
+        mode={creationMode}
+        disabled={generating || saving || draftSaving || scheduleSaving}
+        selectedChannelCount={selectedChannels.length}
+        error={creationModeError}
+        showReset={hasDraftablePublicationContent}
+        onSelectMode={(mode) => {
+          void onSelectCreationMode(mode);
+        }}
+        onReset={() => {
+          void onReset();
+        }}
       />
 
-      {contentWorkspaceOpen ? (
+      {creationMode === "ai" && workflowSteps?.intention && creationWorkflow?.showsIntent ? (
+        <div ref={creationPathRef} style={{ minWidth: 0 }}>
+          <PublishIntentPanel
+            styles={styles}
+            isMobile={isMobile}
+            stepNumber={workflowSteps.intention ?? 3}
+            theme={theme}
+            idea={idea}
+            setIdea={setIdea}
+            publicationInstruction={publicationInstruction}
+            setPublicationInstruction={setPublicationInstruction}
+            fileInputRef={fileInputRef}
+            videoInputRef={videoInputRef}
+            onImagesChange={onImagesChange}
+            onVideoChange={onVideoChange}
+            onPickImagesClick={onPickImagesClick}
+            onPickVideoClick={onPickVideoClick}
+            onTakePhotoClick={() => onTakePhotoClick()}
+            onOpenMediaLibrary={() => setMediaLibraryPickerOpen(true)}
+            images={images}
+            imagePreviews={imagePreviews}
+            videoFile={videoFile}
+            videoPreviewUrl={videoPreviewUrl}
+            videoDurationSeconds={videoDurationSeconds}
+            removeVideo={removeVideo}
+            removeImage={removeImage}
+            useImagesForAI={useImagesForAI}
+            setUseImagesForAI={setUseImagesForAI}
+            imgError={imgError}
+            genError={genError}
+            generationNotice={generationNotice}
+            generating={generating}
+            generationStage={generationStage}
+            generationProgress={generationProgress}
+            aiPreferredEngine={selectedAiPreferredEngine}
+            defaultAiPreferredEngine={defaultAiPreferredEngine}
+            onAiPreferredEngineChange={(engine) =>
+              setSelectedAiPreferredEngine(normalizeAiPreferredEngine(engine))
+            }
+            onGenerate={onGenerate}
+            onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
+          />
+        </div>
+      ) : null}
+
+      {showContentWorkspace && workflowSteps ? (
         <>
           <div
             ref={contentWorkspaceRef}
@@ -5488,6 +5694,8 @@ export default function PublishModal({
             <PublishContentEditorPanel
               styles={styles}
               isMobile={isMobile}
+              creationMode={creationMode}
+              stepNumber={workflowSteps.content}
               displayCards={displayCards}
               activeCard={activeCard}
               setSynchronizedActiveChannel={setSynchronizedActiveChannel}
@@ -5513,10 +5721,10 @@ export default function PublishModal({
             <PublishImagesPanel
               styles={styles}
               isMobile={isMobile}
-              publicationMediaType={publicationMediaType}
+              stepNumber={workflowSteps.media}
               channelMediaModes={channelMediaModes}
               setChannelMediaMode={setChannelMediaMode}
-              onRemoveMediaFromChannel={deselectChannel}
+              onRemoveMediaFromChannel={removeMediaFromChannel}
               videoFormatByChannel={videoFormatByChannel}
               setVideoFormatForChannel={setVideoFormatForChannel}
               videoAdaptationModeByChannel={videoAdaptationModeByChannel}
@@ -5556,6 +5764,7 @@ export default function PublishModal({
             <PublishPreviewPanel
               styles={styles}
               isMobile={isMobile}
+              stepNumber={workflowSteps.preview}
               activePublicationPreview={activePublicationPreview}
               previewReadinessTabs={previewReadinessTabs}
               activeImageChannel={activeImageChannel}

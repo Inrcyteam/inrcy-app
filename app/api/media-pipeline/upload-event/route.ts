@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     const current = await supabaseAdmin
       .from("pro_media_library")
       .select(
-        "id,user_id,media_type,media_metadata,bucket_name,storage_path,size_bytes,original_file_name,mime_type",
+        "id,user_id,media_type,media_metadata,bucket_name,storage_path,size_bytes,original_file_name,mime_type,processing_status,publication_status",
       )
       .eq("id", mediaId)
       .eq("user_id", activeUserId)
@@ -144,6 +144,16 @@ export async function POST(request: Request) {
         sizeBytes: current.data.size_bytes,
         maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
       });
+    const sourceMetadataOnly =
+      cleanText(current.data.media_metadata?.upload_target, "", 80) ===
+        "workspace_source" &&
+      (cleanText(current.data.media_metadata?.pipeline_mission, "", 80) ===
+        "source_metadata" ||
+        cleanText(
+          current.data.media_metadata?.preparation_scope,
+          "",
+          80,
+        ) === "source_only");
 
     if (event === "uploaded") {
       const verified = await verifyStoredUpload({
@@ -176,7 +186,7 @@ export async function POST(request: Request) {
       patch.uploaded_at = now;
       patch.upload_error_code = null;
       patch.upload_error_message = null;
-      if (directVideoSource) {
+      if (directVideoSource && !sourceMetadataOnly) {
         patch.processing_status = "ready";
         patch.processing_progress = 100;
         patch.publication_status = "ready";
@@ -218,7 +228,11 @@ export async function POST(request: Request) {
 
     let imageNormalization: ImageNormalizationEnqueueResult | null = null;
     let videoNormalization: VideoNormalizationEnqueueResult | null = null;
-    if (event === "uploaded" && current.data.media_type === "image") {
+    if (
+      event === "uploaded" &&
+      current.data.media_type === "image" &&
+      !sourceMetadataOnly
+    ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
         "",
@@ -247,7 +261,8 @@ export async function POST(request: Request) {
     if (
       event === "uploaded" &&
       current.data.media_type === "video" &&
-      !directVideoSource
+      !directVideoSource &&
+      !sourceMetadataOnly
     ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
@@ -272,6 +287,15 @@ export async function POST(request: Request) {
           reason: "enqueue_failed",
         };
       }
+    } else if (event === "uploaded" && sourceMetadataOnly) {
+      videoNormalization =
+        current.data.media_type === "video"
+          ? {
+              enabled: true,
+              queued: false,
+              reason: "source_metadata_only",
+            }
+          : null;
     } else if (event === "uploaded" && directVideoSource) {
       videoNormalization = {
         enabled: true,

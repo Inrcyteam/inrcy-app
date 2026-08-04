@@ -5,6 +5,7 @@ import {
 } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import { pillBtn } from "../publishModal.styles";
 import type { ChannelKey } from "../publishModal.shared";
+import PublishStepTitle from "./PublishStepTitle";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
 
@@ -18,6 +19,7 @@ type PreviewReadinessTab = {
 type PublishPreviewPanelProps = {
   styles: PublishModalStyles;
   isMobile: boolean;
+  stepNumber: number;
   activePublicationPreview: PublicationPreview | null;
   previewReadinessTabs: PreviewReadinessTab[];
   activeImageChannel: ChannelKey;
@@ -29,6 +31,7 @@ type PublishPreviewPanelProps = {
 export default function PublishPreviewPanel({
   styles,
   isMobile,
+  stepNumber,
   activePublicationPreview,
   previewReadinessTabs,
   activeImageChannel,
@@ -59,38 +62,18 @@ export default function PublishPreviewPanel({
         }}
       >
         <div style={{ display: "contents" }}>
-          <div
-            className={styles.blockTitle}
+          <PublishStepTitle
+            styles={styles}
+            step={stepNumber}
             style={{
               marginBottom: 4,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
               gridColumn: 1,
               gridRow: 1,
               minWidth: 0,
             }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 999,
-                display: "inline-grid",
-                placeItems: "center",
-                border: "1px solid rgba(76,195,255,0.38)",
-                background: "rgba(76,195,255,0.12)",
-                color: "#dff6ff",
-                fontSize: 12,
-                fontWeight: 950,
-                flex: "0 0 auto",
-              }}
-            >
-              5
-            </span>
             Aperçu
-          </div>
+          </PublishStepTitle>
           <div
             className={styles.subtitle}
             style={{

@@ -48,6 +48,13 @@ export type NormalizedImageBundle = {
   variants: Record<ImageNormalizationPurpose, NormalizedImageVariant>;
 };
 
+export type PartialNormalizedImageBundle = Omit<
+  NormalizedImageBundle,
+  "variants"
+> & {
+  variants: Partial<Record<ImageNormalizationPurpose, NormalizedImageVariant>>;
+};
+
 function getOrientedDimensions(meta: {
   width?: number;
   height?: number;
@@ -199,7 +206,8 @@ async function renderCanonical(params: {
 async function normalizeWithSharp(
   input: SharpInput,
   decoder: "sharp" | "heic-convert" | "bmp-js",
-): Promise<NormalizedImageBundle> {
+  purposes: readonly ImageNormalizationPurpose[],
+): Promise<PartialNormalizedImageBundle> {
   const meta = await sharp(input, {
     failOn: "error",
     limitInputPixels: IMAGE_NORMALIZATION_MAX_INPUT_PIXELS,
@@ -223,23 +231,39 @@ async function normalizeWithSharp(
     decoder,
   };
 
-  const [canonical, aiPreview, thumbnail] = await Promise.all([
-    renderCanonical({ input, hasAlpha, sourceMetadata }),
-    renderJpeg({
-      input,
-      purpose: "ai_preview",
-      maxSide: IMAGE_AI_PREVIEW_MAX_SIDE,
-      quality: IMAGE_AI_PREVIEW_JPEG_QUALITY,
-      sourceMetadata,
+  const requested = new Set(purposes);
+  const entries = await Promise.all(
+    [...requested].map(async (purpose) => {
+      if (purpose === "canonical") {
+        return [
+          purpose,
+          await renderCanonical({ input, hasAlpha, sourceMetadata }),
+        ] as const;
+      }
+      if (purpose === "ai_preview") {
+        return [
+          purpose,
+          await renderJpeg({
+            input,
+            purpose,
+            maxSide: IMAGE_AI_PREVIEW_MAX_SIDE,
+            quality: IMAGE_AI_PREVIEW_JPEG_QUALITY,
+            sourceMetadata,
+          }),
+        ] as const;
+      }
+      return [
+        purpose,
+        await renderJpeg({
+          input,
+          purpose: "thumbnail",
+          maxSide: IMAGE_THUMBNAIL_MAX_SIDE,
+          quality: IMAGE_THUMBNAIL_JPEG_QUALITY,
+          sourceMetadata,
+        }),
+      ] as const;
     }),
-    renderJpeg({
-      input,
-      purpose: "thumbnail",
-      maxSide: IMAGE_THUMBNAIL_MAX_SIDE,
-      quality: IMAGE_THUMBNAIL_JPEG_QUALITY,
-      sourceMetadata,
-    }),
-  ]);
+  );
 
   return {
     source: {
@@ -251,11 +275,7 @@ async function normalizeWithSharp(
       orientation: meta.orientation || null,
       decoder,
     },
-    variants: {
-      canonical,
-      ai_preview: aiPreview,
-      thumbnail,
-    },
+    variants: Object.fromEntries(entries),
   };
 }
 
@@ -355,20 +375,39 @@ async function normalizeImageInput(params: {
   input: SharpInput;
   mimeType: string;
   originalFileName?: string | null;
+  purposes: readonly ImageNormalizationPurpose[];
 }) {
   try {
-    return await normalizeWithSharp(params.input, "sharp");
+    return await normalizeWithSharp(params.input, "sharp", params.purposes);
   } catch (sharpError) {
     if (isHeicMimeOrName(params.mimeType, params.originalFileName || "")) {
       const converted = await convertHeicSource(params.input);
-      return await normalizeWithSharp(converted, "heic-convert");
+      return await normalizeWithSharp(
+        converted,
+        "heic-convert",
+        params.purposes,
+      );
     }
     if (isBmpMimeOrName(params.mimeType, params.originalFileName || "")) {
       const converted = await convertBmpSource(params.input);
-      return await normalizeWithSharp(converted, "bmp-js");
+      return await normalizeWithSharp(converted, "bmp-js", params.purposes);
     }
     throw sharpError;
   }
+}
+
+export async function normalizeImageSourcePurposes(params: {
+  inputPath: string;
+  mimeType: string;
+  originalFileName?: string | null;
+  purposes: readonly ImageNormalizationPurpose[];
+}) {
+  return await normalizeImageInput({
+    input: params.inputPath,
+    mimeType: params.mimeType,
+    originalFileName: params.originalFileName,
+    purposes: params.purposes,
+  });
 }
 
 export async function normalizeImageSource(params: {
@@ -376,11 +415,12 @@ export async function normalizeImageSource(params: {
   mimeType: string;
   originalFileName?: string | null;
 }) {
-  return await normalizeImageInput({
+  return (await normalizeImageInput({
     input: params.inputPath,
     mimeType: params.mimeType,
     originalFileName: params.originalFileName,
-  });
+    purposes: ["canonical", "ai_preview", "thumbnail"],
+  })) as NormalizedImageBundle;
 }
 
 /**
@@ -393,9 +433,26 @@ export async function normalizeImageBuffer(params: {
   mimeType: string;
   originalFileName?: string | null;
 }) {
-  return await normalizeImageInput({
+  return (await normalizeImageInput({
     input: params.buffer,
     mimeType: params.mimeType,
     originalFileName: params.originalFileName,
+    purposes: ["canonical", "ai_preview", "thumbnail"],
+  })) as NormalizedImageBundle;
+}
+
+export async function normalizeImageThumbnailBuffer(params: {
+  buffer: Buffer;
+  mimeType: string;
+  originalFileName?: string | null;
+}) {
+  const normalized = await normalizeImageInput({
+    input: params.buffer,
+    mimeType: params.mimeType,
+    originalFileName: params.originalFileName,
+    purposes: ["thumbnail"],
   });
+  const thumbnail = normalized.variants.thumbnail;
+  if (!thumbnail) throw new Error("image_thumbnail_missing");
+  return { source: normalized.source, thumbnail };
 }

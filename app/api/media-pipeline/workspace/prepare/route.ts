@@ -3,15 +3,26 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  isBoosterMediaPipelineMission,
+  type BoosterMediaPipelineMission,
+} from "@/lib/boosterMediaPipelineMissions";
 import { enqueueImageNormalization } from "@/lib/mediaImageNormalizationQueue";
 import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
 import { processImageNormalizationJobsForMedia } from "@/lib/mediaImageNormalizationWorker";
 import { processVideoNormalizationJobsForMedia } from "@/lib/mediaVideoNormalizationWorker";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+type PreparationMission = Exclude<
+  BoosterMediaPipelineMission,
+  "source_metadata"
+>;
 
 type WorkspaceMedia = {
   mediaId: string;
@@ -33,7 +44,10 @@ type WorkspaceMedia = {
   width: number | null;
   height: number | null;
   durationSeconds: number | null;
+  mediaMetadata: Record<string, unknown>;
 };
+
+type ReadyVariantState = Map<string, Map<string, number>>;
 
 function cleanText(value: unknown, fallback = "", max = 500) {
   return String(value ?? fallback).trim().slice(0, max);
@@ -44,6 +58,13 @@ function jsonError(error: string, status = 400, code?: string) {
     { ok: false, error, ...(code ? { code } : {}) },
     { status },
   );
+}
+
+function readMission(value: unknown): PreparationMission | null {
+  if (!isBoosterMediaPipelineMission(value) || value === "source_metadata") {
+    return null;
+  }
+  return value;
 }
 
 async function loadOwnedWorkspaceMedia(params: {
@@ -62,7 +83,7 @@ async function loadOwnedWorkspaceMedia(params: {
   const mediaResult = await supabaseAdmin
     .from("publication_workspace_media")
     .select(
-      "position,media_id,pro_media_library!inner(id,user_id,media_type,upload_status,upload_progress,processing_status,processing_progress,processing_error_code,processing_error_message,publication_status,bucket_name,storage_path,original_file_name,client_media_key,mime_type,size_bytes,width,height,duration_seconds)",
+      "position,media_id,pro_media_library!inner(id,user_id,media_type,upload_status,upload_progress,processing_status,processing_progress,processing_error_code,processing_error_message,publication_status,bucket_name,storage_path,original_file_name,client_media_key,mime_type,size_bytes,width,height,duration_seconds,media_metadata)",
     )
     .eq("workspace_id", params.workspaceId)
     .eq("pro_media_library.user_id", params.accountId)
@@ -97,6 +118,12 @@ async function loadOwnedWorkspaceMedia(params: {
       width: Number(item?.width || 0) || null,
       height: Number(item?.height || 0) || null,
       durationSeconds: Number(item?.duration_seconds || 0) || null,
+      mediaMetadata:
+        item?.media_metadata &&
+        typeof item.media_metadata === "object" &&
+        !Array.isArray(item.media_metadata)
+          ? item.media_metadata
+          : {},
     };
   });
 
@@ -104,6 +131,111 @@ async function loadOwnedWorkspaceMedia(params: {
     workspace: workspaceResult.data,
     media,
   };
+}
+
+async function resetFailuresFromAnotherMission(params: {
+  accountId: string;
+  mission: PreparationMission;
+  media: WorkspaceMedia[];
+}) {
+  const mediaIds = params.media
+    .filter((item) => {
+      const previousMission = cleanText(
+        item.mediaMetadata.pipeline_mission,
+        "",
+        80,
+      );
+      const failed =
+        ["failed_terminal", "failed_retryable"].includes(
+          item.processingStatus,
+        ) || item.publicationStatus === "failed";
+      return Boolean(
+        failed && previousMission && previousMission !== params.mission,
+      );
+    })
+    .map((item) => item.mediaId)
+    .filter(Boolean);
+  if (!mediaIds.length) return false;
+
+  const result = await supabaseAdmin
+    .from("pro_media_library")
+    .update({
+      processing_status: "not_requested",
+      processing_progress: 0,
+      publication_status: "not_requested",
+      processing_error_code: null,
+      processing_error_message: null,
+      processing_completed_at: null,
+    })
+    .eq("user_id", params.accountId)
+    .in("id", mediaIds);
+  if (result.error) throw result.error;
+  return true;
+}
+
+async function loadReadyVariantState(params: {
+  accountId: string;
+  media: WorkspaceMedia[];
+}): Promise<ReadyVariantState> {
+  const mediaIds = params.media.map((item) => item.mediaId).filter(Boolean);
+  const state: ReadyVariantState = new Map();
+  if (!mediaIds.length) return state;
+
+  const result = await supabaseAdmin
+    .from("media_variants")
+    .select("media_id,purpose,status")
+    .eq("account_id", params.accountId)
+    .in("media_id", mediaIds)
+    .eq("status", "ready")
+    .in("purpose", [
+      "canonical",
+      "ai_preview",
+      "thumbnail",
+      "video_frame",
+      "audio_track",
+    ]);
+  if (result.error) throw result.error;
+
+  for (const row of result.data || []) {
+    const mediaId = cleanText((row as { media_id?: unknown }).media_id, "", 80);
+    const purpose = cleanText((row as { purpose?: unknown }).purpose, "", 80);
+    if (!mediaId || !purpose) continue;
+    const purposes = state.get(mediaId) || new Map<string, number>();
+    purposes.set(purpose, (purposes.get(purpose) || 0) + 1);
+    state.set(mediaId, purposes);
+  }
+  return state;
+}
+
+function hasVariant(
+  variants: ReadyVariantState,
+  mediaId: string,
+  purpose: string,
+) {
+  return (variants.get(mediaId)?.get(purpose) || 0) > 0;
+}
+
+function hasAiArtifacts(media: WorkspaceMedia, variants: ReadyVariantState) {
+  const hasPreview =
+    hasVariant(variants, media.mediaId, "ai_preview") ||
+    hasVariant(variants, media.mediaId, "canonical");
+  if (media.mediaType === "image") return hasPreview;
+  return (
+    hasPreview && hasVariant(variants, media.mediaId, "video_frame")
+  );
+}
+
+function isDirectPublicationVideo(media: WorkspaceMedia) {
+  return (
+    media.mediaType === "video" &&
+    canPublishVideoSourceDirectly({
+      name: media.fileName,
+      mimeType: media.mimeType,
+      storagePath: media.storagePath,
+      sizeBytes: media.sizeBytes,
+      maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+    })
+  );
 }
 
 function isTerminalMediaFailure(media: WorkspaceMedia) {
@@ -116,13 +248,59 @@ function isTerminalMediaFailure(media: WorkspaceMedia) {
   );
 }
 
-function isMediaReady(media: WorkspaceMedia) {
-  return (
-    media.uploadStatus === "uploaded" &&
-    media.processingStatus === "ready" &&
-    (media.publicationStatus === "ready" ||
-      media.publicationStatus === "legacy_ready")
+function isMediaReady(params: {
+  media: WorkspaceMedia;
+  mission: PreparationMission;
+  variants: ReadyVariantState;
+}) {
+  if (params.media.uploadStatus !== "uploaded") return false;
+  if (params.mission === "ai_preparation") {
+    return hasAiArtifacts(params.media, params.variants);
+  }
+  if (isDirectPublicationVideo(params.media)) return true;
+  return hasVariant(params.variants, params.media.mediaId, "canonical");
+}
+
+async function alignReadyMissionStatuses(params: {
+  accountId: string;
+  mission: PreparationMission;
+  media: WorkspaceMedia[];
+  variants: ReadyVariantState;
+}) {
+  const readyMedia = params.media.filter((media) =>
+    isMediaReady({ media, mission: params.mission, variants: params.variants }),
   );
+  if (!readyMedia.length) return false;
+
+  const mediaIds = readyMedia
+    .filter((media) =>
+      params.mission === "ai_preparation"
+        ? media.processingStatus !== "ready"
+        : media.processingStatus !== "ready" ||
+          !["ready", "legacy_ready"].includes(media.publicationStatus),
+    )
+    .map((media) => media.mediaId)
+    .filter(Boolean);
+  if (!mediaIds.length) return false;
+
+  const patch: Record<string, unknown> = {
+    processing_status: "ready",
+    processing_progress: 100,
+    processing_error_code: null,
+    processing_error_message: null,
+    processing_completed_at: new Date().toISOString(),
+  };
+  if (params.mission === "publication_preparation") {
+    patch.publication_status = "ready";
+  }
+
+  const result = await supabaseAdmin
+    .from("pro_media_library")
+    .update(patch)
+    .eq("user_id", params.accountId)
+    .in("id", mediaIds);
+  if (result.error) throw result.error;
+  return true;
 }
 
 async function repairCompletedStorageUploads(params: {
@@ -206,8 +384,19 @@ async function repairCompletedStorageUploads(params: {
   return repaired;
 }
 
-function buildStatus(media: WorkspaceMedia[]) {
-  const failed = media.find(isTerminalMediaFailure);
+function buildStatus(params: {
+  media: WorkspaceMedia[];
+  mission: PreparationMission;
+  variants: ReadyVariantState;
+}) {
+  const failed = params.media.find(
+    (media) =>
+      !isMediaReady({
+        media,
+        mission: params.mission,
+        variants: params.variants,
+      }) && isTerminalMediaFailure(media),
+  );
   if (failed) {
     return {
       status: "failed" as const,
@@ -218,10 +407,15 @@ function buildStatus(media: WorkspaceMedia[]) {
           : "La préparation du média a échoué. Retirez-le puis ajoutez-le de nouveau."),
     };
   }
-  if (media.length > 0 && media.every(isMediaReady)) {
+  if (
+    params.media.length > 0 &&
+    params.media.every((media) =>
+      isMediaReady({ media, mission: params.mission, variants: params.variants }),
+    )
+  ) {
     return { status: "ready" as const, message: null };
   }
-  if (media.some((item) => item.uploadStatus !== "uploaded")) {
+  if (params.media.some((item) => item.uploadStatus !== "uploaded")) {
     return {
       status: "uploading" as const,
       message: "L’envoi du média vers le stockage sécurisé est encore en cours.",
@@ -229,20 +423,61 @@ function buildStatus(media: WorkspaceMedia[]) {
   }
   return {
     status: "processing" as const,
-    message: "Le média est en cours de préparation sur le serveur.",
+    message:
+      params.mission === "ai_preparation"
+        ? "Le média est en cours de préparation pour l’analyse IA."
+        : "Le média est en cours de préparation pour la publication.",
   };
+}
+
+async function resetLegacyReadyRowsMissingAiArtifacts(params: {
+  accountId: string;
+  media: WorkspaceMedia[];
+  variants: ReadyVariantState;
+}) {
+  const mediaIds = params.media
+    .filter(
+      (item) =>
+        item.uploadStatus === "uploaded" &&
+        item.processingStatus === "ready" &&
+        !hasAiArtifacts(item, params.variants),
+    )
+    .map((item) => item.mediaId)
+    .filter(Boolean);
+  if (!mediaIds.length) return false;
+
+  const result = await supabaseAdmin
+    .from("pro_media_library")
+    .update({
+      processing_status: "not_requested",
+      processing_progress: 0,
+      publication_status: "not_requested",
+      processing_error_code: null,
+      processing_error_message: null,
+      processing_completed_at: null,
+    })
+    .eq("user_id", params.accountId)
+    .in("id", mediaIds);
+  if (result.error) throw result.error;
+  return true;
 }
 
 async function enqueueWorkspaceMedia(params: {
   accountId: string;
   workspaceId: string;
   media: WorkspaceMedia[];
+  mission: PreparationMission;
+  variants: ReadyVariantState;
 }) {
   let processingEnabled = true;
   for (const item of params.media) {
     if (
       item.uploadStatus !== "uploaded" ||
-      isMediaReady(item) ||
+      isMediaReady({
+        media: item,
+        mission: params.mission,
+        variants: params.variants,
+      }) ||
       isTerminalMediaFailure(item)
     ) {
       continue;
@@ -253,6 +488,7 @@ async function enqueueWorkspaceMedia(params: {
         mediaId: item.mediaId,
         accountId: params.accountId,
         workspaceId: params.workspaceId,
+        mission: params.mission,
       });
       processingEnabled = processingEnabled && result.enabled;
     } else {
@@ -260,6 +496,7 @@ async function enqueueWorkspaceMedia(params: {
         mediaId: item.mediaId,
         accountId: params.accountId,
         workspaceId: params.workspaceId,
+        mission: params.mission,
       });
       processingEnabled = processingEnabled && result.enabled;
     }
@@ -301,8 +538,16 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     const workspaceId = cleanText(body?.workspaceId, "", 80);
+    const mission = readMission(body?.mission);
     if (!workspaceId) {
       return jsonError("Espace média manquant.", 400, "workspace_required");
+    }
+    if (!mission) {
+      return jsonError(
+        "Mission de préparation média invalide.",
+        400,
+        "media_preparation_mission_invalid",
+      );
     }
 
     let graph = await loadOwnedWorkspaceMedia({
@@ -336,11 +581,82 @@ export async function POST(request: Request) {
       }
     }
 
-    const initialStatus = buildStatus(graph.media);
+    if (
+      await resetFailuresFromAnotherMission({
+        accountId: activeUserId,
+        mission,
+        media: graph.media,
+      })
+    ) {
+      graph = await loadOwnedWorkspaceMedia({
+        workspaceId,
+        accountId: activeUserId,
+      });
+      if (!graph) {
+        return jsonError(
+          "Espace média introuvable après le changement de mission.",
+          404,
+          "workspace_not_found",
+        );
+      }
+    }
+
+    let variants = await loadReadyVariantState({
+      accountId: activeUserId,
+      media: graph.media,
+    });
+    if (
+      mission === "ai_preparation" &&
+      (await resetLegacyReadyRowsMissingAiArtifacts({
+        accountId: activeUserId,
+        media: graph.media,
+        variants,
+      }))
+    ) {
+      graph = await loadOwnedWorkspaceMedia({
+        workspaceId,
+        accountId: activeUserId,
+      });
+      if (!graph) {
+        return jsonError(
+          "Espace média introuvable après la remise en préparation IA.",
+          404,
+          "workspace_not_found",
+        );
+      }
+    }
+
+    const initialStatus = buildStatus({
+      media: graph.media,
+      mission,
+      variants,
+    });
     if (initialStatus.status === "ready" || initialStatus.status === "failed") {
+      if (
+        initialStatus.status === "ready" &&
+        (await alignReadyMissionStatuses({
+          accountId: activeUserId,
+          mission,
+          media: graph.media,
+          variants,
+        }))
+      ) {
+        graph = await loadOwnedWorkspaceMedia({
+          workspaceId,
+          accountId: activeUserId,
+        });
+        if (!graph) {
+          return jsonError(
+            "Espace média introuvable après l’alignement de son état.",
+            404,
+            "workspace_not_found",
+          );
+        }
+      }
       return NextResponse.json({
         ok: true,
         workspaceId,
+        mission,
         status: initialStatus.status,
         message: initialStatus.message,
         media: graph.media,
@@ -351,6 +667,8 @@ export async function POST(request: Request) {
       accountId: activeUserId,
       workspaceId,
       media: graph.media,
+      mission,
+      variants,
     });
     if (!processingEnabled) {
       return jsonError(
@@ -363,7 +681,7 @@ export async function POST(request: Request) {
     const pending = graph.media.filter(
       (item) =>
         item.uploadStatus === "uploaded" &&
-        !isMediaReady(item) &&
+        !isMediaReady({ media: item, mission, variants }) &&
         !isTerminalMediaFailure(item),
     );
     await prioritizeWorkspaceJobs({
@@ -379,14 +697,14 @@ export async function POST(request: Request) {
       await processImageNormalizationJobsForMedia({
         accountId: activeUserId,
         mediaIds: pendingImages.map((item) => item.mediaId),
-        workerId: `workspace-prepare-image-${requestId}`,
+        workerId: `workspace-${mission}-image-${requestId}`,
       });
     }
     if (pendingVideos.length) {
       await processVideoNormalizationJobsForMedia({
         accountId: activeUserId,
         mediaIds: pendingVideos.map((item) => item.mediaId),
-        workerId: `workspace-prepare-video-${requestId}`,
+        workerId: `workspace-${mission}-video-${requestId}`,
       });
     }
 
@@ -406,11 +724,20 @@ export async function POST(request: Request) {
         "workspace_not_found",
       );
     }
+    variants = await loadReadyVariantState({
+      accountId: activeUserId,
+      media: graph.media,
+    });
 
-    const finalStatus = buildStatus(graph.media);
+    const finalStatus = buildStatus({
+      media: graph.media,
+      mission,
+      variants,
+    });
     return NextResponse.json({
       ok: true,
       workspaceId,
+      mission,
       status: finalStatus.status,
       message: finalStatus.message,
       media: graph.media,

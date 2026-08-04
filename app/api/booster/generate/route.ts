@@ -42,9 +42,11 @@ export const maxDuration = 120;
 const BOOSTER_GENERATION_BURST_LIMIT = 20;
 
 type Payload = {
+  creationMode?: "ai" | "manual";
   mediaWorkspaceId?: string;
   mediaPipelineCutoverV1?: boolean;
   mediaWorkspaceExpected?: boolean;
+  useWorkspaceMediaForAI?: boolean;
   idea?: string;
   publicationInstruction?: string;
   theme?: BoosterTheme;
@@ -380,6 +382,16 @@ const handler = async (req: Request) => {
     const body = parsedRequest.body as Payload;
     timingContext.requestTransport = parsedRequest.transport;
     timingContext.requestParseMs = Date.now() - requestParseStartedAt;
+    if (body.creationMode === "manual") {
+      return NextResponse.json(
+        {
+          code: "manual_generation_forbidden",
+          error:
+            "La génération IA est désactivée dans le parcours Créer manuellement.",
+        },
+        { status: 400 },
+      );
+    }
     const idea = (body?.idea || "").trim();
     const publicationInstruction = String(
       body?.publicationInstruction || "",
@@ -434,7 +446,14 @@ const handler = async (req: Request) => {
       : body;
     const mediaWorkspaceId = String(body.mediaWorkspaceId || "").trim();
     const mediaWorkspaceExpected = body.mediaWorkspaceExpected === true;
-    if (strictMediaCutover && mediaWorkspaceExpected && !mediaWorkspaceId) {
+    const useWorkspaceMediaForAI =
+      body.useWorkspaceMediaForAI === true ||
+      (body.useWorkspaceMediaForAI !== false && mediaWorkspaceExpected);
+    if (
+      strictMediaCutover &&
+      mediaWorkspaceExpected &&
+      (!useWorkspaceMediaForAI || !mediaWorkspaceId)
+    ) {
       return NextResponse.json(
         {
           code: "media_workspace_required",
@@ -507,7 +526,7 @@ const handler = async (req: Request) => {
       }
     }
 
-    if (mediaWorkspaceId) {
+    if (mediaWorkspaceId && useWorkspaceMediaForAI) {
       const workspaceLoadStartedAt = Date.now();
       try {
         const workspaceMedia = await resolveWorkspaceAiConsumption({

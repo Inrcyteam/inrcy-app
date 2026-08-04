@@ -164,7 +164,8 @@ test("heavy work stays in prewarm while publish can use a policy-compliant sourc
     /allowsOriginalVideoFallback[\s\S]*sourceValidation\.ok/,
   );
   const route = await read("app/api/booster/publish-now/route.ts");
-  assert.match(route, /requiresPreparedNetworkVideoVariant/);
+  assert.doesNotMatch(route, /requiresPreparedNetworkVideoVariant/);
+  assert.match(route, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
   assert.doesNotMatch(route, /generationAttempted:\s*boolean/);
 });
 
