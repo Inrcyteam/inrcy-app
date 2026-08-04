@@ -280,6 +280,7 @@ async function readWorkspaceGraph(params: {
   accountId: string;
   workspaceId: string;
   allowProcessingVideoForAi?: boolean;
+  allowUploadedImageSourceForAi?: boolean;
   allowUploadedVideoSource?: boolean;
 }) {
   if (!isUnifiedMediaConsumptionEnabled()) {
@@ -359,7 +360,18 @@ async function readWorkspaceGraph(params: {
   }
 
   const invalid = media.find((item) => {
-    if (item.uploadStatus !== "uploaded") return true;
+    if (item.uploadStatus !== "uploaded" || !item.sourceStoragePath) return true;
+
+    // Mission IA image: l'original uploadé suffit. L'aperçu IA est réutilisé
+    // lorsqu'il existe, sinon il est produit/réparé à la demande depuis la source.
+    // La génération ne doit jamais attendre la mission de préparation publication.
+    if (
+      item.mediaType === "image" &&
+      (params.allowUploadedImageSourceForAi ?? false)
+    ) {
+      return false;
+    }
+
     const uploadedVideoIsUsable =
       item.mediaType === "video" &&
       ((params.allowProcessingVideoForAi ?? false) ||
@@ -372,6 +384,8 @@ async function readWorkspaceGraph(params: {
             maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
           })));
     if (uploadedVideoIsUsable) return false;
+
+    // Mission publication: conserver les garanties historiques.
     return (
       item.processingStatus !== "ready" ||
       !["ready", "legacy_ready"].includes(item.publicationStatus)
@@ -840,6 +854,50 @@ async function imageVariantToProviderSafeDataUrl(variant: ReadyVariant) {
   return `data:image/jpeg;base64,${rendered.toString("base64")}`;
 }
 
+async function sourceImageToProviderSafeDataUrl(params: {
+  accountId: string;
+  media: WorkspaceMediaRow;
+}) {
+  const sourceBuffer = await downloadWorkspaceImageSource(params);
+  const rendered = await sharp(sourceBuffer, {
+    failOn: "error",
+    limitInputPixels: AI_PROVIDER_SAFE_MAX_INPUT_PIXELS,
+    pages: 1,
+  })
+    .rotate()
+    .resize({
+      width: AI_PROVIDER_SAFE_MAX_SIDE,
+      height: AI_PROVIDER_SAFE_MAX_SIDE,
+      fit: "inside",
+      withoutEnlargement: true,
+      fastShrinkOnLoad: true,
+    })
+    .toColourspace("srgb")
+    .flatten({ background: { r: 255, g: 255, b: 255, alpha: 1 } })
+    .jpeg({
+      quality: AI_PROVIDER_SAFE_JPEG_QUALITY,
+      mozjpeg: false,
+      progressive: false,
+      chromaSubsampling: "4:2:0",
+      optimiseCoding: true,
+    })
+    .toBuffer();
+
+  if (
+    !isCompleteJpeg(rendered) ||
+    rendered.byteLength <= 0 ||
+    rendered.byteLength > MAX_AI_IMAGE_BYTES
+  ) {
+    throw new MediaWorkspaceConsumptionError(
+      "Une image n'a pas pu être préparée pour l'analyse IA.",
+      "workspace_ai_source_invalid",
+      422,
+    );
+  }
+
+  return `data:image/jpeg;base64,${rendered.toString("base64")}`;
+}
+
 async function resolveProviderSafeImageDataUrl(params: {
   accountId: string;
   media: WorkspaceMediaRow;
@@ -869,14 +927,15 @@ async function resolveProviderSafeImageDataUrl(params: {
   }
 
   try {
-    const repaired = await repairImageVariantsFromSource(params);
-    const repairedPreview =
-      pickReadyVariant(repaired, params.media.mediaId, "ai_preview") ||
-      pickReadyVariant(repaired, params.media.mediaId, "canonical");
-    if (!repairedPreview) throw new Error("image_repair_preview_missing");
-    return await imageVariantToProviderSafeDataUrl(repairedPreview);
-  } catch (repairError) {
-    lastError = repairError;
+    // Secours strictement IA : on relit l'original et on fabrique uniquement
+    // le JPEG sûr envoyé au fournisseur. Aucune variante de publication n'est
+    // requise ni matérialisée pour autoriser la génération.
+    return await sourceImageToProviderSafeDataUrl({
+      accountId: params.accountId,
+      media: params.media,
+    });
+  } catch (sourceError) {
+    lastError = sourceError;
   }
 
   throw new MediaWorkspaceConsumptionError(
@@ -1077,6 +1136,7 @@ export async function resolveWorkspaceAiConsumption(params: {
   const graph = await readWorkspaceGraph({
     ...params,
     allowProcessingVideoForAi: true,
+    allowUploadedImageSourceForAi: true,
   });
   const { workspace, media, variants } = graph;
 
