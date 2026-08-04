@@ -233,13 +233,6 @@ export default function PublishModal({
   const [generationStage, setGenerationStage] = useState("");
   const generationTimersRef = useRef<number[]>([]);
   const generationPulseTimerRef = useRef<number | null>(null);
-  // Une préparation vidéo lancée pendant la génération est réutilisée par
-  // Publier/Programmer. La clé évite d'attendre ou de relancer un préchauffage
-  // qui correspondrait à une ancienne vidéo ou à d'autres réglages.
-  const videoPrewarmTaskRef = useRef<{
-    key: string;
-    promise: Promise<unknown>;
-  } | null>(null);
   const videoAudioTranscriptCacheRef = useRef<VideoAudioTranscriptCache | null>(
     null,
   );
@@ -1656,58 +1649,6 @@ export default function PublishModal({
     return "none";
   };
 
-  const buildVideoPrewarmTaskKey = (
-    workspaceId: string,
-    channels: readonly ChannelKey[],
-    settingsByChannel: Partial<
-      Record<
-        ChannelKey,
-        { format: VideoFormat; adaptationMode: VideoAdaptationMode }
-      >
-    >,
-  ) =>
-    [
-      workspaceId,
-      videoFile ? makeVideoTranscriptCacheKey(videoFile) : "",
-      channels.join(","),
-      JSON.stringify(settingsByChannel),
-    ].join("|");
-
-  const startBackgroundVideoPrewarm = (
-    workspaceId: string,
-    channels: readonly ChannelKey[],
-    settingsByChannel: Partial<
-      Record<
-        ChannelKey,
-        { format: VideoFormat; adaptationMode: VideoAdaptationMode }
-      >
-    >,
-  ) => {
-    if (
-      !mediaPipelineCutoverEnabled ||
-      !videoFile ||
-      !workspaceId ||
-      !channels.length
-    ) {
-      return null;
-    }
-
-    const key = buildVideoPrewarmTaskKey(workspaceId, channels, settingsByChannel);
-    const current = videoPrewarmTaskRef.current;
-    if (current?.key === key) return current.promise;
-
-    const promise = prewarmPersistentMediaWorkspace({
-      selectedChannels: channels,
-      videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
-      // Les variantes nécessaires sont préparées pendant que l'IA travaille,
-      // jamais au dernier moment après le clic de publication.
-      generateMissingVideoVariants: true,
-      allowOriginalVideoFallback: true,
-    });
-    videoPrewarmTaskRef.current = { key, promise };
-    return promise;
-  };
-
   const setChannelMediaMode = (channel: ChannelKey, mode: ChannelMediaMode) => {
     if (mode === "images" && !channelSupportsImages(channel)) return;
     if (mode === "none" && !channelSupportsTextOnly(channel)) return;
@@ -1755,35 +1696,14 @@ export default function PublishModal({
       throw new Error("L’espace média de cette publication est indisponible.");
     }
 
-    const taskKey = buildVideoPrewarmTaskKey(
-      workspace.workspaceId,
-      channels,
-      settingsByChannel,
-    );
-    let result: any = null;
-    const backgroundTask = videoPrewarmTaskRef.current;
-    if (backgroundTask?.key === taskKey) {
-      // Si la génération est encore en train de préparer les variantes, on
-      // attend la même requête au lieu d'en lancer une seconde en parallèle.
-      try {
-        result = await backgroundTask.promise;
-      } catch {
-        // Le préchauffage anticipé est opportuniste : on retente ci-dessous
-        // dans le chemin de publication afin de conserver le comportement de
-        // secours existant.
-        result = null;
-      }
-    }
-    if (!result) {
-      result = await prewarmPersistentMediaWorkspace({
-        selectedChannels: channels,
-        videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
-        generateMissingVideoVariants:
-          options?.generateMissingVideoVariants !== false,
-        allowOriginalVideoFallback:
-          options?.allowOriginalVideoFallback === true,
-      });
-    }
+    let result = await prewarmPersistentMediaWorkspace({
+      selectedChannels: channels,
+      videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
+      generateMissingVideoVariants:
+        options?.generateMissingVideoVariants !== false,
+      allowOriginalVideoFallback:
+        options?.allowOriginalVideoFallback === true,
+    });
     // Fast path first: use an existing optimized variant or the original when
     // the channel accepts it. If cache v6 invalidated an older variant, a MOV
     // needs conversion, or metadata must be probed, regenerate exactly once.
@@ -2896,42 +2816,6 @@ export default function PublishModal({
           setGenerationStage(label || "Préparation du média...");
         });
 
-      if (
-        hasVideoForGeneration &&
-        mediaPipelineCutoverEnabled &&
-        readyMediaWorkspaceId
-      ) {
-        const videoChannelsForPrewarm = selectedForGeneration.filter(
-          (channel) => resolveChannelMediaMode(channel) === "video",
-        );
-        const videoSettingsForPrewarm = Object.fromEntries(
-          videoChannelsForPrewarm.map((channel) => [
-            channel,
-            getAutomaticVideoSettingsForPublication({
-              channel,
-              settings: videoSettingsByChannel[channel],
-              durationSeconds:
-                videoDurationSeconds ?? videoSourceMetadata?.duration ?? null,
-            }),
-          ]),
-        ) as Partial<
-          Record<
-            ChannelKey,
-            { format: VideoFormat; adaptationMode: VideoAdaptationMode }
-          >
-        >;
-        const backgroundPrewarm = startBackgroundVideoPrewarm(
-          readyMediaWorkspaceId,
-          videoChannelsForPrewarm,
-          videoSettingsForPrewarm,
-        );
-        // Le préchauffage est opportuniste ; Publier retentera proprement si
-        // le serveur le refuse ou si la connexion est interrompue.
-        if (backgroundPrewarm) {
-          void backgroundPrewarm.catch(() => undefined);
-        }
-      }
-
       setGenerationProgress((current) =>
         Math.max(current, mediaPreflightIncluded ? 42 : 8),
       );
@@ -3988,7 +3872,7 @@ export default function PublishModal({
           videoChannels,
           publishVideoSettingsByChannel,
           {
-            generateMissingVideoVariants: true,
+            generateMissingVideoVariants: false,
             allowOriginalVideoFallback: true,
             allowPartialChannelFailures: true,
           },
@@ -4681,7 +4565,7 @@ export default function PublishModal({
           videoChannels,
           scheduleVideoSettingsByChannel,
           {
-            generateMissingVideoVariants: true,
+            generateMissingVideoVariants: false,
             allowOriginalVideoFallback: true,
             allowPartialChannelFailures: true,
           },

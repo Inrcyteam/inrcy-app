@@ -1822,7 +1822,57 @@ async function publishNowHandler(req: Request) {
         buffer,
         contentType: data.type || "application/octet-stream",
         size: buffer.length,
+        storagePath: cleanPath,
+        bucket: cleanBucket,
       };
+    }
+
+    async function loadFirstAvailableTikTokVideo(
+      candidates: Array<{
+        video: PersistedVideoAttachment | null | undefined;
+        kind: "channel_variant" | "source_video" | "publication_source";
+      }>,
+    ) {
+      const attempted: Array<{ path: string; bucket: string; kind: string }> = [];
+      const seen = new Set<string>();
+
+      for (const candidate of candidates) {
+        const video = candidate.video;
+        const storagePath = String(video?.storagePath || "").trim();
+        const bucket = String(video?.bucket || "booster").trim() || "booster";
+        if (!storagePath) continue;
+        const key = `${bucket}:${storagePath}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        // A source fallback is allowed only when it independently satisfies
+        // TikTok's publication policy. Never bypass a required conversion.
+        if (candidate.kind !== "channel_variant") {
+          const validation = validateVideoPublicationForChannel({
+            channel: "tiktok",
+            name: video?.name || "video.mp4",
+            type: video?.type || "video/mp4",
+            storagePath,
+            sizeBytes: video?.size,
+            durationSeconds: video?.duration,
+            width: video?.sourceMetadata?.width,
+            height: video?.sourceMetadata?.height,
+          });
+          if (!validation.ok) continue;
+        }
+
+        attempted.push({ path: storagePath, bucket, kind: candidate.kind });
+        const loaded = await loadStorageVideoForTikTok(storagePath, bucket);
+        if (loaded) {
+          return {
+            file: loaded,
+            kind: candidate.kind,
+            attempted,
+          };
+        }
+      }
+
+      return { file: null, kind: null, attempted };
     }
 
     async function getTiktokAccessToken(rowLike: unknown) {
@@ -2876,18 +2926,13 @@ async function publishNowHandler(req: Request) {
             expectedTiktokImageCount > 0
               ? paths.length >= expectedTiktokImageCount
               : paths.length > 0;
-          // A non-locked/legacy payload must go through the TikTok media
-          // proxy from the original stored bytes. Reusing the generic social
-          // derivative here caused a second JPEG pass (and, historically,
-          // progressive scans) before TikTok pulled the image. The strict
-          // Booster artifact is already final, so it remains preferred only
-          // when the geometry decision is locked.
-          const preferredTiktokStoragePaths = tiktokGeometryLocked
-            ? socialStoragePaths
-            : sourceStoragePaths;
-          const fallbackTiktokStoragePaths = tiktokGeometryLocked
-            ? sourceStoragePaths
-            : socialStoragePaths;
+          // TikTok must pull an immediately available, lightweight artifact.
+          // Prefer the server-prepared social/TikTok derivative and only fall
+          // back to the original source when no complete derivative exists.
+          // Pulling the original can force a cold Sharp conversion while
+          // TikTok is waiting and leave the provider in PROCESSING_DOWNLOAD.
+          const preferredTiktokStoragePaths = socialStoragePaths;
+          const fallbackTiktokStoragePaths = sourceStoragePaths;
           const tiktokImageStoragePaths = explicitTiktokImageSet
             ? hasCompleteTikTokPaths(preferredTiktokStoragePaths)
               ? preferredTiktokStoragePaths.slice(0, expectedTiktokImageCount)
@@ -2991,13 +3036,14 @@ async function publishNowHandler(req: Request) {
             channelPost.content ||
             channelPost.title ||
             "Publication iNrCy";
-          const tiktokVideoFile =
-            isVideo && channelVideo?.storagePath
-              ? await loadStorageVideoForTikTok(
-                  channelVideo.storagePath,
-                  channelVideo.bucket || "booster",
-                )
-              : null;
+          const tiktokVideoLoad = isVideo
+            ? await loadFirstAvailableTikTokVideo([
+                { video: channelVideo, kind: "channel_variant" },
+                { video: channelVideo?.sourceVideo, kind: "source_video" },
+                { video: publicationVideo, kind: "publication_source" },
+              ])
+            : { file: null, kind: null, attempted: [] };
+          const tiktokVideoFile = tiktokVideoLoad.file;
 
           if (isVideo && !tiktokVideoFile) {
             const tiktokUserError =
@@ -3011,6 +3057,7 @@ async function publishNowHandler(req: Request) {
                 mode: "direct_post",
                 transfer: "FILE_UPLOAD_ONLY",
                 storage_path: channelVideo?.storagePath || null,
+                attempted_storage_paths: tiktokVideoLoad.attempted,
                 code: "tiktok_video_file_upload_required",
               },
             };
@@ -3107,6 +3154,10 @@ async function publishNowHandler(req: Request) {
               provider: "tiktok",
               mode: "direct_post",
               transfer: isVideo ? "FILE_UPLOAD" : "PULL_FROM_URL",
+              video_storage_kind: isVideo ? tiktokVideoLoad.kind : null,
+              video_storage_path: isVideo
+                ? tiktokVideoFile?.storagePath || null
+                : null,
               publish_id: tiktokResult.publishId || null,
               mediaType: isVideo ? "video" : "photos",
               privacyLevel: tiktokResult.privacyLevel || null,

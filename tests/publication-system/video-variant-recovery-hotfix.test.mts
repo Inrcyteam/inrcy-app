@@ -84,10 +84,10 @@ test("a partial preparation can continue only when failures are isolated by chan
   );
 });
 
-test("the client reuses the background prewarm and keeps one recovery generation", async () => {
+test("the client avoids stale background prewarm and keeps one recovery generation", async () => {
   const modal = await read("app/dashboard/booster/publier/PublishModal.tsx");
   assert.match(modal, /options\?\.generateMissingVideoVariants === false/);
-  assert.match(modal, /startBackgroundVideoPrewarm/);
+  assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.match(
     modal,
     /shouldRetryVideoVariantGeneration[\s\S]*generateMissingVideoVariants:\s*true/,

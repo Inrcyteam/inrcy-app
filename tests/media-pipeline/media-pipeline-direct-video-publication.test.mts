@@ -65,7 +65,7 @@ test("TikTok garde un dernier morceau conforme pour une source de 300 Mo", () =>
   assert.ok(lastChunkSize <= 64 * MB);
 });
 
-test("publier et programmer réutilisent le préchauffage et génèrent les variantes une seule fois", async () => {
+test("publier et programmer contrôlent le workspace au clic et gardent une seule récupération", async () => {
   const modal = await readSource(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
@@ -79,12 +79,12 @@ test("publier et programmer réutilisent le préchauffage et génèrent les vari
   assert.match(modal, /if \(allUploaded && directVideoSource\)/);
   assert.match(modal, /Vidéo sécurisée/);
   assert.match(modal, /async function prepareCutoverVideoVariants/);
-  assert.match(modal, /startBackgroundVideoPrewarm/);
+  assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.equal(
     (modal.match(/prewarmPersistentMediaWorkspace\(/g) || []).length,
-    3,
+    2,
   );
-  assert.match(modal, /generateMissingVideoVariants:\s*true/);
+  assert.match(modal, /generateMissingVideoVariants:\s*false/);
   assert.match(
     modal,
     /shouldRetryVideoVariantGeneration[\s\S]*generateMissingVideoVariants:\s*true/,
