@@ -90,7 +90,7 @@ test("TikTok photos use a cached baseline JPEG instead of progressive JPEG", () 
   assert.match(mediaRoute, /progressive:\s*false/);
   assert.match(mediaRoute, /chromaSubsampling:\s*"4:2:0"/);
   assert.doesNotMatch(mediaRoute, /progressive:\s*true/);
-  assert.match(imagePreparation, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/);
+  assert.match(imagePreparation, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 9/);
   assert.match(imagePreparation, /channel === "tiktok"/);
   assert.match(imagePreparation, /progressive:\s*false/);
 });

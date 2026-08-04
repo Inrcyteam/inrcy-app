@@ -2876,15 +2876,27 @@ async function publishNowHandler(req: Request) {
             expectedTiktokImageCount > 0
               ? paths.length >= expectedTiktokImageCount
               : paths.length > 0;
+          // A non-locked/legacy payload must go through the TikTok media
+          // proxy from the original stored bytes. Reusing the generic social
+          // derivative here caused a second JPEG pass (and, historically,
+          // progressive scans) before TikTok pulled the image. The strict
+          // Booster artifact is already final, so it remains preferred only
+          // when the geometry decision is locked.
+          const preferredTiktokStoragePaths = tiktokGeometryLocked
+            ? socialStoragePaths
+            : sourceStoragePaths;
+          const fallbackTiktokStoragePaths = tiktokGeometryLocked
+            ? sourceStoragePaths
+            : socialStoragePaths;
           const tiktokImageStoragePaths = explicitTiktokImageSet
-            ? hasCompleteTikTokPaths(socialStoragePaths)
-              ? socialStoragePaths.slice(0, expectedTiktokImageCount)
-              : hasCompleteTikTokPaths(sourceStoragePaths)
-                ? sourceStoragePaths.slice(0, expectedTiktokImageCount)
+            ? hasCompleteTikTokPaths(preferredTiktokStoragePaths)
+              ? preferredTiktokStoragePaths.slice(0, expectedTiktokImageCount)
+              : hasCompleteTikTokPaths(fallbackTiktokStoragePaths)
+                ? fallbackTiktokStoragePaths.slice(0, expectedTiktokImageCount)
                 : []
-            : (socialStoragePaths.length
-                ? socialStoragePaths
-                : sourceStoragePaths
+            : (preferredTiktokStoragePaths.length
+                ? preferredTiktokStoragePaths
+                : fallbackTiktokStoragePaths
               ).slice(0, 35);
           const legacyTiktokFallbackImageUrls = (
             tiktokImageSet.publishableUrls.length
@@ -2898,8 +2910,8 @@ async function publishNowHandler(req: Request) {
           const tiktokFallbackImageUrls = pickCompleteChannelImageUrls({
             channel: ch,
             candidates: [
-              "socialFeedPublishableUrls",
               "publishableUrls",
+              "socialFeedPublishableUrls",
               "images",
             ],
             legacyFallback: legacyTiktokFallbackImageUrls,
@@ -3334,7 +3346,10 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const tok = await getGmbToken();
+          const tok = await getGmbToken({
+            supabase: supabaseAdmin,
+            userId,
+          });
           if (!tok?.accessToken) {
             const gmbUserError = GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE;
             logPublishChannelFailure({

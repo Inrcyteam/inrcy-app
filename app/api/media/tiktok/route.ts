@@ -14,7 +14,9 @@ const TIKTOK_PORTRAIT_MAX_WIDTH = 1080;
 const TIKTOK_PORTRAIT_MAX_HEIGHT = 1920;
 const TIKTOK_FALLBACK_WIDTH = 1080;
 const TIKTOK_FALLBACK_HEIGHT = 1920;
-const TIKTOK_PHOTO_CACHE_VERSION = 2;
+// Cache version 3 invalidates any legacy/progressive derivative that may
+// still be stuck in TikTok's pull queue.
+const TIKTOK_PHOTO_CACHE_VERSION = 3;
 
 function safeStoragePath(input: string) {
   const path = String(input || "").trim();
@@ -28,6 +30,59 @@ function normalizeVariant(input: unknown) {
   if (value === "photo_locked") return "photo_locked";
   if (value === "photo") return "photo";
   return "raw";
+}
+
+function normalizeImageMime(input: unknown) {
+  const value = String(input || "")
+    .toLowerCase()
+    .split(";", 1)[0]
+    .trim();
+  return value === "image/jpg" ? "image/jpeg" : value;
+}
+
+function imageMimeFromPath(path: string) {
+  const extension = String(path || "")
+    .split(/[?#]/, 1)[0]
+    .split(".")
+    .pop()
+    ?.toLowerCase();
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  if (extension === "png") return "image/png";
+  if (extension === "gif") return "image/gif";
+  if (extension === "avif") return "image/avif";
+  if (extension === "heic" || extension === "heif") return "image/heic";
+  return "";
+}
+
+/**
+ * Supabase Storage may return application/octet-stream for an object whose
+ * metadata was not preserved.  Never let that missing hint trigger a second
+ * Sharp/JPEG pass: identify the actual image from its signature first.
+ */
+function detectImageMime(input: Buffer, hintedMime?: unknown, sourcePath?: string) {
+  if (
+    input.length >= 3 &&
+    input[0] === 0xff &&
+    input[1] === 0xd8 &&
+    input[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+  if (
+    input.length >= 8 &&
+    input.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  ) {
+    return "image/png";
+  }
+  if (
+    input.length >= 12 &&
+    input.subarray(0, 4).toString("ascii") === "RIFF" &&
+    input.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  return normalizeImageMime(hintedMime) || imageMimeFromPath(sourcePath || "");
 }
 
 function mediaPathSuffix(path: string) {
@@ -116,7 +171,12 @@ async function renderTikTokSafetyFrame(input: Buffer) {
 }
 
 async function isDirectTikTokPhotoPublishable(input: Buffer, mime: string) {
-  if (mime !== "image/jpeg" && mime !== "image/webp") return false;
+  // Keep the provider contract deliberately narrow: TikTok receives a
+  // baseline JPEG, never a source WebP/PNG and never a progressive scan.
+  // This makes the media URL stable across all legacy and new payloads and
+  // prevents TikTok from having to decode an image that was already
+  // transformed by the Booster pipeline.
+  if (mime !== "image/jpeg") return false;
   if (input.byteLength > TIKTOK_PHOTO_MAX_BYTES) return false;
 
   const meta = await sharp(input, { failOn: "none" }).metadata().catch(() => null);
@@ -137,17 +197,24 @@ async function isDirectTikTokPhotoPublishable(input: Buffer, mime: string) {
   return width <= maxWidth && height <= maxHeight;
 }
 
-async function toTikTokPhotoBuffer(blob: Blob, geometryLocked = false) {
+async function toTikTokPhotoBuffer(
+  blob: Blob,
+  geometryLocked = false,
+  sourceMimeHint?: string,
+) {
   const input = Buffer.from(await blob.arrayBuffer());
 
   if (geometryLocked) {
     // The new Booster pipeline already produced the definitive TikTok image.
     // Serve the exact stored bytes when they satisfy TikTok's photo limits so
     // the media is not put through a second lossy Sharp/JPEG encoding pass.
-    const sourceMime = String(blob.type || "").toLowerCase();
-    const normalizedMime = sourceMime === "image/jpg" ? "image/jpeg" : sourceMime;
+    const normalizedMime = detectImageMime(
+      input,
+      sourceMimeHint || blob.type,
+    );
     const sourceIsDirectlyPublishable =
-      await isDirectTikTokPhotoPublishable(input, normalizedMime);
+      normalizedMime === "image/jpeg" &&
+      (await isDirectTikTokPhotoPublishable(input, normalizedMime));
     if (sourceIsDirectlyPublishable) {
       return { buffer: input, mime: normalizedMime };
     }
@@ -183,9 +250,18 @@ async function loadOrPrepareTikTokPhoto(params: {
   geometryLocked: boolean;
 }) {
   const sourceBuffer = Buffer.from(await params.sourceBlob.arrayBuffer());
-  const sourceMimeRaw = String(params.sourceBlob.type || "").toLowerCase();
-  const sourceMime = sourceMimeRaw === "image/jpg" ? "image/jpeg" : sourceMimeRaw;
-  if (await isDirectTikTokPhotoPublishable(sourceBuffer, sourceMime)) {
+  const sourceMime = detectImageMime(
+    sourceBuffer,
+    params.sourceBlob.type,
+    params.sourcePath,
+  );
+  // A geometry-locked payload is the final provider artifact. Only return it
+  // verbatim when it is already a baseline JPEG; WebP and all non-locked
+  // legacy sources are normalized exactly once below.
+  if (
+    (!params.geometryLocked || sourceMime === "image/jpeg") &&
+    (await isDirectTikTokPhotoPublishable(sourceBuffer, sourceMime))
+  ) {
     return { buffer: sourceBuffer, mime: sourceMime, cache: "source" as const };
   }
 
@@ -207,6 +283,7 @@ async function loadOrPrepareTikTokPhoto(params: {
   const prepared = await toTikTokPhotoBuffer(
     params.sourceBlob,
     params.geometryLocked,
+    sourceMime,
   );
   const upload = await supabaseAdmin.storage.from("booster").upload(
     preparedPath,
@@ -256,7 +333,8 @@ async function loadMedia(request: Request, includeBody: boolean) {
   }
 
   let body: Blob | Buffer = data;
-  let contentType = data.type || "application/octet-stream";
+  let contentType =
+    normalizeImageMime(data.type) || imageMimeFromPath(path) || "application/octet-stream";
   let contentLength = data.size || 0;
 
   if (variant === "photo" || variant === "photo_locked") {
@@ -284,8 +362,14 @@ async function loadMedia(request: Request, includeBody: boolean) {
   const headers = new Headers();
   headers.set("Content-Type", contentType);
   headers.set("Content-Length", String(contentLength));
-  headers.set("Cache-Control", "public, max-age=3600, immutable");
+  // The signed URL is content-addressed by path + variant and expires before
+  // this cache window.  Let the edge serve repeat TikTok pulls without
+  // re-running the Storage download/Sharp preparation on every request.
+  headers.set("Cache-Control", "public, max-age=86400, s-maxage=86400, immutable");
   headers.set("X-Content-Type-Options", "nosniff");
+  if (contentType === "image/jpeg") {
+    headers.set("Content-Disposition", 'inline; filename="inrcy-tiktok.jpg"');
+  }
 
   console.info("[tiktok-media] media served", {
     method: request.method,

@@ -82,8 +82,10 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
   pinterest: { width: 1000, height: 1500 },
 };
 
-const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7;
-const TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8;
+// Bump both signatures whenever the encoded bytes contract changes. This
+// invalidates the old progressive derivatives instead of serving them again.
+const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8;
+const TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 9;
 const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
 
 function getChannelImagePipelineVersion(channel: BoosterImageChannel) {
@@ -104,8 +106,10 @@ function getChannelJpegOptions(channel: BoosterImageChannel, quality = 87) {
   return {
     quality,
     mozjpeg: true,
-    progressive: true,
-    optimiseScans: true,
+    // Baseline JPEG is the portable publication contract. Progressive scans
+    // are visually valid but are intermittently rejected by Google Business
+    // and can leave TikTok's pull worker in PROCESSING_DOWNLOAD.
+    progressive: false,
   };
 }
 
