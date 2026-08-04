@@ -71,14 +71,11 @@ export function verifyTiktokMediaSignature(path: string, exp: number, signature:
 
 export function getAppBaseUrl(requestUrl?: string) {
   const base =
-    // Media pull URLs must use the canonical public application origin. The
-    // OAuth callback is deliberately not a fallback here: it can point at a
-    // preview/legacy host that TikTok cannot fetch or that is not verified.
-    safeOrigin(process.env.TIKTOK_MEDIA_BASE_URL) ||
-    safeOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
-    safeOrigin(process.env.NEXT_PUBLIC_SITE_URL) ||
-    safeOrigin(process.env.APP_URL) ||
+    process.env.TIKTOK_MEDIA_BASE_URL ||
+    safeOrigin(process.env.TIKTOK_REDIRECT_URI) ||
     safeOrigin(requestUrl) ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.APP_URL ||
     "";
   return base.replace(/\/+$/g, "");
 }

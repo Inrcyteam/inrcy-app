@@ -143,6 +143,7 @@ import {
   buildQueuedPublicationSummary,
   buildResultsSummary,
   getRequiredImageFormatsForChannel,
+  hasFinalImageGeometryDecision,
   isExpired,
   mergeImageFormats,
   normalizeChannelMediaMode,
@@ -1821,8 +1822,6 @@ async function publishNowHandler(req: Request) {
         buffer,
         contentType: data.type || "application/octet-stream",
         size: buffer.length,
-        storagePath: cleanPath,
-        bucket: cleanBucket,
       };
     }
 
@@ -1836,39 +1835,17 @@ async function publishNowHandler(req: Request) {
       const seen = new Set<string>();
 
       for (const candidate of candidates) {
-        const video = candidate.video;
-        const storagePath = String(video?.storagePath || "").trim();
-        const bucket = String(video?.bucket || "booster").trim() || "booster";
+        const storagePath = String(candidate.video?.storagePath || "").trim();
+        const bucket =
+          String(candidate.video?.bucket || "booster").trim() || "booster";
         if (!storagePath) continue;
         const key = `${bucket}:${storagePath}`;
         if (seen.has(key)) continue;
         seen.add(key);
-
-        // A source fallback is allowed only when it independently satisfies
-        // TikTok's publication policy. Never bypass a required conversion.
-        if (candidate.kind !== "channel_variant") {
-          const validation = validateVideoPublicationForChannel({
-            channel: "tiktok",
-            name: video?.name || "video.mp4",
-            type: video?.type || "video/mp4",
-            storagePath,
-            sizeBytes: video?.size,
-            durationSeconds: video?.duration,
-            width: video?.sourceMetadata?.width,
-            height: video?.sourceMetadata?.height,
-          });
-          if (!validation.ok) continue;
-        }
-
         attempted.push({ path: storagePath, bucket, kind: candidate.kind });
+
         const loaded = await loadStorageVideoForTikTok(storagePath, bucket);
-        if (loaded) {
-          return {
-            file: loaded,
-            kind: candidate.kind,
-            attempted,
-          };
-        }
+        if (loaded) return { file: loaded, kind: candidate.kind, attempted };
       }
 
       return { file: null, kind: null, attempted };
@@ -2906,42 +2883,35 @@ async function publishNowHandler(req: Request) {
           const tiktokRawImages = Array.isArray(imagesByChannel?.tiktok)
             ? (imagesByChannel.tiktok as ImagePayload[])
             : [];
+          const tiktokGeometryLocked =
+            tiktokRawImages.length > 0 &&
+            tiktokRawImages.every((image) =>
+              hasFinalImageGeometryDecision(image),
+            );
           const expectedTiktokImageCount = getExpectedChannelImageCount(ch);
           const explicitTiktokImageSet = channelImageSets[ch];
+          const socialStoragePaths = (
+            tiktokImageSet.socialFeedStoragePaths || []
+          ).filter(Boolean);
           const sourceStoragePaths = (
             tiktokImageSet.publishableStoragePaths?.length
               ? tiktokImageSet.publishableStoragePaths
               : tiktokImageSet.storagePaths || []
           ).filter(Boolean);
-          const rawOriginalStoragePaths = tiktokRawImages
-            .slice(0, 35)
-            .map((image) =>
-              String(
-                image.originalStoragePath ||
-                  (image.imageDecisionMode === "original"
-                    ? image.storagePath || ""
-                    : ""),
-              ).trim(),
-            );
           const hasCompleteTikTokPaths = (paths: string[]) =>
             expectedTiktokImageCount > 0
-              ? paths.length >= expectedTiktokImageCount &&
-                paths.slice(0, expectedTiktokImageCount).every(Boolean)
-              : paths.length > 0 && paths.every(Boolean);
-
-          // TikTok photo policy: send the exact original object selected by
-          // the professional. No social derivative, crop, canvas, JPEG pass
-          // or provider-specific visual transformation is allowed here.
-          const originalTiktokStoragePaths = hasCompleteTikTokPaths(
-            rawOriginalStoragePaths,
-          )
-            ? rawOriginalStoragePaths.slice(0, expectedTiktokImageCount || 35)
-            : sourceStoragePaths;
+              ? paths.length >= expectedTiktokImageCount
+              : paths.length > 0;
           const tiktokImageStoragePaths = explicitTiktokImageSet
-            ? hasCompleteTikTokPaths(originalTiktokStoragePaths)
-              ? originalTiktokStoragePaths.slice(0, expectedTiktokImageCount)
-              : []
-            : originalTiktokStoragePaths.filter(Boolean).slice(0, 35);
+            ? hasCompleteTikTokPaths(socialStoragePaths)
+              ? socialStoragePaths.slice(0, expectedTiktokImageCount)
+              : hasCompleteTikTokPaths(sourceStoragePaths)
+                ? sourceStoragePaths.slice(0, expectedTiktokImageCount)
+                : []
+            : (socialStoragePaths.length
+                ? socialStoragePaths
+                : sourceStoragePaths
+              ).slice(0, 35);
           const legacyTiktokFallbackImageUrls = (
             tiktokImageSet.publishableUrls.length
               ? tiktokImageSet.publishableUrls
@@ -2954,8 +2924,8 @@ async function publishNowHandler(req: Request) {
           const tiktokFallbackImageUrls = pickCompleteChannelImageUrls({
             channel: ch,
             candidates: [
-              "publishableUrls",
               "socialFeedPublishableUrls",
+              "publishableUrls",
               "images",
             ],
             legacyFallback: legacyTiktokFallbackImageUrls,
@@ -2965,7 +2935,7 @@ async function publishNowHandler(req: Request) {
             ? tiktokImageStoragePaths
                 .map((path) =>
                   buildTiktokMediaProxyUrl(req.url, path, undefined, {
-                    variant: "raw",
+                    variant: tiktokGeometryLocked ? "photo_locked" : "photo",
                   }),
                 )
                 .filter(Boolean)
@@ -3063,7 +3033,6 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const tiktokSubmittedAt = new Date().toISOString();
           const tiktokResult = isVideo
             ? await tiktokDirectPostVideoFileUpload({
                 accessToken: tiktokAccessToken,
@@ -3133,11 +3102,8 @@ async function publishNowHandler(req: Request) {
                 ? "En traitement"
                 : "Publié",
             tiktok_status_message: tiktokPendingMessage,
-            tiktok_status_checked_at: tiktokSubmittedAt,
-            tiktok_submitted_at: tiktokSubmittedAt,
-            tiktok_status_progress_at: tiktokSubmittedAt,
-            tiktok_status_check_count: 1,
-            tiktok_processing_duration_seconds: 0,
+            tiktok_status_checked_at: new Date().toISOString(),
+            tiktok_submitted_at: new Date().toISOString(),
             tiktok_status_fetch_failed: Boolean(tiktokResult.status?.statusFetchFailed),
             tiktok_uploaded_bytes: tiktokResult.status?.uploadedBytes ?? null,
             tiktok_downloaded_bytes: tiktokResult.status?.downloadedBytes ?? null,
@@ -3153,28 +3119,13 @@ async function publishNowHandler(req: Request) {
               provider: "tiktok",
               mode: "direct_post",
               transfer: isVideo ? "FILE_UPLOAD" : "PULL_FROM_URL",
-              video_storage_kind: isVideo ? tiktokVideoLoad.kind : null,
-              video_storage_path: isVideo
-                ? tiktokVideoFile?.storagePath || null
-                : null,
               publish_id: tiktokResult.publishId || null,
               mediaType: isVideo ? "video" : "photos",
               privacyLevel: tiktokResult.privacyLevel || null,
               mediaUrls: isVideo ? (videoUrl ? [videoUrl] : []) : tiktokImageUrls,
-              mediaStoragePaths: isVideo
-                ? channelVideo?.storagePath
-                  ? [channelVideo.storagePath]
-                  : []
-                : tiktokImageStoragePaths,
-              mediaPolicy: isVideo ? "file_upload_original" : "original_exact_bytes",
               publicationSettings: tiktokPublicationSettings,
               status: tiktokResult.status || null,
               share_url: tiktokResult.shareUrl || null,
-              submitted_at: tiktokSubmittedAt,
-              status_progress_at: tiktokSubmittedAt,
-              status_checked_at: tiktokSubmittedAt,
-              status_check_count: 1,
-              processing_duration_seconds: 0,
               raw: tiktokResult.raw,
             },
           };
@@ -3402,10 +3353,7 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const tok = await getGmbToken({
-            supabase: supabaseAdmin,
-            userId,
-          });
+          const tok = await getGmbToken();
           if (!tok?.accessToken) {
             const gmbUserError = GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE;
             logPublishChannelFailure({

@@ -894,7 +894,7 @@ export default function PublishModal({
       }
       return changed ? next : prev;
     });
-  }, [ctaDefaults]);
+  }, [ctaDefaults, postsByChannel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1565,10 +1565,7 @@ export default function PublishModal({
               : "Les images sont encore en préparation. Réessayez dans quelques instants.",
           );
         }
-        // Les statuts sont légers (aucun binaire dans la réponse). Un cycle
-        // court rend le démarrage perceptiblement plus réactif sans toucher au
-        // traitement serveur ni multiplier les relances de préparation.
-        await sleep(800);
+        await sleep(1_800);
       }
     },
     [
@@ -1640,10 +1637,7 @@ export default function PublishModal({
     if (explicit === "video" && hasVideo) return "video";
     if (explicit === "images" && hasImages && channelSupportsImages(channel))
       return "images";
-    // A channel can stay selected while its current media is removed. Keep
-    // this explicit state even for channels that normally require media;
-    // validation will request a replacement without dropping the text.
-    if (explicit === "none") return "none";
+    if (explicit === "none" && channelSupportsTextOnly(channel)) return "none";
     if (hasImages && channelSupportsImages(channel)) return "images";
     if (hasVideo) return "video";
     return "none";
@@ -2023,7 +2017,7 @@ export default function PublishModal({
         const hasVideo = Boolean(videoFile || videoPreviewUrl);
         const hasImages = images.length > 0;
         const valid =
-          current === "none" ||
+          (current === "none" && channelSupportsTextOnly(channel)) ||
           (current === "video" && hasVideo) ||
           (current === "images" && hasImages && channelSupportsImages(channel));
         if (!valid) {
@@ -2822,45 +2816,45 @@ export default function PublishModal({
       setGenerationStage(`Préparation avec ${selectedAiEngineOption.shortLabel}`);
 
       const generationSteps = [
-        { percent: generationPercent(16, 46), label: "Préparation du brief", delay: 250 },
-        { percent: generationPercent(26, 50), label: "Analyse de l’intention", delay: 650 },
+        { percent: generationPercent(16, 46), label: "Préparation du brief", delay: 500 },
+        { percent: generationPercent(26, 50), label: "Analyse de l’intention", delay: 1200 },
         ...(shouldUseImagesForAI
           ? [
-              { percent: generationPercent(36, 56), label: "Préparation des images", delay: 1200 },
-              { percent: generationPercent(48, 62), label: "Analyse des visuels", delay: 2200 },
+              { percent: generationPercent(36, 56), label: "Préparation des images", delay: 2200 },
+              { percent: generationPercent(48, 62), label: "Analyse des visuels", delay: 3800 },
             ]
           : hasVideoForGeneration
             ? [
-                { percent: generationPercent(34, 52), label: "Préparation de la vidéo", delay: 900 },
+                { percent: generationPercent(34, 52), label: "Préparation de la vidéo", delay: 1800 },
                 {
                   percent: generationPercent(42, 58),
                   label: "Transcription audio de la vidéo",
-                  delay: 1500,
+                  delay: 3200,
                 },
                 {
                   percent: generationPercent(52, 64),
                   label: "Extraction des images de la vidéo",
-                  delay: 2300,
+                  delay: 5000,
                 },
                 {
                   percent: generationPercent(60, 70),
                   label: "Analyse audio + images de la vidéo",
-                  delay: 3200,
+                  delay: 6800,
                 },
               ]
-            : [{ percent: generationPercent(42, 58), label: "Construction du contenu", delay: 1400 }]),
+            : [{ percent: generationPercent(42, 58), label: "Construction du contenu", delay: 2600 }]),
         {
           percent: generationPercent(62, 74),
           label: hasVideoForGeneration
             ? `Rédaction avec ${selectedAiEngineOption.shortLabel} à partir de votre vidéo`
             : `Rédaction avec ${selectedAiEngineOption.shortLabel}`,
-          delay: hasVideoForGeneration ? 3800 : 3200,
+          delay: hasVideoForGeneration ? 8200 : 6200,
         },
-        { percent: generationPercent(70, 82), label: "Adaptation par canal", delay: 4800 },
-        { percent: generationPercent(80, 88), label: "Vérification des textes", delay: 6200 },
-        { percent: generationPercent(88, 93), label: "Mise en forme", delay: 8000 },
-        { percent: generationPercent(94, 96), label: "Finalisation", delay: 10000 },
-        { percent: generationPercent(97, 98), label: "Encore quelques secondes...", delay: 14000 },
+        { percent: generationPercent(70, 82), label: "Adaptation par canal", delay: 7600 },
+        { percent: generationPercent(80, 88), label: "Vérification des textes", delay: 10200 },
+        { percent: generationPercent(88, 93), label: "Mise en forme", delay: 13200 },
+        { percent: generationPercent(94, 96), label: "Finalisation", delay: 17000 },
+        { percent: generationPercent(97, 98), label: "Encore quelques secondes...", delay: 23000 },
       ];
       generationTimersRef.current = generationSteps.map((step) =>
         window.setTimeout(() => {
@@ -3197,13 +3191,6 @@ export default function PublishModal({
       }
       return next;
     });
-  };
-
-  const removeVideoFromChannel = (channel: ChannelKey) => {
-    setImgError("");
-    clearVideoVariantPreparationForChannel(channel);
-    clearPreparedVideoVariantsForChannel(channel);
-    setChannelMediaModes((prev) => ({ ...prev, [channel]: "none" }));
   };
 
   const addVideoFile = async (file: File | null) => {
@@ -4030,14 +4017,12 @@ export default function PublishModal({
 
       const publishStartedAt = Date.now();
       const publishChannels = [...publishableChannels];
-      // Le suivi de progression accompagne l'appel réseau ; il ne doit pas
-      // imposer une attente artificielle après que les médias sont prêts.
       const estimatedPublishMs = Math.max(
-        2500,
-        1800 +
-          publishChannels.length * 1200 +
-          (uploadTargets ? 600 : 0) +
-          (hasAnyVideoPublish ? 800 : 0),
+        9000,
+        5500 +
+          publishChannels.length * 6500 +
+          (uploadTargets ? 2500 : 0) +
+          (hasAnyVideoPublish ? 2500 : 0),
       );
       const getPublishPulseLabel = (ratio: number) => {
         if (ratio < 0.08) return "Création de l’historique iNr’Send...";
@@ -4068,7 +4053,7 @@ export default function PublishModal({
         setPublishProgress((prev) =>
           Math.max(prev, publishPulseProgressRef.current),
         );
-      }, 350);
+      }, 500);
 
       publishDispatchStarted = true;
       const result = await trackEvent("publish", {
@@ -5531,7 +5516,7 @@ export default function PublishModal({
               publicationMediaType={publicationMediaType}
               channelMediaModes={channelMediaModes}
               setChannelMediaMode={setChannelMediaMode}
-              onRemoveMediaFromChannel={removeVideoFromChannel}
+              onRemoveMediaFromChannel={deselectChannel}
               videoFormatByChannel={videoFormatByChannel}
               setVideoFormatForChannel={setVideoFormatForChannel}
               videoAdaptationModeByChannel={videoAdaptationModeByChannel}

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import sharp from "sharp";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { verifyTiktokMediaSignature } from "@/lib/tiktokMediaUrl";
 
 export const runtime = "nodejs";
@@ -14,9 +13,6 @@ const TIKTOK_PORTRAIT_MAX_WIDTH = 1080;
 const TIKTOK_PORTRAIT_MAX_HEIGHT = 1920;
 const TIKTOK_FALLBACK_WIDTH = 1080;
 const TIKTOK_FALLBACK_HEIGHT = 1920;
-// Cache version 3 invalidates any legacy/progressive derivative that may
-// still be stuck in TikTok's pull queue.
-const TIKTOK_PHOTO_CACHE_VERSION = 3;
 
 function safeStoragePath(input: string) {
   const path = String(input || "").trim();
@@ -30,76 +26,6 @@ function normalizeVariant(input: unknown) {
   if (value === "photo_locked") return "photo_locked";
   if (value === "photo") return "photo";
   return "raw";
-}
-
-function normalizeImageMime(input: unknown) {
-  const value = String(input || "")
-    .toLowerCase()
-    .split(";", 1)[0]
-    .trim();
-  return value === "image/jpg" ? "image/jpeg" : value;
-}
-
-function imageMimeFromPath(path: string) {
-  const extension = String(path || "")
-    .split(/[?#]/, 1)[0]
-    .split(".")
-    .pop()
-    ?.toLowerCase();
-  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
-  if (extension === "webp") return "image/webp";
-  if (extension === "png") return "image/png";
-  if (extension === "gif") return "image/gif";
-  if (extension === "avif") return "image/avif";
-  if (extension === "heic" || extension === "heif") return "image/heic";
-  return "";
-}
-
-/**
- * Supabase Storage may return application/octet-stream for an object whose
- * metadata was not preserved.  Never let that missing hint trigger a second
- * Sharp/JPEG pass: identify the actual image from its signature first.
- */
-function detectImageMime(input: Buffer, hintedMime?: unknown, sourcePath?: string) {
-  if (
-    input.length >= 3 &&
-    input[0] === 0xff &&
-    input[1] === 0xd8 &&
-    input[2] === 0xff
-  ) {
-    return "image/jpeg";
-  }
-  if (
-    input.length >= 8 &&
-    input.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-  ) {
-    return "image/png";
-  }
-  if (
-    input.length >= 12 &&
-    input.subarray(0, 4).toString("ascii") === "RIFF" &&
-    input.subarray(8, 12).toString("ascii") === "WEBP"
-  ) {
-    return "image/webp";
-  }
-  return normalizeImageMime(hintedMime) || imageMimeFromPath(sourcePath || "");
-}
-
-function mediaPathSuffix(path: string) {
-  const clean = String(path || "").trim();
-  if (!clean) return "";
-  const parts = clean.split("/").filter(Boolean);
-  return parts.slice(-2).join("/").slice(-160);
-}
-
-function tiktokPreparedPhotoPath(path: string, geometryLocked: boolean) {
-  const clean = safeStoragePath(path);
-  const lastSlash = clean.lastIndexOf("/");
-  const directory = lastSlash >= 0 ? clean.slice(0, lastSlash + 1) : "";
-  const fileName = lastSlash >= 0 ? clean.slice(lastSlash + 1) : clean;
-  const base = fileName.replace(/\.[^.]+$/, "") || "image";
-  const mode = geometryLocked ? "locked" : "photo";
-  return `${directory}${base}-tiktok-classic-v${TIKTOK_PHOTO_CACHE_VERSION}-${mode}.jpg`;
 }
 
 async function renderTikTokRatioPreservingJpeg(input: Buffer) {
@@ -132,12 +58,7 @@ async function renderTikTokRatioPreservingJpeg(input: Buffer) {
         withoutEnlargement: true,
       })
       .flatten({ background: { r: 255, g: 255, b: 255, alpha: 1 } })
-      .jpeg({
-        quality: q,
-        mozjpeg: true,
-        progressive: false,
-        chromaSubsampling: "4:2:0",
-      })
+      .jpeg({ quality: q, mozjpeg: true, progressive: true })
       .toBuffer();
 
   let output = await render(quality);
@@ -161,27 +82,16 @@ async function renderTikTokSafetyFrame(input: Buffer) {
       background: { r: 8, g: 12, b: 22, alpha: 1 },
       withoutEnlargement: false,
     })
-    .jpeg({
-      quality: 90,
-      mozjpeg: true,
-      progressive: false,
-      chromaSubsampling: "4:2:0",
-    })
+    .jpeg({ quality: 90, mozjpeg: true, progressive: true })
     .toBuffer();
 }
 
 async function isDirectTikTokPhotoPublishable(input: Buffer, mime: string) {
-  // Keep the provider contract deliberately narrow: TikTok receives a
-  // baseline JPEG, never a source WebP/PNG and never a progressive scan.
-  // This makes the media URL stable across all legacy and new payloads and
-  // prevents TikTok from having to decode an image that was already
-  // transformed by the Booster pipeline.
-  if (mime !== "image/jpeg") return false;
+  if (mime !== "image/jpeg" && mime !== "image/webp") return false;
   if (input.byteLength > TIKTOK_PHOTO_MAX_BYTES) return false;
 
   const meta = await sharp(input, { failOn: "none" }).metadata().catch(() => null);
   if (!meta?.width || !meta?.height) return false;
-  if (mime === "image/jpeg" && meta.isProgressive) return false;
   const orientation = Number(meta.orientation || 1);
   const swapsAxes = orientation >= 5 && orientation <= 8;
   const width = swapsAxes ? meta.height : meta.width;
@@ -197,24 +107,17 @@ async function isDirectTikTokPhotoPublishable(input: Buffer, mime: string) {
   return width <= maxWidth && height <= maxHeight;
 }
 
-async function toTikTokPhotoBuffer(
-  blob: Blob,
-  geometryLocked = false,
-  sourceMimeHint?: string,
-) {
+async function toTikTokPhotoBuffer(blob: Blob, geometryLocked = false) {
   const input = Buffer.from(await blob.arrayBuffer());
 
   if (geometryLocked) {
     // The new Booster pipeline already produced the definitive TikTok image.
     // Serve the exact stored bytes when they satisfy TikTok's photo limits so
     // the media is not put through a second lossy Sharp/JPEG encoding pass.
-    const normalizedMime = detectImageMime(
-      input,
-      sourceMimeHint || blob.type,
-    );
+    const sourceMime = String(blob.type || "").toLowerCase();
+    const normalizedMime = sourceMime === "image/jpg" ? "image/jpeg" : sourceMime;
     const sourceIsDirectlyPublishable =
-      normalizedMime === "image/jpeg" &&
-      (await isDirectTikTokPhotoPublishable(input, normalizedMime));
+      await isDirectTikTokPhotoPublishable(input, normalizedMime);
     if (sourceIsDirectlyPublishable) {
       return { buffer: input, mime: normalizedMime };
     }
@@ -244,66 +147,6 @@ async function toTikTokPhotoBuffer(
   }
 }
 
-async function loadOrPrepareTikTokPhoto(params: {
-  sourcePath: string;
-  sourceBlob: Blob;
-  geometryLocked: boolean;
-}) {
-  const sourceBuffer = Buffer.from(await params.sourceBlob.arrayBuffer());
-  const sourceMime = detectImageMime(
-    sourceBuffer,
-    params.sourceBlob.type,
-    params.sourcePath,
-  );
-  // A geometry-locked payload is the final provider artifact. Only return it
-  // verbatim when it is already a baseline JPEG; WebP and all non-locked
-  // legacy sources are normalized exactly once below.
-  if (
-    (!params.geometryLocked || sourceMime === "image/jpeg") &&
-    (await isDirectTikTokPhotoPublishable(sourceBuffer, sourceMime))
-  ) {
-    return { buffer: sourceBuffer, mime: sourceMime, cache: "source" as const };
-  }
-
-  const preparedPath = tiktokPreparedPhotoPath(
-    params.sourcePath,
-    params.geometryLocked,
-  );
-  const cached = await supabaseAdmin.storage
-    .from("booster")
-    .download(preparedPath)
-    .catch(() => ({ data: null, error: null }));
-  if (cached.data) {
-    const cachedBuffer = Buffer.from(await cached.data.arrayBuffer());
-    if (await isDirectTikTokPhotoPublishable(cachedBuffer, "image/jpeg")) {
-      return { buffer: cachedBuffer, mime: "image/jpeg" as const, cache: "hit" as const };
-    }
-  }
-
-  const prepared = await toTikTokPhotoBuffer(
-    params.sourceBlob,
-    params.geometryLocked,
-    sourceMime,
-  );
-  const upload = await supabaseAdmin.storage.from("booster").upload(
-    preparedPath,
-    toExactStorageArrayBuffer(prepared.buffer),
-    {
-      contentType: prepared.mime,
-      cacheControl: "3600",
-      upsert: true,
-    },
-  );
-  if (upload.error) {
-    console.warn("[tiktok-media] prepared photo cache upload failed", {
-      pathSuffix: mediaPathSuffix(params.sourcePath),
-      preparedPathSuffix: mediaPathSuffix(preparedPath),
-      error: upload.error.message,
-    });
-  }
-  return { ...prepared, cache: "miss" as const };
-}
-
 async function loadMedia(request: Request, includeBody: boolean) {
   const url = new URL(request.url);
   const path = safeStoragePath(url.searchParams.get("path") || "");
@@ -312,49 +155,26 @@ async function loadMedia(request: Request, includeBody: boolean) {
   const variant = normalizeVariant(url.searchParams.get("variant") || "raw");
 
   if (!path || !verifyTiktokMediaSignature(path, exp, sig, variant)) {
-    console.warn("[tiktok-media] signed URL rejected", {
-      method: request.method,
-      variant,
-      pathSuffix: mediaPathSuffix(path),
-      expired: Number.isFinite(exp) ? exp * 1000 < Date.now() : null,
-    });
     return NextResponse.json({ error: "Lien média TikTok invalide ou expiré." }, { status: 403 });
   }
 
   const { data, error } = await supabaseAdmin.storage.from("booster").download(path);
   if (error || !data) {
-    console.error("[tiktok-media] storage download failed", {
-      method: request.method,
-      variant,
-      pathSuffix: mediaPathSuffix(path),
-      error: error?.message || "media_missing",
-    });
     return NextResponse.json({ error: "Média introuvable." }, { status: 404 });
   }
 
   let body: Blob | Buffer = data;
-  let contentType =
-    normalizeImageMime(data.type) || imageMimeFromPath(path) || "application/octet-stream";
+  let contentType = data.type || "application/octet-stream";
   let contentLength = data.size || 0;
 
   if (variant === "photo" || variant === "photo_locked") {
     try {
       const geometryLocked = variant === "photo_locked";
-      const prepared = await loadOrPrepareTikTokPhoto({
-        sourcePath: path,
-        sourceBlob: data,
-        geometryLocked,
-      });
+      const prepared = await toTikTokPhotoBuffer(data, geometryLocked);
       body = prepared.buffer;
       contentType = prepared.mime;
       contentLength = prepared.buffer.length;
-    } catch (error) {
-      console.error("[tiktok-media] photo preparation failed", {
-        method: request.method,
-        variant,
-        pathSuffix: mediaPathSuffix(path),
-        error: error instanceof Error ? error.message : String(error || ""),
-      });
+    } catch {
       return NextResponse.json({ error: "Image TikTok impossible à préparer." }, { status: 422 });
     }
   }
@@ -362,22 +182,8 @@ async function loadMedia(request: Request, includeBody: boolean) {
   const headers = new Headers();
   headers.set("Content-Type", contentType);
   headers.set("Content-Length", String(contentLength));
-  // The signed URL is content-addressed by path + variant and expires before
-  // this cache window.  Let the edge serve repeat TikTok pulls without
-  // re-running the Storage download/Sharp preparation on every request.
-  headers.set("Cache-Control", "public, max-age=86400, s-maxage=86400, immutable");
+  headers.set("Cache-Control", "public, max-age=300");
   headers.set("X-Content-Type-Options", "nosniff");
-  if (contentType === "image/jpeg") {
-    headers.set("Content-Disposition", 'inline; filename="inrcy-tiktok.jpg"');
-  }
-
-  console.info("[tiktok-media] media served", {
-    method: request.method,
-    variant,
-    pathSuffix: mediaPathSuffix(path),
-    contentType,
-    contentLength,
-  });
 
   if (!includeBody) return new NextResponse(null, { status: 200, headers });
 
