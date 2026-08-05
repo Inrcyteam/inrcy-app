@@ -84,6 +84,8 @@ export type MailboxDetailsModalProps = {
   detailsEditMode: boolean;
   setDetailsEditMode: Dispatch<SetStateAction<boolean>>;
   detailsActionBusy: boolean;
+  detailsActionChannelKey: string | null;
+  detailsActionKind: "save" | "delete" | null;
   detailsActionError: string | null;
   detailsActionSuccess: string | null;
   setDetailsActionError: Dispatch<SetStateAction<string | null>>;

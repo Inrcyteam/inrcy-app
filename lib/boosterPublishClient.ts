@@ -156,12 +156,17 @@ export async function postBoosterPublication(
   const sleepImpl = options.sleepImpl || sleep;
   const nowImpl = options.nowImpl || Date.now;
   const maxAttempts = Math.max(1, Math.min(4, options.maxAttempts || 3));
+  const clientPublishStartedAt = Number(payload.__clientPublishStartedAt || 0);
+  const { __clientPublishStartedAt: _clientPublishStartedAt, ...serverPayload } = payload;
+  void _clientPublishStartedAt;
   const idempotencyKey = String(
-    payload.idempotencyKey || payload.idempotency_key || createBoosterPublishIdempotencyKey(),
+    serverPayload.idempotencyKey ||
+      serverPayload.idempotency_key ||
+      createBoosterPublishIdempotencyKey(),
   ).trim();
-  const origin = asRecord(payload.origin);
+  const origin = asRecord(serverPayload.origin);
   const requestPayload = {
-    ...payload,
+    ...serverPayload,
     idempotencyKey,
     origin: {
       ...origin,
@@ -191,13 +196,34 @@ export async function postBoosterPublication(
     const json = asRecord(await response.json().catch(() => ({})));
     if (response.ok) {
       if (json.queued === true && typeof json.publication_id === "string") {
+        const requestedGraceMs = Math.max(0,
+          options.maxPollingMs ?? BOOSTER_PUBLISH_RESULT_GRACE_MS,
+        );
+        const elapsedBeforePolling =
+          Number.isFinite(clientPublishStartedAt) && clientPublishStartedAt > 0
+            ? Math.max(0, nowImpl() - clientPublishStartedAt)
+            : 0;
+        const remainingGraceMs = Math.max(0, requestedGraceMs - elapsedBeforePolling);
+
+        if (remainingGraceMs === 0) {
+          return {
+            ...json,
+            ok: true,
+            done: false,
+            queued: true,
+            asyncDispatch: true,
+            publication_id: String(json.publication_id),
+            releasedToBackground: true,
+          };
+        }
+
         return pollQueuedPublication(String(json.publication_id), json, {
           fetchImpl,
           sleepImpl,
-          // Keep a 30-second grace window so ordinary channels can return a
-          // useful final balance. Only the genuinely slow channels are then
-          // released to the durable worker and iNrSend in the background.
-          maxPollingMs: Math.max(8_000, options.maxPollingMs || BOOSTER_PUBLISH_RESULT_GRACE_MS),
+          // The 30-second UX window starts when the professional clicks
+          // Publish, not after media preparation. The status polling therefore
+          // uses only the time remaining in that global window.
+          maxPollingMs: remainingGraceMs,
           nowImpl,
         });
       }

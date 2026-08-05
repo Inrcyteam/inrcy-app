@@ -16,8 +16,10 @@ const layer = read("app/dashboard/_components/DashboardBoosterModalLayer.tsx");
 
 test("queued publication waits up to 30 seconds for a useful balance, then continues in background", () => {
   assert.match(publishClient, /BOOSTER_PUBLISH_RESULT_GRACE_MS = 30_000/);
-  assert.match(publishClient, /options\.maxPollingMs \|\| BOOSTER_PUBLISH_RESULT_GRACE_MS/);
-  assert.match(publishModal, /estimatedPublishMs = BOOSTER_PUBLISH_RESULT_GRACE_MS/);
+  assert.match(publishClient, /options\.maxPollingMs \?\? BOOSTER_PUBLISH_RESULT_GRACE_MS/);
+  assert.match(publishClient, /remainingGraceMs/);
+  assert.match(publishModal, /__clientPublishStartedAt: publishStartedAt/);
+  assert.match(publishModal, /getPublicationTimelineProgress/);
   assert.match(publishClient, /releasedToBackground: true/);
   assert.doesNotMatch(publishClient, /8 \* 60_000/);
   assert.match(resultModal, /api\/booster\/publications/);
@@ -50,9 +52,19 @@ test("YouTube streams the stored source instead of buffering the full video", ()
   assert.doesNotMatch(youtube, /const blob = await fetchVideoBlob/);
 });
 
-test("media preparation progress no longer stays fixed at 6, 24 or 25 percent", () => {
-  assert.match(publishModal, /uploadPulse = window\.setInterval/);
-  assert.match(publishModal, /visualPreparationFloor/);
-  assert.match(publishModal, /Analyse des \$\{mediaLabel\}/);
-  assert.match(publishModal, /Contrôle des \$\{mediaLabel\}/);
+test("generation and immediate publication use calm continuous timelines", () => {
+  const runPublishStart = publishModal.indexOf("const runPublish = async");
+  const scheduleStart = publishModal.indexOf("const performSchedulePublication = async", runPublishStart);
+  const immediatePublishBlock = publishModal.slice(
+    runPublishStart,
+    scheduleStart > runPublishStart ? scheduleStart : runPublishStart + 80_000,
+  );
+
+  assert.match(publishModal, /getGenerationTimelineProgress/);
+  assert.match(publishModal, /getPublicationTimelineProgress/);
+  assert.match(publishModal, /Préparation des médias pour l’analyse/);
+  assert.match(publishModal, /Canal \$\{channelIndex \+ 1\}\/\$\{channels\.length\} — publication sur/);
+  assert.match(publishModal, /clampPercent\([\s\S]*getPublicationTimelineProgress\(elapsedMs\)[\s\S]*1,[\s\S]*99/);
+  assert.doesNotMatch(immediatePublishBlock, /Préparation des images \$\{clampPercent/);
+  assert.doesNotMatch(immediatePublishBlock, /Upload des images adaptées \$\{clampPercent/);
 });

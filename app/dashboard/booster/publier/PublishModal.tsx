@@ -16,7 +16,6 @@ import {
   isAutomaticBoosterGenerationRetryEligible,
 } from "@/lib/boosterGenerationErrorPolicy";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
-import { BOOSTER_PUBLISH_RESULT_GRACE_MS } from "@/lib/boosterPublishClient";
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
   getAiEngineOption,
@@ -197,6 +196,83 @@ import MediaLibraryPickerModal, {
   type MediaLibraryPickerItem,
 } from "@/app/dashboard/_components/MediaLibraryPickerModal";
 
+
+const GENERATION_PROGRESS_TICK_MS = 300;
+const PUBLICATION_PROGRESS_TICK_MS = 250;
+
+function interpolateProgress(
+  elapsedMs: number,
+  startMs: number,
+  endMs: number,
+  startValue: number,
+  endValue: number,
+) {
+  if (elapsedMs <= startMs) return startValue;
+  if (elapsedMs >= endMs) return endValue;
+  const ratio = (elapsedMs - startMs) / Math.max(1, endMs - startMs);
+  return startValue + (endValue - startValue) * ratio;
+}
+
+function getGenerationTimelineProgress(elapsedMs: number) {
+  if (elapsedMs <= 8_000) return interpolateProgress(elapsedMs, 0, 8_000, 1, 25);
+  if (elapsedMs <= 16_000) return interpolateProgress(elapsedMs, 8_000, 16_000, 25, 50);
+  if (elapsedMs <= 24_000) return interpolateProgress(elapsedMs, 16_000, 24_000, 50, 80);
+  if (elapsedMs <= 34_000) return interpolateProgress(elapsedMs, 24_000, 34_000, 80, 96);
+  return interpolateProgress(elapsedMs, 34_000, 60_000, 96, 99);
+}
+
+function getGenerationTimelineLabel(
+  progress: number,
+  hasMedia: boolean,
+  engineLabel: string,
+) {
+  if (progress <= 25) {
+    return hasMedia
+      ? "Préparation des médias pour l’analyse…"
+      : "Préparation de votre demande…";
+  }
+  if (progress <= 50) {
+    return hasMedia
+      ? "iNrCy analyse votre intention et vos médias…"
+      : "iNrCy analyse votre intention…";
+  }
+  if (progress <= 80) return `Génération des contenus avec ${engineLabel}…`;
+  if (progress < 100) return "Adaptation et vérification des contenus…";
+  return "Contenus prêts.";
+}
+
+function getPublicationTimelineProgress(elapsedMs: number) {
+  if (elapsedMs <= 6_000) return interpolateProgress(elapsedMs, 0, 6_000, 1, 25);
+  if (elapsedMs <= 9_000) return interpolateProgress(elapsedMs, 6_000, 9_000, 25, 35);
+  if (elapsedMs <= 28_000) return interpolateProgress(elapsedMs, 9_000, 28_000, 35, 94);
+  return interpolateProgress(elapsedMs, 28_000, 30_000, 94, 99);
+}
+
+function getPublicationTimelineLabel(params: {
+  elapsedMs: number;
+  dispatchStarted: boolean;
+  channels: ChannelKey[];
+}) {
+  const { elapsedMs, dispatchStarted, channels } = params;
+  if (elapsedMs < 6_000) return "Préparation et sécurisation de la publication…";
+  if (!dispatchStarted || elapsedMs < 9_000) return "Envoi des médias et préparation des canaux…";
+  if (elapsedMs >= 28_000) return "Récupération des derniers résultats…";
+  if (!channels.length) return "Publication sur vos canaux…";
+
+  const channelWindowMs = 19_000;
+  const elapsedInChannelWindow = Math.max(0, elapsedMs - 9_000);
+  const channelDurationMs = channelWindowMs / channels.length;
+  const channelIndex = Math.min(
+    channels.length - 1,
+    Math.floor(elapsedInChannelWindow / Math.max(1, channelDurationMs)),
+  );
+  const channel = channels[channelIndex];
+  const label = CHANNEL_LABELS[channel] || channel;
+  return channels.length > 1
+    ? `Canal ${channelIndex + 1}/${channels.length} — publication sur ${label}…`
+    : `Publication sur ${label}…`;
+}
+
 export default function PublishModal({
   styles,
   onClose,
@@ -245,6 +321,7 @@ export default function PublishModal({
   const [generationStage, setGenerationStage] = useState("");
   const generationTimersRef = useRef<number[]>([]);
   const generationPulseTimerRef = useRef<number | null>(null);
+  const generationProgressValueRef = useRef(0);
   const videoAudioTranscriptCacheRef = useRef<VideoAudioTranscriptCache | null>(
     null,
   );
@@ -476,6 +553,9 @@ export default function PublishModal({
   const contentWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const publishPulseTimerRef = useRef<number | null>(null);
   const publishPulseProgressRef = useRef(0);
+  const publishTimelineStartedAtRef = useRef(0);
+  const publishDispatchStartedRef = useRef(false);
+  const publishTimelineChannelsRef = useRef<ChannelKey[]>([]);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [isImageEditorOpen, setIsImageEditorOpen] = useState(false);
   const publishRootRef = useRef<HTMLDivElement | null>(null);
@@ -557,6 +637,100 @@ export default function PublishModal({
       window.clearInterval(generationPulseTimerRef.current);
       generationPulseTimerRef.current = null;
     }
+  };
+
+  const setGenerationProgressValue = (value: number) => {
+    const normalized = clampPercent(value, 0, 100);
+    generationProgressValueRef.current = normalized;
+    setGenerationProgress(normalized);
+  };
+
+  const startGenerationProgressTimeline = (params: {
+    hasMedia: boolean;
+    engineLabel: string;
+  }) => {
+    clearGenerationTimers();
+    const startedAt = Date.now();
+    setGenerationProgressValue(1);
+    setGenerationStage(
+      getGenerationTimelineLabel(1, params.hasMedia, params.engineLabel),
+    );
+    generationPulseTimerRef.current = window.setInterval(() => {
+      const nextProgress = clampPercent(
+        getGenerationTimelineProgress(Date.now() - startedAt),
+        1,
+        99,
+      );
+      setGenerationProgressValue(
+        Math.max(generationProgressValueRef.current, nextProgress),
+      );
+      setGenerationStage(
+        getGenerationTimelineLabel(
+          nextProgress,
+          params.hasMedia,
+          params.engineLabel,
+        ),
+      );
+    }, GENERATION_PROGRESS_TICK_MS);
+  };
+
+  const finishGenerationProgressTimeline = async () => {
+    clearGenerationTimers();
+    const initial = Math.max(1, generationProgressValueRef.current);
+    const startedAt = Date.now();
+    const durationMs = 520;
+    while (Date.now() - startedAt < durationMs) {
+      const ratio = (Date.now() - startedAt) / durationMs;
+      setGenerationProgressValue(initial + (100 - initial) * ratio);
+      await sleep(40);
+    }
+    setGenerationProgressValue(100);
+    setGenerationStage("Contenus prêts.");
+  };
+
+  const clearPublicationProgressTimeline = () => {
+    if (publishPulseTimerRef.current) {
+      window.clearInterval(publishPulseTimerRef.current);
+      publishPulseTimerRef.current = null;
+    }
+  };
+
+  const startPublicationProgressTimeline = (channels: ChannelKey[]) => {
+    clearPublicationProgressTimeline();
+    const startedAt = Date.now();
+    publishTimelineStartedAtRef.current = startedAt;
+    publishTimelineChannelsRef.current = [...channels];
+    publishDispatchStartedRef.current = false;
+    publishPulseProgressRef.current = 1;
+    setPublishProgress(1);
+    setPublishProgressLabel(
+      getPublicationTimelineLabel({
+        elapsedMs: 0,
+        dispatchStarted: false,
+        channels,
+      }),
+    );
+    publishPulseTimerRef.current = window.setInterval(() => {
+      const elapsedMs = Date.now() - publishTimelineStartedAtRef.current;
+      const nextProgress = clampPercent(
+        getPublicationTimelineProgress(elapsedMs),
+        1,
+        99,
+      );
+      publishPulseProgressRef.current = Math.max(
+        publishPulseProgressRef.current,
+        nextProgress,
+      );
+      setPublishProgress(publishPulseProgressRef.current);
+      setPublishProgressLabel(
+        getPublicationTimelineLabel({
+          elapsedMs,
+          dispatchStarted: publishDispatchStartedRef.current,
+          channels: publishTimelineChannelsRef.current,
+        }),
+      );
+    }, PUBLICATION_PROGRESS_TICK_MS);
+    return startedAt;
   };
 
   useEffect(() => {
@@ -2997,15 +3171,11 @@ export default function PublishModal({
       hasVideo: hasVideoForGeneration,
       useImagesForAI,
     });
-    const mediaPreflightIncluded =
-      persistentMediaWorkspaceEnabled && shouldPrepareMediaForAi;
-    const generationPercent = (withoutMedia: number, withMedia: number) =>
-      mediaPreflightIncluded ? withMedia : withoutMedia;
-
-    clearGenerationTimers();
     setGenerating(true);
-    setGenerationProgress(6);
-    setGenerationStage("Vérification du média...");
+    startGenerationProgressTimeline({
+      hasMedia: shouldPrepareMediaForAi,
+      engineLabel: selectedAiEngineOption.shortLabel,
+    });
     setDuplicateFeedback(null);
 
     let didGenerate = false;
@@ -3013,73 +3183,9 @@ export default function PublishModal({
       const readyMediaWorkspaceId = shouldPrepareMediaForAi
         ? await waitForPersistentWorkspaceReadiness(
             "generate",
-            (progress, label) => {
-              setGenerationProgress((current) => Math.max(current, progress));
-              setGenerationStage(label || "Préparation du média...");
-            },
+            () => undefined,
           )
         : mediaWorkspaceId;
-
-      setGenerationProgress((current) =>
-        Math.max(current, mediaPreflightIncluded ? 42 : 8),
-      );
-      setGenerationStage(`Préparation avec ${selectedAiEngineOption.shortLabel}`);
-
-      const generationSteps = [
-        { percent: generationPercent(16, 46), label: "Préparation du brief", delay: 500 },
-        { percent: generationPercent(26, 50), label: "Analyse de l’intention", delay: 1200 },
-        ...(shouldUseImagesForAI
-          ? [
-              { percent: generationPercent(36, 56), label: "Préparation des images", delay: 2200 },
-              { percent: generationPercent(48, 62), label: "Analyse des visuels", delay: 3800 },
-            ]
-          : hasVideoForGeneration
-            ? [
-                { percent: generationPercent(34, 52), label: "Préparation de la vidéo", delay: 1800 },
-                {
-                  percent: generationPercent(42, 58),
-                  label: "Transcription audio de la vidéo",
-                  delay: 3200,
-                },
-                {
-                  percent: generationPercent(52, 64),
-                  label: "Extraction des images de la vidéo",
-                  delay: 5000,
-                },
-                {
-                  percent: generationPercent(60, 70),
-                  label: "Analyse audio + images de la vidéo",
-                  delay: 6800,
-                },
-              ]
-            : [{ percent: generationPercent(42, 58), label: "Construction du contenu", delay: 2600 }]),
-        {
-          percent: generationPercent(62, 74),
-          label: hasVideoForGeneration
-            ? `Rédaction avec ${selectedAiEngineOption.shortLabel} à partir de votre vidéo`
-            : `Rédaction avec ${selectedAiEngineOption.shortLabel}`,
-          delay: hasVideoForGeneration ? 8200 : 6200,
-        },
-        { percent: generationPercent(70, 82), label: "Adaptation par canal", delay: 7600 },
-        { percent: generationPercent(80, 88), label: "Vérification des textes", delay: 10200 },
-        { percent: generationPercent(88, 93), label: "Mise en forme", delay: 13200 },
-        { percent: generationPercent(94, 96), label: "Finalisation", delay: 17000 },
-        { percent: generationPercent(97, 98), label: "Encore quelques secondes...", delay: 23000 },
-      ];
-      generationTimersRef.current = generationSteps.map((step) =>
-        window.setTimeout(() => {
-          setGenerationProgress((current) => Math.max(current, step.percent));
-          setGenerationStage(step.label);
-        }, step.delay),
-      );
-      generationPulseTimerRef.current = window.setInterval(() => {
-        setGenerationProgress((current) => {
-          if (current >= 98) return current;
-          const step = current < 60 ? 2 : 1;
-          return Math.min(98, current + step);
-        });
-        setGenerationStage((current) => current || "Génération en cours");
-      }, 1400);
       const imagePreparationResults =
         shouldUseImagesForAI && !mediaPipelineCutoverEnabled
         ? await Promise.allSettled(
@@ -3100,9 +3206,6 @@ export default function PublishModal({
         !videoAiContextRef &&
         !mediaPipelineCutoverEnabled
       ) {
-        setGenerationProgress((current) => Math.max(current, 36));
-        setGenerationStage("Analyse audio + images de la vidéo");
-
         const cacheKey = makeVideoTranscriptCacheKey(videoFile);
         const cachedTranscript =
           videoAudioTranscriptCacheRef.current?.key === cacheKey
@@ -3140,22 +3243,10 @@ export default function PublishModal({
         videoFramesForAI =
           framesResult.status === "fulfilled" ? framesResult.value : [];
 
-        setGenerationProgress((current) => Math.max(current, 60));
-        setGenerationStage(
-          videoFramesForAI.length > 0 && videoAudioTranscript
-            ? "Analyse audio + images de la vidéo"
-            : videoFramesForAI.length > 0
-              ? "Analyse des images de la vidéo"
-              : videoAudioTranscript
-                ? "Analyse audio de la vidéo"
-                : "Analyse vidéo limitée, génération maintenue",
-        );
       } else if (
         hasVideoForGeneration &&
         videoAiContextRef
       ) {
-        setGenerationProgress((current) => Math.max(current, 60));
-        setGenerationStage("Réutilisation de l’analyse vidéo iNrAgent");
       }
 
       const generationPayload = {
@@ -3234,11 +3325,6 @@ export default function PublishModal({
           primaryEngine: selectedAiPreferredEngine,
           finalEngine: retryEngine,
         };
-        setGenerationProgress(94);
-        setGenerationStage(
-          `${primaryLabel} n'a pas répondu, secours automatique avec ${retryLabel}`,
-        );
-
         ({ response: res, responseJson: json } =
           await executeGenerationRequest(retryEngine));
       }
@@ -3306,20 +3392,16 @@ export default function PublishModal({
         ),
       );
     } finally {
-      clearGenerationTimers();
       if (didGenerate) {
-        setGenerationProgress(100);
-        setGenerationStage("Terminé");
-        window.setTimeout(() => {
-          setGenerating(false);
-          setGenerationProgress(0);
-          setGenerationStage("");
-        }, 500);
+        await finishGenerationProgressTimeline();
+        await sleep(180);
       } else {
-        setGenerating(false);
-        setGenerationProgress(0);
-        setGenerationStage("");
+        clearGenerationTimers();
       }
+      setGenerating(false);
+      generationProgressValueRef.current = 0;
+      setGenerationProgress(0);
+      setGenerationStage("");
     }
   };
 
@@ -4053,33 +4135,20 @@ export default function PublishModal({
       }
     }
 
-    const isVideoPublication = hasAnyVideoPublish;
     setSaving(true);
-    setPublishProgress(5);
-    setPublishProgressLabel(
-      isVideoPublication
-        ? "Préparation de la publication vidéo..."
-        : "Préparation de la publication...",
-    );
+    const publishStartedAt = startPublicationProgressTimeline(publishableChannels);
 
     let publishDispatchStarted = false;
 
     try {
       const readyMediaWorkspaceId =
-        await waitForPersistentWorkspaceReadiness("publish", (progress, label) => {
-          setPublishProgress((current) => Math.max(current, progress));
-          setPublishProgressLabel(label || "Vérification des médias...");
-        });
+        await waitForPersistentWorkspaceReadiness("publish", () => undefined);
 
       if (hasAnyVideoPublish && workspaceCarriesVideoForPublish) {
         const videoChannels = publishableChannels.filter(
           (channel) => publishMediaModeByChannel[channel] === "video",
         );
-        setPublishProgress((current) => Math.max(current, 43));
-        setPublishProgressLabel(
-          "Vérification de la vidéo pour les réseaux...",
-        );
-        const videoPreparation = await ensureCutoverVideoVariantsReady(
+        await ensureCutoverVideoVariantsReady(
           videoChannels,
           publishVideoSettingsByChannel,
           {
@@ -4087,12 +4156,6 @@ export default function PublishModal({
             allowOriginalVideoFallback: true,
             allowPartialChannelFailures: true,
           },
-        );
-        setPublishProgress((current) => Math.max(current, 57));
-        setPublishProgressLabel(
-          canContinueWithIsolatedVideoPreparationFailures(videoPreparation)
-            ? "Vidéo vérifiée : les canaux incompatibles seront isolés."
-            : "Vidéo compatible et prête à publier.",
         );
       }
 
@@ -4108,79 +4171,20 @@ export default function PublishModal({
               channelImages: emptyChannelImages,
               channelSettings: buildChannelImageSettingsPayload(),
             }
-          : await buildChannelImagesPayload((current, total) => {
-            if (!total) {
-              setPublishProgress((current) => Math.max(current, 25));
-              setPublishProgressLabel("Préparation des contenus...");
-              return;
-            }
-            const ratio = current / total;
-            setPublishProgress((current) =>
-              Math.max(current, clampPercent(8 + ratio * 27)),
-            );
-            setPublishProgressLabel(
-              `Préparation des images ${clampPercent(ratio * 100)}%`,
-            );
-          });
+          : await buildChannelImagesPayload(() => undefined);
 
       const originalImageByKey: Record<string, ImagePayload> =
         !shouldBuildImageFallbackPayload
           ? {}
-          : await (async () => {
-              setPublishProgress((prev) => Math.max(prev, 35));
-              setPublishProgressLabel("Upload des images originales...");
-              return await uploadOriginalImagesForPublication(
-                (current, total) => {
-                  if (!total) return;
-                  const ratio = current / total;
-                  setPublishProgress((current) =>
-                    Math.max(current, clampPercent(35 + ratio * 12)),
-                  );
-                  setPublishProgressLabel(
-                    `Upload des images originales ${clampPercent(ratio * 100)}%`,
-                  );
-                },
-              );
-            })();
-
-      if (hasAnyImagePublish) {
-        setPublishProgress((prev) => Math.max(prev, images.length ? 47 : 35));
-        setPublishProgressLabel("Upload des images adaptées...");
-      }
+          : await uploadOriginalImagesForPublication(() => undefined);
 
       const uploadedChannelImages = {} as ChannelImagePayload;
-      const uploadTargets = !hasAnyImagePublish
-        ? 0
-        : publishableChannels.reduce(
-            (sum, channel) =>
-              sum +
-              (channelImages[channel] || []).filter((image) => !!image?.dataUrl)
-                .length,
-            0,
-          );
-      let uploadedCount = 0;
       if (shouldBuildImageFallbackPayload) {
         for (const channel of publishableChannels) {
           if (publishMediaModeByChannel[channel] !== "images") continue;
           const uploadedImages = await uploadPreparedImages(
             channelImages[channel] || [],
-            (current, total) => {
-              if (!total) return;
-              uploadedCount += 1;
-              const ratio = uploadTargets ? uploadedCount / uploadTargets : 1;
-              setPublishProgress((current) =>
-                Math.max(
-                  current,
-                  clampPercent(
-                    (images.length ? 47 : 35) +
-                      ratio * (images.length ? 23 : 35),
-                  ),
-                ),
-              );
-              setPublishProgressLabel(
-                `Upload des images adaptées ${clampPercent(ratio * 100)}%`,
-              );
-            },
+            () => undefined,
           );
           const imageKeysForChannel = channelSettings[channel]?.imageKeys || [];
           uploadedChannelImages[channel] = uploadedImages.map(
@@ -4217,8 +4221,6 @@ export default function PublishModal({
 
       let publicationVideo: any = null;
       if (shouldBuildVideoFallbackPayload) {
-        setPublishProgress((prev) => Math.max(prev, 35));
-        setPublishProgressLabel("Upload de la vidéo...");
         publicationVideo = await uploadPublicationVideoForPublish();
         if (!publicationVideo?.publicUrl && !publicationVideo?.url) {
           throw new Error(
@@ -4233,51 +4235,10 @@ export default function PublishModal({
         );
       }
 
-      setPublishProgress((prev) => Math.max(prev, 74));
-      publishPulseProgressRef.current = 74;
-      setPublishProgressLabel("Création de l’historique iNr’Send...");
-      if (publishPulseTimerRef.current)
-        window.clearInterval(publishPulseTimerRef.current);
-
-      const publishStartedAt = Date.now();
-      const publishChannels = [...publishableChannels];
-      // The editor waits at most 30 seconds for the ordinary channels. Align
-      // the visual pulse with that grace window so the bar reaches the result
-      // phase progressively instead of looking frozen on large publications.
-      const estimatedPublishMs = BOOSTER_PUBLISH_RESULT_GRACE_MS;
-      const getPublishPulseLabel = (ratio: number) => {
-        if (ratio < 0.08) return "Création de l’historique iNr’Send...";
-        if (ratio < 0.78 && publishChannels.length) {
-          const channelRatio = Math.max(0, (ratio - 0.08) / 0.7);
-          const channelIndex = Math.min(
-            publishChannels.length - 1,
-            Math.floor(channelRatio * publishChannels.length),
-          );
-          const channel = publishChannels[channelIndex];
-          const label = CHANNEL_LABELS[channel] || channel;
-          return publishChannels.length > 1
-            ? `Canal ${channelIndex + 1}/${publishChannels.length} — publication sur ${label}...`
-            : `Publication sur ${label}...`;
-        }
-        if (ratio < 0.86) return "Récupération des retours canaux...";
-        if (ratio < 0.93) return "Vérification des succès et erreurs...";
-        return "Finalisation dans iNr’Send...";
-      };
-
-      publishPulseTimerRef.current = window.setInterval(() => {
-        const ratio = Math.min(
-          1,
-          (Date.now() - publishStartedAt) / estimatedPublishMs,
-        );
-        publishPulseProgressRef.current = clampPercent(74 + ratio * 24, 74, 98);
-        setPublishProgressLabel(getPublishPulseLabel(ratio));
-        setPublishProgress((prev) =>
-          Math.max(prev, publishPulseProgressRef.current),
-        );
-      }, 500);
-
       publishDispatchStarted = true;
+      publishDispatchStartedRef.current = true;
       const result = await trackEvent("publish", {
+        __clientPublishStartedAt: publishStartedAt,
         creationMode,
         mediaWorkspaceId:
           unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId
@@ -4333,10 +4294,7 @@ export default function PublishModal({
           : null,
       });
 
-      if (publishPulseTimerRef.current) {
-        window.clearInterval(publishPulseTimerRef.current);
-        publishPulseTimerRef.current = null;
-      }
+      clearPublicationProgressTimeline();
       const resultEntries = Array.isArray(result?.summary?.entries)
         ? result.summary.entries
         : [];
@@ -4374,18 +4332,9 @@ export default function PublishModal({
         result?.summary?.allFailed !== true && failureCount === 0;
       const publicationComplete = publicationAccepted && pendingCount === 0;
 
+      publishPulseProgressRef.current = 100;
       setPublishProgress(100);
-      setPublishProgressLabel(
-        result?.summary?.allFailed
-          ? "Échec"
-          : pendingCount > 0
-            ? "Envoi lancé"
-            : publicationComplete
-              ? warningCount > 0
-                ? "Publié avec avertissement"
-                : "Publié"
-              : "Publication partielle",
-      );
+      setPublishProgressLabel("Bilan prêt.");
       await sleep(220);
       if (publicationAccepted) {
         onUnsavedChange?.(false);
@@ -4430,10 +4379,7 @@ export default function PublishModal({
         onClose();
       }
     } catch (e) {
-      if (publishPulseTimerRef.current) {
-        window.clearInterval(publishPulseTimerRef.current);
-        publishPulseTimerRef.current = null;
-      }
+      clearPublicationProgressTimeline();
       setPublishProgress(0);
       setPublishProgressLabel("");
       const baseMessage = getSimpleFrenchErrorMessage(
@@ -4453,6 +4399,8 @@ export default function PublishModal({
         throw new Error(message);
       }
     } finally {
+      clearPublicationProgressTimeline();
+      publishDispatchStartedRef.current = false;
       setSaving(false);
     }
   };

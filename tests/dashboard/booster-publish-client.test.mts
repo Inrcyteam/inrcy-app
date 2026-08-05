@@ -201,3 +201,48 @@ test("queued publication waits 30 seconds and preserves the acquired 8 success /
   assert.equal((result.summary as Record<string, unknown>)?.successCount, 8);
   assert.equal((result.summary as Record<string, unknown>)?.pendingCount, 2);
 });
+
+
+test("the 30-second result window includes media preparation time from the original click", async () => {
+  let now = 11_000;
+  let sentBody: Record<string, unknown> | null = null;
+  const result = await postBoosterPublication(
+    {
+      channels: ["facebook", "tiktok"],
+      __clientPublishStartedAt: 1_000,
+    },
+    {
+      maxAttempts: 1,
+      nowImpl: () => now,
+      sleepImpl: async (ms) => {
+        now += ms;
+      },
+      fetchImpl: async (input, init) => {
+        if (String(input) === "/api/booster/publish-now") {
+          sentBody = JSON.parse(String(init?.body || "{}"));
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              queued: true,
+              publication_id: "33333333-3333-4333-8333-333333333333",
+            }),
+            { status: 202, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            queued: true,
+            done: false,
+            summary: { successCount: 1, failureCount: 0, pendingCount: 1 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    },
+  );
+
+  assert.equal(now, 31_000);
+  assert.equal(result.releasedToBackground, true);
+  assert.equal(sentBody?.__clientPublishStartedAt, undefined);
+});

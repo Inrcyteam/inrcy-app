@@ -917,8 +917,14 @@ export function extractAttachmentsFromPayload(payload: any): PublicationAttachme
           ? { name: buildNameFromUrl(raw), url: raw }
           : { name: raw };
       }
-      const bucket = String(a.bucket || a.storage_bucket || "").trim();
       const storagePath = String(a.path || a.storage_path || a.storagePath || a.video_path || "").trim();
+      const declaredType = String(a.type || a.mime || a.mimeType || a.originalType || "").toLowerCase();
+      const inferredVideo = declaredType.startsWith("video/") || /\.(mp4|mov|webm|ogg|m4v)$/i.test(String(a.name || storagePath || "").split("?")[0]);
+      const bucket = String(
+        a.bucket ||
+          a.storage_bucket ||
+          (storagePath && inferredVideo ? "booster" : ""),
+      ).trim();
       const renderedUrl = a.renderedUrl || a.rendered_url || a.url || a.href || a.publicUrl || a.public_url || a.videoUrl || a.video_url || null;
       const originalUrl = a.originalUrl || a.original_url || a.originalPublicUrl || a.original_public_url || null;
       const url = renderedUrl || originalUrl || (storagePath && isLikelyUrl(storagePath) ? storagePath : null);
