@@ -18,14 +18,14 @@ export const GENERATION_PROGRESS_PHASES = [
 ] as const satisfies readonly ProgressPhaseDefinition[];
 
 export const PUBLICATION_PROGRESS_PHASES = [
-  { key: "verification", label: "Vérification", start: 1, cap: 8 },
-  { key: "media_preparation", label: "Préparation des médias", start: 8, cap: 28 },
-  { key: "channel_compatibility", label: "Compatibilité des canaux", start: 28, cap: 42 },
-  { key: "file_preparation", label: "Préparation des fichiers", start: 42, cap: 58 },
-  { key: "channel_dispatch", label: "Envoi aux canaux", start: 58, cap: 78 },
-  { key: "publication_finalization", label: "Finalisation des publications", start: 78, cap: 92 },
-  { key: "status_collection", label: "Collecte des statuts", start: 92, cap: 96 },
-  { key: "inrsend_recording", label: "Enregistrement dans iNr’Send", start: 96, cap: 99 },
+  { key: "verification", label: "Finalisation des médias", start: 1, cap: 8 },
+  { key: "media_preparation", label: "Finalisation des médias", start: 8, cap: 28 },
+  { key: "channel_compatibility", label: "Finalisation des médias", start: 28, cap: 42 },
+  { key: "file_preparation", label: "Finalisation des médias", start: 42, cap: 58 },
+  { key: "channel_dispatch", label: "Publication sur les canaux", start: 58, cap: 78 },
+  { key: "publication_finalization", label: "Publication sur les canaux", start: 78, cap: 92 },
+  { key: "status_collection", label: "Mise à jour du bilan", start: 92, cap: 96 },
+  { key: "inrsend_recording", label: "Bilan iNr’Send", start: 96, cap: 99 },
   { key: "complete", label: "Bilan prêt", start: 100, cap: 100 },
 ] as const satisfies readonly ProgressPhaseDefinition[];
 

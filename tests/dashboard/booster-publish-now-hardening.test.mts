@@ -22,8 +22,7 @@ function indexOfOrFail(source: string, marker: string) {
 const route = read("app/api/booster/publish-now/route.ts");
 const foundations = read("app/api/booster/publish-now/publishNow.foundations.ts");
 const asyncPublication = read("lib/boosterAsyncPublication.ts");
-
-const lockAcquisitionMarker = "const publishIdempotency = internalAsyncDispatch";
+const ingress = read("lib/boosterPublicationIngress.ts");
 
 test("the runtime channel policy accepts only the ten supported channels", () => {
   assert.equal(BOOSTER_PUBLICATION_CHANNELS.length, 10);
@@ -69,7 +68,7 @@ test("unsupported and terminal publication failures are never retryable", () => 
   );
 });
 
-test("publish-now rejects unknown or empty channels before persistence and locking", () => {
+test("publish-now rejects unknown or empty channels before durable ingress", () => {
   assert.match(route, /normalizeBoosterPublicationChannels\(\s*body\.channels/);
   assert.match(route, /code:\s*"unsupported_channel"/);
   assert.match(route, /retryable:\s*false/);
@@ -84,18 +83,18 @@ test("publish-now rejects unknown or empty channels before persistence and locki
     "if (normalizedChannels.invalidChannels.length > 0)",
   );
   const requiredIndex = indexOfOrFail(route, "if (!selected.length)");
-  const lockIndex = indexOfOrFail(route, lockAcquisitionMarker);
+  const ingressIndex = indexOfOrFail(route, "const ingress = await enqueueBoosterPublication");
   const publicationInsertIndex = indexOfOrFail(
     route,
     '.from("publications")',
   );
 
-  assert.ok(validationIndex < lockIndex);
-  assert.ok(requiredIndex < lockIndex);
+  assert.ok(validationIndex < ingressIndex);
+  assert.ok(requiredIndex < ingressIndex);
   assert.ok(validationIndex < publicationInsertIndex);
 });
 
-test("video payload validation completes before the parent idempotency lock", () => {
+test("heavy video validation runs only after the durable parent ingress", () => {
   const payloadErrorIndex = indexOfOrFail(
     route,
     "if (hasAnyVideoChannel && videoPayloadError)",
@@ -104,10 +103,15 @@ test("video payload validation completes before the parent idempotency lock", ()
     route,
     "if (hasAnyVideoChannel && !publicationVideo)",
   );
-  const lockIndex = indexOfOrFail(route, lockAcquisitionMarker);
+  const ingressIndex = indexOfOrFail(
+    route,
+    "const ingress = await enqueueBoosterPublication",
+  );
 
-  assert.ok(payloadErrorIndex < lockIndex);
-  assert.ok(missingVideoIndex < lockIndex);
+  assert.ok(ingressIndex < payloadErrorIndex);
+  assert.ok(ingressIndex < missingVideoIndex);
+  assert.match(route, /if \(!internalAsyncWorkerDispatch\) \{[\s\S]*enqueueBoosterPublication/);
+  assert.match(route, /if \(internalAsyncPreparationDispatch\)/);
   assert.equal(
     route.match(/if \(hasAnyVideoChannel && videoPayloadError\)/g)?.length,
     1,
@@ -118,18 +122,26 @@ test("video payload validation completes before the parent idempotency lock", ()
   );
 });
 
-test("unexpected parent failures explicitly close the acquired idempotency lock", () => {
-  assert.match(route, /let publishIdempotencyLockId: string \| null = null/);
-  assert.match(route, /let shouldFailPublishIdempotencyLockOnError = false/);
+test("ingress and preparation failures keep durable state recoverable", () => {
+  const insertFailureStart = indexOfOrFail(ingress, "if (insertError)");
+  const acceptedReturnStart = indexOfOrFail(
+    ingress.slice(insertFailureStart),
+    'state: "accepted"',
+  );
+  const insertFailureBlock = ingress.slice(
+    insertFailureStart,
+    insertFailureStart + acceptedReturnStart,
+  );
+  assert.doesNotMatch(insertFailureBlock, /failExecutionIdempotencyLock\(/);
+  assert.match(insertFailureBlock, /shared publication UUID/);
+  assert.match(insertFailureBlock, /same publicationId/);
+  assert.match(route, /if \(asyncPreparationFailureContext\)/);
   assert.match(
     route,
-    /shouldFailPublishIdempotencyLockOnError =\s*!internalAsyncDispatch && Boolean\(publishIdempotencyLockId\)/,
+    /status: "queued",[\s\S]*stage: "media_preparation"[\s\S]*lastPreparationError/,
   );
-  assert.match(
-    route,
-    /if \(\s*shouldFailPublishIdempotencyLockOnError &&\s*publishIdempotencyLockId\s*\) \{[\s\S]*failExecutionIdempotencyLock\([\s\S]*stage: "unhandled_exception"/,
-  );
-  assert.match(route, /shouldFailPublishIdempotencyLockOnError = false;[\s\S]*return NextResponse\.json\(responsePayload\)/);
+  assert.match(route, /failAsyncPublicationPreparationLease\(/);
+  assert.match(route, /code: "async_preparation_failed"/);
 });
 
 test("unsupported channel fallback is terminal and updates its durable delivery", () => {

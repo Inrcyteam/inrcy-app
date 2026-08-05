@@ -23,7 +23,7 @@ test("le contrat produit reste 5 images ou 1 vidéo", () => {
 test("les payloads publication conservent les contrats images et vidéo", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
   for (const pattern of [
-    /mediaModeByChannel:\s*buildChannelRecord\([\s\S]{0,100}publishMediaModeByChannel/,
+    /mediaModeByChannel:\s*buildChannelRecord\([\s\S]{0,100}publishTargetMediaModeByChannel/,
     /imagesByChannel:\s*buildChannelRecord\([\s\S]{0,100}uploadedChannelImages/,
     /imageSettingsByChannel:\s*buildChannelRecord\([\s\S]{0,100}channelSettings/,
     /video:\s*publicationVideo/,

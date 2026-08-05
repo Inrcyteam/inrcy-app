@@ -88,7 +88,10 @@ test("les sources partent en parallèle sans préparation lourde et les MP4 dire
   assert.match(hook, /target:\s*"workspace_source"/);
   assert.match(hook, /prepareAiMedia/);
   assert.match(hook, /preparePublicationMedia/);
-  assert.match(modal, /allUploaded && directVideoSource && purpose !== "generate"/);
+  assert.match(
+    modal,
+    /const directOriginalAvailable =[\s\S]*canPublishVideoSourceDirectly\([\s\S]*requireCodecProof: true/,
+  );
   assert.match(hook, /loadMediaPublicationWorkspace\(/);
   assert.match(prepare, /processImageNormalizationJobsForMedia/);
   assert.match(prepare, /limit:\s*120/);
@@ -137,6 +140,10 @@ test("les variantes par canal sont persistantes et la publication reste légère
   assert.match(images, /publicationReady:\s*true/);
   assert.match(images, /readKnownImageMeta\(image\.imageMeta\)/);
   assert.match(images, /const resolveInput = async/);
+  assert.match(
+    images,
+    /displayPlan\.decision\.mode === "original"[\s\S]*no Storage[\s\S]*download, Sharp render, channel upload or media_variants write/,
+  );
   assert.match(consumption, /ratio:\s*canonical\.width\s*\/\s*canonical\.height/);
   assert.match(videos, /purpose:\s*"channel_publish"/);
   assert.match(videos, /workspace-channel-videos/);
@@ -149,10 +156,16 @@ test("les variantes par canal sont persistantes et la publication reste légère
     prewarm,
     /body\?\.generateMissingVideoVariants\s*!==\s*false/,
   );
-  assert.match(publish, /preparePublicationVariants\(false\)/);
+  assert.match(
+    publish,
+    /preparePublicationVariants\(\s*internalAsyncPreparationDispatch,?\s*\)/,
+  );
   assert.doesNotMatch(publish, /preparePublicationVariants\(true\)/);
   assert.doesNotMatch(publish, /requiresPreparedNetworkVideoVariant/);
-  assert.match(publish, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
+  assert.match(
+    publish,
+    /usesOriginalSource && sourceDirectlyPublishable[\s\S]*return \[\]/,
+  );
   assert.match(publish, /invalidVideoChannels\.forEach/);
   assert.match(publish, /preflightFailuresByChannel/);
   assert.match(publish, /img\.publicationReady\s*===\s*true/);

@@ -61,7 +61,7 @@ test("les images et vidéos déclenchent la persistance dès insertion", () => {
 
   assert.match(hook, /target:\s*"workspace_source"/);
   assert.match(hook, /workspacePosition:\s*position/);
-  assert.match(hook, /persistProgress:\s*true/);
+  assert.match(hook, /persistProgress:\s*false/);
   assert.match(hook, /buildBoosterSourceMediaMetadata\(/);
   assert.match(missions, /pipeline_mission:\s*"source_metadata"/);
   assert.match(missions, /preparation_scope:\s*"source_only"/);

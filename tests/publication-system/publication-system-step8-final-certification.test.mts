@@ -35,6 +35,12 @@ test("Google prépare 220 Mo, accepte une vidéo conforme et ne coupe jamais sil
     durationSeconds: 20,
     width: 1280,
     height: 720,
+    videoCodec: "h264",
+    audioCodec: "aac",
+    frameRate: 30,
+    hasAudio: true,
+    containerFormats: ["mov", "mp4"],
+    pixelFormat: "yuv420p",
   });
   assert.deepEqual(heavy, { action: "prepare", reason: "size_requires_compression" });
 
@@ -46,6 +52,12 @@ test("Google prépare 220 Mo, accepte une vidéo conforme et ne coupe jamais sil
     durationSeconds: 20,
     width: 1280,
     height: 720,
+    videoCodec: "h264",
+    audioCodec: "aac",
+    frameRate: 30,
+    hasAudio: true,
+    containerFormats: ["mov", "mp4"],
+    pixelFormat: "yuv420p",
   });
   assert.deepEqual(direct, { action: "direct", reason: "already_compatible" });
 

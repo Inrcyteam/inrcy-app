@@ -73,7 +73,16 @@ test("l'upload conserve toute vidéo comme source et la préparation choisit ens
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
   const prepare = read("app/api/media-pipeline/workspace/prepare/route.ts");
   assert.match(event, /sourceMetadataOnly/);
-  assert.match(event, /reason:\s*"source_metadata_only"/);
+  assert.match(
+    event,
+    /current\.data\.media_type === "video" &&[\s\S]{0,80}!directVideoSource/,
+  );
+  assert.match(event, /reason:\s*"source_direct_ready"/);
+  assert.match(
+    event,
+    /mission:\s*sourceMetadataOnly[\s\S]{0,60}\? "publication_preparation"/,
+  );
+  assert.match(event, /after\(async \(\) =>[\s\S]*processVideoNormalizationJobsForMedia\(/);
   assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
   assert.match(intent, /preparation_scope:\s*"source_only"/);
   assert.doesNotMatch(intent, /enqueueVideoNormalization\(/);
@@ -94,8 +103,9 @@ test("le cutover évite l’extraction locale lourde à l’insertion d’une vi
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoAudioFileForAI/);
   assert.match(
     publishModal,
-    /!mediaPipelineCutoverEnabled[\s\S]*getOrPrepareVideoAudioFileForAI\(videoFile\)[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
+    /const framesResult = await Promise\.allSettled\([\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
   );
+  assert.doesNotMatch(publishModal, /transcribeVideoAudioForAI\(/);
 });
 
 test("le worker télécharge la source privée et conserve l'original", () => {

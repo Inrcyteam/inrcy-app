@@ -38,12 +38,30 @@ test("the client polls publication status instead of waiting on one long request
   assert.match(client, /json\.queued === true/);
   assert.match(client, /\/api\/booster\/publications\/\$\{encodeURIComponent\(publicationId\)\}\/status/);
   assert.match(statusRoute, /readAsyncPublicationStatus/);
+  assert.doesNotMatch(statusRoute, /finalizeAsyncPublicationIfReady/);
+});
+
+test("status reads are shared with recovery finalization and channel fan-in stays linear", () => {
+  assert.match(asyncLib, /One coherent parent\/children snapshot/);
+  assert.match(asyncLib, /hasPendingAsyncChannelEvent/);
+  assert.match(asyncLib, /\.not\("payload->>status", "in"/);
+  assert.match(asyncLib, /\.limit\(1\)/);
+  assert.match(asyncLib, /_asyncFinalizationClaimId/);
+  assert.match(asyncLib, /\.eq\(FINALIZATION_CLAIM_ID_PATH, params\.claimId\)/);
 });
 
 test("a one-minute cron recovers queued jobs and only stale processing workers", () => {
   assert.match(cron, /publish_async_channel|BOOSTER_ASYNC_CHANNEL_EVENT_TYPE/);
-  assert.match(cron, /job\.status === "queued"/);
-  assert.match(cron, /job\.status === "processing"/);
+  assert.match(cron, /queuedChannelQuery/);
+  assert.match(cron, /processingChannelQuery/);
+  assert.match(
+    cron,
+    /\.eq\("payload->>status", "queued"\)[\s\S]*?\.limit\(50\)/,
+  );
+  assert.match(
+    cron,
+    /\.eq\("payload->>status", "processing"\)[\s\S]*?\.lt\("payload->>updatedAt", channelRecoveryCutoffIso\)/,
+  );
   assert.match(cron, /BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS/);
   assert.match(cron, /PROCESSING_RECOVERY_GRACE_MS/);
   assert.match(vercel, /\/api\/cron\/booster-publications/);

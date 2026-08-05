@@ -47,7 +47,7 @@ test("strict publish accepts an explicit stored fallback when the workspace carr
 test("compatible original video is a real fast path and does not require variant generation", () => {
   assert.match(
     prewarm,
-    /allowOriginalVideoFallback\s*&&\s*allowsOriginalVideoFallback\(request\.channel\)\s*&&\s*sourceValidation\.ok/,
+    /allowOriginalVideoFallback\s*&&[\s\S]{0,100}allowsOriginalVideoFallback\(request\.channel\)\s*&&[\s\S]{0,80}sourceValidation\.ok/,
   );
   assert.doesNotMatch(
     prewarm,
@@ -55,6 +55,6 @@ test("compatible original video is a real fast path and does not require variant
   );
   assert.match(
     modal,
-    /Vidéo originale compatible · prête à publier/,
+    /directOriginalAvailable[\s\S]*canPublishVideoSourceDirectly/,
   );
 });

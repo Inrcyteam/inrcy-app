@@ -48,6 +48,8 @@ export type BoosterSourceMediaMetadata = Record<string, unknown> & {
   orientation: "landscape" | "portrait" | "square" | "unknown";
   video_codec: string;
   audio_codec: string;
+  frame_rate: number | null;
+  has_audio: boolean | null;
   codec_detection: "not_applicable" | "pending_server_probe" | "provided";
   interface_preview_required: boolean;
 };
@@ -134,10 +136,27 @@ export function buildBoosterSourceMediaMetadata(params: {
     params.mediaType === "video" ? cleanText(source.videoCodec) : "none";
   const audioCodec =
     params.mediaType === "video" ? cleanText(source.audioCodec) : "none";
+  const rawFrameRate = Number(
+    source.frameRate ?? source.frame_rate ?? source.fps ?? 0,
+  );
+  const frameRate =
+    params.mediaType === "video" &&
+    Number.isFinite(rawFrameRate) &&
+    rawFrameRate > 0
+      ? Number(rawFrameRate.toFixed(3))
+      : null;
+  const hasAudio =
+    params.mediaType === "video" && typeof source.hasAudio === "boolean"
+      ? source.hasAudio
+      : params.mediaType === "video" &&
+          typeof source.has_audio === "boolean"
+        ? source.has_audio
+        : null;
   const codecsProvided =
     params.mediaType === "video" &&
     videoCodec !== "unknown" &&
-    audioCodec !== "unknown";
+    (hasAudio === false || audioCodec !== "unknown") &&
+    frameRate !== null;
 
   return {
     ...(params.mediaSettings || {}),
@@ -167,6 +186,8 @@ export function buildBoosterSourceMediaMetadata(params: {
     }),
     video_codec: videoCodec,
     audio_codec: audioCodec,
+    frame_rate: frameRate,
+    has_audio: hasAudio,
     codec_detection:
       params.mediaType === "image"
         ? "not_applicable"

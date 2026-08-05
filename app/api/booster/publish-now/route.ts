@@ -102,6 +102,7 @@ import {
   syncPublicationWorkspaceContext,
   type WorkspacePublicationConsumption,
 } from "@/lib/mediaWorkspaceConsumption";
+import { prepareWorkspaceMediaForPublication } from "@/lib/mediaWorkspacePublicationPreparation";
 import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import { prepareBoosterImagesByChannelOnServer } from "@/lib/boosterImageServerPreparation";
 import { prepareBoosterVideoVariantsOnServer } from "@/lib/boosterVideoVariantServer";
@@ -119,13 +120,21 @@ import {
 } from "@/lib/googleBusinessMediaPolicy";
 import { filterGoogleBusinessMediaUrls } from "@/lib/googleBusinessMediaProbe";
 import {
+  acquireAsyncPublicationPreparationLease,
   BOOSTER_ASYNC_CHANNEL_EVENT_TYPE,
   BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS,
   BOOSTER_ASYNC_CHANNEL_SCOPE,
-  BOOSTER_ASYNC_JOB_EVENT_TYPE,
+  completeAsyncPublicationPreparationLease,
+  failAsyncPublicationPreparationLease,
   finalizeAsyncPublicationIfReady,
+  materializePreparingAsyncChannelEvent,
   updateAsyncChannelEvent,
+  updateAsyncPublicationJobEvent,
 } from "@/lib/boosterAsyncPublication";
+import {
+  enqueueBoosterPublication,
+  normalizeClientPreflightFailuresByChannel,
+} from "@/lib/boosterPublicationIngress";
 import { normalizeBoosterPublicationChannels } from "@/lib/boosterPublicationPolicy";
 import { buildBoosterPublicationDispatchPlan } from "@/lib/boosterPublicationDispatchPlan";
 
@@ -192,6 +201,11 @@ async function publishNowHandler(req: Request) {
     channelEventId: string;
     channelLockId: string | null;
   } | null = null;
+  let asyncPreparationFailureContext: {
+    userId: string;
+    publicationId: string;
+    preparationLockId: string | null;
+  } | null = null;
   try {
     const cronUserId = isAuthorizedCronRequest(req)
       ? getCronUserIdFromRequest(req)
@@ -222,9 +236,20 @@ async function publishNowHandler(req: Request) {
       );
 
     const internalAsyncRequested = body._asyncChannelDispatch === true;
+    const internalAsyncPreparationRequested =
+      body._asyncPreparationDispatch === true;
     const internalAsyncDispatch =
       internalAsyncRequested && Boolean(cronUserId) && isAuthorizedCronRequest(req);
-    if (internalAsyncRequested && !internalAsyncDispatch) {
+    const internalAsyncPreparationDispatch =
+      internalAsyncPreparationRequested &&
+      Boolean(cronUserId) &&
+      isAuthorizedCronRequest(req);
+    const internalAsyncWorkerDispatch =
+      internalAsyncDispatch || internalAsyncPreparationDispatch;
+    if (
+      (internalAsyncRequested && !internalAsyncDispatch) ||
+      (internalAsyncPreparationRequested && !internalAsyncPreparationDispatch)
+    ) {
       return NextResponse.json(
         { ok: false, code: "async_dispatch_unauthorized", error: "Dispatch interne non autorisé." },
         { status: 401 },
@@ -269,6 +294,16 @@ async function publishNowHandler(req: Request) {
         { status: 400 },
       );
     }
+    if (internalAsyncPreparationDispatch && !asyncPublicationId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "async_preparation_invalid",
+          error: "Le job interne de préparation est invalide.",
+        },
+        { status: 400 },
+      );
+    }
     if (!selected.length) {
       return NextResponse.json(
         {
@@ -280,6 +315,14 @@ async function publishNowHandler(req: Request) {
         { status: 400 },
       );
     }
+    const clientPreflightFailuresByChannel =
+      normalizeClientPreflightFailuresByChannel(
+        body.clientPreflightFailuresByChannel,
+        selected,
+      );
+    const dispatchableSelected = selected.filter(
+      (channel) => !clientPreflightFailuresByChannel[channel],
+    );
     const mediaWorkspaceId = String(body.mediaWorkspaceId || "").trim();
     const strictMediaCutover =
       body.mediaPipelineCutoverV1 === true &&
@@ -292,7 +335,7 @@ async function publishNowHandler(req: Request) {
     )
       .trim()
       .toLowerCase();
-    const workspacePurpose = internalAsyncDispatch
+    const workspacePurpose = internalAsyncWorkerDispatch
       ? body._asyncWorkspacePurpose === "schedule"
         ? "schedule"
         : "publish"
@@ -301,11 +344,195 @@ async function publishNowHandler(req: Request) {
           Boolean(body.origin?.scheduledActionId)
         ? "schedule"
         : "publish";
+
+    if (!internalAsyncWorkerDispatch) {
+      const ingressWorkflowTool = String(body.workflowTool || "")
+        .trim()
+        .toLowerCase();
+      const ingressWorkflowAction = String(body.workflowAction || "")
+        .trim()
+        .toLowerCase();
+      const ingressTrackType = String(body.workflowTrackType || "")
+        .trim()
+        .toLowerCase();
+      const ingressIsValorisation =
+        ingressWorkflowTool === "propulser" &&
+        (ingressWorkflowAction === "valoriser" ||
+          ingressTrackType === "valorize");
+      const ingressEventModule = ingressIsValorisation ? "propulser" : "booster";
+      const ingressEventType = ingressIsValorisation ? "valorize" : "publish";
+      // A 202 is emitted only after the full preparation request and one
+      // placeholder per channel have been committed durably. Without the
+      // internal secret there is no recoverable worker path, so fail closed.
+      if (!getCronSecret()) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "publication_worker_unavailable",
+            retryable: true,
+            error: "Le service de publication en arrière-plan est indisponible.",
+          },
+          { status: 503 },
+        );
+      }
+
+      const ingressOrigin = asRecord(body.origin);
+      const ingressIdempotencyKey = buildPublishIdempotencyKey({
+        body,
+        origin: ingressOrigin,
+      });
+      const ingress = await enqueueBoosterPublication({
+        userId,
+        body: asRecord(body),
+        channels: selected,
+        module: ingressEventModule,
+        finalEventType: ingressEventType,
+        workspacePurpose,
+        idempotencyScope: PUBLISH_IDEMPOTENCY_SCOPE,
+        idempotencyKey: ingressIdempotencyKey,
+        idempotencyTtlMs: PUBLISH_IDEMPOTENCY_TTL_MS,
+        idempotencyMetadata: buildPublishIdempotencyMetadata({
+          origin: ingressOrigin,
+          channels: selected,
+          source: requestedOriginSource,
+        }),
+      });
+
+      if (ingress.state === "completed") {
+        return NextResponse.json(ingress.response);
+      }
+      if (ingress.state === "error") {
+        return NextResponse.json(ingress.response, { status: ingress.status });
+      }
+
+      const appOrigin = getAppOriginFromRequest(req);
+      const internalHeaders = buildInternalCronHeaders(userId);
+      if (Object.keys(ingress.preparationRequest).length) {
+        after(async () => {
+          try {
+            await fetch(`${appOrigin}/api/booster/publish-now`, {
+              method: "POST",
+              headers: internalHeaders,
+              body: JSON.stringify(ingress.preparationRequest),
+              cache: "no-store",
+            });
+          } catch (dispatchError) {
+            // The durable parent remains queued; the one-minute cron owns retry.
+            console.warn("[booster-async] initial preparation dispatch failed", {
+              publicationId: ingress.publicationId,
+              message:
+                dispatchError instanceof Error
+                  ? dispatchError.message
+                  : String(dispatchError || ""),
+            });
+          }
+        });
+      }
+
+      return NextResponse.json(ingress.response, { status: 202 });
+    }
+
+    if (internalAsyncPreparationDispatch) {
+      const preparationLease = await acquireAsyncPublicationPreparationLease({
+        userId,
+        publicationId: asyncPublicationId,
+      });
+      if (
+        preparationLease.state === "running" ||
+        preparationLease.state === "completed"
+      ) {
+        return NextResponse.json(
+          {
+            ok: true,
+            done: false,
+            queued: true,
+            asyncDispatch: true,
+            status: "preparing",
+            publication_id: asyncPublicationId,
+          },
+          { status: 202 },
+        );
+      }
+      if (preparationLease.state === "unavailable") {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "async_preparation_lease_unavailable",
+            retryable: true,
+            error: "La préparation ne peut pas être verrouillée de façon sûre.",
+          },
+          { status: 503 },
+        );
+      }
+      asyncPreparationFailureContext = {
+        userId,
+        publicationId: asyncPublicationId,
+        preparationLockId: preparationLease.lock?.id || null,
+      };
+      await updateAsyncPublicationJobEvent({
+        userId,
+        publicationId: asyncPublicationId,
+        patch: {
+          status: "preparing",
+          stage: "media_preparation",
+          preparationAttempt: Math.max(
+            1,
+            Number(body._asyncPreparationAttempt || 1),
+          ),
+          preparationStartedAt: new Date().toISOString(),
+          lastPreparationError: null,
+        },
+      });
+    }
+    const requestedMediaType = normalizePublicationMediaType(body.mediaType);
+    const rawRequestedModes = asRecord(body.mediaModeByChannel);
+    const requestContainsMedia = dispatchableSelected.some((channel) => {
+      const mode = String(
+        rawRequestedModes[channel] || requestedMediaType,
+      ).trim();
+      return mode === "images" || mode === "video";
+    });
+    const requestedMediaChannels = dispatchableSelected.filter((channel) => {
+      const mode = String(
+        rawRequestedModes[channel] || requestedMediaType,
+      ).trim();
+      return mode === "images" || mode === "video";
+    });
     let workspaceConsumption: WorkspacePublicationConsumption | null = null;
     let workspaceFallbackCode = "";
+    let workspacePreparationState: Awaited<
+      ReturnType<typeof prepareWorkspaceMediaForPublication>
+    > | null = null;
+    const deferredPreparationChannels = new Set<ChannelKey>();
+    const terminalWorkspaceMediaChannels = new Set<ChannelKey>();
+    if (
+      internalAsyncPreparationDispatch &&
+      Number(body._asyncPreparationAttempt || 1) <= 1 &&
+      requestedMediaChannels.length > 0 &&
+      dispatchableSelected.some(
+        (channel) => !requestedMediaChannels.includes(channel),
+      )
+    ) {
+      // First materialize and dispatch channels that need no media. The next
+      // preparation attempt owns normalization for the deferred media set, so
+      // one long FFmpeg job never delays a text-only channel.
+      requestedMediaChannels.forEach((channel) =>
+        deferredPreparationChannels.add(channel),
+      );
+    }
 
-    if (mediaWorkspaceId) {
+    if (mediaWorkspaceId && deferredPreparationChannels.size === 0) {
       try {
+        if (
+          internalAsyncPreparationDispatch &&
+          strictMediaCutover &&
+          requestContainsMedia
+        ) {
+          workspacePreparationState = await prepareWorkspaceMediaForPublication({
+            accountId: userId,
+            workspaceId: mediaWorkspaceId,
+          });
+        }
         workspaceConsumption = await resolveWorkspacePublicationConsumption({
           accountId: userId,
           workspaceId: mediaWorkspaceId,
@@ -326,41 +553,80 @@ async function publishNowHandler(req: Request) {
               : String(workspaceError || "Erreur inconnue"),
         });
         if (strictMediaCutover) {
-          const status =
-            workspaceError instanceof MediaWorkspaceConsumptionError
-              ? workspaceError.status
-              : 503;
-          return NextResponse.json(
-            {
-              ok: false,
-              code: workspaceFallbackCode,
-              error:
-                workspaceError instanceof Error
-                  ? workspaceError.message
-                  : "Le workspace média n'est pas prêt. Réessayez dans quelques instants.",
-            },
-            { status },
-          );
+          if (internalAsyncPreparationDispatch) {
+            const mediaChannels = requestedMediaChannels;
+            const terminalMediaFailure = Boolean(
+              workspacePreparationState?.terminalMediaIds.length,
+            );
+            const durableMediaStillPending = Boolean(
+              workspacePreparationState?.pendingMediaIds.length,
+            );
+            if (terminalMediaFailure) {
+              mediaChannels.forEach((channel) =>
+                terminalWorkspaceMediaChannels.add(channel),
+              );
+            } else if (
+              mediaChannels.length > 0 &&
+              (durableMediaStillPending ||
+                dispatchableSelected.some(
+                  (channel) => !mediaChannels.includes(channel),
+                ))
+            ) {
+              // Let channels without media leave immediately. Media channels
+              // remain in their durable `preparing` placeholders and are
+              // retried by the preparation cron once normalization is ready.
+              mediaChannels.forEach((channel) =>
+                deferredPreparationChannels.add(channel),
+              );
+            } else {
+              throw workspaceError instanceof Error
+                ? workspaceError
+                : new Error("workspace_read_failed");
+            }
+          } else {
+            const status =
+              workspaceError instanceof MediaWorkspaceConsumptionError
+                ? workspaceError.status
+                : 503;
+            return NextResponse.json(
+              {
+                ok: false,
+                code: workspaceFallbackCode,
+                error:
+                  workspaceError instanceof Error
+                    ? workspaceError.message
+                    : "Le workspace média n'est pas prêt. Réessayez dans quelques instants.",
+              },
+              { status },
+            );
+          }
         }
       }
     }
 
-    const requestedMediaType = normalizePublicationMediaType(body.mediaType);
-    const rawRequestedModes = asRecord(body.mediaModeByChannel);
-    const requestContainsMedia = selected.some((channel) => {
-      const mode = String(rawRequestedModes[channel] || requestedMediaType).trim();
-      return mode === "images" || mode === "video";
-    });
     if (strictMediaCutover && requestContainsMedia && !mediaWorkspaceId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "media_workspace_required",
-          error: "Le workspace média est requis pour publier avec le nouveau pipeline.",
-        },
-        { status: 409 },
-      );
+      if (internalAsyncPreparationDispatch) {
+        requestedMediaChannels.forEach((channel) => {
+          deferredPreparationChannels.delete(channel);
+          terminalWorkspaceMediaChannels.add(channel);
+        });
+      } else {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "media_workspace_required",
+            error: "Le workspace média est requis pour publier avec le nouveau pipeline.",
+          },
+          { status: 409 },
+        );
+      }
     }
+
+    const activePreparationSelected = dispatchableSelected.filter(
+      (channel) =>
+        !deferredPreparationChannels.has(channel) &&
+        !terminalWorkspaceMediaChannels.has(channel),
+    );
 
     let mediaType = requestedMediaType;
     if (workspaceConsumption?.mediaType === "video") mediaType = "video";
@@ -384,7 +650,7 @@ async function publishNowHandler(req: Request) {
     ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
     const preflightFailuresByChannel: Partial<
       Record<ChannelKey, JsonRecord>
-    > = {};
+    > = { ...clientPreflightFailuresByChannel };
     const setPreflightFailure = (
       channel: ChannelKey,
       failure: {
@@ -423,10 +689,10 @@ async function publishNowHandler(req: Request) {
         pinterestPublicationSettings.board_name ||
         "",
     ).trim();
-    const hasAnyImageChannel = selected.some(
+    const hasAnyImageChannel = activePreparationSelected.some(
       (channel) => mediaModeByChannel[channel] === "images",
     );
-    const hasAnyVideoChannel = selected.some(
+    const hasAnyVideoChannel = activePreparationSelected.some(
       (channel) => mediaModeByChannel[channel] === "video",
     );
     const rawImagesByChannelPayload = asRecord(body.imagesByChannel);
@@ -471,6 +737,16 @@ async function publishNowHandler(req: Request) {
         ) {
           return;
         }
+        if (deferredPreparationChannels.has(channel)) return;
+        if (terminalWorkspaceMediaChannels.has(channel)) {
+          setPreflightFailure(channel, {
+            code: "workspace_media_preparation_failed",
+            error:
+              "La préparation serveur du média a échoué. Retirez-le puis ajoutez-le de nouveau.",
+            retryable: false,
+          });
+          return;
+        }
         if (workspaceConsumption?.mediaType === expectedMode) return;
         if (expectedMode === "images" && hasImageFallbackForChannel(channel)) {
           return;
@@ -511,31 +787,57 @@ async function publishNowHandler(req: Request) {
       hasAnyImageChannel &&
       workspaceConsumption?.mediaType === "images"
     ) {
-      const imageChannels = selected.filter(
-        (channel) => mediaModeByChannel[channel] === "images",
+      const imageChannels = activePreparationSelected.filter(
+        (channel) =>
+          mediaModeByChannel[channel] === "images" &&
+          !preflightFailuresByChannel[channel],
       );
-      const serverPreparation = await prepareBoosterImagesByChannelOnServer({
-        accountId: userId,
-        workspaceId: mediaWorkspaceId,
-        channels: imageChannels,
-        images: workspaceConsumption.images,
-        settingsByChannel: imageSettingsByChannel as any,
-      });
-      imagesByChannel = serverPreparation.imagesByChannel as ImagesByChannel;
-      imageSettingsByChannel = serverPreparation.imageSettingsByChannel;
-      imageChannels.forEach((channel) => {
-        if (
-          Array.isArray(imagesByChannel[channel]) &&
-          imagesByChannel[channel]?.length
-        ) {
-          return;
-        }
-        setPreflightFailure(channel, {
-          code: "workspace_image_preparation_failed",
-          error: "Les images du workspace n'ont pas pu être préparées pour ce canal.",
-          warnings: serverPreparation.warnings,
+      const preparedImagesByChannel: ImagesByChannel = {};
+      const preparedImageSettingsByChannel: Record<string, unknown> = {
+        ...imageSettingsByChannel,
+      };
+      let imagePreparation: Awaited<
+        ReturnType<typeof prepareBoosterImagesByChannelOnServer>
+      > | null = null;
+      try {
+        imagePreparation = await prepareBoosterImagesByChannelOnServer({
+          accountId: userId,
+          workspaceId: mediaWorkspaceId,
+          channels: imageChannels,
+          images: workspaceConsumption.images,
+          settingsByChannel: imageSettingsByChannel as any,
         });
+      } catch (preparationError) {
+        imageChannels.forEach((channel) => {
+          setPreflightFailure(channel, {
+            code: "workspace_image_preparation_failed",
+            error: "Les images du workspace n'ont pas pu être préparées pour ce canal.",
+            preparationError:
+              preparationError instanceof Error
+                ? preparationError.message
+                : String(preparationError || ""),
+          });
+        });
+      }
+      imageChannels.forEach((channel) => {
+        if (!imagePreparation) return;
+        preparedImagesByChannel[channel] =
+          (imagePreparation.imagesByChannel[channel] as unknown as ImagePayload[]) || [];
+        preparedImageSettingsByChannel[channel] =
+          imagePreparation.imageSettingsByChannel[channel] ||
+          imageSettingsByChannel[channel];
+        if (!preparedImagesByChannel[channel]?.length) {
+          setPreflightFailure(channel, {
+            code: "workspace_image_preparation_failed",
+            error: "Les images du workspace n'ont pas pu être préparées pour ce canal.",
+            warnings: imagePreparation.warnings.filter(
+              (warning) => warning.channel === channel,
+            ),
+          });
+        }
       });
+      imagesByChannel = preparedImagesByChannel;
+      imageSettingsByChannel = preparedImageSettingsByChannel;
     }
 
     // Même en cutover strict, le payload vidéo reste un secours légitime
@@ -584,22 +886,53 @@ async function publishNowHandler(req: Request) {
 
     if (
       publicationVideo &&
-      selected.includes("youtube_shorts") &&
+      activePreparationSelected.includes("youtube_shorts") &&
       mediaModeByChannel.youtube_shorts === "video"
     ) {
       videoSettingsByChannel.youtube_shorts =
         getAutomaticVideoSettingsForPublication({
           channel: "youtube_shorts",
           settings: videoSettingsByChannel.youtube_shorts,
-          durationSeconds: publicationVideo.duration,
+          durationSeconds:
+            workspaceConsumption?.mediaType === "video" &&
+            (publicationVideo.sourceMetadata?.compatibilityProof ===
+              "server_ffmpeg" ||
+              publicationVideo.sourceMetadata?.compatibilityProof ===
+                "canonical_derivative")
+              ? publicationVideo.duration
+              : null,
         });
     }
 
+    // A legacy/client payload can describe a video for the UI, but only the
+    // workspace resolver can attest the bytes probed by FFmpeg (or a canonical
+    // derivative produced by our pipeline). Never let client codec/FPS,
+    // dimensions or duration authorize _or block_ the final dispatch.
+    const hasTrustedPublicationVideoCompatibilityProof = Boolean(
+      workspaceConsumption?.mediaType === "video" &&
+        (publicationVideo?.sourceMetadata?.compatibilityProof ===
+          "server_ffmpeg" ||
+          publicationVideo?.sourceMetadata?.compatibilityProof ===
+            "canonical_derivative"),
+    );
+    const trustedPublicationVideoMetadata =
+      hasTrustedPublicationVideoCompatibilityProof
+        ? publicationVideo?.sourceMetadata || null
+        : null;
+    const trustedPublicationVideoDuration =
+      hasTrustedPublicationVideoCompatibilityProof
+        ? publicationVideo?.duration ?? null
+        : null;
+
     if (strictMediaCutover && hasAnyVideoChannel && publicationVideo) {
-      const sourceWidth = Number(publicationVideo.sourceMetadata?.width || 0) || null;
-      const sourceHeight = Number(publicationVideo.sourceMetadata?.height || 0) || null;
-      const videoVariantRequest = selected
-        .filter((channel) => mediaModeByChannel[channel] === "video")
+      const sourceWidth = Number(trustedPublicationVideoMetadata?.width || 0) || null;
+      const sourceHeight = Number(trustedPublicationVideoMetadata?.height || 0) || null;
+      const videoVariantRequest = activePreparationSelected
+        .filter(
+          (channel) =>
+            mediaModeByChannel[channel] === "video" &&
+            !preflightFailuresByChannel[channel],
+        )
         .flatMap((channel) => {
           if (channel === "gmb") {
             const decision = getGoogleBusinessVideoPreparationDecision({
@@ -607,9 +940,16 @@ async function publishNowHandler(req: Request) {
               type: publicationVideo?.type,
               storagePath: publicationVideo?.storagePath,
               sizeBytes: publicationVideo?.size,
-              durationSeconds: publicationVideo?.duration,
+              durationSeconds: trustedPublicationVideoDuration,
               width: sourceWidth,
               height: sourceHeight,
+              videoCodec: trustedPublicationVideoMetadata?.videoCodec,
+              audioCodec: trustedPublicationVideoMetadata?.audioCodec,
+              frameRate: trustedPublicationVideoMetadata?.frameRate,
+              hasAudio: trustedPublicationVideoMetadata?.hasAudio,
+              containerFormats:
+                trustedPublicationVideoMetadata?.containerFormats,
+              pixelFormat: trustedPublicationVideoMetadata?.pixelFormat,
             });
             if (decision.action === "block") {
               setPreflightFailure("gmb", {
@@ -620,11 +960,42 @@ async function publishNowHandler(req: Request) {
               return [];
             }
           }
+          const settings = videoSettingsByChannel[channel];
+          if ((settings?.format || "original") === "original") {
+            const validation = validateVideoPublicationForChannel({
+              channel,
+              name: publicationVideo?.name || "video.mp4",
+              type: publicationVideo?.type,
+              storagePath: publicationVideo?.storagePath,
+              sizeBytes: publicationVideo?.size,
+              durationSeconds: trustedPublicationVideoDuration,
+              width: sourceWidth,
+              height: sourceHeight,
+              videoCodec: trustedPublicationVideoMetadata?.videoCodec,
+              audioCodec: trustedPublicationVideoMetadata?.audioCodec,
+              frameRate: trustedPublicationVideoMetadata?.frameRate,
+              hasAudio: trustedPublicationVideoMetadata?.hasAudio,
+              containerFormats:
+                trustedPublicationVideoMetadata?.containerFormats,
+              pixelFormat: trustedPublicationVideoMetadata?.pixelFormat,
+              requireCodecProof: true,
+            });
+            if (!validation.ok) {
+              setPreflightFailure(channel, {
+                code: validation.reason,
+                error: validation.message,
+                retryable: false,
+              });
+            }
+            // Original signifie réellement original : aucune recherche de
+            // variante, aucun téléchargement et aucun FFmpeg au clic Publier.
+            return [];
+          }
           return [{
-            key: `${channel}-${videoSettingsByChannel[channel]?.format || "original"}-${videoSettingsByChannel[channel]?.adaptationMode || "safe_frame"}`,
+            key: `${channel}-${settings?.format || "original"}-${settings?.adaptationMode || "safe_frame"}`,
             channel: channel as any,
-            format: videoSettingsByChannel[channel]?.format,
-            adaptationMode: videoSettingsByChannel[channel]?.adaptationMode,
+            format: settings?.format,
+            adaptationMode: settings?.adaptationMode,
             publicationProfile: getVideoPublicationProfileForChannel(channel as any),
           }];
         });
@@ -646,6 +1017,8 @@ async function publishNowHandler(req: Request) {
             duration: videoSource.duration,
             sourceMetadata: videoSource.sourceMetadata,
           },
+          trustedSourceCompatibilityProof:
+            hasTrustedPublicationVideoCompatibilityProof,
           variants: videoVariantRequest,
         });
 
@@ -661,29 +1034,12 @@ async function publishNowHandler(req: Request) {
           const variant = candidateResult.variants.find(
             (candidate) => candidate.signature === signature,
           );
-          const sourceValidation = validateVideoPublicationForChannel({
-            channel: request.channel,
-            name: videoSource.name || "video.mp4",
-            type: videoSource.type,
-            storagePath: videoSource.storagePath,
-            sizeBytes: videoSource.size,
-            durationSeconds: videoSource.duration,
-            width: videoSource.sourceMetadata?.width,
-            height: videoSource.sourceMetadata?.height,
-          });
           if (!variant?.publicUrl || !variant?.storagePath) {
-            if (sourceValidation.ok) {
-              return [];
-            }
             return [{
               channel: request.channel,
               signature,
-              reason: sourceValidation.ok
-                ? "video_variant_required"
-                : sourceValidation.reason,
-              message: sourceValidation.ok
-                ? "La variante MP4/H.264, AAC, 30 fps et dimensions réseau doit être prête avant publication."
-                : sourceValidation.message,
+              reason: "video_variant_required",
+              message: "La variante vidéo explicitement choisie doit être prête avant publication sur ce canal.",
             }];
           }
           const validation = validateVideoPublicationForChannel({
@@ -697,9 +1053,6 @@ async function publishNowHandler(req: Request) {
             height: variant.height,
           });
           if (validation.ok) return [];
-          if (sourceValidation.ok) {
-            return [];
-          }
           return [{
             channel: request.channel,
             signature,
@@ -708,12 +1061,13 @@ async function publishNowHandler(req: Request) {
           }];
         });
 
-      // Publication is a latency-sensitive dispatch path. Heavy FFmpeg work is
-      // prepared by the media workspace beforehand; a cold/missing derivative
-      // becomes a retryable failure for that channel only. Generating up to
-      // eight variants here could exceed the route's 180-second budget and
-      // abort otherwise valid deliveries.
-      const variantResult = await preparePublicationVariants(false);
+      // Only the durable preparation worker may run FFmpeg. Channel workers
+      // receive the persisted derivatives and therefore never regenerate.
+      // A failed derivative is converted below into one channel preflight
+      // failure; it never prevents the other channel jobs from being queued.
+      const variantResult = await preparePublicationVariants(
+        internalAsyncPreparationDispatch,
+      );
       const invalidVideoChannels = collectInvalidVideoChannels(
         variantResult,
       );
@@ -754,8 +1108,12 @@ async function publishNowHandler(req: Request) {
     });
 
     if (!strictMediaCutover && hasAnyVideoChannel && publicationVideo) {
-      const invalidLegacyVideoChannels = selected
-        .filter((channel) => mediaModeByChannel[channel] === "video")
+      const invalidLegacyVideoChannels = activePreparationSelected
+        .filter(
+          (channel) =>
+            mediaModeByChannel[channel] === "video" &&
+            !preflightFailuresByChannel[channel],
+        )
         .flatMap((channel) => {
           if (channel === "gmb") {
             const decision = getGoogleBusinessVideoPreparationDecision({
@@ -763,9 +1121,16 @@ async function publishNowHandler(req: Request) {
               type: publicationVideo?.type,
               storagePath: publicationVideo?.storagePath,
               sizeBytes: publicationVideo?.size,
-              durationSeconds: publicationVideo?.duration,
-              width: publicationVideo?.sourceMetadata?.width,
-              height: publicationVideo?.sourceMetadata?.height,
+              durationSeconds: trustedPublicationVideoDuration,
+              width: trustedPublicationVideoMetadata?.width,
+              height: trustedPublicationVideoMetadata?.height,
+              videoCodec: trustedPublicationVideoMetadata?.videoCodec,
+              audioCodec: trustedPublicationVideoMetadata?.audioCodec,
+              frameRate: trustedPublicationVideoMetadata?.frameRate,
+              hasAudio: trustedPublicationVideoMetadata?.hasAudio,
+              containerFormats:
+                trustedPublicationVideoMetadata?.containerFormats,
+              pixelFormat: trustedPublicationVideoMetadata?.pixelFormat,
             });
             if (decision.action === "block") {
               setPreflightFailure("gmb", {
@@ -777,6 +1142,8 @@ async function publishNowHandler(req: Request) {
             }
           }
           const settings = videoSettingsByChannel[channel];
+          const usesOriginalSource =
+            !settings || settings.format === "original";
           const profile = getVideoPublicationProfileForChannel(channel as any);
           const signature = settings
             ? buildVideoTransformSignature(
@@ -811,19 +1178,36 @@ async function publishNowHandler(req: Request) {
             type: publicationVideo.type,
             storagePath: publicationVideo.storagePath,
             sizeBytes: publicationVideo.size,
-            durationSeconds: publicationVideo.duration,
-            width: publicationVideo.sourceMetadata?.width,
-            height: publicationVideo.sourceMetadata?.height,
+            durationSeconds: trustedPublicationVideoDuration,
+            width: trustedPublicationVideoMetadata?.width,
+            height: trustedPublicationVideoMetadata?.height,
+            videoCodec: trustedPublicationVideoMetadata?.videoCodec,
+            audioCodec: trustedPublicationVideoMetadata?.audioCodec,
+            frameRate: trustedPublicationVideoMetadata?.frameRate,
+            hasAudio: trustedPublicationVideoMetadata?.hasAudio,
+            containerFormats:
+              trustedPublicationVideoMetadata?.containerFormats,
+            pixelFormat: trustedPublicationVideoMetadata?.pixelFormat,
+            requireCodecProof: true,
           });
           const sourceDirectlyPublishable =
+            hasTrustedPublicationVideoCompatibilityProof &&
             canPublishVideoSourceDirectly({
               name: publicationVideo.name,
               type: publicationVideo.type,
               storagePath: publicationVideo.storagePath,
               sizeBytes: publicationVideo.size,
               maxBytes: policy.maxBytes,
+              videoCodec: trustedPublicationVideoMetadata?.videoCodec,
+              audioCodec: trustedPublicationVideoMetadata?.audioCodec,
+              frameRate: trustedPublicationVideoMetadata?.frameRate,
+              hasAudio: trustedPublicationVideoMetadata?.hasAudio,
+              containerFormats:
+                trustedPublicationVideoMetadata?.containerFormats,
+              pixelFormat: trustedPublicationVideoMetadata?.pixelFormat,
+              requireCodecProof: true,
             }) && sourceValidation.ok;
-          if (sourceDirectlyPublishable) {
+          if (usesOriginalSource && sourceDirectlyPublishable) {
             return [];
           }
 
@@ -955,9 +1339,11 @@ async function publishNowHandler(req: Request) {
       body.origin?.scheduledActionId || originRecord.scheduledActionId || "",
     ).trim();
     const isScheduledExecution =
-      Boolean(cronUserId) ||
-      origin?.source === "booster_scheduled" ||
-      Boolean(origin?.source === "inr_agent" && scheduledActionId);
+      internalAsyncWorkerDispatch
+        ? workspacePurpose === "schedule"
+        : Boolean(cronUserId) ||
+          origin?.source === "booster_scheduled" ||
+          Boolean(origin?.source === "inr_agent" && scheduledActionId);
     const shouldCheckImmediateDuplicate =
       !internalAsyncDispatch &&
       eventType === "publish" &&
@@ -1015,6 +1401,48 @@ async function publishNowHandler(req: Request) {
 
       if (duplicate.duplicate) {
         const duplicateMessage = buildImmediateDuplicateMessage(duplicate);
+        if (internalAsyncPreparationDispatch) {
+          const persistedEventIds = asRecord(body._asyncChannelEventIds);
+          const duplicateFailure = {
+            ok: false,
+            code: "scheduled_publication_duplicate",
+            retryable: false,
+            error: duplicateMessage,
+            duplicate,
+          };
+          await Promise.all(
+            selected.map((channel) =>
+              updateAsyncChannelEvent({
+                userId,
+                eventId: cleanExecutionIdempotencyKey(
+                  persistedEventIds[channel],
+                ),
+                patch: {
+                  status: "failed",
+                  channel,
+                  result: duplicateFailure,
+                  completedAt: new Date().toISOString(),
+                },
+              }),
+            ),
+          );
+          await completeAsyncPublicationPreparationLease({
+            lockId: asyncPreparationFailureContext?.preparationLockId || null,
+            publicationId: asyncPublicationId,
+          });
+          asyncPreparationFailureContext = null;
+          const finalization = await finalizeAsyncPublicationIfReady({
+            userId,
+            publicationId: asyncPublicationId,
+          });
+          return NextResponse.json({
+            ...asRecord(finalization.payload),
+            ok: false,
+            queued: false,
+            asyncDispatch: true,
+            publication_id: asyncPublicationId,
+          });
+        }
         return NextResponse.json(
           {
             ok: false,
@@ -1028,10 +1456,10 @@ async function publishNowHandler(req: Request) {
       }
     }
 
-    const publishIdempotencyKey = internalAsyncDispatch
+    const publishIdempotencyKey = internalAsyncWorkerDispatch
       ? cleanExecutionIdempotencyKey(body._asyncParentIdempotencyKey)
       : buildPublishIdempotencyKey({ body, origin });
-    const publishIdempotency = internalAsyncDispatch
+    const publishIdempotency = internalAsyncWorkerDispatch
       ? { state: "acquired" as const, lock: null }
       : publishIdempotencyKey
         ? await acquireExecutionIdempotencyLock({
@@ -1064,11 +1492,11 @@ async function publishNowHandler(req: Request) {
       );
     }
 
-    publishIdempotencyLockId = internalAsyncDispatch
+    publishIdempotencyLockId = internalAsyncWorkerDispatch
       ? cleanExecutionIdempotencyKey(body._asyncParentIdempotencyLockId) || null
       : publishIdempotency.lock?.id || null;
     shouldFailPublishIdempotencyLockOnError =
-      !internalAsyncDispatch && Boolean(publishIdempotencyLockId);
+      !internalAsyncWorkerDispatch && Boolean(publishIdempotencyLockId);
 
     const hadAnyImageInput =
       hasAnyImageChannel &&
@@ -1078,9 +1506,76 @@ async function publishNowHandler(req: Request) {
           (value) => Array.isArray(value) && value.length > 0,
         ));
 
-    const publicationId = internalAsyncDispatch
+    const publicationId = internalAsyncWorkerDispatch
       ? asyncPublicationId
       : randomUUID();
+    let asyncChannelLockId: string | null = null;
+
+    if (internalAsyncDispatch) {
+      const channel = selected[0];
+      const channelExecution = await acquireExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        userId,
+        scope: BOOSTER_ASYNC_CHANNEL_SCOPE,
+        idempotencyKey: `${publicationId}:${channel}`,
+        ttlMs: BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS,
+        metadata: {
+          publicationId,
+          channel,
+          channelEventId: asyncChannelEventId,
+          asyncDispatch: true,
+        },
+      });
+
+      if (channelExecution.state === "completed") {
+        await finalizeAsyncPublicationIfReady({ userId, publicationId }).catch(
+          () => undefined,
+        );
+        return NextResponse.json(
+          buildCompletedExecutionResponse(channelExecution.lock),
+        );
+      }
+
+      if (channelExecution.state === "running") {
+        return NextResponse.json(
+          {
+            ...buildRunningExecutionResponse(channelExecution.lock),
+            queued: true,
+            asyncDispatch: true,
+            publication_id: publicationId,
+            channel,
+          },
+          { status: 425, headers: { "Retry-After": "60" } },
+        );
+      }
+
+      // Le claim arrive avant tout upload/dérivé par canal. Le départ initial
+      // compte déjà comme tentative 1 dans l'événement créé par le parent ; le
+      // worker ne double donc plus le compteur du cron.
+      asyncChannelLockId = channelExecution.lock?.id || null;
+      asyncFailureContext = {
+        userId,
+        publicationId,
+        channel,
+        channelEventId: asyncChannelEventId,
+        channelLockId: asyncChannelLockId,
+      };
+      await updateAsyncChannelEvent({
+        userId,
+        eventId: asyncChannelEventId,
+        patch: {
+          status: "processing",
+          startedAt: new Date().toISOString(),
+          channel,
+        },
+      });
+      await supabaseAdmin
+        .from("publication_deliveries")
+        .update({ status: "processing", error: null })
+        .eq("publication_id", publicationId)
+        .eq("user_id", userId)
+        .eq("channel", channel);
+    }
     const publicationVideoByChannel = buildPublicationVideoByChannel();
 
     const getChannelPost = createPublishNowPostResolver({
@@ -1099,8 +1594,12 @@ async function publishNowHandler(req: Request) {
 
     const selectedImageFormats = hasAnyImageChannel
       ? mergeImageFormats(
-          ...selected
-            .filter((channel) => mediaModeByChannel[channel] === "images")
+          ...activePreparationSelected
+            .filter(
+              (channel) =>
+                mediaModeByChannel[channel] === "images" &&
+                !preflightFailuresByChannel[channel],
+            )
             .map((channel) => getRequiredImageFormatsForChannel(channel)),
         )
       : EMPTY_IMAGE_FORMATS;
@@ -1127,7 +1626,8 @@ async function publishNowHandler(req: Request) {
     });
 
     const channelImageSets: Partial<Record<ChannelKey, ImageSet>> = {};
-    for (const channel of selected) {
+    for (const channel of activePreparationSelected) {
+      if (preflightFailuresByChannel[channel]) continue;
       const rawChannelImages = Array.isArray(imagesByChannel?.[channel])
         ? (imagesByChannel[channel] as ImagePayload[])
         : [];
@@ -1155,7 +1655,7 @@ async function publishNowHandler(req: Request) {
     }
 
     const fallbackImageSet =
-      selected
+      activePreparationSelected
         .map((channel) => channelImageSets[channel])
         .find((value): value is ImageSet =>
           Boolean(
@@ -1234,35 +1734,20 @@ async function publishNowHandler(req: Request) {
 
       const { error: pubErr } = await supabaseAdmin
         .from("publications")
-        .insert(publicationInsert);
+        .upsert(publicationInsert, { onConflict: "id" });
 
       if (pubErr) {
-        await syncMediaWorkspaceLifecycle("failed", {
-          publicationId,
-          failureStage: "publication_insert",
-        });
-        await failExecutionIdempotencyLock({
-          supabase: supabaseAdmin,
-          lockId: publishIdempotencyLockId,
-          error: "Publication insert failed",
-          result: { publicationId, detail: pubErr.message || null },
-          metadata: { stage: "publication_insert" },
-        });
-        shouldFailPublishIdempotencyLockOnError = false;
-        return NextResponse.json(
-          {
-            error: "Impossible d'enregistrer la publication pour le moment.",
-            uploadErrors,
-          },
-          { status: 500 },
-        );
+        throw new Error(`publication_insert_failed:${pubErr.message || "unknown"}`);
       }
 
       await invalidateBoosterGenerationContext(userId, "publications");
 
       // 3) Create deliveries
+      const asyncDeliveryIds = asRecord(body._asyncDeliveryIds);
       const deliveries = channelPreflightPlan.entries.map((entry) => ({
-        id: randomUUID(),
+        id:
+          cleanExecutionIdempotencyKey(asyncDeliveryIds[entry.channel]) ||
+          randomUUID(),
         publication_id: publicationId,
         user_id: userId,
         channel: entry.channel,
@@ -1274,26 +1759,15 @@ async function publishNowHandler(req: Request) {
 
       const { error: deliveriesError } = await supabaseAdmin
         .from("publication_deliveries")
-        .insert(deliveries);
+        .upsert(deliveries, { onConflict: "id" });
       if (deliveriesError) {
-        await failExecutionIdempotencyLock({
-          supabase: supabaseAdmin,
-          lockId: publishIdempotencyLockId,
-          error: "Publication deliveries insert failed",
-          result: { publicationId, detail: deliveriesError.message || null },
-          metadata: { stage: "delivery_insert" },
-        });
-        shouldFailPublishIdempotencyLockOnError = false;
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Impossible de préparer les canaux de publication.",
-          },
-          { status: 500 },
+        throw new Error(
+          `publication_deliveries_insert_failed:${deliveriesError.message || "unknown"}`,
         );
       }
 
       const asyncSecret = getCronSecret();
+      if (!asyncSecret) throw new Error("publication_worker_unavailable");
       if (asyncSecret) {
         const persistedPostByChannelForAsync = Object.fromEntries(
           selected.map((channel) => {
@@ -1383,8 +1857,13 @@ async function publishNowHandler(req: Request) {
             }),
         ) as ImagesByChannel;
 
+        const persistedChannelEventIds = asRecord(body._asyncChannelEventIds);
         const channelEventIds = Object.fromEntries(
-          selected.map((channel) => [channel, randomUUID()]),
+          selected.map((channel) => [
+            channel,
+            cleanExecutionIdempotencyKey(persistedChannelEventIds[channel]) ||
+              randomUUID(),
+          ]),
         ) as Record<ChannelKey, string>;
         const finalPayloadBase = {
           workflowTool: eventModule,
@@ -1418,8 +1897,9 @@ async function publishNowHandler(req: Request) {
         };
 
         const parentPayload = {
-          status: "queued",
-          asyncVersion: 1,
+          status: "dispatching",
+          stage: "channel_dispatch",
+          asyncVersion: 2,
           publication_id: publicationId,
           channels: selected,
           channelEventIds,
@@ -1428,16 +1908,39 @@ async function publishNowHandler(req: Request) {
           mediaWorkspaceId: mediaWorkspaceId || null,
           parentIdempotencyLockId: publishIdempotencyLockId || null,
           parentIdempotencyKey: publishIdempotencyKey || null,
-          createdAt: new Date().toISOString(),
+          preparationMaterializedAt: new Date().toISOString(),
         };
 
         const channelRows = selected.map((channel) => {
           const preflightFailure = preflightFailuresByChannel[channel] || null;
+          const preparationDeferred =
+            deferredPreparationChannels.has(channel);
+          const channelPost = getChannelPost(channel);
+          const channelPreparedVideo =
+            mediaModeByChannel[channel] === "video"
+              ? getPublicationVideoForChannel(channel)
+              : null;
+          const channelDispatchVideo = channelPreparedVideo
+            ? {
+                ...channelPreparedVideo,
+                transformedVariants: channelPreparedVideo.transformedVariant
+                  ? [channelPreparedVideo.transformedVariant]
+                  : [],
+                sourceVideo: null,
+              }
+            : null;
           const channelDispatchRequest = {
-            ...body,
+            workflowTool: body.workflowTool,
+            workflowAction: body.workflowAction,
+            workflowTrackType: body.workflowTrackType,
+            source: body.source,
+            origin: body.origin,
+            automationKey: body.automationKey,
+            inrAgentActionId: body.inrAgentActionId,
             channels: [channel],
-            mediaWorkspaceId: undefined,
-            mediaWorkspaceClientKey: undefined,
+            idea,
+            post: channelPost,
+            postByChannel: { [channel]: channelPost },
             mediaPipelineCutoverV1: false,
             mediaType,
             mediaModeByChannel: {
@@ -1452,7 +1955,7 @@ async function publishNowHandler(req: Request) {
             videoAdaptationModeByChannel: {
               [channel]: videoSettingsByChannel[channel]?.adaptationMode,
             },
-            video: publicationVideo,
+            video: channelDispatchVideo,
             images: [],
             imagesByChannel: {
               [channel]: preparedImagesByChannel[channel] || [],
@@ -1460,6 +1963,12 @@ async function publishNowHandler(req: Request) {
             imageSettingsByChannel: {
               [channel]: imageSettingsByChannel[channel],
             },
+            ...(channel === "tiktok"
+              ? { tiktokPublicationSettings }
+              : {}),
+            ...(channel === "pinterest"
+              ? { pinterestPublicationSettings }
+              : {}),
             skipScheduledDuplicateCheck: true,
             _asyncChannelDispatch: true,
             _asyncPublicationId: publicationId,
@@ -1485,36 +1994,95 @@ async function publishNowHandler(req: Request) {
                   completedAt: new Date().toISOString(),
                   createdAt: new Date().toISOString(),
                 }
+              : preparationDeferred
+                ? {
+                    status: "preparing",
+                    publication_id: publicationId,
+                    parentEventId: publicationId,
+                    channel,
+                    attempt: 0,
+                    preparationPending: true,
+                    createdAt: new Date().toISOString(),
+                  }
               : {
                   status: "queued",
                   publication_id: publicationId,
                   parentEventId: publicationId,
                   channel,
-                  attempt: 0,
+                  attempt: 1,
                   dispatchRequest: channelDispatchRequest,
                   createdAt: new Date().toISOString(),
                 },
           };
         });
 
-        const { error: asyncJobError } = await supabaseAdmin
-          .from("app_events")
-          .insert([
-            {
-              id: publicationId,
-              user_id: userId,
-              module: eventModule,
-              type: BOOSTER_ASYNC_JOB_EVENT_TYPE,
-              payload: parentPayload,
+        const updatedParent = await updateAsyncPublicationJobEvent({
+          userId,
+          publicationId,
+          patch: parentPayload,
+        });
+        if (!updatedParent) throw new Error("async_parent_job_missing");
+        const durableChannelRows = await Promise.all(
+          channelRows.map(async (row) => ({
+            ...row,
+            payload: await materializePreparingAsyncChannelEvent({
+              userId,
+              eventId: row.id,
+              payload: asRecord(row.payload),
+            }),
+          })),
+        );
+        if (deferredPreparationChannels.size > 0) {
+          await updateAsyncPublicationJobEvent({
+            userId,
+            publicationId,
+            patch: {
+              status: "queued",
+              stage: "media_preparation",
+              ...(workspacePreparationState?.pendingMediaIds.length
+                ? {
+                    preparationAttempt:
+                      requestedMediaChannels.length ===
+                      dispatchableSelected.length
+                        ? 0
+                        : 1,
+                  }
+                : {}),
+              lastPreparationError: "workspace_media_processing",
+              lastPreparationDispatchAt: new Date().toISOString(),
             },
-            ...channelRows,
-          ]);
+          });
+          await failAsyncPublicationPreparationLease({
+            lockId: asyncPreparationFailureContext?.preparationLockId || null,
+            publicationId,
+            error: "workspace_media_processing",
+          });
+        } else {
+          await updateAsyncPublicationJobEvent({
+            userId,
+            publicationId,
+            patch: {
+              preparationRequest: null,
+              preparationCompletedAt: new Date().toISOString(),
+            },
+          });
+          await completeAsyncPublicationPreparationLease({
+            lockId: asyncPreparationFailureContext?.preparationLockId || null,
+            publicationId,
+          });
+        }
+        asyncPreparationFailureContext = null;
 
-        if (!asyncJobError) {
-          const queuedChannelRows = channelRows.filter(
+        {
+          const queuedChannelRows = durableChannelRows.filter(
             (row) => asRecord(row.payload).status === "queued",
           );
-          if (!queuedChannelRows.length) {
+          const deferredChannelRows = durableChannelRows.filter(
+            (row) =>
+              asRecord(row.payload).status === "preparing" &&
+              asRecord(row.payload).preparationPending === true,
+          );
+          if (!queuedChannelRows.length && !deferredChannelRows.length) {
             const finalization = await finalizeAsyncPublicationIfReady({
               userId,
               publicationId,
@@ -1570,26 +2138,38 @@ async function publishNowHandler(req: Request) {
           });
 
           const queuedSummaryBase = buildQueuedPublicationSummary(selected);
+          const failedChannels = selected.filter((channel) =>
+            Boolean(preflightFailuresByChannel[channel]),
+          );
           const queuedSummary = {
             ...queuedSummaryBase,
-            failureCount: selected.length - queuedChannelRows.length,
-            pendingCount: queuedChannelRows.length,
+            failureCount: failedChannels.length,
+            pendingCount:
+              queuedChannelRows.length + deferredChannelRows.length,
             entries: queuedSummaryBase.entries.map((entry) => {
               const failure = preflightFailuresByChannel[entry.channel];
-              return failure
-                ? {
-                    ...entry,
-                    ok: false,
-                    status: "failed",
-                    code: String(failure.code || "media_preflight_failed"),
-                    retryable: failure.retryable !== false,
-                    error: String(failure.error || "Échec du préflight média."),
-                  }
-                : entry;
+              if (failure) {
+                return {
+                  ...entry,
+                  ok: false,
+                  status: "failed",
+                  technicalStatus: "failed",
+                  code: String(failure.code || "media_preflight_failed"),
+                  retryable: failure.retryable !== false,
+                  error: String(failure.error || "Échec du préflight média."),
+                };
+              }
+              if (deferredPreparationChannels.has(entry.channel)) {
+                return {
+                  ...entry,
+                  ok: null,
+                  status: "preparing",
+                  technicalStatus: "preparing",
+                };
+              }
+              return entry;
             }),
-            failedChannels: selected.filter(
-              (channel) => Boolean(preflightFailuresByChannel[channel]),
-            ),
+            failedChannels,
           };
           return NextResponse.json(
             {
@@ -1610,7 +2190,9 @@ async function publishNowHandler(req: Request) {
                   preflightFailuresByChannel[channel] || {
                     ok: true,
                     queued: true,
-                    status: "queued",
+                    status: deferredPreparationChannels.has(channel)
+                      ? "preparing"
+                      : "queued",
                   },
                 ]),
               ),
@@ -1622,10 +2204,6 @@ async function publishNowHandler(req: Request) {
           );
         }
 
-        console.error("[booster-async] job creation failed; synchronous fallback", {
-          publicationId,
-          error: asyncJobError.message,
-        });
       }
     }
 
@@ -1636,148 +2214,110 @@ async function publishNowHandler(req: Request) {
         return failure ? [[channel, failure] as const] : [];
       }),
     );
-    let asyncChannelLockId: string | null = null;
-
-    if (internalAsyncDispatch) {
-      const channel = selected[0];
-      const channelExecution = await acquireExecutionIdempotencyLock({
-        supabase: supabaseAdmin,
-        userId,
-        scope: BOOSTER_ASYNC_CHANNEL_SCOPE,
-        idempotencyKey: `${publicationId}:${channel}`,
-        ttlMs: BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS,
-        metadata: {
-          publicationId,
-          channel,
-          channelEventId: asyncChannelEventId,
-          asyncDispatch: true,
-        },
-      });
-
-      if (channelExecution.state === "completed") {
-        await finalizeAsyncPublicationIfReady({ userId, publicationId }).catch(
-          () => undefined,
-        );
-        return NextResponse.json(
-          buildCompletedExecutionResponse(channelExecution.lock),
-        );
-      }
-
-      if (channelExecution.state === "running") {
-        return NextResponse.json(
-          {
-            ...buildRunningExecutionResponse(channelExecution.lock),
-            queued: true,
-            asyncDispatch: true,
-            publication_id: publicationId,
-            channel,
-          },
-          { status: 425, headers: { "Retry-After": "60" } },
-        );
-      }
-
-      asyncChannelLockId = channelExecution.lock?.id || null;
-      asyncFailureContext = {
-        userId,
-        publicationId,
-        channel,
-        channelEventId: asyncChannelEventId,
-        channelLockId: asyncChannelLockId,
-      };
-      const currentChannelEvent = await updateAsyncChannelEvent({
-        userId,
-        eventId: asyncChannelEventId,
-        patch: {
-          status: "processing",
-          startedAt: new Date().toISOString(),
-          channel,
-        },
-      });
-      await updateAsyncChannelEvent({
-        userId,
-        eventId: asyncChannelEventId,
-        patch: {
-          attempt: Math.max(1, Number(asRecord(currentChannelEvent).attempt || 0) + 1),
-        },
-      });
-      await supabaseAdmin
-        .from("publication_deliveries")
-        .update({ status: "processing", error: null })
-        .eq("publication_id", publicationId)
-        .eq("user_id", userId)
-        .eq("channel", channel);
-    }
 
     const [fbRow, gmbRow, igRow, liRow, tiktokRow, youtubeRow, pinterestRow] =
       await Promise.all([
-        getLatestIntegrationRow(
-          userId,
-          "facebook",
-          "facebook",
-          "facebook",
-          "status,resource_id,access_token_enc,expires_at",
-        ),
-        getLatestIntegrationRow(
-          userId,
-          "google",
-          "gmb",
-          "gmb",
-          "status,resource_id,meta,expires_at",
-        ),
-        getLatestIntegrationRow(
-          userId,
-          "instagram",
-          "instagram",
-          "instagram",
-          "status,resource_id,access_token_enc,resource_label,meta,expires_at",
-        ),
-        getLatestIntegrationRow(
-          userId,
-          "linkedin",
-          "linkedin",
-          "linkedin",
-          "status,resource_id,access_token_enc,meta,expires_at",
-        ),
-        getLatestIntegrationRow(
-          userId,
-          "tiktok",
-          "tiktok",
-          "tiktok",
-          "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
-        ),
-        getLatestIntegrationRow(
-          userId,
-          "youtube",
-          "youtube_shorts",
-          "youtube_shorts",
-          "status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
-        ),
-        getLatestIntegrationRow(
-          userId,
-          "pinterest",
-          "pinterest",
-          "pinterest",
-          "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
-        ),
+        selected.some((channel) =>
+          ["facebook", "instagram"].includes(channel),
+        )
+          ? getLatestIntegrationRow(
+              userId,
+              "facebook",
+              "facebook",
+              "facebook",
+              "status,resource_id,access_token_enc,expires_at",
+            )
+          : Promise.resolve(null),
+        selected.includes("gmb")
+          ? getLatestIntegrationRow(
+              userId,
+              "google",
+              "gmb",
+              "gmb",
+              "status,resource_id,meta,expires_at",
+            )
+          : Promise.resolve(null),
+        selected.includes("instagram")
+          ? getLatestIntegrationRow(
+              userId,
+              "instagram",
+              "instagram",
+              "instagram",
+              "status,resource_id,access_token_enc,resource_label,meta,expires_at",
+            )
+          : Promise.resolve(null),
+        selected.includes("linkedin")
+          ? getLatestIntegrationRow(
+              userId,
+              "linkedin",
+              "linkedin",
+              "linkedin",
+              "status,resource_id,access_token_enc,meta,expires_at",
+            )
+          : Promise.resolve(null),
+        selected.includes("tiktok")
+          ? getLatestIntegrationRow(
+              userId,
+              "tiktok",
+              "tiktok",
+              "tiktok",
+              "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
+            )
+          : Promise.resolve(null),
+        selected.includes("youtube_shorts")
+          ? getLatestIntegrationRow(
+              userId,
+              "youtube",
+              "youtube_shorts",
+              "youtube_shorts",
+              "status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
+            )
+          : Promise.resolve(null),
+        selected.includes("pinterest")
+          ? getLatestIntegrationRow(
+              userId,
+              "pinterest",
+              "pinterest",
+              "pinterest",
+              "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
+            )
+          : Promise.resolve(null),
       ]);
 
-    // Internal channel configuration (URLs)
+    // Internal URLs/phone are only needed by website, Meta, Pinterest and GMB.
+    // LinkedIn, TikTok and YouTube workers no longer pay three unrelated reads.
+    const needsInternalPublishingContext = selected.some((channel) =>
+      [
+        "inrcy_site",
+        "site_web",
+        "facebook",
+        "instagram",
+        "pinterest",
+        "gmb",
+      ].includes(channel),
+    );
     const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
-      supabaseAdmin
-        .from("profiles")
-        .select("inrcy_site_ownership,phone")
-        .eq("user_id", userId)
-        .maybeSingle(),
-      supabaseAdmin
-        .from("inrcy_site_configs")
-        .select("site_url")
-        .eq("user_id", userId)
-        .maybeSingle(),
-      supabaseAdmin
-        .from("pro_tools_configs")
-        .select("settings")
-        .eq("user_id", userId)
-        .maybeSingle(),
+      needsInternalPublishingContext
+        ? supabaseAdmin
+            .from("profiles")
+            .select("inrcy_site_ownership,phone")
+            .eq("user_id", userId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      needsInternalPublishingContext
+        ? supabaseAdmin
+            .from("inrcy_site_configs")
+            .select("site_url")
+            .eq("user_id", userId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      needsInternalPublishingContext
+        ? supabaseAdmin
+            .from("pro_tools_configs")
+            .select("settings")
+            .eq("user_id", userId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     const profile = asRecord(profileRes.data);
     const inrcyCfg = asRecord(inrcyCfgRes.data);
@@ -3993,6 +4533,46 @@ async function publishNowHandler(req: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (e: unknown) {
+    if (asyncPreparationFailureContext) {
+      const message = getSimpleFrenchErrorMessage(
+        e,
+        "La préparation des médias n'a pas pu être finalisée.",
+      );
+      await updateAsyncPublicationJobEvent({
+        userId: asyncPreparationFailureContext.userId,
+        publicationId: asyncPreparationFailureContext.publicationId,
+        patch: {
+          status: "queued",
+          stage: "media_preparation",
+          lastPreparationError: message,
+          lastPreparationFailedAt: new Date().toISOString(),
+        },
+      }).catch(() => undefined);
+      await failAsyncPublicationPreparationLease({
+        lockId: asyncPreparationFailureContext.preparationLockId,
+        publicationId: asyncPreparationFailureContext.publicationId,
+        error: message,
+      }).catch(() => undefined);
+      captureApiException(req, e, {
+        area: "booster",
+        operation: "POST /api/booster/publish-now preparation worker",
+        statusCode: 503,
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          done: false,
+          queued: true,
+          asyncDispatch: true,
+          retryable: true,
+          code: "async_preparation_failed",
+          error: message,
+          publication_id: asyncPreparationFailureContext.publicationId,
+        },
+        { status: 503 },
+      );
+    }
+
     if (asyncFailureContext) {
       const message = getSimpleFrenchErrorMessage(
         e,

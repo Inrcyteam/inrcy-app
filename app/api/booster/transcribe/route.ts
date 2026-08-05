@@ -33,6 +33,7 @@ const ALLOWED_AUDIO_PREFIXES = ["audio/"];
 const ALLOWED_VIDEO_MIME_TYPES = new Set<string>(
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
 );
+const FAST_GENERATION_TRANSCRIPTION_BUDGET_MS = 7_000;
 
 function normalizeMime(type: string) {
   return (
@@ -117,7 +118,13 @@ function cleanTranscriptText(value: unknown, maxLength = 1400) {
 
 async function transcribeMedia(
   file: File,
-  options: { source: "audio" | "video"; accountId: string },
+  options: {
+    source: "audio" | "video";
+    accountId: string;
+    timeoutMs?: number;
+    deadlineAt?: number;
+    signal?: AbortSignal;
+  },
 ) {
   let gatewayFile = file;
   let mediaType = normalizeMime(file.type || "") || "audio/webm";
@@ -140,8 +147,10 @@ async function transcribeMedia(
     file: gatewayFile,
     accountId: options.accountId,
     mediaType,
-    retries: 1,
-    timeoutMs: 70_000,
+    retries: options.deadlineAt ? 0 : 1,
+    timeoutMs: options.timeoutMs ?? 70_000,
+    deadlineAt: options.deadlineAt,
+    signal: options.signal,
   });
 
   return cleanTranscriptText(result.text);
@@ -176,6 +185,7 @@ ${fallback}`,
 }
 
 const handler = async (request: Request) => {
+  const routeStartedAt = Date.now();
   let quotaReservation: AiCreditReservation | null = null;
   let temporaryAudioStoragePath: string | null = null;
   try {
@@ -217,6 +227,16 @@ const handler = async (request: Request) => {
     const originEntry = formData?.get("origin") ?? (jsonBody as any)?.origin;
     const audioFromVideo =
       typeof originEntry === "string" && originEntry.trim() === "video";
+    const modeEntry =
+      formData?.get("mode") ??
+      (jsonBody as any)?.mode ??
+      request.headers.get("x-inrcy-transcription-mode");
+    const fastGenerationMode =
+      String(modeEntry || "")
+        .trim()
+        .replace(/_/g, "-") === "generation-fast";
+    const fastGenerationDeadlineAt =
+      routeStartedAt + FAST_GENERATION_TRANSCRIPTION_BUDGET_MS;
     const storagePathEntry = String(
       (jsonBody as any)?.audioStoragePath || "",
     ).trim();
@@ -295,6 +315,10 @@ const handler = async (request: Request) => {
         return videoTranscriptionSkipped("video_unsupported_skipped");
       }
 
+      if (fastGenerationMode) {
+        return videoTranscriptionSkipped("video_container_fast_mode_skipped");
+      }
+
       if (!isAdmin) {
         const quota = await reserveAiCredits({
           supabase,
@@ -312,7 +336,11 @@ const handler = async (request: Request) => {
       // remonter un 502 visible dans la console et de dégrader l'expérience client.
       let transcript = "";
       try {
-        transcript = await transcribeMedia(video, { source: "video", accountId: activeUserId });
+        transcript = await transcribeMedia(video, {
+          source: "video",
+          accountId: activeUserId,
+          signal: request.signal,
+        });
       } catch {
         await rollbackAiCredits(quotaReservation);
         return NextResponse.json({
@@ -416,9 +444,26 @@ const handler = async (request: Request) => {
 
     let transcript = "";
     try {
+      if (
+        fastGenerationMode &&
+        fastGenerationDeadlineAt - Date.now() <= 750
+      ) {
+        await rollbackAiCredits(quotaReservation);
+        return videoTranscriptionSkipped("video_audio_fast_deadline_skipped");
+      }
       transcript = await transcribeMedia(audio, {
         source: "audio",
         accountId: activeUserId,
+        ...(fastGenerationMode
+          ? {
+              timeoutMs: Math.max(
+                1_000,
+                fastGenerationDeadlineAt - Date.now(),
+              ),
+              deadlineAt: fastGenerationDeadlineAt,
+            }
+          : {}),
+        signal: request.signal,
       });
     } catch (error) {
       if (!audioFromVideo) throw error;
@@ -434,6 +479,17 @@ const handler = async (request: Request) => {
       return jsonUserFacingError("Aucun texte n’a été détecté dans le vocal.", {
         status: 422,
         code: "empty_transcript",
+      });
+    }
+
+    if (fastGenerationMode) {
+      await commitAiCredits(quotaReservation);
+      return NextResponse.json({
+        ok: true,
+        text: transcript,
+        raw_text: transcript,
+        source: "video_audio_fast",
+        skipped_cleanup: true,
       });
     }
 

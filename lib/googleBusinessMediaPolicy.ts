@@ -54,6 +54,13 @@ export function getGoogleBusinessVideoPreparationDecision(input: {
   durationSeconds?: unknown;
   width?: unknown;
   height?: unknown;
+  videoCodec?: unknown;
+  audioCodec?: unknown;
+  frameRate?: unknown;
+  fps?: unknown;
+  hasAudio?: unknown;
+  containerFormats?: unknown;
+  pixelFormat?: unknown;
 }): GoogleBusinessVideoPreparationDecision {
   const durationSeconds = knownPositiveNumber(input.durationSeconds);
   if (
@@ -92,6 +99,13 @@ export function getGoogleBusinessVideoPreparationDecision(input: {
       storagePath: input.storagePath,
       sizeBytes,
       maxBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+      videoCodec: input.videoCodec,
+      audioCodec: input.audioCodec,
+      frameRate: input.frameRate ?? input.fps,
+      hasAudio: input.hasAudio,
+      containerFormats: input.containerFormats,
+      pixelFormat: input.pixelFormat,
+      requireCodecProof: true,
     })
   ) {
     return { action: "prepare", reason: "format_requires_normalization" };

@@ -35,7 +35,13 @@ test("V2 step 8 applies one hard deadline across media, primary generation and r
   const media = read("lib/aiMediaUnderstanding.ts");
   const client = read("lib/aiGatewayClient.ts");
   const fetch = read("lib/observability/fetch.ts");
-  assert.match(booster, /operationDeadlineAt = budget\.startedAt \+ budget\.maxDurationMs/);
+  // La deadline de la route inclut le travail préalable. La couche partagée
+  // conserve donc la plus courte entre ce plafond appelant et son propre budget.
+  assert.match(booster, /requestedDeadlineAt = Number\(args\.deadlineAt \|\| 0\)/);
+  assert.match(
+    booster,
+    /operationDeadlineAt = Math\.min\([\s\S]*budget\.startedAt \+ budget\.maxDurationMs,[\s\S]*requestedDeadlineAt/,
+  );
   assert.match(booster, /deadlineAt: operationDeadlineAt/);
   assert.match(media, /deadlineAt: args\.deadlineAt/);
   assert.match(client, /hardDeadlineAt/);

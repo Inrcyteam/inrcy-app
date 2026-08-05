@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import {
-  finalizeAsyncPublicationIfReady,
-  readAsyncPublicationStatus,
-} from "@/lib/boosterAsyncPublication";
+import { readAsyncPublicationStatus } from "@/lib/boosterAsyncPublication";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export const runtime = "nodejs";
@@ -25,11 +22,6 @@ async function handler(
         { status: 400 },
       );
     }
-
-    await finalizeAsyncPublicationIfReady({
-      userId: activeUserId,
-      publicationId,
-    }).catch(() => undefined);
 
     const status = await readAsyncPublicationStatus({
       userId: activeUserId,

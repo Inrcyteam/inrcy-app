@@ -116,11 +116,15 @@ async function tryRecoverExecutionIdempotencyLock(args: {
   const now = new Date();
   const nowIso = now.toISOString();
   const expiresAt = new Date(now.getTime() + args.ttlMs).toISOString();
+  const previousMetadata = asRecord(args.lock.metadata);
   const baseUpdate = {
     status: "running",
     metadata: {
-      ...asRecord(args.lock.metadata),
+      ...previousMetadata,
       ...args.metadata,
+      ...(previousMetadata.publicationId
+        ? { publicationId: previousMetadata.publicationId }
+        : {}),
       recoveredAt: nowIso,
       previousStatus: args.lock.status,
     },
@@ -244,6 +248,36 @@ export async function completeExecutionIdempotencyLock(args: {
     })
     .eq("id", args.lockId);
   if (error) console.warn("[idempotency] lock completion failed", error);
+}
+
+/**
+ * Strict completion for durable commit boundaries. Callers must stop and
+ * retry when this write cannot be verified, otherwise an expired `running`
+ * key could authorize the same external action again.
+ */
+export async function completeExecutionIdempotencyLockOrThrow(args: {
+  supabase: SupabaseLike;
+  lockId?: string | null;
+  result: JsonRecord;
+  metadata?: JsonRecord;
+}) {
+  if (!args.lockId) return;
+  const nowIso = new Date().toISOString();
+  const { data, error } = await args.supabase
+    .from("execution_idempotency_locks")
+    .update({
+      status: "completed",
+      result: asRecord(args.result),
+      metadata: asRecord(args.metadata),
+      completed_at: nowIso,
+      failed_at: null,
+      updated_at: nowIso,
+    })
+    .eq("id", args.lockId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("execution_idempotency_lock_missing");
 }
 
 export async function failExecutionIdempotencyLock(args: {

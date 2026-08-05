@@ -31,9 +31,15 @@ export class BoosterPublishError extends Error {
   }
 }
 
-export const BOOSTER_PUBLISH_RESULT_GRACE_MS = 30_000;
+/**
+ * Fenêtre visible standard. Une fois écoulée, le bilan est rendu avec les
+ * canaux encore en traitement; le job durable continue côté serveur.
+ */
+export const BOOSTER_PUBLISH_RESULT_GRACE_MS = 60_000;
 
 const TRANSIENT_STATUS_CODES = new Set([425, 502, 503, 504]);
+const BOOSTER_PUBLISH_INITIAL_POLL_MS = 1_500;
+const BOOSTER_PUBLISH_MAX_POLL_MS = 8_000;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -90,6 +96,7 @@ async function pollQueuedPublication(
 ) {
   const startedAt = options.nowImpl();
   let consecutiveNetworkErrors = 0;
+  let pollAttempt = 0;
   let latestPayload: JsonRecord = {
     ...initialPayload,
     ok: true,
@@ -101,8 +108,13 @@ async function pollQueuedPublication(
   while (options.nowImpl() - startedAt < options.maxPollingMs) {
     const elapsed = options.nowImpl() - startedAt;
     const remainingMs = Math.max(0, options.maxPollingMs - elapsed);
-    const nextDelayMs = elapsed < 12_000 ? 1_500 : 2_500;
+    const nextDelayMs = Math.min(
+      BOOSTER_PUBLISH_MAX_POLL_MS,
+      BOOSTER_PUBLISH_INITIAL_POLL_MS * 2 ** Math.min(3, pollAttempt),
+    );
+    pollAttempt += 1;
     await options.sleepImpl(Math.min(nextDelayMs, remainingMs));
+    const elapsedAfterSleep = options.nowImpl() - startedAt;
 
     try {
       const response = await options.fetchImpl(
@@ -116,7 +128,7 @@ async function pollQueuedPublication(
         consecutiveNetworkErrors = 0;
         continue;
       }
-      if (response.status === 404 && elapsed < 12_000) continue;
+      if (response.status === 404 && elapsedAfterSleep < 12_000) continue;
       if (response.status >= 500) {
         consecutiveNetworkErrors += 1;
         continue;
@@ -203,9 +215,9 @@ export async function postBoosterPublication(
         return pollQueuedPublication(String(json.publication_id), json, {
           fetchImpl,
           sleepImpl,
-          // La fenêtre de bilan dure 30 secondes au total, accusé initial
-          // compris. Les canaux encore lents sont ensuite libérés vers le
-          // worker durable et restent consultables dans iNr’Send.
+          // La fenêtre de bilan inclut l'accusé initial. Les canaux encore
+          // lents sont ensuite libérés vers le worker durable et restent
+          // consultables dans iNr’Send.
           maxPollingMs: Math.max(
             0,
             resultGraceMs - elapsedBeforePollingMs,

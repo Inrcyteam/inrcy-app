@@ -30,7 +30,7 @@ const transcribeRoute = await readFile(
   "utf8",
 );
 
-test("les captures vidéo restent mises en cache mais ne sont plus préparées à l'insertion", () => {
+test("les captures vidéo restent mises en cache, sont absentes de l'insertion et ne déclenchent aucune mission lourde", () => {
   assert.match(foundations, /type VideoFramesPreparationCache = \{/);
   assert.match(source, /const getOrPrepareVideoFramesForAI = useCallback/);
   assert.match(source, /videoFramesForAiCacheRef\.current = null/);
@@ -39,43 +39,59 @@ test("les captures vidéo restent mises en cache mais ne sont plus préparées �
     source.indexOf("const onVideoChange"),
   );
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
-  assert.match(source, /preparePersistentAiMedia\(\)/);
+  assert.doesNotMatch(source, /preparePersistentAiMedia/);
+  assert.doesNotMatch(source, /preparePersistentPublicationMedia/);
+  assert.match(source, /await waitForPersistentWorkspaceIdle/);
+  assert.match(source, /await verifyPersistentWorkspaceSources/);
 });
 
-test("l'audio local et les captures ne subsistent que dans le fallback de génération", () => {
-  assert.match(source, /const getOrPrepareVideoAudioFileForAI = useCallback/);
+test("la génération rapide utilise les captures locales sans attendre de transcription audio", () => {
   const addVideoBlock = source.slice(
     source.indexOf("const addVideoFile"),
     source.indexOf("const onVideoChange"),
   );
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoAudioFileForAI/);
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
-  assert.match(
-    source,
-    /!mediaPipelineCutoverEnabled[\s\S]*const transcriptionPromise = cachedTranscript[\s\S]*getOrPrepareVideoAudioFileForAI\(videoFile\)[\s\S]*transcribeVideoAudioForAI\(videoFile, preparedAudio\)/,
+  assert.doesNotMatch(source, /getOrPrepareVideoAudioFileForAI/);
+  assert.doesNotMatch(source, /transcribeVideoAudioForAI/);
+
+  const generationBlock = source.slice(
+    source.indexOf("const onGenerate = async"),
+    source.indexOf("const onDuplicateContentToAllChannels"),
   );
+  assert.ok(generationBlock.length > 0);
+  assert.match(generationBlock, /const videoAudioTranscript = ""/);
+  assert.match(generationBlock, /videoAudioTranscriptStatus = "unavailable"/);
   assert.match(
-    source,
-    /Promise\.allSettled\(\[\s*transcriptionPromise,\s*getOrPrepareVideoFramesForAI\(videoFile\),?\s*\]\)/,
+    generationBlock,
+    /Promise\.allSettled\(\[\s*getOrPrepareVideoFramesForAI\(videoFile\),?\s*\]\)/,
   );
 });
 
-test("la transcription vidéo envoie l'audio seul et évite le 413 des grosses vidéos", () => {
+test("le transport de transcription rapide n'envoie jamais le conteneur vidéo complet", () => {
   assert.match(audioClient, /new OfflineAudioContext\(/);
   assert.match(audioClient, /targetSampleRate \|\| DEFAULT_TARGET_SAMPLE_RATE/);
   assert.match(audioClient, /type: "audio\/wav"/);
+  assert.match(
+    videoAiRuntime,
+    /FAST_GENERATION_AUDIO_MAX_BYTES = 3_750_000/,
+  );
+  assert.match(
+    videoAiRuntime,
+    /if \(preparedAudio\.size > FAST_GENERATION_AUDIO_MAX_BYTES\) return null/,
+  );
   assert.match(videoAiRuntime, /prepareVideoAudioTransport\(preparedAudio\)/);
   assert.match(videoAiRuntime, /formData\.append\("audio", transport\.file, transport\.file\.name\)/);
   assert.match(videoAiRuntime, /audioStoragePath: transport\.storagePath/);
   assert.match(videoAiRuntime, /formData\.append\("origin", "video"\)/);
-  assert.match(
-    foundations,
-    /const MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES = 4 \* 1024 \* 1024;/,
-  );
+  assert.match(videoAiRuntime, /"x-inrcy-transcription-mode": "generation-fast"/);
+  assert.doesNotMatch(videoAiRuntime, /formData\.append\("video"/);
   assert.match(
     videoAiRuntime,
-    /else if \(file\.size <= MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES\)[\s\S]*formData\.append\("video", file/,
+    /else \{\s*\/\/ Ne jamais envoyer le conteneur vidéo complet[\s\S]*return null;/,
   );
-  assert.match(transcribeRoute, /const audioFromVideo =/);
-  assert.match(transcribeRoute, /source: audioFromVideo \? "video_audio_client" : "audio"/);
+  assert.match(
+    transcribeRoute,
+    /if \(fastGenerationMode\) \{[\s\S]*video_container_fast_mode_skipped/,
+  );
 });

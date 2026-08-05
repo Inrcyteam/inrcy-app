@@ -21,6 +21,12 @@ test("MP4 et M4V utilisent directement la source stockée", () => {
     canPublishVideoSourceDirectly({
       name: "publication.MP4",
       mimeType: "video/mp4",
+      videoCodec: "h264",
+      audioCodec: "aac",
+      frameRate: 30,
+      hasAudio: true,
+      containerFormats: ["mov", "mp4"],
+      pixelFormat: "yuv420p",
     }),
     true,
   );
@@ -28,6 +34,12 @@ test("MP4 et M4V utilisent directement la source stockée", () => {
     canPublishVideoSourceDirectly({
       storagePath: "users/u/source/video.m4v",
       mimeType: "application/octet-stream",
+      videoCodec: "h264",
+      audioCodec: "none",
+      frameRate: 25,
+      hasAudio: false,
+      containerFormats: ["mov", "mp4"],
+      pixelFormat: "yuv420p",
     }),
     true,
   );
@@ -35,6 +47,12 @@ test("MP4 et M4V utilisent directement la source stockée", () => {
     canPublishVideoSourceDirectly({
       name: "camera.mov",
       mimeType: "video/quicktime",
+      videoCodec: "h264",
+      audioCodec: "aac",
+      frameRate: 30,
+      hasAudio: true,
+      containerFormats: ["mov"],
+      pixelFormat: "yuv420p",
     }),
     false,
   );
@@ -65,7 +83,7 @@ test("TikTok garde un dernier morceau conforme pour une source de 300 Mo", () =>
   assert.ok(lastChunkSize <= 64 * MB);
 });
 
-test("publier et programmer contrôlent le workspace au clic et gardent une seule récupération", async () => {
+test("publier finalise après le clic tandis que la programmation garde sa récupération", async () => {
   const modal = await readSource(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
@@ -81,12 +99,18 @@ test("publier et programmer contrôlent le workspace au clic et gardent une seul
 
   assert.match(modal, /waitForPersistentWorkspaceReadiness\("publish"/);
   assert.match(modal, /waitForPersistentWorkspaceReadiness\("schedule"/);
-  assert.match(modal, /async function prepareCutoverVideoVariants/);
+  assert.match(modal, /async function ensureCutoverVideoVariantsReady/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
-  assert.equal(
-    (modal.match(/prewarmPersistentMediaWorkspace\(/g) || []).length,
-    2,
+  assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);
+  const immediatePublish = modal.slice(
+    modal.indexOf("const runPublish = async"),
+    modal.indexOf("const onSavePublicationDraft = async"),
   );
+  assert.doesNotMatch(
+    immediatePublish,
+    /ensureCutoverVideoVariantsReady|prewarmPersistentMediaWorkspace/,
+  );
+  assert.match(modal, /deferTechnicalPreparationUntilPublish=/);
   assert.match(modal, /generateMissingVideoVariants:\s*false/);
   assert.match(
     modal,

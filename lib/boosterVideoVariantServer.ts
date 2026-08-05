@@ -19,11 +19,18 @@ import {
   INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "@/lib/mediaRules";
-import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import {
+  canPublishVideoSourceDirectly,
+  normalizeVideoFrameRate,
+} from "@/lib/mediaVideoSourceCompatibility";
 import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
 import {
   getVideoTargetBitrateKbps,
 } from "@/lib/mediaVideoNormalizationPolicy";
+import {
+  probeVideoSource,
+  resolveVideoNormalizationFfmpegPath,
+} from "@/lib/mediaVideoNormalizer";
 import {
   GOOGLE_BUSINESS_VIDEO_PROFILE,
   GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
@@ -32,7 +39,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const BOOSTER_BUCKET = "booster";
-const MAX_VARIANTS_PER_REQUEST = 8;
+const MAX_VARIANTS_PER_REQUEST = 10;
 const OUTPUT_CONTENT_TYPE = "video/mp4";
 const FFMPEG_TRANSFORM_TIMEOUT_MS = 150000;
 const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7;
@@ -62,6 +69,12 @@ export type BoosterVideoVariantServerResult = {
     duration: number | null;
     width: number | null;
     height: number | null;
+    videoCodec?: string | null;
+    audioCodec?: string | null;
+    frameRate?: number | null;
+    hasAudio?: boolean | null;
+    containerFormats?: string[] | null;
+    pixelFormat?: string | null;
   };
   variants: BoosterVideoTransformedVariant[];
   errors: Array<{
@@ -211,6 +224,12 @@ type ProbedVideoMetadata = {
   duration: number | null;
   width: number | null;
   height: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  frameRate: number | null;
+  hasAudio: boolean;
+  containerFormats: string[];
+  pixelFormat: string | null;
 };
 
 async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata> {
@@ -224,10 +243,8 @@ async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata
         [
           "-v",
           "error",
-          "-select_streams",
-          "v:0",
           "-show_entries",
-          "stream=width,height:format=duration",
+          "stream=codec_type,codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate:format=duration,format_name",
           "-of",
           "json",
           filePath,
@@ -235,23 +252,79 @@ async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata
         { timeout: 12000, maxBuffer: 1024 * 1024 },
       );
       const parsed = JSON.parse(String(stdout || "{}")) as {
-        streams?: Array<{ width?: number; height?: number }>;
-        format?: { duration?: string | number };
+        streams?: Array<{
+          codec_type?: string;
+          codec_name?: string;
+          width?: number;
+          height?: number;
+          avg_frame_rate?: string;
+          r_frame_rate?: string;
+          pix_fmt?: string;
+        }>;
+        format?: { duration?: string | number; format_name?: string };
       };
-      const stream = parsed.streams?.[0] || {};
+      const videoStream =
+        parsed.streams?.find((stream) => stream.codec_type === "video") || {};
+      const audioStream = parsed.streams?.find(
+        (stream) => stream.codec_type === "audio",
+      );
       const duration = Number(parsed.format?.duration || 0);
-      const width = Number(stream.width || 0);
-      const height = Number(stream.height || 0);
+      const width = Number(videoStream.width || 0);
+      const height = Number(videoStream.height || 0);
       return {
         duration: Number.isFinite(duration) && duration > 0 ? duration : null,
         width: Number.isFinite(width) && width > 0 ? width : null,
         height: Number.isFinite(height) && height > 0 ? height : null,
+        videoCodec: String(videoStream.codec_name || "").trim().toLowerCase() || null,
+        audioCodec: audioStream
+          ? String(audioStream.codec_name || "").trim().toLowerCase() || null
+          : "none",
+        frameRate:
+          normalizeVideoFrameRate(videoStream.avg_frame_rate) ||
+          normalizeVideoFrameRate(videoStream.r_frame_rate),
+        hasAudio: Boolean(audioStream),
+        containerFormats: String(parsed.format?.format_name || "")
+          .split(",")
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean),
+        pixelFormat:
+          String(videoStream.pix_fmt || "").trim().toLowerCase() || null,
       };
     } catch {
       // On essaie le candidat suivant.
     }
   }
-  return { duration: null, width: null, height: null };
+  // Les runtimes Vercel embarquent notre FFmpeg statique mais pas toujours un
+  // binaire ffprobe sÃ©parÃ©. Le mÃªme probe que le normaliseur garantit alors les
+  // mÃ©tadonnÃ©es codec/FPS au lieu de transformer un succÃ¨s en "unknown".
+  try {
+    const ffmpegPath = await resolveVideoNormalizationFfmpegPath();
+    const probed = await probeVideoSource({ ffmpegPath, inputPath: filePath });
+    return {
+      duration: probed.durationSeconds,
+      width: probed.orientedWidth,
+      height: probed.orientedHeight,
+      videoCodec: probed.videoCodec,
+      audioCodec: probed.audioCodec,
+      frameRate: probed.frameRate,
+      hasAudio: probed.hasAudio,
+      containerFormats: probed.containerFormats,
+      pixelFormat: probed.pixelFormat,
+    };
+  } catch {
+    // L'appelant conserve une erreur de prÃ©paration isolÃ©e au canal.
+  }
+  return {
+    duration: null,
+    width: null,
+    height: null,
+    videoCodec: null,
+    audioCodec: null,
+    frameRate: null,
+    hasAudio: false,
+    containerFormats: [],
+    pixelFormat: null,
+  };
 }
 
 function getVideoSafetyBackgroundColor(
@@ -507,6 +580,9 @@ async function persistVideoVariant(params: {
       generatedAt: params.generatedAt,
       quality,
       plan: params.plan,
+      output_video_codec: "h264",
+      output_audio_codec: "aac",
+      output_frame_rate: 30,
     },
     error_code: null,
     error_message: null,
@@ -562,12 +638,17 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
   workspaceId?: string;
   mediaId?: string;
   generateMissing?: boolean;
+  /** Source issue du resolver workspace serveur, jamais du JSON client brut. */
+  trustedSourceCompatibilityProof?: boolean;
   source: BoosterVideoTransformSource;
   variants: readonly BoosterVideoTransformRequestVariant[];
 }): Promise<BoosterVideoVariantServerResult> {
   let tempDir = "";
-  const plan = buildVideoTransformPlan(
-    params.variants.slice(0, MAX_VARIANTS_PER_REQUEST),
+  // Deduplicate shared channel signatures before applying the safety cap. A
+  // pre-dedupe slice could drop a unique adaptation requested by channel 9/10.
+  const plan = buildVideoTransformPlan(params.variants).slice(
+    0,
+    MAX_VARIANTS_PER_REQUEST,
   );
   const sourceBucket = sanitizeBucketName(params.source.bucket);
   const sourcePath = sanitizeStoragePath(params.source.storagePath);
@@ -583,8 +664,20 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         : (params.source.sourceMetadata?.duration ?? null),
     width: Number(params.source.sourceMetadata?.width || 0) || null,
     height: Number(params.source.sourceMetadata?.height || 0) || null,
+    videoCodec: params.source.sourceMetadata?.videoCodec || null,
+    audioCodec: params.source.sourceMetadata?.audioCodec || null,
+    frameRate:
+      normalizeVideoFrameRate(params.source.sourceMetadata?.frameRate) ||
+      normalizeVideoFrameRate(params.source.sourceMetadata?.fps),
+    hasAudio:
+      typeof params.source.sourceMetadata?.hasAudio === "boolean"
+        ? params.source.sourceMetadata.hasAudio
+        : null,
+    containerFormats: params.source.sourceMetadata?.containerFormats || null,
+    pixelFormat: params.source.sourceMetadata?.pixelFormat || null,
   };
   const sourceCanPublishDirectly =
+    params.trustedSourceCompatibilityProof === true &&
     Boolean(sourcePath && sourceUrl) &&
     canPublishVideoSourceDirectly({
       name: params.source.name,
@@ -592,6 +685,15 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       storagePath: sourcePath,
       sizeBytes: params.source.size,
       maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+      videoCodec: params.source.sourceMetadata?.videoCodec,
+      audioCodec: params.source.sourceMetadata?.audioCodec,
+      frameRate:
+        params.source.sourceMetadata?.frameRate ??
+        params.source.sourceMetadata?.fps,
+      hasAudio: params.source.sourceMetadata?.hasAudio,
+      containerFormats: params.source.sourceMetadata?.containerFormats,
+      pixelFormat: params.source.sourceMetadata?.pixelFormat,
+      requireCodecProof: true,
     });
   const fallbackToOriginalAllowed =
     sourceCanPublishDirectly &&
@@ -632,14 +734,10 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
           height: emptySource.height,
         })
       : null;
-    const requiresSocialOptimization =
-      variant.publicationProfile === "default" &&
-      variant.format === "original";
     if (
       variant.format === "original" &&
       Number(params.source.size || 0) > 0 &&
       sourceCanPublishDirectly &&
-      !requiresSocialOptimization &&
       (!directValidation || directValidation.ok)
     ) {
       readyVariants.push({
@@ -743,6 +841,20 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       Number(params.source.sourceMetadata?.width || 0) || probedSource.width;
     const sourceHeight =
       Number(params.source.sourceMetadata?.height || 0) || probedSource.height;
+    const probedSourceCanPublishDirectly = canPublishVideoSourceDirectly({
+      name: params.source.name,
+      type: params.source.type,
+      storagePath: downloaded.storagePath,
+      sizeBytes: downloaded.buffer.length,
+      maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+      videoCodec: probedSource.videoCodec,
+      audioCodec: probedSource.audioCodec,
+      frameRate: probedSource.frameRate,
+      hasAudio: probedSource.hasAudio,
+      containerFormats: probedSource.containerFormats,
+      pixelFormat: probedSource.pixelFormat,
+      requireCodecProof: true,
+    });
     const generated: BoosterVideoTransformedVariant[] = [];
     const errors: BoosterVideoVariantServerResult["errors"] = [];
     const generatedAt = new Date().toISOString();
@@ -760,6 +872,38 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
           throw new Error(
             "Google Business refuse les vidéos de plus de 30 secondes. La vidéo n’a pas été coupée automatiquement.",
           );
+        }
+        if (variant.format === "original" && probedSourceCanPublishDirectly) {
+          const originalValidation = variant.channel
+            ? validateVideoPublicationForChannel({
+                channel: variant.channel,
+                name: params.source.name,
+                type: params.source.type,
+                storagePath: downloaded.storagePath,
+                sizeBytes: downloaded.buffer.length,
+                durationSeconds: duration,
+                width: sourceWidth,
+                height: sourceHeight,
+              })
+            : ({ ok: true } as const);
+          if (originalValidation.ok) {
+            generated.push({
+              ...variant,
+              storagePath: downloaded.storagePath || "",
+              publicUrl: downloaded.publicUrl || "",
+              contentType: OUTPUT_CONTENT_TYPE,
+              size: downloaded.buffer.length,
+              duration,
+              width: sourceWidth,
+              height: sourceHeight,
+              generatedAt,
+              quality: getVideoTransformQualityProfile(
+                "original",
+                variant.publicationProfile,
+              ),
+            });
+            return;
+          }
         }
         await runFfmpegVariant(
           ffmpegPath,
@@ -866,6 +1010,12 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         duration,
         width: sourceWidth,
         height: sourceHeight,
+        videoCodec: probedSource.videoCodec,
+        audioCodec: probedSource.audioCodec,
+        frameRate: probedSource.frameRate,
+        hasAudio: probedSource.hasAudio,
+        containerFormats: probedSource.containerFormats,
+        pixelFormat: probedSource.pixelFormat,
       },
       variants: [...readyVariants, ...generated],
       errors,

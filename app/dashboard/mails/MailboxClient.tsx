@@ -262,7 +262,6 @@ export default function MailboxClient() {
   );
   const historyPreloadGenerationRef = useRef(0);
   const historyPreloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialHistoryRefreshDoneRef = useRef(false);
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1183,14 +1182,13 @@ export default function MailboxClient() {
   const fetchHistoryPage = useCallback(async (options: {
     context: MailboxHistoryContext;
     page: number;
-    includeCounts: boolean;
     totalHint?: number | null;
     folderCountsHint?: FolderCounts;
     draftFolderCountsHint?: FolderCounts;
   }): Promise<MailboxHistorySnapshot<OutboxItem> | null> => {
     const targetPage = Math.max(1, Math.floor(options.page || 1));
     const pageKey = mailboxHistoryPageKey(options.context, targetPage);
-    const requestKey = `${pageKey}|counts=${options.includeCounts ? "1" : "0"}`;
+    const requestKey = pageKey;
     const existingRequest = historyInFlightRef.current.get(requestKey);
     if (existingRequest) return existingRequest;
 
@@ -1205,7 +1203,7 @@ export default function MailboxClient() {
           params.set("filterAccountId", options.context.filterAccountId);
         }
         if (options.context.query) params.set("q", options.context.query);
-        if (!options.includeCounts) params.set("includeCounts", "0");
+        params.set("includeCounts", "0");
 
         const response = await fetch(`/api/inrsend/history?${params.toString()}`, {
           method: "GET",
@@ -1268,7 +1266,6 @@ export default function MailboxClient() {
   ) => {
     const availableFolderCounts = snapshot.folderCounts;
     const availableDraftFolderCounts = snapshot.draftFolderCounts;
-    if (!availableFolderCounts || !availableDraftFolderCounts) return;
 
     historyPreloadGenerationRef.current += 1;
     const generation = historyPreloadGenerationRef.current;
@@ -1277,37 +1274,12 @@ export default function MailboxClient() {
       historyPreloadTimerRef.current = null;
     }
 
-    const activeCounts = context.boxView === "drafts"
-      ? availableDraftFolderCounts
-      : availableFolderCounts;
-
-    // Empty tabs are cached too, so opening them is instant and does not flash.
-    for (const targetFolder of ALL_FOLDERS) {
-      const total = Math.max(0, Number(activeCounts[targetFolder] || 0));
-      if (total !== 0) continue;
-      const emptyContext = { ...context, folder: targetFolder };
-      const emptyPageKey = mailboxHistoryPageKey(emptyContext, 1);
-      historyCacheRef.current.set(emptyPageKey, {
-        items: [],
-        page: 1,
-        total: 0,
-        hasMore: false,
-        folderCounts: availableFolderCounts,
-        draftFolderCounts: availableDraftFolderCounts,
-        fetchedAt: Date.now(),
-      });
-    }
-
     const plan = buildMailboxHistoryPreloadPlan({
-      folders: ALL_FOLDERS,
       currentContext: context,
       currentPage: snapshot.page,
       pageSize: MAILBOX_PAGE_SIZE,
-      folderCounts: availableFolderCounts,
-      draftFolderCounts: availableDraftFolderCounts,
-      // Search typing can create many short-lived contexts. The active result
-      // is still fully prefetched, but sibling tabs are warmed only without a query.
-      includeSiblingFolders: !context.query,
+      currentTotal: snapshot.total,
+      currentHasMore: snapshot.hasMore,
     }).filter((job) => {
       const cached = historyCacheRef.current.get(
         mailboxHistoryPageKey(job.context, job.page),
@@ -1331,7 +1303,6 @@ export default function MailboxClient() {
           await fetchHistoryPage({
             context: job.context,
             page: job.page,
-            includeCounts: false,
             totalHint: job.total,
             folderCountsHint: availableFolderCounts,
             draftFolderCountsHint: availableDraftFolderCounts,
@@ -1345,7 +1316,7 @@ export default function MailboxClient() {
           () => worker(),
         ),
       );
-    }, 120);
+    }, 600);
   }, [fetchHistoryPage]);
 
   const loadHistory = useCallback(
@@ -1390,7 +1361,6 @@ export default function MailboxClient() {
       const snapshot = await fetchHistoryPage({
         context,
         page: targetPage,
-        includeCounts: true,
       });
 
       if (snapshot) {
@@ -2120,13 +2090,12 @@ export default function MailboxClient() {
 
   // refresh des changements de filtres / recherche
   useEffect(() => {
-    const shouldRefreshInitialSnapshot =
-      Boolean(initialHistorySnapshot) && !initialHistoryRefreshDoneRef.current;
-    initialHistoryRefreshDoneRef.current = true;
     void loadHistory({
       page: 1,
       silent: Boolean(initialHistorySnapshot),
-      force: shouldRefreshInitialSnapshot,
+      // A fresh dashboard snapshot is already in the local history cache.
+      // Reusing it avoids issuing the same expensive request again on mount.
+      force: false,
     });
   }, [initialHistorySnapshot, loadHistory]);
 

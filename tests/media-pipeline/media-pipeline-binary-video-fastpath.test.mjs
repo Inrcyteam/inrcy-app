@@ -22,15 +22,16 @@ test("les images historiques illisibles sont réparées depuis leur source", () 
   assert.match(consumption, /toExactStorageArrayBuffer\(output\.buffer\)/);
 });
 
-test("la génération vidéo déclenche sa mission IA tandis que publier garde le fast path source", () => {
+test("la génération vidéo utilise les captures locales tandis que publier garde le fast path source", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
   const generate = read("app/api/booster/generate/route.ts");
   assert.match(
     modal,
-    /purpose === "generate"[\s\S]*preparePersistentAiMedia\(\)[\s\S]*preparePersistentPublicationMedia\(\)/,
+    /shouldPrepareMediaForAi[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"generate"/,
   );
-  assert.match(modal, /allUploaded && directVideoSource && purpose !== "generate"/);
-  assert.match(modal, /Vidéo sécurisée · prête à être utilisée/);
+  assert.match(modal, /getOrPrepareVideoFramesForAI\(videoFile\)/);
+  assert.doesNotMatch(modal, /transcribeVideoAudioForAI\(/);
+  assert.match(modal, /directOriginalAvailable[\s\S]*canPublishVideoSourceDirectly/);
   assert.match(generate, /workspace_verified_client_ai_preview/);
   assert.match(generate, /existingVideoFrames\.length/);
 });

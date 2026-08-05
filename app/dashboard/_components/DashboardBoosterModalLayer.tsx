@@ -32,6 +32,8 @@ type PublishDraftHeaderState = {
   draftMessage: string;
 };
 
+const BOOSTER_METRICS_REFRESH_DEBOUNCE_MS = 1_000;
+
 export default function DashboardBoosterModalLayer({
   mode,
   onClose,
@@ -58,24 +60,70 @@ export default function DashboardBoosterModalLayer({
   const [publishDraftMobileToast, setPublishDraftMobileToast] = useState("");
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
+  const metricsRefreshPromiseRef = useRef<Promise<void> | null>(null);
+  const metricsRefreshQueuedRef = useRef(false);
+  const metricsRefreshTimerRef = useRef<number | null>(null);
 
   const refreshMetrics = useCallback(async () => {
-    try {
-      const [metricsRes, summaryRes] = await Promise.all([
-        fetch("/api/booster/metrics?days=30", { cache: "no-store" as any }),
-        fetch("/api/loyalty/weekly-summary", { cache: "no-store" as any }),
-      ]);
-      if (metricsRes.ok) setMetrics(await metricsRes.json());
-      if (summaryRes.ok) setWeeklySummary(await summaryRes.json());
-    } catch {
-      // Silencieux : la modale doit rester utilisable même si une stat échoue.
+    if (metricsRefreshPromiseRef.current) {
+      metricsRefreshQueuedRef.current = true;
+      await metricsRefreshPromiseRef.current;
+      return;
     }
+
+    do {
+      metricsRefreshQueuedRef.current = false;
+      const job = (async () => {
+        try {
+          const [metricsRes, summaryRes] = await Promise.all([
+            fetch("/api/booster/metrics?days=30", { cache: "no-store" as any }),
+            fetch("/api/loyalty/weekly-summary", { cache: "no-store" as any }),
+          ]);
+          if (metricsRes.ok) setMetrics(await metricsRes.json());
+          if (summaryRes.ok) setWeeklySummary(await summaryRes.json());
+        } catch {
+          // Silencieux : la modale doit rester utilisable même si une stat échoue.
+        }
+      })();
+
+      metricsRefreshPromiseRef.current = job;
+      try {
+        await job;
+      } finally {
+        if (metricsRefreshPromiseRef.current === job) {
+          metricsRefreshPromiseRef.current = null;
+        }
+      }
+    } while (metricsRefreshQueuedRef.current);
   }, []);
 
+  const scheduleMetricsRefresh = useCallback(() => {
+    if (metricsRefreshTimerRef.current != null) {
+      window.clearTimeout(metricsRefreshTimerRef.current);
+    }
+    metricsRefreshTimerRef.current = window.setTimeout(() => {
+      metricsRefreshTimerRef.current = null;
+      void refreshMetrics();
+    }, BOOSTER_METRICS_REFRESH_DEBOUNCE_MS);
+  }, [refreshMetrics]);
+
   useEffect(() => {
-    if (!mode) return;
+    if (!mode) {
+      if (metricsRefreshTimerRef.current != null) {
+        window.clearTimeout(metricsRefreshTimerRef.current);
+        metricsRefreshTimerRef.current = null;
+      }
+      return;
+    }
     void refreshMetrics();
   }, [mode, refreshMetrics]);
+
+  useEffect(() => () => {
+    if (metricsRefreshTimerRef.current != null) {
+      window.clearTimeout(metricsRefreshTimerRef.current);
+      metricsRefreshTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const open = mode === "publish";
@@ -101,12 +149,13 @@ export default function DashboardBoosterModalLayer({
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (!(detail?.field === "publications_version" || detail?.field === "loyalty_version")) return;
-      void refreshMetrics();
+      if (!mode) return;
+      scheduleMetricsRefresh();
     };
 
     window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     return () => window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
-  }, [refreshMetrics]);
+  }, [mode, scheduleMetricsRefresh]);
 
   const closePublishModal = useCallback(() => {
     setPublishEditorOverlayOpen(false);
@@ -206,8 +255,15 @@ export default function DashboardBoosterModalLayer({
       };
 
       try {
-        const json = await postBoosterPublication({
-          ...payload,
+        const requestedVisibleWaitMs = Number(payload._clientVisibleWaitMs);
+        const maxPollingMs = Number.isFinite(requestedVisibleWaitMs)
+          ? Math.max(0, Math.min(90_000, requestedVisibleWaitMs))
+          : undefined;
+        const publishPayload = { ...payload };
+        delete publishPayload._clientVisibleWaitMs;
+        const json = await postBoosterPublication(
+          {
+          ...publishPayload,
           source: payload.source || "booster_manual",
           origin: {
             ...(payload.origin || {}),
@@ -216,7 +272,9 @@ export default function DashboardBoosterModalLayer({
             workflowTool: payload.origin?.workflowTool || "booster",
             workflowAction: payload.origin?.workflowAction || "publier",
           },
-        });
+          },
+          { maxPollingMs },
+        );
 
         const summary = (json?.summary || null) as Record<string, any> | null;
         const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);

@@ -148,10 +148,10 @@ test("queued publication returns immediately when every channel finishes before 
   assert.equal((result.summary as Record<string, unknown>)?.successCount, 2);
   assert.equal(result.done, true);
   assert.equal(result.releasedToBackground, undefined);
-  assert.equal(now, 3_000);
+  assert.equal(now, 4_500);
 });
 
-test("queued publication waits 30 seconds and preserves the acquired 8 success / 2 pending balance", async () => {
+test("queued publication caps the normal visible wait at 60 seconds and preserves the partial balance", async () => {
   let now = 0;
   let statusCalls = 0;
   const result = await postBoosterPublication(
@@ -193,16 +193,16 @@ test("queued publication waits 30 seconds and preserves the acquired 8 success /
     },
   );
 
-  assert.equal(BOOSTER_PUBLISH_RESULT_GRACE_MS, 30_000);
+  assert.equal(BOOSTER_PUBLISH_RESULT_GRACE_MS, 60_000);
   assert.equal(now, BOOSTER_PUBLISH_RESULT_GRACE_MS);
-  assert.ok(statusCalls >= 10);
+  assert.equal(statusCalls, 10);
   assert.equal(result.done, false);
   assert.equal(result.releasedToBackground, true);
   assert.equal((result.summary as Record<string, unknown>)?.successCount, 8);
   assert.equal((result.summary as Record<string, unknown>)?.pendingCount, 2);
 });
 
-test("the initial queued acknowledgement is included in the 30-second balance window", async () => {
+test("the initial queued acknowledgement is included in the visible balance window", async () => {
   let now = 0;
   const result = await postBoosterPublication(
     { channels: ["instagram", "tiktok"] },

@@ -99,6 +99,7 @@ type PublishImagesPanelProps = {
   videoVariantPreparationByChannel?: Partial<Record<ChannelKey, PublishVideoVariantPreparationState>>;
   videoTransformedVariants?: BoosterVideoTransformedVariant[];
   videoPreviewVariantsPreparing?: boolean;
+  deferTechnicalPreparationUntilPublish?: boolean;
   onApplyVideoFormatForChannel?: (channel: ChannelKey) => void;
   onApplyVideoFormatToAllChannels?: (channel: ChannelKey) => void;
   removeVideo: () => void;
@@ -146,6 +147,7 @@ export default function PublishImagesPanel({
   videoVariantPreparationByChannel = {},
   videoTransformedVariants = [],
   videoPreviewVariantsPreparing = false,
+  deferTechnicalPreparationUntilPublish = false,
   onApplyVideoFormatForChannel,
   onApplyVideoFormatToAllChannels,
   removeVideo,
@@ -640,6 +642,9 @@ export default function PublishImagesPanel({
               videoVariantPreparationByChannel={videoVariantPreparationByChannel}
               videoTransformedVariants={videoTransformedVariants}
               videoPreviewVariantsPreparing={videoPreviewVariantsPreparing}
+              deferTechnicalPreparationUntilPublish={
+                deferTechnicalPreparationUntilPublish
+              }
               onApplyVideoFormatForChannel={onApplyVideoFormatForChannel}
               onApplyVideoFormatToAllChannels={onApplyVideoFormatToAllChannels}
               onRemoveMediaFromChannel={onRemoveMediaFromChannel}

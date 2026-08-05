@@ -55,11 +55,12 @@ test("le detail navigue entre les lignes sans revenir au tableau", () => {
 });
 
 
-test("le compteur de navigation utilise le total exact de la rubrique", () => {
-  assert.match(historyRoute, /const activeCounts = boxView === "drafts" \? draftFolderCounts : folderCounts/);
-  assert.match(historyRoute, /const exactTotal = Math\.max\(0, Number\(activeCounts\[folder\] \|\| 0\)\)/);
-  assert.match(historyRoute, /total:\s*exactTotal/);
-  assert.match(historyRoute, /totalKnown:\s*true/);
+test("la navigation utilise une ligne de lookahead et ne scanne jamais sans borne", () => {
+  assert.match(historyRoute, /const targetVisibleCount = end \+ 1/);
+  assert.match(historyRoute, /MAX_SOURCE_BATCHES_PER_REQUEST = 40/);
+  assert.match(historyRoute, /hasMoreFromPage/);
+  assert.match(historyRoute, /totalKnown:\s*false/);
+  assert.doesNotMatch(historyRoute, /MAX_ITERATIONS = 5000|fetchAllRows/);
 });
 
 
@@ -70,7 +71,7 @@ test("une publication iNrAgent sans app_event est reconciliee sans doublon", () 
   assert.match(historyRoute, /publicationHistoryIdentity/);
   assert.match(historyRoute, /dedupeHistoryItems/);
   assert.match(historyRoute, /reconciledFromAgentAction:\s*true/);
-  assert.match(historyRoute, /finalizeAsyncPublicationIfReady/);
+  assert.doesNotMatch(historyRoute, /finalizeAsyncPublicationIfReady/);
 });
 
 

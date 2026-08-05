@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -7,27 +7,27 @@ import {
   enqueueImageNormalization,
   type ImageNormalizationEnqueueResult,
 } from "@/lib/mediaImageNormalizationQueue";
+import { processImageNormalizationJobsForMedia } from "@/lib/mediaImageNormalizationWorker";
 import {
   enqueueVideoNormalization,
   type VideoNormalizationEnqueueResult,
 } from "@/lib/mediaVideoNormalizationQueue";
+import { processVideoNormalizationJobsForMedia } from "@/lib/mediaVideoNormalizationWorker";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
-import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import {
+  canPublishVideoSourceDirectly,
+  hasServerVideoProbeProvenance,
+} from "@/lib/mediaVideoSourceCompatibility";
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
+import { sanitizeClientMediaMetadata } from "@/lib/mediaClientMetadata";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type UploadEvent = "uploading" | "uploaded" | "failed" | "removed";
 
 function cleanText(value: unknown, fallback = "", max = 2_000) {
   return String(value ?? fallback).trim().slice(0, max);
-}
-
-function cleanMetadata(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).slice(0, 80),
-  );
 }
 
 function isUploadEvent(value: unknown): value is UploadEvent {
@@ -130,19 +130,58 @@ export async function POST(request: Request) {
 
     const progress = clampUniversalUploadProgress(Number(body?.progress || 0));
     const now = new Date().toISOString();
+    const persistedMetadata = current.data.media_metadata || {};
     const metadata = {
-      ...(current.data.media_metadata || {}),
-      ...cleanMetadata(body?.metadata),
+      ...persistedMetadata,
+      ...sanitizeClientMediaMetadata(body?.metadata),
     };
     const patch: Record<string, unknown> = { media_metadata: metadata };
+    const normalization =
+      persistedMetadata.video_normalization &&
+      typeof persistedMetadata.video_normalization === "object"
+        ? (persistedMetadata.video_normalization as Record<string, unknown>)
+        : {};
+    const probedSource =
+      normalization.source && typeof normalization.source === "object"
+        ? (normalization.source as Record<string, unknown>)
+        : {};
+    // Les codecs/FPS envoyÃ©s par le navigateur ne sont jamais une preuve.
+    const directProof = probedSource;
     const directVideoSource =
       current.data.media_type === "video" &&
+      hasServerVideoProbeProvenance(directProof) &&
       canPublishVideoSourceDirectly({
         name: current.data.original_file_name,
         mimeType: current.data.mime_type,
         storagePath: current.data.storage_path,
         sizeBytes: current.data.size_bytes,
         maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+        videoCodec:
+          directProof.videoCodec ||
+          directProof.video_codec ||
+          directProof.source_video_codec,
+        audioCodec:
+          directProof.audioCodec ||
+          directProof.audio_codec ||
+          directProof.source_audio_codec,
+        frameRate:
+          directProof.frameRate ||
+          directProof.frame_rate ||
+          directProof.fps ||
+          directProof.source_frame_rate,
+        hasAudio:
+          directProof.hasAudio ??
+          directProof.has_audio ??
+          directProof.source_has_audio,
+        containerFormats:
+          directProof.containerFormats ??
+          directProof.container_formats ??
+          directProof.source_container_formats,
+        pixelFormat:
+          directProof.pixelFormat ??
+          directProof.pixel_format ??
+          directProof.source_pixel_format,
+        requireCodecProof: true,
       });
     const sourceMetadataOnly =
       cleanText(current.data.media_metadata?.upload_target, "", 80) ===
@@ -230,8 +269,7 @@ export async function POST(request: Request) {
     let videoNormalization: VideoNormalizationEnqueueResult | null = null;
     if (
       event === "uploaded" &&
-      current.data.media_type === "image" &&
-      !sourceMetadataOnly
+      current.data.media_type === "image"
     ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
@@ -243,7 +281,29 @@ export async function POST(request: Request) {
           mediaId,
           accountId: activeUserId,
           workspaceId: workspaceId || null,
+          mission: sourceMetadataOnly
+            ? "publication_preparation"
+            : undefined,
         });
+        if (imageNormalization.enabled && imageNormalization.jobId) {
+          after(async () => {
+            try {
+              await processImageNormalizationJobsForMedia({
+                accountId: activeUserId,
+                mediaIds: [mediaId],
+              });
+            } catch (processingError) {
+              console.warn(
+                "[media-pipeline] image publication prewarm deferred to cron",
+                {
+                  mediaId,
+                  accountId: activeUserId,
+                  error: processingError,
+                },
+              );
+            }
+          });
+        }
       } catch (queueError) {
         console.error("[media-pipeline] image normalization enqueue failed", {
           mediaId,
@@ -261,8 +321,7 @@ export async function POST(request: Request) {
     if (
       event === "uploaded" &&
       current.data.media_type === "video" &&
-      !directVideoSource &&
-      !sourceMetadataOnly
+      !directVideoSource
     ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
@@ -274,7 +333,32 @@ export async function POST(request: Request) {
           mediaId,
           accountId: activeUserId,
           workspaceId: workspaceId || null,
+          mission: sourceMetadataOnly
+            ? "publication_preparation"
+            : undefined,
         });
+        if (videoNormalization.enabled && videoNormalization.jobId) {
+          // Le navigateur reÃ§oit sa confirmation d'upload immÃ©diatement. Le
+          // canonical chauffe ensuite cÃ´tÃ© serveur pendant que le pro relit ses
+          // contenus ; le cron reste le filet de rÃ©cupÃ©ration durable.
+          after(async () => {
+            try {
+              await processVideoNormalizationJobsForMedia({
+                accountId: activeUserId,
+                mediaIds: [mediaId],
+              });
+            } catch (processingError) {
+              console.warn(
+                "[media-pipeline] video publication prewarm deferred to cron",
+                {
+                  mediaId,
+                  accountId: activeUserId,
+                  error: processingError,
+                },
+              );
+            }
+          });
+        }
       } catch (queueError) {
         console.error("[media-pipeline] video normalization enqueue failed", {
           mediaId,
@@ -287,15 +371,6 @@ export async function POST(request: Request) {
           reason: "enqueue_failed",
         };
       }
-    } else if (event === "uploaded" && sourceMetadataOnly) {
-      videoNormalization =
-        current.data.media_type === "video"
-          ? {
-              enabled: true,
-              queued: false,
-              reason: "source_metadata_only",
-            }
-          : null;
     } else if (event === "uploaded" && directVideoSource) {
       videoNormalization = {
         enabled: true,

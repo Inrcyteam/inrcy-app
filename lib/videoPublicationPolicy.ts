@@ -361,6 +361,15 @@ export function validateVideoPublicationForChannel(input: {
   tiktokAccountLimitVerified?: boolean;
   youtubeLongUploadsStatus?: unknown;
   enforceAccountCapabilities?: boolean;
+  videoCodec?: unknown;
+  audioCodec?: unknown;
+  frameRate?: unknown;
+  fps?: unknown;
+  hasAudio?: unknown;
+  containerFormats?: unknown;
+  pixelFormat?: unknown;
+  /** Ã€ activer uniquement pour le binaire source original. */
+  requireCodecProof?: boolean;
 }): VideoPublicationValidation {
   const policy = getVideoPublicationPolicy(input.channel);
   const label = VIDEO_CHANNEL_LABELS[input.channel];
@@ -405,6 +414,13 @@ export function validateVideoPublicationForChannel(input: {
       storagePath: input.storagePath,
       sizeBytes,
       maxBytes: policy.maxBytes,
+      videoCodec: input.videoCodec,
+      audioCodec: input.audioCodec,
+      frameRate: input.frameRate ?? input.fps,
+      hasAudio: input.hasAudio,
+      containerFormats: input.containerFormats,
+      pixelFormat: input.pixelFormat,
+      requireCodecProof: input.requireCodecProof === true,
     })
   ) {
     return {

@@ -306,14 +306,14 @@ export default function DashboardToolWarmup() {
       ROUTES_TO_PREFETCH.forEach((route, index) => {
         prefetchRoute(route, 20 - Math.floor(index / 2));
       });
-      [
-        "/dashboard/propulser",
-        "/dashboard/fideliser",
-        "/dashboard/e-reputation",
-        "/dashboard/mails",
-        "/dashboard/crm",
-        "/dashboard/agenda",
-      ].forEach((route, index) => enqueueSnapshotForPath(route, 8 - index));
+
+      // iNr'Send is the only data snapshot warmed without explicit intent. Its
+      // first page is bounded and directly fixes the slow-open complaint. The
+      // former six-tool sweep fired several Supabase history/metrics queries
+      // 800 ms after every dashboard mount, even when those tools were never
+      // opened. All other snapshots remain intent-first through pointer,
+      // focus, click or the explicit warmup event above.
+      enqueueSnapshotForPath("/dashboard/mails", 12);
     };
 
     const scheduleProgressiveWarmup = () => {

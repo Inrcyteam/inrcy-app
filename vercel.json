@@ -79,6 +79,9 @@
     },
     "app/api/media-pipeline/workspace/prewarm/route.ts": {
       "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/media-pipeline/upload-event/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
     }
   }
 }

@@ -2053,6 +2053,14 @@ export type BoosterVideoSourceMetadata = {
   ratioLabel: string;
   orientation: BoosterVideoOrientation;
   orientationLabel: string;
+  /** RenseignÃ©s uniquement aprÃ¨s le probe serveur ; `null` force l'adaptation. */
+  videoCodec?: string | null;
+  audioCodec?: string | null;
+  frameRate?: number | null;
+  hasAudio?: boolean | null;
+  containerFormats?: string[] | null;
+  pixelFormat?: string | null;
+  compatibilityProof?: "server_ffmpeg" | "canonical_derivative" | null;
 };
 
 export type VideoPayload = {

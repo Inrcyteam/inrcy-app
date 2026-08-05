@@ -49,7 +49,7 @@ export const AI_FEATURE_POLICIES: Readonly<Record<AiGenerationFeature, AiFeature
   "booster.publish": {
     maxOutputTokens: 10_000,
     maxRetries: 1,
-    maxTimeoutMs: 72_000,
+    maxTimeoutMs: 42_000,
     // Le Prompt Compiler V2 compacte fortement le contexte. 72k reste un dernier
     // garde-fou défensif pour les cas média/transcription atypiques, pas une cible.
     maxInputChars: 72_000,
@@ -59,9 +59,9 @@ export const AI_FEATURE_POLICIES: Readonly<Record<AiGenerationFeature, AiFeature
     // une réparation ciblée unique. Le nombre de canaux ne multiplie plus les appels.
     defaultOperationMaxCalls: 2,
     defaultOperationMaxReservedOutputTokens: 20_000,
-    // Les routes Booster/iNrAgent sont limitées à 120 s : le budget interne
-    // reste volontairement inférieur pour éviter un timeout plateforme tardif.
-    defaultOperationMaxDurationMs: 110_000,
+    // 30 s reste la cible UX. La marge jusqu'à 45 s évite de jeter une
+    // réponse saine arrivée quelques secondes après cette cible commerciale.
+    defaultOperationMaxDurationMs: 45_000,
   },
   "agent.media-understanding": {
     maxOutputTokens: 900,

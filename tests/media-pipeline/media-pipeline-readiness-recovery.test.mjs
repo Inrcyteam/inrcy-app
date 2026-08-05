@@ -17,15 +17,15 @@ test("la confirmation finale d'upload est obligatoire et rejouée", () => {
 test("le polling de statut ne régénère pas des URLs signées à chaque passage", () => {
   const client = read("lib/mediaWorkspaceClient.ts");
   const route = read("app/api/media-pipeline/workspace/route.ts");
-  const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
+  const hook = read("app/dashboard/booster/publier/usePersistentMediaWorkspace.ts");
   assert.match(client, /includeUrls\?: boolean/);
   assert.match(client, /includeUrls: params\.includeUrls === false \? "0" : "1"/);
   assert.match(route, /const includeUrls = url\.searchParams\.get\("includeUrls"\) !== "0"/);
   assert.match(route, /includeUrls && bucket && storagePath/);
-  assert.match(modal, /includeUrls: false/);
+  assert.match(hook, /includeUrls: false/);
 });
 
-test("Générer peut relancer immédiatement les workers du workspace", () => {
+test("Générer vérifie les sources sans déclencher la préparation lourde du workspace", () => {
   const route = read("app/api/media-pipeline/workspace/prepare/route.ts");
   const client = read("lib/mediaWorkspaceClient.ts");
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
@@ -38,14 +38,10 @@ test("Générer peut relancer immédiatement les workers du workspace", () => {
   assert.match(route, /processVideoNormalizationJobsForMedia\(/);
   assert.match(route, /priority: 10_000/);
   assert.match(client, /\/api\/media-pipeline\/workspace\/prepare/);
-  assert.match(modal, /preparePersistentAiMedia\(\)/);
-  assert.match(modal, /preparePersistentPublicationMedia\(\)/);
-  assert.match(modal, /processingProgress/);
-  assert.match(modal, /let preparationKick: Promise<void> \| null = null/);
-  assert.match(
-    modal,
-    /preparationKick = \(purpose === "generate"[\s\S]*preparePersistentAiMedia\(\)[\s\S]*preparePersistentPublicationMedia\(\)/,
-  );
+  assert.match(modal, /await waitForPersistentWorkspaceIdle/);
+  assert.match(modal, /await verifyPersistentWorkspaceSources/);
+  assert.doesNotMatch(modal, /preparePersistentAiMedia/);
+  assert.doesNotMatch(modal, /preparePersistentPublicationMedia/);
   assert.doesNotMatch(modal, /prepareMediaPublicationWorkspace\(/);
   const hook = read(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",

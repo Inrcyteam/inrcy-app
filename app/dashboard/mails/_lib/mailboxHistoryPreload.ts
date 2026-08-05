@@ -16,7 +16,8 @@ export type MailboxHistoryBoxView = "sent" | "drafts";
 export type MailboxHistoryCounts = Record<MailboxHistoryFolder, number>;
 
 export const MAILBOX_HISTORY_CACHE_TTL_MS = 2 * 60 * 1000;
-export const MAILBOX_HISTORY_PREFETCH_CONCURRENCY = 2;
+export const MAILBOX_HISTORY_PREFETCH_CONCURRENCY = 1;
+export const MAILBOX_HISTORY_MAX_PRELOAD_JOBS = 1;
 
 export type MailboxHistoryContext = {
   folder: MailboxHistoryFolder;
@@ -38,7 +39,7 @@ export type MailboxHistorySnapshot<TItem = unknown> = {
 export type MailboxHistoryPreloadJob = {
   context: MailboxHistoryContext;
   page: number;
-  total: number;
+  total: number | null;
 };
 
 export function normalizeMailboxHistoryQuery(value: string): string {
@@ -84,69 +85,35 @@ export function mailboxHistoryPageCount(total: number, pageSize: number): number
 }
 
 export function buildMailboxHistoryPreloadPlan(options: {
-  folders: readonly MailboxHistoryFolder[];
   currentContext: MailboxHistoryContext;
   currentPage: number;
   pageSize: number;
-  folderCounts: MailboxHistoryCounts;
-  draftFolderCounts: MailboxHistoryCounts;
-  includeSiblingFolders: boolean;
+  currentTotal: number | null;
+  currentHasMore: boolean;
 }): MailboxHistoryPreloadJob[] {
   const {
-    folders,
     currentContext,
     currentPage,
     pageSize,
-    folderCounts,
-    draftFolderCounts,
-    includeSiblingFolders,
+    currentTotal,
+    currentHasMore,
   } = options;
-  const activeCounts = currentContext.boxView === "drafts" ? draftFolderCounts : folderCounts;
-  const jobs: MailboxHistoryPreloadJob[] = [];
-  const currentTotal = Math.max(0, Number(activeCounts[currentContext.folder] || 0));
-  const currentPageCount = mailboxHistoryPageCount(currentTotal, pageSize);
+  const explicitTotal = typeof currentTotal === "number"
+    ? Math.max(0, Number(currentTotal))
+    : null;
+  const nextPage = Math.max(1, currentPage) + 1;
+  const hasNextPage = explicitTotal == null
+    ? currentHasMore === true
+    : nextPage <= mailboxHistoryPageCount(explicitTotal, pageSize);
 
-  // Priority 1: all remaining pages of the active tab, nearest page first.
-  for (let offset = 1; offset < currentPageCount; offset += 1) {
-    const nextPage = currentPage + offset;
-    if (nextPage <= currentPageCount) {
-      jobs.push({ context: currentContext, page: nextPage, total: currentTotal });
-    }
-    const previousPage = currentPage - offset;
-    if (previousPage >= 1) {
-      jobs.push({ context: currentContext, page: previousPage, total: currentTotal });
-    }
-  }
+  if (!hasNextPage) return [];
 
-  if (!includeSiblingFolders) return dedupeMailboxHistoryPreloadJobs(jobs);
-
-  const siblingFolders = folders.filter((folder) => folder !== currentContext.folder);
-
-  // Priority 2: first page of every other visible iNrSend tab.
-  for (const folder of siblingFolders) {
-    const total = Math.max(0, Number(activeCounts[folder] || 0));
-    if (total <= 0) continue;
-    jobs.push({
-      context: { ...currentContext, folder },
-      page: 1,
-      total,
-    });
-  }
-
-  // Priority 3: remaining pages of those tabs, progressively in the background.
-  for (const folder of siblingFolders) {
-    const total = Math.max(0, Number(activeCounts[folder] || 0));
-    const pageCount = mailboxHistoryPageCount(total, pageSize);
-    for (let page = 2; page <= pageCount; page += 1) {
-      jobs.push({
-        context: { ...currentContext, folder },
-        page,
-        total,
-      });
-    }
-  }
-
-  return dedupeMailboxHistoryPreloadJobs(jobs);
+  // One adjacent page is enough to make "Suivant" feel instant. Preloading
+  // every remaining page and every sibling folder multiplies Supabase reads
+  // without improving the page currently visible to the user.
+  return dedupeMailboxHistoryPreloadJobs([
+    { context: currentContext, page: nextPage, total: explicitTotal },
+  ]).slice(0, MAILBOX_HISTORY_MAX_PRELOAD_JOBS);
 }
 
 function dedupeMailboxHistoryPreloadJobs(

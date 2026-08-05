@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  buildAsyncPublicationAggregate,
+  type BoosterAsyncChannelKey,
+} from "@/lib/boosterAsyncPublication";
+import { isBoosterPublicationChannel } from "@/lib/boosterPublicationPolicy";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
@@ -13,6 +18,11 @@ type EventRow = {
   payload: unknown;
   created_at?: string | null;
 };
+type PendingDeliveryRow = {
+  publication_id: string;
+  user_id: string;
+  created_at?: string | null;
+};
 
 const TERMINAL_STATUSES = new Set([
   "PUBLISH_COMPLETE",
@@ -24,6 +34,28 @@ const TERMINAL_STATUSES = new Set([
   "CANCELLED",
   "CANCELED",
 ]);
+const WATCHER_CONCURRENCY = 4;
+
+function publicationChannels(
+  payload: JsonRecord,
+  results: JsonRecord,
+): BoosterAsyncChannelKey[] {
+  const summaryEntries = Array.isArray(asRecord(payload.summary).entries)
+    ? (asRecord(payload.summary).entries as unknown[])
+    : [];
+  const candidates = Array.isArray(payload.attemptedChannels)
+    ? payload.attemptedChannels
+    : summaryEntries.length > 0
+      ? summaryEntries.map((entry) => asRecord(entry).channel)
+      : Object.keys(results);
+  return Array.from(
+    new Set(
+      candidates
+        .map((value) => String(value || "").trim())
+        .filter(isBoosterPublicationChannel),
+    ),
+  );
+}
 
 function isExpired(expiresAt: unknown, skewSeconds = 120) {
   const timestamp = Date.parse(String(expiresAt || ""));
@@ -155,9 +187,25 @@ async function persistStatus(row: EventRow, publicationId: string, status: Await
       status_checked_at: nowIso,
     },
   };
+  const nextResults = { ...results, tiktok: nextResult };
+  const selectedChannels = publicationChannels(payload, nextResults);
+  const aggregate = buildAsyncPublicationAggregate(
+    nextResults,
+    selectedChannels,
+  );
+  const terminal = status.complete || status.failed;
   const nextPayload = {
     ...payload,
-    results: { ...results, tiktok: nextResult },
+    attemptedChannels: selectedChannels,
+    channels: aggregate.summary.successChannels,
+    results: nextResults,
+    summary: aggregate.summary,
+    status: aggregate.status,
+    outcome: aggregate.outcome,
+    updatedAt: nowIso,
+    ...(terminal
+      ? { completedAt: nowIso, externalCompletedAt: nowIso }
+      : {}),
   };
 
   const { error: eventError } = await supabaseAdmin
@@ -182,25 +230,55 @@ async function persistStatus(row: EventRow, publicationId: string, status: Await
 
 export async function processPendingTiktokPublications({ limit = 75 }: { limit?: number } = {}) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabaseAdmin
-    .from("app_events")
-    .select("id,user_id,payload,created_at")
-    .eq("module", "booster")
-    .eq("type", "publish")
+  const normalizedLimit = Math.max(1, Math.min(100, Math.round(limit || 75)));
+  // `publication_deliveries` is the small, indexed source of pending work.
+  // Loading 500 seven-day JSON app_events every minute was one of the main
+  // avoidable Supabase CPU consumers.
+  const { data: deliveryData, error: deliveryError } = await supabaseAdmin
+    .from("publication_deliveries")
+    .select("publication_id,user_id,created_at")
+    .eq("channel", "tiktok")
+    .eq("status", "processing")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(500);
-  if (error) throw error;
+    .limit(normalizedLimit);
+  if (deliveryError) throw deliveryError;
 
-  const candidates = ((data || []) as EventRow[])
+  const deliveries = (deliveryData || []) as PendingDeliveryRow[];
+  const deliveryKeys = new Set(
+    deliveries.map(
+      (row) => `${String(row.user_id)}:${String(row.publication_id)}`,
+    ),
+  );
+  const publicationIds = Array.from(
+    new Set(
+      deliveries.map((row) => String(row.publication_id || "").trim()),
+    ),
+  ).filter(Boolean);
+  const { data: eventData, error: eventError } = publicationIds.length
+    ? await supabaseAdmin
+        .from("app_events")
+        .select("id,user_id,payload,created_at")
+        .eq("module", "booster")
+        .eq("type", "publish")
+        .in("id", publicationIds)
+    : { data: [], error: null };
+  if (eventError) throw eventError;
+
+  const candidates = ((eventData || []) as EventRow[])
     .map((row) => {
       const payload = asRecord(row.payload);
       const publicationId = String(payload.publication_id || "").trim();
       const result = asRecord(asRecord(payload.results).tiktok);
       return { row, publicationId, result };
     })
-    .filter((entry) => entry.publicationId && isPendingTikTokResult(entry.result))
-    .slice(0, Math.max(1, limit));
+    .filter(
+      (entry) =>
+        entry.publicationId &&
+        deliveryKeys.has(`${entry.row.user_id}:${entry.publicationId}`) &&
+        isPendingTikTokResult(entry.result),
+    )
+    .slice(0, normalizedLimit);
 
   const tokenCache = new Map<string, Promise<string>>();
   const getToken = (userId: string) => {
@@ -216,27 +294,45 @@ export async function processPendingTiktokPublications({ limit = 75 }: { limit?:
   let pending = 0;
   let errors = 0;
 
-  for (const candidate of candidates) {
-    try {
-      const token = await getToken(candidate.row.user_id);
-      if (!token) {
+  let cursor = 0;
+  const processNext = async (): Promise<void> => {
+    while (cursor < candidates.length) {
+      const candidate = candidates[cursor];
+      cursor += 1;
+      try {
+        const token = await getToken(candidate.row.user_id);
+        if (!token) {
+          errors += 1;
+          continue;
+        }
+        const publishId = String(
+          candidate.result.external_id ||
+            asRecord(candidate.result.diagnostics).publish_id ||
+            "",
+        ).trim();
+        const status = await fetchTiktokPublishStatus(token, publishId);
+        await persistStatus(candidate.row, candidate.publicationId, status);
+        if (status.complete) completed += 1;
+        else if (status.failed) failed += 1;
+        else pending += 1;
+      } catch (watchError) {
         errors += 1;
-        continue;
+        console.warn("[tiktok-publication-watcher] status refresh failed", {
+          publicationId: candidate.publicationId,
+          message:
+            watchError instanceof Error
+              ? watchError.message
+              : String(watchError || ""),
+        });
       }
-      const publishId = String(candidate.result.external_id || asRecord(candidate.result.diagnostics).publish_id || "").trim();
-      const status = await fetchTiktokPublishStatus(token, publishId);
-      await persistStatus(candidate.row, candidate.publicationId, status);
-      if (status.complete) completed += 1;
-      else if (status.failed) failed += 1;
-      else pending += 1;
-    } catch (watchError) {
-      errors += 1;
-      console.warn("[tiktok-publication-watcher] status refresh failed", {
-        publicationId: candidate.publicationId,
-        message: watchError instanceof Error ? watchError.message : String(watchError || ""),
-      });
     }
-  }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(WATCHER_CONCURRENCY, candidates.length) },
+      () => processNext(),
+    ),
+  );
 
   return {
     scanned: candidates.length,

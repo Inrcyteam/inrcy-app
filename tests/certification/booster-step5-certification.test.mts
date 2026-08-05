@@ -234,7 +234,14 @@ test("11 - un média original compatible est publié sans variante", () => {
     reason: "source_compatible",
   });
   assert.doesNotMatch(publishRoute, /requiresPreparedNetworkVideoVariant/);
-  assert.match(publishRoute, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
+  assert.match(
+    publishRoute,
+    /const sourceDirectlyPublishable =[\s\S]*hasTrustedPublicationVideoCompatibilityProof[\s\S]*canPublishVideoSourceDirectly\([\s\S]*requireCodecProof: true/,
+  );
+  assert.match(
+    publishRoute,
+    /if \(usesOriginalSource && sourceDirectlyPublishable\) \{\s*return \[\];\s*\}/,
+  );
 });
 
 test("12 - une incompatibilité réelle demande une conversion minimale", () => {

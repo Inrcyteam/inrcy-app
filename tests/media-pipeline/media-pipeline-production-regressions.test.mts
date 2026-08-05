@@ -104,7 +104,7 @@ test("les aperçus locaux restent affichés pendant la préparation serveur", as
   assert.match(source, /makeImageKey\(currentFile\) !== expectedImageKey/);
 });
 
-test("les vidéos MP4 directes contrôlent les variantes au clic et gardent une récupération", async () => {
+test("le choix vidéo reste instantané et la finalisation technique attend Publier", async () => {
   const hook = await readSource(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
@@ -121,11 +121,21 @@ test("les vidéos MP4 directes contrôlent les variantes au clic et gardent une 
   assert.match(prepareRoute, /function isDirectPublicationVideo/);
   assert.match(prepareRoute, /if \(isDirectPublicationVideo\(params\.media\)\) return true/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
-  assert.match(modal, /async function prepareCutoverVideoVariants/);
-  assert.equal(
-    (modal.match(/prewarmPersistentMediaWorkspace\(/g) || []).length,
-    2,
+  assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);
+  const immediatePublish = modal.slice(
+    modal.indexOf("const runPublish = async"),
+    modal.indexOf("const onSavePublicationDraft = async"),
   );
+  assert.doesNotMatch(
+    immediatePublish,
+    /ensureCutoverVideoVariantsReady|prewarmPersistentMediaWorkspace/,
+  );
+  const cutoverApply = modal.slice(
+    modal.indexOf("async function applyVideoFormatForChannel"),
+    modal.indexOf("const syncActiveImagesToPersistentWorkspace"),
+  );
+  assert.doesNotMatch(cutoverApply, /prewarmPersistentMediaWorkspace/);
+  assert.match(modal, /deferTechnicalPreparationUntilPublish=/);
   assert.match(modal, /options\?\.generateMissingVideoVariants === false/);
 });
 

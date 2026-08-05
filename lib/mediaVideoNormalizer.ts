@@ -25,6 +25,7 @@ import {
   type VideoNormalizationPurpose,
   type VideoNormalizationVariantKey,
 } from "@/lib/mediaVideoNormalizationPolicy";
+import { parseFfmpegVideoStreamMetadata } from "@/lib/mediaVideoProbeMetadata";
 
 const execFileAsync = promisify(execFile);
 const FFMPEG_PROBE_TIMEOUT_MS = 30_000;
@@ -33,6 +34,7 @@ const FFMPEG_DERIVATIVE_TIMEOUT_MS = 75_000;
 const FFMPEG_STALL_TIMEOUT_MS = 55_000;
 
 export type VideoSourceProbe = {
+  probeProvenance: "server_ffmpeg";
   width: number;
   height: number;
   orientedWidth: number;
@@ -42,6 +44,7 @@ export type VideoSourceProbe = {
   hasAudio: boolean;
   videoCodec: string;
   audioCodec: string;
+  frameRate: number;
   pixelFormat: string;
   containerFormats: string[];
 };
@@ -157,20 +160,6 @@ function parseContainerFormats(stderr: string) {
     .filter(Boolean);
 }
 
-function parseVideoStream(stderr: string) {
-  const line = stderr.split(/\r?\n/).find((entry) => /Stream .*Video:/i.test(entry));
-  if (!line) return { width: 0, height: 0, codec: "unknown", pixelFormat: "unknown" };
-  const dimensions = line.match(/(?:^|\D)(\d{2,5})x(\d{2,5})(?:\D|$)/);
-  const codec = line.match(/Video:\s*([^,\s]+)/i)?.[1] || "unknown";
-  const pixelFormat = line.match(/Video:[^\n]*?,\s*([a-z0-9_]+)(?:\([^)]*\))?,\s*\d{2,5}x\d{2,5}/i)?.[1] || "unknown";
-  return {
-    width: Number(dimensions?.[1] || 0),
-    height: Number(dimensions?.[2] || 0),
-    codec: codec.toLowerCase(),
-    pixelFormat: pixelFormat.toLowerCase(),
-  };
-}
-
 function parseAudioCodec(stderr: string) {
   const line = stderr.split(/\r?\n/).find((entry) => /Stream .*Audio:/i.test(entry));
   return String(line?.match(/Audio:\s*([^,\s]+)/i)?.[1] || "unknown").toLowerCase();
@@ -211,7 +200,7 @@ export async function probeVideoSource(params: {
     }
   }
 
-  const stream = parseVideoStream(stderr);
+  const stream = parseFfmpegVideoStreamMetadata(stderr);
   const width = stream.width || Math.max(0, Number(params.fallbackWidth || 0));
   const height = stream.height || Math.max(0, Number(params.fallbackHeight || 0));
   if (!width || !height) throw new Error("video_dimensions_unavailable");
@@ -225,6 +214,7 @@ export async function probeVideoSource(params: {
 
   const hasAudio = /Stream .*Audio:/i.test(stderr);
   return {
+    probeProvenance: "server_ffmpeg",
     width,
     height,
     orientedWidth: oriented.width,
@@ -234,6 +224,7 @@ export async function probeVideoSource(params: {
     hasAudio,
     videoCodec: stream.codec,
     audioCodec: hasAudio ? parseAudioCodec(stderr) : "none",
+    frameRate: stream.frameRate,
     pixelFormat: stream.pixelFormat,
     containerFormats: parseContainerFormats(stderr),
   };
@@ -476,7 +467,9 @@ function canFastPrepareCanonical(params: {
   const pixelFormat = params.source.pixelFormat.toLowerCase();
   return (
     (codec === "h264" || codec === "avc1") &&
-    (!pixelFormat || pixelFormat === "unknown" || pixelFormat.startsWith("yuv420")) &&
+    params.source.frameRate > 0 &&
+    params.source.frameRate <= 60 &&
+    Boolean(pixelFormat && pixelFormat !== "unknown" && pixelFormat.startsWith("yuv420")) &&
     normalizedRotation(params.source.rotationDegrees) === 0 &&
     Math.max(params.source.orientedWidth, params.source.orientedHeight) <= VIDEO_CANONICAL_MAX_SIDE &&
     params.sourceSizeBytes > 0 &&
@@ -574,7 +567,7 @@ async function encodeQualityOptimizedCanonical(params: {
   if (params.source.hasAudio) args.push("-map", "0:a:0?");
   args.push(
     "-vf",
-    buildScaleFilter(VIDEO_CANONICAL_MAX_SIDE),
+    buildScaleFilter(VIDEO_CANONICAL_MAX_SIDE, 30),
     "-c:v",
     "libx264",
     "-preset",
@@ -709,6 +702,7 @@ async function prepareCanonical(params: {
     minVideoKbps: 250,
     audioBitrateKbps: VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
     includeAudio: params.source.hasAudio,
+    fps: 30,
     timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
     encoderPreset: "superfast",
     onProgress: params.onProgress,
@@ -1059,6 +1053,7 @@ export async function normalizeVideoSource(params: {
     duration_seconds: source.durationSeconds,
     source_video_codec: source.videoCodec,
     source_audio_codec: source.audioCodec,
+    source_frame_rate: source.frameRate,
     source_pixel_format: source.pixelFormat,
     source_container_formats: source.containerFormats,
     source_has_audio: source.hasAudio,
@@ -1076,6 +1071,16 @@ export async function normalizeVideoSource(params: {
         : null,
     metadata_stripped: true,
   };
+  const canonicalOutputFrameRate =
+    canonicalEncoding?.mode === "quality_transcode" ||
+    canonicalEncoding?.mode === "size_cap_transcode"
+      ? 30
+      : source.frameRate;
+  const canonicalOutputPixelFormat =
+    canonicalEncoding?.mode === "quality_transcode" ||
+    canonicalEncoding?.mode === "size_cap_transcode"
+      ? "yuv420p"
+      : source.pixelFormat;
 
   const variants: Partial<
     Record<VideoNormalizationVariantKey, NormalizedVideoVariant>
@@ -1097,16 +1102,14 @@ export async function normalizeVideoSource(params: {
         output: "mp4",
         video_codec: "h264",
         audio_codec: source.hasAudio ? "aac" : null,
+        frame_rate: canonicalOutputFrameRate,
         max_side: VIDEO_CANONICAL_MAX_SIDE,
         crop: false,
         preserve_ratio: true,
         without_enlargement: true,
         auto_orient: true,
         pixel_format:
-          canonicalEncoding.mode === "quality_transcode" ||
-          canonicalEncoding.mode === "size_cap_transcode"
-            ? "yuv420p"
-            : source.pixelFormat,
+          canonicalOutputPixelFormat,
         faststart: true,
         bitrate_kbps: canonicalEncoding.bitrateKbps,
         mode: canonicalEncoding.mode,
@@ -1120,7 +1123,15 @@ export async function normalizeVideoSource(params: {
           sourceSizeBytes - canonicalEncoding.sizeBytes,
         ),
       },
-      metadata: sourceMetadata,
+      metadata: {
+        ...sourceMetadata,
+        output_video_codec: "h264",
+        output_audio_codec: source.hasAudio ? "aac" : "none",
+        output_frame_rate: canonicalOutputFrameRate,
+        output_container_format: "mp4",
+        output_container_formats: ["mp4"],
+        output_pixel_format: canonicalOutputPixelFormat,
+      },
     });
   }
 

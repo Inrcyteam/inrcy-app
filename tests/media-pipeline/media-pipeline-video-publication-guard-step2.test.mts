@@ -23,6 +23,12 @@ test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () 
       mimeType: "video/mp4",
       sizeBytes: 110 * MB,
       maxBytes: 300 * MB,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      frameRate: 30,
+      hasAudio: true,
+      containerFormats: ["mov", "mp4"],
+      pixelFormat: "yuv420p",
     }),
     true,
   );
@@ -32,6 +38,12 @@ test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () 
       mimeType: "video/mp4",
       sizeBytes: 301 * MB,
       maxBytes: 300 * MB,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      frameRate: 30,
+      hasAudio: true,
+      containerFormats: ["mov", "mp4"],
+      pixelFormat: "yuv420p",
     }),
     false,
   );
@@ -40,6 +52,12 @@ test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () 
       name: "taille-inconnue.mp4",
       mimeType: "video/mp4",
       maxBytes: 300 * MB,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      frameRate: 30,
+      hasAudio: true,
+      containerFormats: ["mov", "mp4"],
+      pixelFormat: "yuv420p",
     }),
     false,
   );
@@ -126,7 +144,7 @@ test("les uploads ne forcent plus une compression globale au-dessus de 40 Mo", a
   assert.match(hook, /runPreparationMission\("publication_preparation"\)/);
 });
 
-test("la préparation réseau et la validation par canal précèdent la publication", async () => {
+test("la finalisation serveur valide chaque canal et isole les adaptations", async () => {
   const modal = await readSource(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
@@ -141,7 +159,7 @@ test("la préparation réseau et la validation par canal précèdent la publicat
   const variants = await readSource("lib/boosterVideoVariantServer.ts");
 
   assert.match(modal, /async function ensureCutoverVideoVariantsReady/);
-  assert.match(modal, /Vérification de la vidéo pour les réseaux/);
+  assert.match(modal, /Finalisation des médias/);
   assert.match(modal, /Vérification de la vidéo pour la programmation/);
   assert.match(controller, /validateVideoPublicationForChannel/);
   assert.match(prewarm, /invalidSignatures/);

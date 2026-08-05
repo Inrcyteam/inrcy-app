@@ -24,6 +24,7 @@ import {
 } from "@/lib/mediaUploadPolicy";
 import { UNIVERSAL_MEDIA_PIPELINE_VERSION } from "@/lib/mediaPipelineRegistry";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
+import { sanitizeClientMediaMetadata } from "@/lib/mediaClientMetadata";
 
 export const runtime = "nodejs";
 
@@ -543,7 +544,7 @@ export async function POST(request: Request) {
     const requestedPath = cleanText(body.requestedPath, "", 600);
     const requestedFolder = cleanText(body.requestedFolder, "", 100);
     const source = cleanText(body.source, "", 80);
-    const metadata = cleanJsonObject(body.metadata);
+    const metadata = sanitizeClientMediaMetadata(body.metadata);
 
     if (config.registerSource && !clientMediaKey) {
       return jsonError(

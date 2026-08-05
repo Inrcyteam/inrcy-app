@@ -88,13 +88,11 @@ test("iNrAgent transmet la référence persistante au brouillon iNrSend", () => 
   assert.match(actions, /videoAiContextReferenceAliases\(args\.videoAiContextRef\)/);
 });
 
-test("l'ouverture iNrSend saute l'extraction locale et transmet la référence au serveur", () => {
+test("la génération cutover saute l'extraction locale et transmet la référence au serveur", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
-  assert.match(
-    modal,
-    /if \(!videoFile \|\| videoAiContextRef \|\| mediaPipelineCutoverEnabled\) return;/,
-  );
+  // L'ancien préchauffage à l'ouverture a disparu : la garantie utile est
+  // désormais que le clic Générer n'attend aucune extraction locale en cutover.
   assert.match(
     modal,
     /hasVideoForGeneration &&[\s\S]*videoFile &&[\s\S]*!videoAiContextRef &&[\s\S]*!mediaPipelineCutoverEnabled/,

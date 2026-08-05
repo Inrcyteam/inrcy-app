@@ -100,6 +100,7 @@ export default function BoosterVideoFormatManager({
   videoTransformedVariants = [],
   preparationState,
   preparing = false,
+  deferTechnicalPreparationUntilPublish = false,
   onFormatChange,
   onAdaptationModeChange,
   onApplyFormat,
@@ -125,6 +126,7 @@ export default function BoosterVideoFormatManager({
   videoTransformedVariants?: BoosterVideoTransformedVariant[];
   preparationState?: BoosterVideoPreparationState | null;
   preparing?: boolean;
+  deferTechnicalPreparationUntilPublish?: boolean;
   onFormatChange?: (format: VideoFormat) => void;
   onAdaptationModeChange?: (mode: VideoAdaptationMode) => void;
   onApplyFormat?: () => void;
@@ -156,8 +158,14 @@ export default function BoosterVideoFormatManager({
   // An old variant for the same channel is not proof that the pro selected it
   // for this publication. Original remains active until an exact applied
   // signature exists.
-  const appliedFormat = exactPreparedVariant?.format || "original";
-  const hasPendingFormat = currentFormat !== appliedFormat;
+  // Avec le pipeline durable, le choix du pro est enregistré immédiatement.
+  // La dérivée technique est créée après le clic sur Publier et ne doit pas
+  // imposer un second bouton ni un état d'attente dans le bloc Médias.
+  const appliedFormat = deferTechnicalPreparationUntilPublish
+    ? currentFormat
+    : exactPreparedVariant?.format || "original";
+  const hasPendingFormat =
+    !deferTechnicalPreparationUntilPublish && currentFormat !== appliedFormat;
   const displayUrl = String(preparedVariant?.publicUrl || preparedVariant?.url || "").trim() || videoDisplayUrl;
   const isApplied = Boolean(preparedVariant?.publicUrl || preparedVariant?.url);
   const isHorizontalSource = videoSourceMetadata?.orientation === "horizontal";
@@ -410,7 +418,15 @@ export default function BoosterVideoFormatManager({
                   type="button"
                   onClick={() => onFormatChange?.(format)}
                   disabled={!onFormatChange}
-                  title={applied ? "Format actif qui sera publié" : pending ? "Format sélectionné à appliquer" : undefined}
+                  title={
+                    applied
+                      ? deferTechnicalPreparationUntilPublish
+                        ? "Format sélectionné pour la publication"
+                        : "Format actif qui sera publié"
+                      : pending
+                        ? "Format sélectionné à appliquer"
+                        : undefined
+                  }
                   style={{
                     minHeight: 30,
                     borderRadius: 999,
@@ -510,7 +526,7 @@ export default function BoosterVideoFormatManager({
           </div>
         ) : null}
 
-        {preparationState ? (
+        {!deferTechnicalPreparationUntilPublish && preparationState ? (
           <div
             style={{
               display: "grid",
@@ -532,7 +548,7 @@ export default function BoosterVideoFormatManager({
         ) : null}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: isMobile ? "stretch" : "flex-start" }}>
-          {onApplyFormat ? (
+          {!deferTechnicalPreparationUntilPublish && onApplyFormat ? (
             <button
               type="button"
               className={btnClass}
@@ -552,7 +568,9 @@ export default function BoosterVideoFormatManager({
               {preparationState?.status === "ready" ? "Format appliqué" : preparing ? "Modification du format..." : "Appliquer ce format"}
             </button>
           ) : null}
-          {showApplyAll && onApplyFormatToAllChannels ? (
+          {!deferTechnicalPreparationUntilPublish &&
+          showApplyAll &&
+          onApplyFormatToAllChannels ? (
             <button
               type="button"
               className={btnClass}
@@ -574,7 +592,8 @@ export default function BoosterVideoFormatManager({
           ) : null}
         </div>
 
-        {(onApplyFormat || (showApplyAll && onApplyFormatToAllChannels)) ? (
+        {!deferTechnicalPreparationUntilPublish &&
+        (onApplyFormat || (showApplyAll && onApplyFormatToAllChannels)) ? (
           <div
             style={{
               display: "flex",

@@ -95,7 +95,10 @@ test("the obsolete manual branch button is removed from the AI intention panel",
 
 test("creation mode is persisted and forwarded without duplicating the publish engine", () => {
   assert.match(modal, /payload: \{\s*status: "draft",\s*creationMode,/);
-  assert.match(modal, /const result = await trackEvent\("publish", \{\s*creationMode,/);
+  assert.match(
+    modal,
+    /const result = await trackEvent\("publish", \{[\s\S]{0,300}creationMode,/,
+  );
   assert.match(modal, /publishPayload: \{\s*creationMode,/);
   assert.equal((modal.match(/<PublishFooterActions/g) || []).length, 1);
 });

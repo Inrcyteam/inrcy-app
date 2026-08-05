@@ -38,12 +38,7 @@ export function createPublishNowVideoContext(params: {
     if (!publicationVideo) return null;
     const settings = videoSettingsByChannel[channel];
     if (!settings) return publicationVideo;
-    const variant = getVariantForChannel(
-      publicationVideo.transformedVariants,
-      channel as any,
-      settings.format,
-      settings.adaptationMode,
-    );
+    const usesOriginalSource = settings.format === "original";
     const sourceValidation = validateVideoPublicationForChannel({
       channel,
       name: publicationVideo.name,
@@ -54,8 +49,18 @@ export function createPublishNowVideoContext(params: {
       width: publicationVideo.sourceMetadata?.width,
       height: publicationVideo.sourceMetadata?.height,
     });
-    if (!variant?.publicUrl || !variant?.storagePath) {
+    if (usesOriginalSource) {
       return sourceValidation.ok ? publicationVideo : null;
+    }
+
+    const variant = getVariantForChannel(
+      publicationVideo.transformedVariants,
+      channel as any,
+      settings.format,
+      settings.adaptationMode,
+    );
+    if (!variant?.publicUrl || !variant?.storagePath) {
+      return null;
     }
     const variantValidation = validateVideoPublicationForChannel({
       channel,
@@ -68,7 +73,7 @@ export function createPublishNowVideoContext(params: {
       height: variant.height,
     });
     if (!variantValidation.ok) {
-      return sourceValidation.ok ? publicationVideo : null;
+      return null;
     }
 
     return {

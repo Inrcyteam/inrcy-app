@@ -86,6 +86,14 @@ export type BoosterVideoTransformSource = {
     width?: number | null;
     height?: number | null;
     duration?: number | null;
+    videoCodec?: string | null;
+    audioCodec?: string | null;
+    frameRate?: number | null;
+    fps?: number | null;
+    hasAudio?: boolean | null;
+    containerFormats?: string[] | null;
+    pixelFormat?: string | null;
+    compatibilityProof?: "server_ffmpeg" | "canonical_derivative" | null;
     [key: string]: unknown;
   } | null;
 };

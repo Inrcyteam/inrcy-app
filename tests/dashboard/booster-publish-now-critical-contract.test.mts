@@ -25,6 +25,8 @@ const statusRoute = read(
 );
 const recoveryCron = read("app/api/cron/booster-publications/route.ts");
 const executionIdempotency = read("lib/executionIdempotency.ts");
+const ingress = read("lib/boosterPublicationIngress.ts");
+const imageServerPreparation = read("lib/boosterImageServerPreparation.ts");
 
 const channelMarkers = [
   'ch === "inrcy_site"',
@@ -61,27 +63,56 @@ test("strict media cutover consumes the workspace and never silently falls back"
   assert.match(route, /consumptionSource:\s*strictMediaCutover\s*\?\s*"workspace_cutover_v1"/);
 });
 
-test("server image preparation must cover every selected image channel", () => {
+test("server image preparation covers 1-10 channels with one shared call", () => {
   assert.match(route, /prepareBoosterImagesByChannelOnServer\(/);
+  assert.equal(
+    (route.match(/prepareBoosterImagesByChannelOnServer\(/g) || []).length,
+    1,
+  );
   assert.match(route, /channels:\s*imageChannels/);
   assert.match(route, /workspaceId:\s*mediaWorkspaceId/);
-  assert.match(route, /imageChannels\.forEach\(/);
+  assert.match(route, /imageChannels\.forEach\(\(channel\)/);
   assert.match(route, /code:\s*"workspace_image_preparation_failed"/);
+  assert.match(
+    route,
+    /imagePreparation\.warnings\.filter\([\s\S]*warning\.channel === channel/,
+  );
+  assert.match(
+    imageServerPreparation,
+    /await Promise\.all\(channels\.map\(async \(channel\)/,
+  );
+  assert.match(
+    imageServerPreparation,
+    /inputPromise \|\|= resolveImageBuffer\(image\)/,
+  );
+  assert.match(
+    imageServerPreparation,
+    /cachedVariantsPromise \|\|= loadCachedChannelImageVariants/,
+  );
   assert.match(route, /pickCompleteChannelImageUrls/);
   assert.match(channelContext, /never borrow a fallback from another channel/i);
 });
 
 test("video publication keeps the request path fast and isolates invalid channels", () => {
   assert.match(route, /prepareBoosterVideoVariantsOnServer\(/);
-  assert.match(route, /preparePublicationVariants\(false\)/);
+  assert.match(
+    route,
+    /preparePublicationVariants\(\s*internalAsyncPreparationDispatch,?\s*\)/,
+  );
   assert.doesNotMatch(route, /preparePublicationVariants\(true\)/);
+  assert.match(route, /Only the durable preparation worker may run FFmpeg/);
   assert.match(route, /buildVideoTransformSignature\(/);
   assert.match(route, /validateVideoPublicationForChannel\(/);
   assert.match(route, /canPublishVideoSourceDirectly\(/);
   assert.doesNotMatch(route, /requiresPreparedNetworkVideoVariant\(/);
   assert.match(route, /preflightFailuresByChannel/);
   assert.match(route, /buildBoosterPublicationDispatchPlan\(/);
-  assert.match(route, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
+  assert.match(route, /usesOriginalSource && sourceDirectlyPublishable/);
+  assert.match(channelContext, /if \(usesOriginalSource\)/);
+  assert.match(
+    channelContext,
+    /if \(!variant\?\.publicUrl \|\| !variant\?\.storagePath\) \{\s*return null;\s*\}/,
+  );
 });
 
 test("scheduled duplicate protection runs before parent idempotency acquisition", () => {
@@ -110,36 +141,46 @@ test("parent idempotency replays completed executions and blocks concurrent retr
   assert.match(executionIdempotency, /status:\s*"failed"/);
 });
 
-test("the parent request persists the publication and queued deliveries before dispatch", () => {
-  assert.match(route, /\.from\("publications"\)[\s\S]*\.insert\(publicationInsert\)/);
-  assert.match(route, /const deliveries = channelPreflightPlan\.entries\.map/);
-  assert.match(route, /status:\s*entry\.status/);
-  assert.match(route, /error:\s*entry\.result/);
-  assert.match(route, /\.from\("publication_deliveries"\)[\s\S]*\.insert\(deliveries\)/);
+test("the browser request durably persists the parent and channel placeholders before 202", () => {
+  assert.match(route, /const ingress = await enqueueBoosterPublication\(/);
+  assert.match(
+    route,
+    /return NextResponse\.json\(ingress\.response, \{ status: 202 \}\)/,
+  );
+  assert.match(ingress, /const rows = \[/);
+  assert.match(ingress, /type: BOOSTER_ASYNC_JOB_EVENT_TYPE/);
+  assert.match(ingress, /\.\.\.params\.channels\.map\(\(channel\) => \(\{/);
+  assert.match(ingress, /type: BOOSTER_ASYNC_CHANNEL_EVENT_TYPE/);
+  assert.match(ingress, /supabaseAdmin\.from\("app_events"\)\.insert\(rows\)/);
   assertBefore(
     route,
-    /\.from\("publications"\)[\s\S]*?\.insert\(publicationInsert\)/,
-    /type:\s*BOOSTER_ASYNC_JOB_EVENT_TYPE/,
-    "publication persistence must precede async job creation",
+    /const ingress = await enqueueBoosterPublication\(/,
+    /after\(async \(\) =>/,
+    "durable ingress must complete before best-effort worker dispatch",
   );
 });
 
 test("async fan-out creates one technical event per channel and strips workspace transport", () => {
   assert.match(route, /const channelEventIds = Object\.fromEntries/);
-  assert.match(route, /BOOSTER_ASYNC_JOB_EVENT_TYPE/);
+  assert.match(ingress, /BOOSTER_ASYNC_JOB_EVENT_TYPE/);
   assert.match(route, /BOOSTER_ASYNC_CHANNEL_EVENT_TYPE/);
   assert.match(route, /channels:\s*\[channel\]/);
-  assert.match(route, /mediaWorkspaceId:\s*undefined/);
-  assert.match(route, /mediaWorkspaceClientKey:\s*undefined/);
   assert.match(route, /mediaPipelineCutoverV1:\s*false/);
   assert.match(route, /images:\s*\[\]/);
   assert.match(route, /imagesByChannel:\s*\{[\s\S]*preparedImagesByChannel\[channel\]/);
-  assert.match(route, /const queuedChannelRows = channelRows\.filter/);
+  assert.match(route, /const queuedChannelRows = durableChannelRows\.filter/);
   assert.match(route, /payload:\s*preflightFailure/);
   assert.match(route, /status:\s*"failed"/);
   assert.match(route, /status:\s*"queued"/);
   assert.match(route, /after\(async \(\) =>/);
   assert.match(route, /\{ status:\s*202 \}/);
+
+  const requestStart = route.indexOf("const channelDispatchRequest = {");
+  const requestEnd = route.indexOf("return {", requestStart);
+  assert.ok(requestStart >= 0 && requestEnd > requestStart);
+  const channelRequest = route.slice(requestStart, requestEnd);
+  assert.doesNotMatch(channelRequest, /mediaWorkspaceId|mediaWorkspaceClientKey/);
+  assert.doesNotMatch(channelRequest, /\.\.\.body/);
 });
 
 test("each async channel worker owns an independent lock and durable delivery state", () => {
@@ -191,13 +232,33 @@ test("final aggregation never increments business events when every channel fail
   );
 });
 
-test("successful and partial publications finalize workspace and parent lock once", () => {
+test("every async business outcome terminalizes the parent lock before the final event", () => {
   assert.match(route, /syncMediaWorkspaceLifecycle\("published"/);
   assert.match(route, /successfulChannels:\s*summary\.successChannels/);
   assert.match(route, /completeExecutionIdempotencyLock\(\{[\s\S]*result:\s*responsePayload/);
-  assert.match(asyncPublication, /finalStatus = summary\.allFailed[\s\S]*"partial"/);
-  assert.match(asyncPublication, /summary\.allFailed[\s\S]*failExecutionIdempotencyLock/);
-  assert.match(asyncPublication, /completeExecutionIdempotencyLock\(\{/);
+  assert.match(asyncPublication, /const status = summary\.allFailed[\s\S]*"partial"/);
+  const finalizerStart = asyncPublication.indexOf(
+    "async function finalizeClaimedAsyncPublication",
+  );
+  const finalizerEnd = asyncPublication.indexOf(
+    "export async function finalizeAsyncPublicationIfReady",
+    finalizerStart,
+  );
+  assert.ok(finalizerStart >= 0 && finalizerEnd > finalizerStart);
+  const finalizer = asyncPublication.slice(finalizerStart, finalizerEnd);
+  assert.match(finalizer, /completeExecutionIdempotencyLockOrThrow\(\{/);
+  assert.match(finalizer, /ok:\s*!aggregate\.summary\.allFailed/);
+  assert.doesNotMatch(finalizer, /failExecutionIdempotencyLock\(/);
+  assertBefore(
+    finalizer,
+    /completeExecutionIdempotencyLockOrThrow\(\{/,
+    /\.update\(\{ type: finalEventType, payload: finalPayload \}\)/,
+    "the terminal lock must be durable before the parent becomes a final event",
+  );
+  assert.match(
+    executionIdempotency,
+    /completeExecutionIdempotencyLockOrThrow[\s\S]*?\.select\("id"\)[\s\S]*?if \(!data\) throw new Error\("execution_idempotency_lock_missing"\)/,
+  );
   assert.match(asyncPublication, /channel events are purely technical/i);
   assert.match(asyncPublication, /\.delete\(\)[\s\S]*BOOSTER_ASYNC_CHANNEL_EVENT_TYPE/);
 });

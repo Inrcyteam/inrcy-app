@@ -7,7 +7,6 @@ import { buildStorageContentUrl } from "@/lib/storageContentUrl";
 import { runTransientPostgrestRead } from "@/lib/supabaseTransientRetry";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
-import { BOOSTER_ASYNC_JOB_EVENT_TYPE, finalizeAsyncPublicationIfReady } from "@/lib/boosterAsyncPublication";
 import {
   INRCY_WORKFLOW_ACTIONS,
   INRSEND_GROUPED_FOLDERS,
@@ -152,7 +151,11 @@ type StoredReportDocument = {
 
 const MAILBOX_PAGE_SIZE = 20;
 const SOURCE_BATCH_SIZE = 60;
-const MAX_ITERATIONS = 5000;
+const MAX_HISTORY_PAGE = 100;
+const MIN_SOURCE_BATCHES_PER_REQUEST = 1;
+const MAX_SOURCE_BATCHES_PER_REQUEST = 40;
+const COUNT_SOURCE_BATCH_SIZE = 150;
+const COUNT_SOURCE_ROW_LIMIT = 300;
 const ALL_FOLDERS: Folder[] = Array.from(
   new Set<string>([...INRSEND_LEGACY_FOLDERS, ...INRSEND_GROUPED_FOLDERS]),
 ) as Folder[];
@@ -791,7 +794,10 @@ function shouldQuerySendItems(folder: Folder) {
 }
 
 function shouldQueryCampaigns(folder: Folder, view: BoxView) {
-  return folder !== "stats" && view !== "drafts";
+  // Social publications are persisted in app_events. Scanning e-mail
+  // campaigns for this tab used to download rows that were all discarded by
+  // the JavaScript folder filter.
+  return folder !== "stats" && folder !== "publications" && view !== "drafts";
 }
 
 function shouldQueryEvents(folder: Folder, view: BoxView) {
@@ -908,20 +914,36 @@ function mapEventItems(rows: any[]): OutboxItem[] {
 
   return rows
     .filter(
-      (e) => supportedModules.has(String(e.module)) && !isTechnicalAppEvent(e),
+      (e) =>
+        supportedModules.has(String(e.module)) &&
+        (!isTechnicalAppEvent(e) || String(e.type || "") === "publish_async_job"),
     )
     .map<OutboxItem>((e: any) => {
       const eventModule = String(e.module || "") as "booster" | "propulser" | "fideliser";
       const t = String(e.type || "");
-      const payload = (e.payload || {}) as any;
+      const durablePayload = (e.payload || {}) as any;
+      const isAsyncPublication = t === "publish_async_job";
+      // Avant la conversion terminale du parent, le contenu lisible vit dans
+      // ces deux sous-objets. On projette uniquement ce dont iNr'Send a besoin
+      // et on garde le statut technique du parent comme `processing`.
+      const payload = isAsyncPublication
+        ? {
+            ...((durablePayload.preparationRequest || {}) as any),
+            ...((durablePayload.finalPayloadBase || {}) as any),
+            channels: durablePayload.channels || [],
+            status: durablePayload.status || "queued",
+            publication_id: durablePayload.publication_id || e.id,
+          }
+        : durablePayload;
       const isDraft = String(payload?.status || "").toLowerCase() === "draft" || t === "publish_draft";
-      const actionType = t === "publish_draft" ? "publish" : t;
+      const actionType =
+        t === "publish_draft" || isAsyncPublication ? "publish" : t;
       const action = getActionFromTrack(eventModule, actionType);
       const folder: Folder = action
         ? historyFolderForAction(action)
         : eventModule === "fideliser"
           ? "fidelisations"
-          : t === "publish"
+          : t === "publish" || isAsyncPublication
             ? "publications"
             : "propulsions";
       const workflowMeta = action ? workflowMetaFromAction(action) : workflowMetaFromFolder(folder);
@@ -931,7 +953,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         payload?.subject,
         payload?.post?.subject,
       );
-      const originMeta = extractOriginMeta(e);
+      const originMeta = extractOriginMeta({ ...e, payload });
 
       const title = folder === "publications"
         ? getPublicationTitleFromOrigin(isDraft, originMeta)
@@ -952,6 +974,8 @@ function mapEventItems(rows: any[]): OutboxItem[] {
       const payloadStatus = String(payload?.status || "").toLowerCase();
       const eventStatus: Status = isDraft
         ? "draft"
+        : isAsyncPublication
+          ? "processing"
         : payloadStatus === "failed"
           ? "failed"
           : payloadStatus === "partial"
@@ -977,7 +1001,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         channels: extractedChannels,
         attachments: extractAttachmentsFromPayload(payload),
         ...originMeta,
-        raw: e,
+          raw: isAsyncPublication ? { ...e, payload } : e,
         reopenHref: isDraft && folder === "publications"
           ? `/dashboard?action=publish&draftId=${encodeURIComponent(String(e.id || ""))}`
           : null,
@@ -1249,25 +1273,6 @@ function dedupeHistoryItems(items: OutboxItem[]): OutboxItem[] {
   return result;
 }
 
-async function reconcilePendingAsyncPublications(userId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("app_events")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
-    .order("created_at", { ascending: false })
-    .limit(12);
-  if (error) {
-    console.warn("[inrsend] async publication reconciliation lookup failed", { message: error.message });
-    return;
-  }
-  await Promise.allSettled(
-    (data || []).map((row: any) =>
-      finalizeAsyncPublicationIfReady({ userId, publicationId: String(row.id || "") }),
-    ),
-  );
-}
-
 function mapAgentStatsReports(rows: InrAgentActionRow[]): OutboxItem[] {
   return rows.map<OutboxItem>((row) => {
     const payload = asRecord(row.payload);
@@ -1325,22 +1330,34 @@ function mapAgentStatsReports(rows: InrAgentActionRow[]): OutboxItem[] {
   });
 }
 
-async function fetchAllRows<T>(
+type BoundedRows<T> = {
+  rows: T[];
+  complete: boolean;
+};
+
+async function fetchBoundedRows<T>(
   build: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>,
-  batchSize = 500,
-): Promise<T[]> {
+  batchSize = COUNT_SOURCE_BATCH_SIZE,
+  rowLimit = COUNT_SOURCE_ROW_LIMIT,
+): Promise<BoundedRows<T>> {
   const rows: T[] = [];
 
-  for (let from = 0; ; from += batchSize) {
-    const to = from + batchSize - 1;
+  for (let from = 0; from < rowLimit; from += batchSize) {
+    const requestedSize = Math.min(batchSize, rowLimit - from);
+    const to = from + requestedSize - 1;
     const { data, error } = await build(from, to);
     if (error) throw error;
     const batch = Array.isArray(data) ? data : [];
     rows.push(...batch);
-    if (batch.length < batchSize) break;
+    if (batch.length < requestedSize) {
+      return { rows, complete: true };
+    }
   }
 
-  return rows;
+  // A full final batch does not prove that the table is exhausted. Returning
+  // complete=false prevents a bounded lower bound from being exposed as an
+  // exact folder count.
+  return { rows, complete: false };
 }
 
 async function computeFolderCounts(
@@ -1349,11 +1366,11 @@ async function computeFolderCounts(
   boxView: BoxView,
   filterAccountId: string,
   query: string,
-): Promise<FolderCounts> {
+): Promise<{ counts: FolderCounts; complete: boolean }> {
   const counts = emptyFolderCounts();
   const eventsCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "propulsions", "informations", "suivis", "enquetes", "fidelisations"]);
 
-  const sendItemsPromise = fetchAllRows<SendItemRow>(async (from, to) => {
+  const sendItemsPromise = fetchBoundedRows<SendItemRow>(async (from, to) => {
     let builder: any = supabase
       .from("send_items")
       .select("*")
@@ -1369,8 +1386,8 @@ async function computeFolderCounts(
   });
 
   const campaignsPromise = boxView === "drafts"
-    ? Promise.resolve([] as any[])
-    : fetchAllRows<any>(async (from, to) => runTransientPostgrestRead<any[]>(() => {
+    ? Promise.resolve({ rows: [] as any[], complete: true })
+    : fetchBoundedRows<any>(async (from, to) => runTransientPostgrestRead<any[]>(() => {
         let builder: any = supabase
           .from("mail_campaigns")
           .select("*")
@@ -1382,7 +1399,7 @@ async function computeFolderCounts(
         return builder.range(from, to);
       }));
 
-  const eventsPromise = fetchAllRows<any>(async (from, to) => {
+  const eventsPromise = fetchBoundedRows<any>(async (from, to) => {
     let builder: any = supabase
       .from("app_events")
       .select("id, module, type, payload, created_at")
@@ -1400,8 +1417,8 @@ async function computeFolderCounts(
   });
 
   const statsReportsPromise = boxView === "drafts"
-    ? Promise.resolve([] as InrAgentActionRow[])
-    : fetchAllRows<InrAgentActionRow>(async (from, to) => {
+    ? Promise.resolve({ rows: [] as InrAgentActionRow[], complete: true })
+    : fetchBoundedRows<InrAgentActionRow>(async (from, to) => {
         const { data, error } = await supabaseAdmin
           .from("inr_agent_actions")
           .select("id, automation_key, action_type, target_tool, title, summary, preview_text, recipients, payload, status, completed_at, created_at, updated_at, last_error")
@@ -1414,8 +1431,8 @@ async function computeFolderCounts(
       });
 
   const scheduledActionsPromise = boxView === "drafts"
-    ? Promise.resolve([] as InrAgentScheduledActionRow[])
-    : fetchAllRows<InrAgentScheduledActionRow>(async (from, to) => {
+    ? Promise.resolve({ rows: [] as InrAgentScheduledActionRow[], complete: true })
+    : fetchBoundedRows<InrAgentScheduledActionRow>(async (from, to) => {
         const { data, error } = await supabaseAdmin
           .from("inr_agent_scheduled_actions")
           .select("id, automation_key, action_type, target_tool, source, title, summary, channels, payload, status, executed_at, created_at, updated_at, last_error")
@@ -1428,7 +1445,7 @@ async function computeFolderCounts(
         return { data: data as InrAgentScheduledActionRow[] | null, error };
       });
 
-  const [sendRows, campaignRows, eventRows, statsReportRows, scheduledActionRows] = await Promise.all([
+  const [sendResult, campaignResult, eventResult, statsReportResult, scheduledActionResult] = await Promise.all([
     sendItemsPromise,
     campaignsPromise,
     eventsPromise,
@@ -1437,11 +1454,11 @@ async function computeFolderCounts(
   ]);
 
   const allItems = dedupeHistoryItems([
-    ...mapSendItems(sendRows),
-    ...mapCampaignItems(campaignRows),
-    ...mapEventItems(eventRows),
-    ...mapAgentHistoryRows(statsReportRows),
-    ...mapAgentScheduledPublicationFallbacks(scheduledActionRows),
+    ...mapSendItems(sendResult.rows),
+    ...mapCampaignItems(campaignResult.rows),
+    ...mapEventItems(eventResult.rows),
+    ...mapAgentHistoryRows(statsReportResult.rows),
+    ...mapAgentScheduledPublicationFallbacks(scheduledActionResult.rows),
   ]);
 
   for (const item of allItems) {
@@ -1451,7 +1468,16 @@ async function computeFolderCounts(
     countFolderItem(counts, item);
   }
 
-  return counts;
+  return {
+    counts,
+    complete: [
+      sendResult,
+      campaignResult,
+      eventResult,
+      statsReportResult,
+      scheduledActionResult,
+    ].every((result) => result.complete),
+  };
 }
 
 export async function GET(req: Request) {
@@ -1466,23 +1492,25 @@ export async function GET(req: Request) {
 
   try {
     const url = new URL(req.url);
-    const page = parsePositiveInt(url.searchParams.get("page"), 1, 100000);
+    const page = parsePositiveInt(url.searchParams.get("page"), 1, MAX_HISTORY_PAGE);
     const pageSize = parsePositiveInt(url.searchParams.get("pageSize"), MAILBOX_PAGE_SIZE, MAILBOX_PAGE_SIZE);
     const folder = normalizeFolder(url.searchParams.get("folder"));
     const boxView = normalizeBoxView(url.searchParams.get("boxView"));
     const filterAccountId = cleanString(url.searchParams.get("filterAccountId"));
     const query = cleanString(url.searchParams.get("q")).toLowerCase();
-    const includeCounts = url.searchParams.get("includeCounts") !== "0";
+    // Exact counters are intentionally opt-in. A normal history read only
+    // needs the requested page plus one lookahead item.
+    const includeCounts = url.searchParams.get("includeCounts") === "1";
     const folderCutoffIso = getInrSendRetentionCutoffIso(folder);
     const eventSourceCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "propulsions", "informations", "suivis", "enquetes", "fidelisations"]);
-    // Background preloading only needs one extra visible item to know whether
-    // another page exists. Full counter calculation is reserved for foreground
-    // loads and explicit refreshes.
-    const targetVisibleCount = page * pageSize + (includeCounts ? 0 : 1);
-
-    if (includeCounts && boxView !== "drafts" && shouldQueryEvents(folder, boxView)) {
-      await reconcilePendingAsyncPublications(activeUserId);
-    }
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const targetVisibleCount = end + 1;
+    const requestedSourceBatches = Math.ceil(targetVisibleCount / SOURCE_BATCH_SIZE);
+    const maxSourceBatches = Math.min(
+      MAX_SOURCE_BATCHES_PER_REQUEST,
+      Math.max(MIN_SOURCE_BATCHES_PER_REQUEST, requestedSourceBatches + 2),
+    );
 
     const allItems: OutboxItem[] = [];
     const sourceState = {
@@ -1521,7 +1549,8 @@ export async function GET(req: Request) {
 
     let filtered = buildFiltered();
 
-    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
+    let completedSourceBatches = 0;
+    for (; completedSourceBatches < maxSourceBatches; completedSourceBatches += 1) {
       if (filtered.length >= targetVisibleCount) break;
       if (
         sourceState.send_items.exhausted &&
@@ -1549,6 +1578,9 @@ export async function GET(req: Request) {
           if (folder === "mails") builder = builder.eq("type", "mail");
           else if (folder === "factures") builder = builder.eq("type", "facture");
           else if (folder === "devis") builder = builder.eq("type", "devis");
+          else if (folder === "publications") {
+            builder = builder.eq("folder", "publications");
+          }
 
           if (filterAccountId) builder = builder.eq("integration_id", filterAccountId);
 
@@ -1599,14 +1631,20 @@ export async function GET(req: Request) {
 
           if (boxView === "drafts") {
             builder = builder.eq("type", "publish_draft");
-          } else {
+          } else if (folder !== "publications") {
             for (const technicalType of TECHNICAL_APP_EVENT_TYPES) {
               builder = builder.neq("type", technicalType);
             }
           }
 
           if (folder === "publications") {
-            builder = builder.eq("module", "booster");
+            builder = builder
+              .eq("module", "booster")
+              .in("type", [
+                "publish",
+                "publish_draft",
+                "publish_async_job",
+              ]);
           } else if (folder === "recoltes" || folder === "offres" || folder === "propulsions") {
             builder = builder.in("module", ["booster", "propulser"]);
           } else if (folder === "informations" || folder === "suivis" || folder === "enquetes" || folder === "fidelisations") {
@@ -1630,10 +1668,19 @@ export async function GET(req: Request) {
         tasks.push((async () => {
           const from = sourceState.inr_agent_actions.offset;
           const to = from + SOURCE_BATCH_SIZE - 1;
-          const { data, error } = await supabaseAdmin
+          let builder = supabaseAdmin
             .from("inr_agent_actions")
             .select("id, automation_key, action_type, target_tool, title, summary, preview_text, recipients, payload, status, completed_at, created_at, updated_at, last_error")
-            .eq("user_id", activeUserId)
+            .eq("user_id", activeUserId);
+          builder = folder === "publications"
+            ? builder
+                .eq("automation_key", "publish")
+                .eq("action_type", "publication")
+                .eq("target_tool", "booster")
+            : builder
+                .eq("automation_key", "stats")
+                .eq("action_type", "stats_report");
+          const { data, error } = await builder
             .order("completed_at", { ascending: false, nullsFirst: false })
             .order("created_at", { ascending: false })
             .range(from, to);
@@ -1659,6 +1706,9 @@ export async function GET(req: Request) {
             .from("inr_agent_scheduled_actions")
             .select("id, automation_key, action_type, target_tool, source, title, summary, channels, payload, status, executed_at, created_at, updated_at, last_error")
             .eq("user_id", activeUserId)
+            .eq("automation_key", "publish")
+            .eq("action_type", "publication")
+            .eq("target_tool", "booster")
             .in("status", ["done", "failed"])
             .order("executed_at", { ascending: false, nullsFirst: false })
             .order("created_at", { ascending: false })
@@ -1684,9 +1734,16 @@ export async function GET(req: Request) {
     }
 
     filtered = buildFiltered();
+    const allSourcesExhausted = Object.values(sourceState).every(
+      (state) => state.exhausted,
+    );
+    const scanTruncated =
+      completedSourceBatches >= maxSourceBatches &&
+      !allSourcesExhausted &&
+      filtered.length < targetVisibleCount;
+    const hasMoreFromPage =
+      page < MAX_HISTORY_PAGE && (filtered.length > end || scanTruncated);
 
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
     const items = filtered.slice(start, end);
     const historyFiles = await fetchInrSendHistoryFiles(
       supabase,
@@ -1727,20 +1784,33 @@ export async function GET(req: Request) {
         items,
         page,
         pageSize,
-        hasMore: filtered.length > end,
+        hasMore: hasMoreFromPage,
         total: null,
         totalKnown: false,
         countsIncluded: false,
       });
     }
 
-    const [folderCounts, draftFolderCounts] = await Promise.all([
+    const [sentCountsResult, draftCountsResult] = await Promise.all([
       computeFolderCounts(supabase, activeUserId, "sent", filterAccountId, query),
       computeFolderCounts(supabase, activeUserId, "drafts", filterAccountId, query),
     ]);
+    if (!sentCountsResult.complete || !draftCountsResult.complete) {
+      return NextResponse.json({
+        items,
+        page,
+        pageSize,
+        hasMore: hasMoreFromPage,
+        total: null,
+        totalKnown: false,
+        countsIncluded: false,
+      });
+    }
+    const folderCounts = sentCountsResult.counts;
+    const draftFolderCounts = draftCountsResult.counts;
     const activeCounts = boxView === "drafts" ? draftFolderCounts : folderCounts;
     const exactTotal = Math.max(0, Number(activeCounts[folder] || 0));
-    const hasMore = end < exactTotal;
+    const hasMore = page < MAX_HISTORY_PAGE && end < exactTotal;
 
     return NextResponse.json({
       items,

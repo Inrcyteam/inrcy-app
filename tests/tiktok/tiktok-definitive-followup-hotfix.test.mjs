@@ -14,6 +14,18 @@ test("TikTok cron watcher route exists and is protected", async () => {
   assert.match(watcher, /app_events/);
 });
 
+test("TikTok watcher targets processing deliveries and refreshes the whole publication balance", async () => {
+  const watcher = await read("lib/tiktokPendingPublicationWatcher.ts");
+  assert.match(watcher, /buildAsyncPublicationAggregate/);
+  assert.match(watcher, /summary: aggregate\.summary/);
+  assert.match(watcher, /outcome: aggregate\.outcome/);
+  assert.match(watcher, /externalCompletedAt/);
+  assert.match(watcher, /\.from\("publication_deliveries"\)[\s\S]*\.eq\("status", "processing"\)/);
+  assert.match(watcher, /\.in\("id", publicationIds\)/);
+  assert.doesNotMatch(watcher, /\.limit\(500\)/);
+  assert.match(watcher, /WATCHER_CONCURRENCY/);
+});
+
 test("TikTok initial status wait covers the normal photo download window", async () => {
   const source = await read("lib/tiktokPublish.ts");
   assert.match(source, /const delays = \[0, 1500, 2500, 3500, 4500, 5500, 6500\]/);

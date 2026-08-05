@@ -66,7 +66,7 @@ test("les deux préparations sont explicites et idempotentes côté client", () 
   assert.match(hookSource, /missionReadyRef/);
 });
 
-test("la vidéo n'est plus analysée au moment de son ajout", () => {
+test("la vidéo n'est plus analysée au moment de son ajout et Générer ne lance aucune préparation lourde", () => {
   const addStart = modalSource.indexOf("const addVideoFile");
   const addEnd = modalSource.indexOf("const onVideoChange", addStart);
   assert.ok(addStart >= 0 && addEnd > addStart);
@@ -74,17 +74,32 @@ test("la vidéo n'est plus analysée au moment de son ajout", () => {
   assert.doesNotMatch(addSource, /getOrPrepareVideoFramesForAI/);
   assert.doesNotMatch(addSource, /getOrPrepareVideoAudioFileForAI/);
 
-  assert.match(
-    modalSource,
-    /purpose === "generate"\s*\? await preparePersistentAiMedia\(\)/,
+  const readinessStart = modalSource.indexOf(
+    "const waitForPersistentWorkspaceReadiness",
   );
+  const readinessEnd = modalSource.indexOf(
+    "const resolveChannelMediaMode",
+    readinessStart,
+  );
+  assert.ok(readinessStart >= 0 && readinessEnd > readinessStart);
+  const readinessSource = modalSource.slice(readinessStart, readinessEnd);
+  assert.match(readinessSource, /await waitForPersistentWorkspaceIdle/);
+  assert.match(readinessSource, /await verifyPersistentWorkspaceSources/);
+  assert.doesNotMatch(readinessSource, /preparePersistent/);
+  assert.doesNotMatch(modalSource, /preparePersistentAiMedia/);
+  assert.doesNotMatch(modalSource, /preparePersistentPublicationMedia/);
   assert.match(
     modalSource,
-    /hasVideoForGeneration[\s\S]*?!mediaPipelineCutoverEnabled/,
+    /await waitForPersistentWorkspaceReadiness\(\s*"generate"/,
+  );
+  assert.match(modalSource, /BOOSTER_GENERATION_TARGET_MS = 30_000/);
+  assert.match(
+    modalSource,
+    /BOOSTER_GENERATION_SAFETY_BUDGET_MS\s*=\s*BOOSTER_GENERATION_TARGET_MS \+ 15_000/,
   );
 });
 
-test("l'upload workspace persiste les métadonnées sans normaliser", () => {
+test("l'upload workspace persiste les métadonnées puis préchauffe les dérivées hors du chemin critique", () => {
   assert.match(uploadIntentSource, /width:\s*sourceRegistry\.width/);
   assert.match(uploadIntentSource, /height:\s*sourceRegistry\.height/);
   assert.match(
@@ -96,7 +111,39 @@ test("l'upload workspace persiste les métadonnées sans normaliser", () => {
     /reused image normalization enqueue failed/,
   );
   assert.match(uploadEventSource, /sourceMetadataOnly/);
-  assert.match(uploadEventSource, /reason:\s*"source_metadata_only"/);
+  assert.match(
+    uploadEventSource,
+    /mission:\s*sourceMetadataOnly\s*\?\s*"publication_preparation"/,
+  );
+
+  const imageBlockStart = uploadEventSource.indexOf(
+    'current.data.media_type === "image"',
+  );
+  const videoBlockStart = uploadEventSource.indexOf(
+    'current.data.media_type === "video" &&',
+    imageBlockStart,
+  );
+  const responseStart = uploadEventSource.indexOf(
+    "await refreshPublicationWorkspaceStatusesForMedia",
+    videoBlockStart,
+  );
+  assert.ok(
+    imageBlockStart >= 0 &&
+      videoBlockStart > imageBlockStart &&
+      responseStart > videoBlockStart,
+  );
+  const imageBlock = uploadEventSource.slice(imageBlockStart, videoBlockStart);
+  const videoBlock = uploadEventSource.slice(videoBlockStart, responseStart);
+  assert.match(imageBlock, /await enqueueImageNormalization\(/);
+  assert.match(
+    imageBlock,
+    /after\(async \(\) => \{[\s\S]*await processImageNormalizationJobsForMedia\(/,
+  );
+  assert.match(videoBlock, /await enqueueVideoNormalization\(/);
+  assert.match(
+    videoBlock,
+    /after\(async \(\) => \{[\s\S]*await processVideoNormalizationJobsForMedia\(/,
+  );
 });
 
 test("le serveur distingue préparation IA et préparation publication", () => {

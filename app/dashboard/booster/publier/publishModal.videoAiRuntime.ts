@@ -6,7 +6,6 @@ import {
 } from "@/lib/boosterVideoAudioClient";
 import type { BoosterVideoSourceMetadata } from "./publishModal.shared";
 import {
-  MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES,
   VIDEO_TRANSCRIPTION_TIMEOUT_MS,
   buildVideoFileName,
   buildVideoOrientation,
@@ -14,6 +13,8 @@ import {
   getVideoOrientationLabel,
   type VideoAudioTranscriptCache,
 } from "./publishModal.foundations";
+
+const FAST_GENERATION_AUDIO_MAX_BYTES = 3_750_000;
 
 export function preloadPreparedImagePreview(url: string, timeoutMs = 8_000) {
   if (typeof window === "undefined" || !url) {
@@ -89,6 +90,7 @@ export function readVideoSourceMetadata(
 export async function transcribeVideoAudioForAI(
   file: File,
   preparedAudio: File | null,
+  timeoutMs = VIDEO_TRANSCRIPTION_TIMEOUT_MS,
 ): Promise<Omit<VideoAudioTranscriptCache, "key"> | null> {
   let storagePathToCleanup = "";
   let requestBody: BodyInit;
@@ -96,6 +98,9 @@ export async function transcribeVideoAudioForAI(
 
   try {
     if (preparedAudio) {
+      // Le mode Générer ne lance jamais un upload audio secondaire : au-delà
+      // du transport direct, la phrase + les captures vidéo suffisent.
+      if (preparedAudio.size > FAST_GENERATION_AUDIO_MAX_BYTES) return null;
       const transport = await prepareVideoAudioTransport(preparedAudio);
       if (transport.mode === "storage") {
         storagePathToCleanup = transport.storagePath;
@@ -107,21 +112,19 @@ export async function transcribeVideoAudioForAI(
           audioType: transport.type,
           audioSize: transport.size,
           videoName: buildVideoFileName(file),
+          mode: "generation_fast",
         });
       } else {
         const formData = new FormData();
         formData.append("audio", transport.file, transport.file.name);
         formData.append("origin", "video");
+        formData.append("mode", "generation_fast");
         formData.append("video_name", buildVideoFileName(file));
         requestBody = formData;
       }
-    } else if (file.size <= MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES) {
-      // Compatibilité historique pour une petite vidéo si le navigateur ne sait
-      // pas extraire localement sa piste audio.
-      const formData = new FormData();
-      formData.append("video", file, buildVideoFileName(file));
-      requestBody = formData;
     } else {
+      // Ne jamais envoyer le conteneur vidéo complet à /transcribe depuis le
+      // parcours rapide : FFmpeg pourrait continuer après l'abandon du navigateur.
       return null;
     }
   } catch {
@@ -137,14 +140,17 @@ export async function transcribeVideoAudioForAI(
     controller && typeof window !== "undefined"
       ? window.setTimeout(
           () => controller.abort(),
-          VIDEO_TRANSCRIPTION_TIMEOUT_MS,
+          Math.max(1_000, timeoutMs),
         )
       : null;
 
   try {
     const res = await fetch("/api/booster/transcribe", {
       method: "POST",
-      ...(requestHeaders ? { headers: requestHeaders } : {}),
+      headers: {
+        ...(requestHeaders || {}),
+        "x-inrcy-transcription-mode": "generation-fast",
+      },
       body: requestBody,
       ...(controller ? { signal: controller.signal } : {}),
     });

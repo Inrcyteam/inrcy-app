@@ -17,8 +17,14 @@ import {
   isUnifiedMediaConsumptionEnabled,
   type MediaPipelineUnifiedPurpose,
 } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
-import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
-import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
+import {
+  canPublishVideoSourceDirectly,
+  hasServerVideoProbeProvenance,
+} from "@/lib/mediaVideoSourceCompatibility";
+import {
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+} from "@/lib/mediaRules";
 
 const PRIVATE_MEDIA_BUCKET = "inrcy-pro-media";
 const MAX_AI_IMAGE_BYTES = 2_500_000;
@@ -127,6 +133,13 @@ export type WorkspacePublicationVideo = {
     height?: number | null;
     duration?: number | null;
     orientation?: "horizontal" | "vertical" | "square" | "unknown";
+    videoCodec?: string | null;
+    audioCodec?: string | null;
+    frameRate?: number | null;
+    hasAudio?: boolean | null;
+    containerFormats?: string[] | null;
+    pixelFormat?: string | null;
+    compatibilityProof?: "server_ffmpeg" | "canonical_derivative";
   };
 };
 
@@ -187,6 +200,143 @@ function cleanText(value: unknown, fallback = "") {
 function normalizeMime(value: unknown, fallback: string) {
   const mime = cleanText(value).toLowerCase().split(";")[0]?.trim() || "";
   return mime || fallback;
+}
+
+const DIRECT_PUBLICATION_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+]);
+
+function sourceMetadataForMedia(media: WorkspaceMediaRow) {
+  const direct = asObject(media.mediaSettings.source_metadata);
+  const nestedSettings = asObject(media.mediaMetadata.media_settings);
+  const uploadedSource = Object.keys(direct).length
+    ? direct
+    : asObject(
+    media.mediaMetadata.source_metadata || nestedSettings.source_metadata,
+  );
+  const candidateNormalizationSource = asObject(
+    asObject(media.mediaMetadata.video_normalization).source,
+  );
+  const normalizationSource = hasServerVideoProbeProvenance(
+    candidateNormalizationSource,
+  )
+    ? candidateNormalizationSource
+    : {};
+  // A completed server probe is more reliable than browser-supplied metadata.
+  return { ...uploadedSource, ...normalizationSource };
+}
+
+function serverProbedVideoMetadataForMedia(media: WorkspaceMediaRow) {
+  const normalization = asObject(media.mediaMetadata.video_normalization);
+  const source = asObject(normalization.source);
+  return hasServerVideoProbeProvenance(source) ? source : {};
+}
+
+function positiveMetadataNumber(value: unknown) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function canUseDirectWorkspaceImageSource(media: WorkspaceMediaRow) {
+  if (media.mediaType !== "image" || !media.sourceStoragePath) return false;
+  const mimeType = normalizeMime(
+    media.detectedMimeType || media.sourceMimeType,
+    "application/octet-stream",
+  );
+  const normalization = asObject(media.mediaMetadata.image_normalization);
+  const metadata = asObject(normalization.source);
+  if (metadata.probeProvenance !== "server_sharp") return false;
+  const serverFormat = cleanText(metadata.format).toLowerCase();
+  const formatMatchesMime =
+    (mimeType === "image/jpeg" && ["jpeg", "jpg"].includes(serverFormat)) ||
+    (mimeType === "image/png" && serverFormat === "png") ||
+    (mimeType === "image/webp" && serverFormat === "webp") ||
+    (mimeType === "image/gif" && serverFormat === "gif") ||
+    (mimeType === "image/avif" && serverFormat === "avif");
+  return (
+    DIRECT_PUBLICATION_IMAGE_MIME_TYPES.has(mimeType) &&
+    formatMatchesMime &&
+    media.sourceSizeBytes > 0 &&
+    media.sourceSizeBytes <= INR_MEDIA_IMAGE_MAX_BYTES &&
+    positiveMetadataNumber(metadata.width) !== null &&
+    positiveMetadataNumber(metadata.height) !== null
+  );
+}
+
+function directVideoProofForMedia(media: WorkspaceMediaRow) {
+  // Ne jamais prendre codec/FPS depuis `media_settings.source_metadata` : ces
+  // valeurs viennent du navigateur et ne sont pas une preuve de compatibilitÃ©.
+  // Seul le probe FFmpeg persistÃ© par le worker serveur peut autoriser l'original.
+  const metadata = serverProbedVideoMetadataForMedia(media);
+  const videoCodec = cleanText(
+    metadata.video_codec ||
+      metadata.videoCodec ||
+      metadata.source_video_codec,
+  ).toLowerCase();
+  const audioCodec = cleanText(
+    metadata.audio_codec ||
+      metadata.audioCodec ||
+      metadata.source_audio_codec,
+  ).toLowerCase();
+  const frameRate =
+    metadata.frame_rate ??
+    metadata.frameRate ??
+    metadata.fps ??
+    metadata.source_frame_rate;
+  const hasAudioRaw =
+    metadata.has_audio ?? metadata.hasAudio ?? metadata.source_has_audio;
+  const hasAudio =
+    typeof hasAudioRaw === "boolean"
+      ? hasAudioRaw
+      : audioCodec === "none"
+        ? false
+        : null;
+  const rawContainerFormats =
+    metadata.containerFormats ??
+    metadata.container_formats ??
+    metadata.source_container_formats;
+  const containerFormats = Array.isArray(rawContainerFormats)
+    ? rawContainerFormats
+        .map((value) => cleanText(value).toLowerCase())
+        .filter(Boolean)
+    : cleanText(rawContainerFormats)
+        .split(",")
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean);
+  const pixelFormat = cleanText(
+    metadata.pixelFormat ??
+      metadata.pixel_format ??
+      metadata.source_pixel_format,
+  ).toLowerCase();
+  return {
+    videoCodec,
+    audioCodec,
+    frameRate,
+    hasAudio,
+    containerFormats,
+    pixelFormat,
+  };
+}
+
+function canUseDirectWorkspaceVideoSource(media: WorkspaceMediaRow) {
+  const proof = directVideoProofForMedia(media);
+  return (
+    media.mediaType === "video" &&
+    Boolean(media.sourceStoragePath) &&
+    canPublishVideoSourceDirectly({
+      name: media.originalFileName,
+      mimeType: media.detectedMimeType || media.sourceMimeType,
+      storagePath: media.sourceStoragePath,
+      sizeBytes: media.sourceSizeBytes,
+      maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+      ...proof,
+      requireCodecProof: true,
+    })
+  );
 }
 
 function sha256(buffer: Buffer) {
@@ -281,6 +431,7 @@ async function readWorkspaceGraph(params: {
   workspaceId: string;
   allowProcessingVideoForAi?: boolean;
   allowUploadedImageSourceForAi?: boolean;
+  allowUploadedImageSourceForPublication?: boolean;
   allowUploadedVideoSource?: boolean;
 }) {
   if (!isUnifiedMediaConsumptionEnabled()) {
@@ -372,17 +523,18 @@ async function readWorkspaceGraph(params: {
       return false;
     }
 
+    if (
+      (params.allowUploadedImageSourceForPublication ?? false) &&
+      canUseDirectWorkspaceImageSource(item)
+    ) {
+      return false;
+    }
+
     const uploadedVideoIsUsable =
       item.mediaType === "video" &&
       ((params.allowProcessingVideoForAi ?? false) ||
         ((params.allowUploadedVideoSource ?? false) &&
-          canPublishVideoSourceDirectly({
-            name: item.originalFileName,
-            mimeType: item.detectedMimeType || item.sourceMimeType,
-            storagePath: item.sourceStoragePath,
-            sizeBytes: item.sourceSizeBytes,
-            maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
-          })));
+          canUseDirectWorkspaceVideoSource(item)));
     if (uploadedVideoIsUsable) return false;
 
     // Mission publication: conserver les garanties historiques.
@@ -954,6 +1106,7 @@ export async function resolveWorkspacePublicationConsumption(params: {
 }): Promise<WorkspacePublicationConsumption> {
   const graph = await readWorkspaceGraph({
     ...params,
+    allowUploadedImageSourceForPublication: true,
     allowUploadedVideoSource: true,
   });
   const { workspace, media, variants } = graph;
@@ -977,22 +1130,42 @@ export async function resolveWorkspacePublicationConsumption(params: {
       media.slice(0, MAX_AI_IMAGE_COUNT),
       AI_PROVIDER_SAFE_CONCURRENCY,
       async (item) => {
-      let canonical = pickReadyVariant(
+      const sourceMetadata = sourceMetadataForMedia(item);
+      const sourceWidth = positiveMetadataNumber(sourceMetadata.width);
+      const sourceHeight = positiveMetadataNumber(sourceMetadata.height);
+      if (
+        canUseDirectWorkspaceImageSource(item) &&
+        sourceWidth !== null &&
+        sourceHeight !== null
+      ) {
+        return {
+          mediaId: item.mediaId,
+          imageKey: editorImageKeyFromClientMediaKey(
+            item.clientMediaKey,
+            `workspace:${item.mediaId}`,
+          ),
+          name: item.originalFileName,
+          type: normalizeMime(
+            item.detectedMimeType || item.sourceMimeType,
+            "image/jpeg",
+          ),
+          size: item.sourceSizeBytes,
+          bucket: item.sourceBucket,
+          storagePath: item.sourceStoragePath,
+          workspacePosition: item.position,
+          imageMeta: {
+            width: sourceWidth,
+            height: sourceHeight,
+            ratio: sourceWidth / sourceHeight,
+          },
+        };
+      }
+
+      const canonical = pickReadyVariant(
         variants,
         item.mediaId,
         "canonical",
       );
-      try {
-        if (!canonical) throw new Error("image_canonical_missing");
-        await assertStoredImageVariantIsValid(canonical);
-      } catch {
-        await repairImageVariantsFromSource({
-          accountId: params.accountId,
-          media: item,
-          variants,
-        });
-        canonical = pickReadyVariant(variants, item.mediaId, "canonical");
-      }
       if (!canonical) {
         throw new MediaWorkspaceConsumptionError(
           "La version canonique d'une image n'est pas prête.",
@@ -1047,15 +1220,7 @@ export async function resolveWorkspacePublicationConsumption(params: {
 
   const item = media[0];
   const canonical = pickReadyVariant(variants, item.mediaId, "canonical");
-  const directSourceReady =
-    Boolean(item.sourceStoragePath) &&
-    canPublishVideoSourceDirectly({
-      name: item.originalFileName,
-      mimeType: item.detectedMimeType || item.sourceMimeType,
-      storagePath: item.sourceStoragePath,
-      sizeBytes: item.sourceSizeBytes,
-      maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
-    });
+  const directSourceReady = canUseDirectWorkspaceVideoSource(item);
   if (!canonical && !directSourceReady) {
     throw new MediaWorkspaceConsumptionError(
       "La version canonique de la vidéo n'est pas prête.",
@@ -1063,20 +1228,19 @@ export async function resolveWorkspacePublicationConsumption(params: {
       409,
     );
   }
+  // "Original" must remain the binary uploaded by the professional. The
+  // canonical derivative is only a compatibility fallback for an unsuitable
+  // source; merely having a canonical row must not replace a valid original.
+  const publicationVariant = directSourceReady ? null : canonical;
   const thumbnail = pickReadyVariant(variants, item.mediaId, "thumbnail");
 
   const videoMimeType = normalizeMime(
-    canonical?.mimeType || item.detectedMimeType || item.sourceMimeType,
+    publicationVariant?.mimeType || item.detectedMimeType || item.sourceMimeType,
     "video/mp4",
   );
-  const directSourceMetadata = asObject(item.mediaSettings.source_metadata);
-  const nestedMediaSettings = asObject(item.mediaMetadata.media_settings);
-  const sourceMetadata = Object.keys(directSourceMetadata).length
-    ? directSourceMetadata
-    : asObject(
-        item.mediaMetadata.source_metadata ||
-          nestedMediaSettings.source_metadata,
-      );
+  const sourceMetadata = sourceMetadataForMedia(item);
+  const directVideoProof = directVideoProofForMedia(item);
+  const canonicalMetadata = asObject(publicationVariant?.metadata);
   const sourceWidth =
     Number.isFinite(Number(sourceMetadata.width)) &&
     Number(sourceMetadata.width) > 0
@@ -1087,15 +1251,17 @@ export async function resolveWorkspacePublicationConsumption(params: {
     Number(sourceMetadata.height) > 0
       ? Number(sourceMetadata.height)
       : null;
-  const videoWidth = canonical?.width ?? sourceWidth;
-  const videoHeight = canonical?.height ?? sourceHeight;
+  const videoWidth = publicationVariant?.width ?? sourceWidth;
+  const videoHeight = publicationVariant?.height ?? sourceHeight;
   const sourceDuration =
-    Number.isFinite(Number(sourceMetadata.duration)) &&
-    Number(sourceMetadata.duration) > 0
-      ? Number(sourceMetadata.duration)
+    Number.isFinite(
+      Number(sourceMetadata.duration ?? sourceMetadata.durationSeconds),
+    ) &&
+    Number(sourceMetadata.duration ?? sourceMetadata.durationSeconds) > 0
+      ? Number(sourceMetadata.duration ?? sourceMetadata.durationSeconds)
       : null;
   const videoDuration =
-    canonical?.durationSeconds ?? item.durationSeconds ?? sourceDuration;
+    publicationVariant?.durationSeconds ?? sourceDuration ?? item.durationSeconds;
 
   return {
     source: "media_workspace_v1",
@@ -1107,14 +1273,14 @@ export async function resolveWorkspacePublicationConsumption(params: {
     images: [],
     video: {
       mediaId: item.mediaId,
-      name: canonical
+      name: publicationVariant
         ? canonicalVideoName(item.originalFileName)
         : item.originalFileName,
       type: videoMimeType,
-      size: canonical?.sizeBytes || item.sourceSizeBytes,
+      size: publicationVariant?.sizeBytes || item.sourceSizeBytes,
       duration: videoDuration,
-      bucket: canonical?.bucket || item.sourceBucket,
-      storagePath: canonical?.storagePath || item.sourceStoragePath,
+      bucket: publicationVariant?.bucket || item.sourceBucket,
+      storagePath: publicationVariant?.storagePath || item.sourceStoragePath,
       thumbnailUrl: null,
       thumbnailStoragePath: thumbnail?.storagePath || null,
       thumbnailBucket: thumbnail?.bucket || null,
@@ -1124,6 +1290,31 @@ export async function resolveWorkspacePublicationConsumption(params: {
         height: videoHeight,
         duration: videoDuration,
         orientation: orientationFromDimensions(videoWidth, videoHeight),
+        videoCodec: publicationVariant
+          ? cleanText(canonicalMetadata.output_video_codec, "h264")
+          : directVideoProof.videoCodec || null,
+        audioCodec: publicationVariant
+          ? cleanText(
+              canonicalMetadata.output_audio_codec,
+              directVideoProof.hasAudio === false ? "none" : "aac",
+            )
+          : directVideoProof.audioCodec || null,
+        frameRate: publicationVariant
+          ? positiveMetadataNumber(
+              canonicalMetadata.output_frame_rate ||
+                canonicalMetadata.source_frame_rate,
+            )
+          : positiveMetadataNumber(directVideoProof.frameRate),
+        hasAudio: directVideoProof.hasAudio,
+        containerFormats: publicationVariant
+          ? [cleanText(canonicalMetadata.output_container_format, "mp4")]
+          : directVideoProof.containerFormats,
+        pixelFormat: publicationVariant
+          ? cleanText(canonicalMetadata.output_pixel_format, "yuv420p")
+          : directVideoProof.pixelFormat || null,
+        compatibilityProof: publicationVariant
+          ? "canonical_derivative"
+          : "server_ffmpeg",
       },
     },
   };
@@ -1184,16 +1375,19 @@ export async function resolveWorkspaceAiConsumption(params: {
   }
 
   const item = media[0];
+  // La génération de texte n'a pas besoin d'attendre une variante vidéo
+  // ai_preview/canonical : elle consomme les captures et, si disponible,
+  // la piste audio. L'original déjà uploadé reste une référence valide.
   const preview =
     pickReadyVariant(variants, item.mediaId, "ai_preview") ||
     pickReadyVariant(variants, item.mediaId, "canonical");
-  if (!preview) {
-    throw new MediaWorkspaceConsumptionError(
-      "La vidéo de référence pour l'IA n'est pas prête.",
-      "workspace_ai_preview_missing",
-      409,
-    );
-  }
+  const videoReference = preview || {
+    bucket: item.sourceBucket,
+    storagePath: item.sourceStoragePath,
+    mimeType: item.detectedMimeType || item.sourceMimeType,
+    sizeBytes: item.sourceSizeBytes,
+    durationSeconds: item.durationSeconds,
+  };
 
   const frameVariants = pickAllReadyVariants(
     variants,
@@ -1269,12 +1463,12 @@ export async function resolveWorkspaceAiConsumption(params: {
     imagesForAI: [],
     videoForAI: {
       name: item.originalFileName || "video-inrcy.mp4",
-      type: normalizeMime(preview.mimeType, "video/mp4"),
-      size: preview.sizeBytes || item.sourceSizeBytes,
-      duration: preview.durationSeconds ?? item.durationSeconds,
+      type: normalizeMime(videoReference.mimeType, "video/mp4"),
+      size: videoReference.sizeBytes || item.sourceSizeBytes,
+      duration: videoReference.durationSeconds ?? item.durationSeconds,
       source: "supabase_storage",
-      bucket: preview.bucket || item.sourceBucket,
-      storagePath: preview.storagePath || item.sourceStoragePath,
+      bucket: videoReference.bucket || item.sourceBucket,
+      storagePath: videoReference.storagePath || item.sourceStoragePath,
       visualFrames,
       audioTrackFile,
       audioAvailable,

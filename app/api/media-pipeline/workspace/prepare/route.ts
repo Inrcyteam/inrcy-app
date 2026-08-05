@@ -12,7 +12,10 @@ import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
 import { processImageNormalizationJobsForMedia } from "@/lib/mediaImageNormalizationWorker";
 import { processVideoNormalizationJobsForMedia } from "@/lib/mediaVideoNormalizationWorker";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
-import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import {
+  canPublishVideoSourceDirectly,
+  hasServerVideoProbeProvenance,
+} from "@/lib/mediaVideoSourceCompatibility";
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
@@ -226,14 +229,45 @@ function hasAiArtifacts(media: WorkspaceMedia, variants: ReadyVariantState) {
 }
 
 function isDirectPublicationVideo(media: WorkspaceMedia) {
+  const normalization =
+    media.mediaMetadata.video_normalization &&
+    typeof media.mediaMetadata.video_normalization === "object"
+      ? (media.mediaMetadata.video_normalization as Record<string, unknown>)
+      : {};
+  const probedSource =
+    normalization.source && typeof normalization.source === "object"
+      ? (normalization.source as Record<string, unknown>)
+      : {};
+  // Preuve serveur uniquement. Les metadata source du navigateur restent
+  // utiles Ã  l'aperÃ§u mais ne peuvent jamais rendre l'original publiable.
+  const proof = probedSource;
   return (
     media.mediaType === "video" &&
+    hasServerVideoProbeProvenance(proof) &&
     canPublishVideoSourceDirectly({
       name: media.fileName,
       mimeType: media.mimeType,
       storagePath: media.storagePath,
       sizeBytes: media.sizeBytes,
       maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+      videoCodec:
+        proof.videoCodec || proof.video_codec || proof.source_video_codec,
+      audioCodec:
+        proof.audioCodec || proof.audio_codec || proof.source_audio_codec,
+      frameRate:
+        proof.frameRate ||
+        proof.frame_rate ||
+        proof.fps ||
+        proof.source_frame_rate,
+      hasAudio:
+        proof.hasAudio ?? proof.has_audio ?? proof.source_has_audio,
+      containerFormats:
+        proof.containerFormats ??
+        proof.container_formats ??
+        proof.source_container_formats,
+      pixelFormat:
+        proof.pixelFormat ?? proof.pixel_format ?? proof.source_pixel_format,
+      requireCodecProof: true,
     })
   );
 }

@@ -92,6 +92,12 @@ test("a compliant Google Business video is accepted directly", () => {
       durationSeconds: 30,
       width: 1280,
       height: 720,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      frameRate: 30,
+      hasAudio: true,
+      containerFormats: ["mov", "mp4"],
+      pixelFormat: "yuv420p",
     }),
     { action: "direct", reason: "already_compatible" },
   );

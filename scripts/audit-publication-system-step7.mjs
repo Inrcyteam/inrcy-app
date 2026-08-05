@@ -12,13 +12,13 @@ const inrSend = read("lib/inrsend/publicationChannelActions.ts");
 
 const checks = [
   [/inrcy_site/.test(outputPolicy) && /site_web/.test(outputPolicy) && /inr_search/.test(outputPolicy), "transparence réservée aux trois surfaces compatibles"],
-  [/CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7/.test(preparation), "cache des anciennes variantes blanches invalidé"],
-  [/shouldPreserveBoosterOriginalAlpha/.test(preparation) && /image\/png/.test(preparation), "PNG transparent conservé sur le chemin original"],
+  [/CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/.test(preparation), "cache des anciennes variantes blanches invalidé"],
+  [/"Originale" is reference-only/.test(preparation) && !/renderPublicationOriginal/.test(preparation), "chemin original sans rendu ni variante par canal"],
   [/FACEBOOK_IMAGE_UPLOAD_CONCURRENCY = 2/.test(facebook), "concurrence Facebook limitée à deux images"],
   [/mapWithConcurrency/.test(facebook), "ordre Facebook préservé malgré le parallélisme"],
   [/published_with_partial_images/.test(immediate) && /published_with_partial_images/.test(inrSend), "carrousel Facebook partiel signalé"],
-  [/published_without_video/.test(immediate) && /fallbackResp/.test(immediate), "fallback texte Facebook et LinkedIn immédiat"],
-  [/published_without_video/.test(inrSend) && /fallbackResp/.test(inrSend), "fallback texte Facebook et LinkedIn dans iNrSend"],
+  [!/published_without_video/.test(immediate) && /fallbackResp/.test(immediate), "échec vidéo conservé côté publication immédiate"],
+  [!/published_without_video/.test(inrSend) && /fallbackResp/.test(inrSend), "échec vidéo conservé dans iNrSend"],
   [!/\.blur\(/.test(preparation), "aucun rendu flouté"],
 ];
 

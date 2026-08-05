@@ -14,7 +14,10 @@ test("the idempotent engine reuses, waits, prefers original, then prepares minim
 test("publish-now no longer imposes a network variant when the original validates", () => {
   const route = readFileSync("app/api/booster/publish-now/route.ts", "utf8");
   assert.doesNotMatch(route, /requiresPreparedNetworkVideoVariant/);
-  assert.match(route, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
+  assert.match(
+    route,
+    /usesOriginalSource && sourceDirectlyPublishable[\s\S]*return \[\]/,
+  );
   assert.match(route, /invalidVideoChannels\.forEach/);
   assert.match(route, /setPreflightFailure\(invalid\.channel/);
 });

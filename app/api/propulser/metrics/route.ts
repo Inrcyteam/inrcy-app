@@ -79,6 +79,10 @@ async function propulserMetricsHandler(req: Request) {
     .select("type, created_at, payload")
     .eq("user_id", userId)
     .in("module", ["propulser", "booster"])
+    // Sans ce filtre, la métrique téléchargeait aussi tous les événements de
+    // publication asynchrone avec leur gros payload média puis les ignorait en
+    // JavaScript. C'est la requête 57014 observée dans Sentry.
+    .in("type", ["valorize", "review_mail", "promo_mail"])
     .gte("created_at", sinceMonth)
     .order("created_at", { ascending: false });
 

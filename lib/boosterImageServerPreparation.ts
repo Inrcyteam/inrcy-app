@@ -17,10 +17,6 @@ import {
   type BoosterImageMetaLike,
   type ComparableImageTransform,
 } from "@/lib/boosterImageDecision";
-import {
-  getBoosterOriginalPublicationExtension,
-  shouldPreserveBoosterOriginalAlpha,
-} from "@/lib/boosterImageOutputPolicy";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -437,6 +433,78 @@ function getStableOriginalUrl(image: BoosterServerImagePayload) {
   ).trim() || null;
 }
 
+const ORIGINAL_IMAGE_MIME_TYPES_BY_CHANNEL: Record<
+  BoosterImageChannel,
+  ReadonlySet<string>
+> = {
+  inrcy_site: new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/avif",
+  ]),
+  site_web: new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/avif",
+  ]),
+  inr_search: new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/avif",
+  ]),
+  gmb: new Set(["image/jpeg", "image/png"]),
+  facebook: new Set(["image/jpeg", "image/png"]),
+  instagram: new Set(["image/jpeg"]),
+  linkedin: new Set(["image/jpeg", "image/png"]),
+  tiktok: new Set(["image/jpeg", "image/webp"]),
+  youtube_shorts: new Set(),
+  pinterest: new Set(["image/jpeg", "image/png"]),
+};
+
+function normalizedImageMime(value: unknown) {
+  const mime = String(value || "")
+    .trim()
+    .toLowerCase()
+    .split(";")[0];
+  return mime === "image/jpg" ? "image/jpeg" : mime;
+}
+
+function canSendOriginalImageToChannel(
+  channel: BoosterImageChannel,
+  image: BoosterServerImagePayload,
+) {
+  return ORIGINAL_IMAGE_MIME_TYPES_BY_CHANNEL[channel].has(
+    normalizedImageMime(image.originalType || image.type),
+  );
+}
+
+async function renderTechnicalImageCompatibility(params: {
+  buffer: Buffer;
+  channel: BoosterImageChannel;
+}) {
+  const oriented = sharp(params.buffer, { failOn: "none" }).rotate();
+  const metadata = await oriented.metadata();
+  const width = Number(metadata.width || 0);
+  const height = Number(metadata.height || 0);
+  if (!width || !height) throw new Error("image_dimensions_missing");
+  return {
+    output: await oriented
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .jpeg(getChannelJpegOptions(params.channel))
+      .toBuffer(),
+    mime: "image/jpeg",
+    extension: "jpg",
+    width,
+    height,
+  } as const;
+}
+
 function clamp(value: unknown, min: number, max: number, fallback = 0) {
   const numeric = Number(value);
   const resolved = Number.isFinite(numeric) ? numeric : fallback;
@@ -682,59 +750,6 @@ async function renderAutomaticAdaptation(params: {
   return { ...rendered, fit: transform.fit } as const;
 }
 
-async function renderPublicationOriginal(params: {
-  buffer: Buffer;
-  channel: BoosterImageChannel;
-  sourceMime: string;
-}) {
-  const sourceMetadata = await sharp(params.buffer, { failOn: "none" }).metadata();
-  const sourceOrientation = Number(sourceMetadata.orientation || 1);
-  const swapsAxes = sourceOrientation >= 5 && sourceOrientation <= 8;
-  const sourceWidth = Number(
-    swapsAxes ? sourceMetadata.height || 0 : sourceMetadata.width || 0,
-  );
-  const sourceHeight = Number(
-    swapsAxes ? sourceMetadata.width || 0 : sourceMetadata.height || 0,
-  );
-  const isLandscape = sourceWidth >= sourceHeight;
-  const maxWidth =
-    params.channel === "tiktok" ? (isLandscape ? 1920 : 1080) : 2048;
-  const maxHeight =
-    params.channel === "tiktok" ? (isLandscape ? 1080 : 1920) : 2048;
-  const preserveAlpha = shouldPreserveBoosterOriginalAlpha({
-    channel: params.channel,
-    sourceMime: params.sourceMime,
-    sourceHasAlpha: Boolean(sourceMetadata.hasAlpha),
-  });
-  const pipeline = sharp(params.buffer, { failOn: "none" })
-    .rotate()
-    .resize({
-      width: maxWidth,
-      height: maxHeight,
-      fit: "inside",
-      withoutEnlargement: true,
-    });
-  const { data, info } = preserveAlpha
-    ? await pipeline
-        .png({ compressionLevel: 9, adaptiveFiltering: true, palette: false })
-        .toBuffer({ resolveWithObject: true })
-    : await pipeline
-        .flatten({ background: "#ffffff" })
-        .jpeg(getChannelJpegOptions(params.channel))
-        .toBuffer({ resolveWithObject: true });
-  if (!info.width || !info.height) {
-    throw new Error("image_publication_dimensions_missing");
-  }
-  return {
-    output: data,
-    mime: preserveAlpha ? "image/png" : "image/jpeg",
-    extension: preserveAlpha ? "png" : "jpg",
-    width: info.width,
-    height: info.height,
-    preserveAlpha,
-  } as const;
-}
-
 /**
  * Server counterpart of Booster's client image preparation.
  *
@@ -767,7 +782,8 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
       if (!meta) {
         const input = await resolveInput().catch(() => null);
         if (!input) return null;
-        meta = await readImageMeta(input.buffer);
+        meta = await readImageMeta(input.buffer).catch(() => ({}));
+        if (!meta.width || !meta.height) return null;
       }
       return {
         image,
@@ -778,23 +794,34 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
     }),
   );
   const valid = resolved.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  const cachedVariants = await loadCachedChannelImageVariants({
-    accountId: params.accountId,
-    workspaceId: params.workspaceId,
-    mediaIds: valid
-      .map((entry) => String(entry.image.mediaId || ""))
-      .filter(Boolean),
-    channels,
-  });
+  const technicalCompatibilityBySource = new Map<
+    string,
+    ReturnType<typeof renderTechnicalImageCompatibility>
+  >();
+  let cachedVariantsPromise: ReturnType<typeof loadCachedChannelImageVariants> | null = null;
+  const getCachedVariants = () => {
+    cachedVariantsPromise ||= loadCachedChannelImageVariants({
+      accountId: params.accountId,
+      workspaceId: params.workspaceId,
+      mediaIds: valid
+        .map((entry) => String(entry.image.mediaId || ""))
+        .filter(Boolean),
+      channels,
+    });
+    return cachedVariantsPromise;
+  };
 
   const imagesByChannel: BoosterServerImagePreparationResult["imagesByChannel"] = {};
   const imageSettingsByChannel: BoosterServerImagePreparationResult["imageSettingsByChannel"] = {};
 
-  for (const channel of channels) {
+  // Les canaux sont indépendants mais partagent les mêmes promesses de
+  // téléchargement et le même chargement de cache. On conserve ainsi un temps
+  // proche entre 1 et 10 canaux sans télécharger/décoder la source dix fois.
+  await Promise.all(channels.map(async (channel) => {
     if (channel === "youtube_shorts" || !valid.length) {
       imagesByChannel[channel] = [];
       imageSettingsByChannel[channel] = { imageKeys: [], transforms: {}, customizedImageKeys: [] };
-      continue;
+      return;
     }
 
     const rawChannelSettings = params.settingsByChannel?.[channel];
@@ -893,7 +920,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
         } as const;
 
         const getPreparedVariantIdentity = (
-          mode: "original" | "adapted" | "customized",
+          mode: "adapted" | "customized",
           transform: ServerImageTransform,
         ) =>
           buildChannelImageSignature({
@@ -904,24 +931,18 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
             channel,
             mode,
             transform,
-            originalOutputPolicy:
-              mode === "original"
-                ? getBoosterOriginalPublicationExtension({
-                    channel,
-                    sourceMime: entry.image.type,
-                  })
-                : null,
             sequenceTargetRatio: sequenceTargetRatio || null,
           });
 
-        const readCachedPreparedVariant = (
-          mode: "original" | "adapted" | "customized",
+        const readCachedPreparedVariant = async (
+          mode: "adapted" | "customized",
           name: string,
           transform: ServerImageTransform,
         ) => {
           const mediaId = String(entry.image.mediaId || "").trim();
           if (!params.accountId || !params.workspaceId || !mediaId) return null;
           const identity = getPreparedVariantIdentity(mode, transform);
+          const cachedVariants = await getCachedVariants();
           const row = cachedVariants.get(
             cachedVariantKey(mediaId, channel, identity.signature),
           );
@@ -934,7 +955,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
         };
 
         const buildPreparedVariant = async (variant: {
-          mode: "original" | "adapted" | "customized";
+          mode: "adapted" | "customized";
           name: string;
           transform: ServerImageTransform;
           output: Buffer;
@@ -949,6 +970,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
             variant.transform,
           );
           if (params.accountId && params.workspaceId && mediaId) {
+            const cachedVariants = await getCachedVariants();
             const key = cachedVariantKey(mediaId, channel, signed.signature);
             let row = cachedVariants.get(key);
             if (!row?.storage_path) {
@@ -994,49 +1016,83 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           };
         };
 
+        if (
+          displayPlan.decision.mode === "original" &&
+          canSendOriginalImageToChannel(channel, entry.image)
+        ) {
+          // The workspace source has already passed the media-pipeline
+          // validation contract. "Originale" is reference-only: no Storage
+          // download, Sharp render, channel upload or media_variants write.
+          prepared.push({
+            ...entry.image,
+            ...common,
+            transform: automaticTransform,
+            publicationReady:
+              entry.image.publicationReady === true ||
+              (entry.image.bucket === CHANNEL_IMAGE_VARIANT_BUCKET &&
+                Boolean(entry.image.storagePath || entry.image.publicUrl)),
+          });
+          transforms[entry.imageKey] = automaticTransform;
+          continue;
+        }
+
         if (displayPlan.decision.mode === "original") {
-          if (!params.accountId || !params.workspaceId || !entry.image.mediaId) {
-            prepared.push({
-              ...entry.image,
-              ...common,
-              transform: automaticTransform,
-            });
-            transforms[entry.imageKey] = automaticTransform;
-            continue;
-          }
+          // Le ratio est dÃ©jÃ  bon, seul le format binaire n'est pas garanti par
+          // le fournisseur (ex. PNG Instagram ou WebP Google). Conversion
+          // technique sans crop, pad ni redimensionnement, puis cache canal.
+          const transform = {
+            ...originalReferenceTransform(),
+            technicalCompatibility: normalizedImageMime(
+              entry.image.originalType || entry.image.type,
+            ),
+          };
           const nameBase = String(
             entry.image.name || `image-${entry.imageKey}`,
           ).replace(/\.[^.]+$/, "");
-          const originalExtension = getBoosterOriginalPublicationExtension({
-            channel,
-            sourceMime: entry.image.type,
-          });
-          const outputName = `${nameBase}-${channel}-publication.${originalExtension}`;
-          const cached = readCachedPreparedVariant(
-            "original",
+          const outputName = `${nameBase}-${channel}-compatible.jpg`;
+          const cached = await readCachedPreparedVariant(
+            "adapted",
             outputName,
-            automaticTransform,
+            transform,
           );
           if (cached) {
-            prepared.push(cached);
-            transforms[entry.imageKey] = automaticTransform;
+            prepared.push({
+              ...cached,
+              imageDecisionMode: "adapted",
+              imageDecisionLabel: "Adapt\u00e9e",
+            });
+            transforms[entry.imageKey] = transform;
             continue;
           }
-          const input = await entry.resolveInput();
-          const original = await renderPublicationOriginal({
-            buffer: input.buffer,
-            channel,
-            sourceMime: input.mime || entry.image.type,
-          });
-          prepared.push(
-            await buildPreparedVariant({
-              mode: "original",
+          const compatibilityProfile =
+            channel === "tiktok" ? "tiktok" : "portable-jpeg";
+          const compatibilityKey = `${entry.imageKey}:${compatibilityProfile}`;
+          let compatiblePromise =
+            technicalCompatibilityBySource.get(compatibilityKey);
+          if (!compatiblePromise) {
+            compatiblePromise = entry.resolveInput().then((input) =>
+              renderTechnicalImageCompatibility({
+                buffer: input.buffer,
+                channel,
+              }),
+            );
+            technicalCompatibilityBySource.set(
+              compatibilityKey,
+              compatiblePromise,
+            );
+          }
+          const compatible = await compatiblePromise;
+          prepared.push({
+            ...(await buildPreparedVariant({
+              mode: "adapted",
               name: outputName,
-              transform: automaticTransform,
-              ...original,
-            }),
-          );
-          transforms[entry.imageKey] = automaticTransform;
+              transform,
+              ...compatible,
+            })),
+            imageDecisionMode: "adapted",
+            imageDecisionLabel: "Adapt\u00e9e",
+          });
+          transforms[entry.imageKey] = transform;
           continue;
         }
 
@@ -1052,7 +1108,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           });
           const nameBase = String(entry.image.name || `image-${entry.imageKey}`).replace(/\.[^.]+$/, "");
           const outputName = `${nameBase}-${channel}-adaptee.jpg`;
-          const cached = readCachedPreparedVariant(
+          const cached = await readCachedPreparedVariant(
             "adapted",
             outputName,
             transform,
@@ -1090,7 +1146,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
             ? "png"
             : "jpg";
         const outputName = `${nameBase}-${channel}-personnalisee.${customizedExtension}`;
-        const cached = readCachedPreparedVariant(
+        const cached = await readCachedPreparedVariant(
           "customized",
           outputName,
           currentTransform,
@@ -1138,7 +1194,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           : "booster_intelligent_matrix_v1",
       };
     }
-  }
+  }));
 
   return { imagesByChannel, imageSettingsByChannel, warnings };
 }

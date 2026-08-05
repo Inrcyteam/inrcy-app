@@ -40,9 +40,12 @@ import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyC
 export const maxDuration = 120;
 
 const BOOSTER_GENERATION_BURST_LIMIT = 20;
+const BOOSTER_GENERATION_SAFETY_BUDGET_MS = 45_000;
+const BOOSTER_GENERATION_CLOSE_MARGIN_MS = 1_500;
 
 type Payload = {
   creationMode?: "ai" | "manual";
+  generationDeadlineAt?: number;
   mediaWorkspaceId?: string;
   mediaPipelineCutoverV1?: boolean;
   mediaWorkspaceExpected?: boolean;
@@ -83,6 +86,48 @@ type Payload = {
     };
   } | null;
 };
+
+function generationDeadlineError() {
+  return Object.assign(
+    new Error(
+      "La génération a dépassé son délai de sécurité. Merci de relancer.",
+    ),
+    { code: "ai_operation_deadline_exceeded", status: 504 },
+  );
+}
+
+function assertGenerationBudget(deadlineAt: number, minimumRemainingMs = 250) {
+  if (deadlineAt - Date.now() <= minimumRemainingMs) {
+    throw generationDeadlineError();
+  }
+}
+
+function isGenerationDeadlineError(error: unknown) {
+  return (
+    error instanceof Error &&
+    String((error as Error & { code?: unknown }).code || "") ===
+      "ai_operation_deadline_exceeded"
+  );
+}
+
+async function withinGenerationDeadline<T>(
+  promise: Promise<T>,
+  deadlineAt: number,
+): Promise<T> {
+  const remainingMs = deadlineAt - Date.now() - BOOSTER_GENERATION_CLOSE_MARGIN_MS;
+  if (remainingMs <= 0) throw generationDeadlineError();
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(generationDeadlineError()), remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 type BoosterAiImage = {
   dataUrl: string;
@@ -323,6 +368,8 @@ Règles vidéo obligatoires :
 
 const handler = async (req: Request) => {
   const routeStartedAt = Date.now();
+  let generationDeadlineAt =
+    routeStartedAt + BOOSTER_GENERATION_SAFETY_BUDGET_MS;
   let quotaReservation: AiCreditReservation | null = null;
   let generationMs = 0;
   const timingContext: {
@@ -380,6 +427,11 @@ const handler = async (req: Request) => {
     const requestParseStartedAt = Date.now();
     const parsedRequest = await readBoosterGenerationRequest(req);
     const body = parsedRequest.body as Payload;
+    const clientDeadlineAt = Number(body.generationDeadlineAt || 0);
+    if (Number.isFinite(clientDeadlineAt) && clientDeadlineAt > 0) {
+      generationDeadlineAt = Math.min(generationDeadlineAt, clientDeadlineAt);
+    }
+    assertGenerationBudget(generationDeadlineAt);
     timingContext.requestTransport = parsedRequest.transport;
     timingContext.requestParseMs = Date.now() - requestParseStartedAt;
     if (body.creationMode === "manual") {
@@ -529,10 +581,13 @@ const handler = async (req: Request) => {
     if (mediaWorkspaceId && useWorkspaceMediaForAI) {
       const workspaceLoadStartedAt = Date.now();
       try {
-        const workspaceMedia = await resolveWorkspaceAiConsumption({
-          accountId: userId,
-          workspaceId: mediaWorkspaceId,
-        });
+        const workspaceMedia = await withinGenerationDeadline(
+          resolveWorkspaceAiConsumption({
+            accountId: userId,
+            workspaceId: mediaWorkspaceId,
+          }),
+          generationDeadlineAt,
+        );
         timingContext.mediaWorkspaceLoadMs = Date.now() - workspaceLoadStartedAt;
         timingContext.mediaWorkspaceRevision = workspaceMedia.workspaceRevision;
         timingContext.mediaWorkspaceSource = strictMediaCutover ? "workspace_cutover_v1" : "workspace";
@@ -573,14 +628,32 @@ const handler = async (req: Request) => {
             existingVideo.audioTranscript || existingVideo.rawAudioTranscript,
           );
 
-          if (!audioTranscript && workspaceMedia.videoForAI.audioTrackFile) {
+          if (
+            !audioTranscript &&
+            workspaceMedia.videoForAI.audioTrackFile &&
+            generationDeadlineAt - Date.now() > 4_000
+          ) {
             try {
+              const transcriptionTimeoutMs = Math.max(
+                1_000,
+                Math.min(
+                  5_000,
+                  generationDeadlineAt -
+                    Date.now() -
+                    BOOSTER_GENERATION_CLOSE_MARGIN_MS,
+                ),
+              );
               const transcription = await aiTranscribeMedia({
                 file: workspaceMedia.videoForAI.audioTrackFile,
                 accountId: userId,
                 mediaType: workspaceMedia.videoForAI.audioTrackFile.type || "audio/mpeg",
-                retries: 1,
-                timeoutMs: 70_000,
+                // La transcription enrichit la génération mais ne peut pas
+                // monopoliser à elle seule la promesse Booster de 30 secondes.
+                retries: 0,
+                timeoutMs: transcriptionTimeoutMs,
+                deadlineAt:
+                  generationDeadlineAt - BOOSTER_GENERATION_CLOSE_MARGIN_MS,
+                signal: req.signal,
               });
               audioTranscript = cleanVideoTranscript(transcription.text);
             } catch (transcriptionError) {
@@ -630,6 +703,7 @@ const handler = async (req: Request) => {
           };
         }
       } catch (workspaceError) {
+        if (isGenerationDeadlineError(workspaceError)) throw workspaceError;
         timingContext.mediaWorkspaceLoadMs = Date.now() - workspaceLoadStartedAt;
         timingContext.mediaWorkspaceSource = "legacy_fallback";
         timingContext.mediaWorkspaceFallbackCode =
@@ -719,7 +793,11 @@ const handler = async (req: Request) => {
       quotaReservation = quota.reservation;
     }
 
-    const generationContext = await generationContextPromise;
+    const generationContext = await withinGenerationDeadline(
+      generationContextPromise,
+      generationDeadlineAt,
+    );
+    assertGenerationBudget(generationDeadlineAt, 2_000);
     timingContext.contextLoadMs = Date.now() - contextStartedAt;
     timingContext.professionalContextSource =
       generationContext.cacheSource.professional;
@@ -750,6 +828,8 @@ const handler = async (req: Request) => {
         mediaContext: mediaGenerationInstructions,
         mediaType,
         accountId: userId,
+        deadlineAt:
+          generationDeadlineAt - BOOSTER_GENERATION_CLOSE_MARGIN_MS,
       });
     } finally {
       generationMs = Date.now() - generationStartedAt;
@@ -762,7 +842,7 @@ const handler = async (req: Request) => {
     const { versions, recoveredChannels, aiFallback } = generationResult;
 
     if (mediaWorkspaceId) {
-      await syncPublicationWorkspaceContext({
+      void syncPublicationWorkspaceContext({
         accountId: userId,
         workspaceId: mediaWorkspaceId,
         operation: "generate",

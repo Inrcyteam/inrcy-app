@@ -349,6 +349,8 @@ export type GenerateSharedBoosterPostsArgs = {
   aiFeature?: "booster.publish" | "agent.publish";
   accountId?: string;
   skipMediaVisionAnalysis?: boolean;
+  /** Deadline absolue de la route appelante, incluant son travail préalable. */
+  deadlineAt?: number;
 };
 
 export type GenerateSharedBoosterPostsResult = {
@@ -1269,7 +1271,13 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   const budget = createAiOperationBudget(aiFeature);
   // Deadline absolue partagée entre préanalyse média, appel principal, retry réseau
   // et éventuelle réparation. La route Vercel garde ainsi une marge de fermeture.
-  const operationDeadlineAt = budget.startedAt + budget.maxDurationMs;
+  const requestedDeadlineAt = Number(args.deadlineAt || 0);
+  const operationDeadlineAt = Math.min(
+    budget.startedAt + budget.maxDurationMs,
+    Number.isFinite(requestedDeadlineAt) && requestedDeadlineAt > 0
+      ? requestedDeadlineAt
+      : Number.POSITIVE_INFINITY,
+  );
   const style = args.style || "equilibre";
   const baseGenerationProfile = buildNormalizedAiGenerationProfile({
     profile: args.profile,

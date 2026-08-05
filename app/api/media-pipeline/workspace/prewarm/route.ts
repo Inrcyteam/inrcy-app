@@ -175,6 +175,12 @@ export async function POST(request: Request) {
             durationSeconds: video.duration,
             width: sourceWidth,
             height: sourceHeight,
+            videoCodec: video.sourceMetadata?.videoCodec,
+            audioCodec: video.sourceMetadata?.audioCodec,
+            frameRate: video.sourceMetadata?.frameRate,
+            hasAudio: video.sourceMetadata?.hasAudio,
+            containerFormats: video.sourceMetadata?.containerFormats,
+            pixelFormat: video.sourceMetadata?.pixelFormat,
           });
           if (decision.action === "block") {
             durationBlockedChannels.push({
@@ -200,6 +206,7 @@ export async function POST(request: Request) {
         workspaceId,
         mediaId: video.mediaId,
         generateMissing: generateMissingVideoVariants,
+        trustedSourceCompatibilityProof: true,
         source: {
           ...video,
           publicUrl: signedSourceUrl,

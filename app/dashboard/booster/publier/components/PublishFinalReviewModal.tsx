@@ -275,7 +275,8 @@ export default function PublishFinalReviewModal({
               lineHeight: 1.5,
             }}
           >
-            Les canaux rouges seront ignorés. Corrigez-les ou publiez uniquement les canaux prêts.
+            Les canaux rouges seront inscrits en échec dans le bilan. Ils ne
+            bloquent pas la publication des autres canaux prêts.
           </div>
         ) : null}
 
@@ -303,7 +304,9 @@ export default function PublishFinalReviewModal({
             className={styles.primaryBtn}
             onClick={onConfirm}
             disabled={!publishableCount || saving}
-            style={{ opacity: !publishableCount || saving ? 0.58 : 1 }}
+            style={{
+              opacity: !publishableCount || saving ? 0.58 : 1,
+            }}
           >
             {saving
               ? "Publication en cours..."

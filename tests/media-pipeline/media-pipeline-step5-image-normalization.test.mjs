@@ -41,15 +41,20 @@ test("le normaliseur produit trois variantes sans recadrer la composition", () =
   assert.match(source, /heicConvert/);
 });
 
-test("l'upload source ne normalise plus l'image et la préparation explicite reste idempotente", () => {
+test("l'upload image déclenche une préparation serveur transparente et idempotente", () => {
   const event = read("app/api/media-pipeline/upload-event/route.ts");
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
   const prepare = read("app/api/media-pipeline/workspace/prepare/route.ts");
   assert.match(event, /sourceMetadataOnly/);
   assert.match(
     event,
-    /current\.data\.media_type === "image" &&[\s\S]{0,40}!sourceMetadataOnly/,
+    /event === "uploaded" &&[\s\S]{0,80}current\.data\.media_type === "image"/,
   );
+  assert.match(
+    event,
+    /mission:\s*sourceMetadataOnly[\s\S]{0,60}\? "publication_preparation"/,
+  );
+  assert.match(event, /after\(async \(\) =>[\s\S]*processImageNormalizationJobsForMedia\(/);
   assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
   assert.match(intent, /preparation_scope:\s*"source_only"/);
   assert.doesNotMatch(intent, /enqueueImageNormalization\(/);

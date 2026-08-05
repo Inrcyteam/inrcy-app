@@ -33,6 +33,7 @@ type PublishVideoAdapterPanelProps = {
   >;
   videoTransformedVariants?: BoosterVideoTransformedVariant[];
   videoPreviewVariantsPreparing?: boolean;
+  deferTechnicalPreparationUntilPublish?: boolean;
   onApplyVideoFormatForChannel?: (channel: ChannelKey) => void;
   onApplyVideoFormatToAllChannels?: (channel: ChannelKey) => void;
   onRemoveMediaFromChannel: (channel: ChannelKey) => void;
@@ -54,6 +55,7 @@ export default function PublishVideoAdapterPanel({
   videoVariantPreparationByChannel = {},
   videoTransformedVariants = [],
   videoPreviewVariantsPreparing = false,
+  deferTechnicalPreparationUntilPublish = false,
   onApplyVideoFormatForChannel,
   onApplyVideoFormatToAllChannels,
   onRemoveMediaFromChannel,
@@ -88,6 +90,9 @@ export default function PublishVideoAdapterPanel({
       videoTransformedVariants={videoTransformedVariants}
       preparationState={preparationState}
       preparing={videoPreviewVariantsPreparing}
+      deferTechnicalPreparationUntilPublish={
+        deferTechnicalPreparationUntilPublish
+      }
       onFormatChange={(format) => setVideoFormatForChannel(activeChannel, format)}
       onAdaptationModeChange={(mode) =>
         setVideoAdaptationModeForChannel(activeChannel, mode)

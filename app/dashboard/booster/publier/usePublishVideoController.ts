@@ -465,6 +465,13 @@ export default function usePublishVideoController({
           durationSeconds: baseVideo.duration,
           width: baseVideo.sourceMetadata?.width,
           height: baseVideo.sourceMetadata?.height,
+          videoCodec: baseVideo.sourceMetadata?.videoCodec,
+          audioCodec: baseVideo.sourceMetadata?.audioCodec,
+          frameRate: baseVideo.sourceMetadata?.frameRate,
+          hasAudio: baseVideo.sourceMetadata?.hasAudio,
+          containerFormats: baseVideo.sourceMetadata?.containerFormats,
+          pixelFormat: baseVideo.sourceMetadata?.pixelFormat,
+          requireCodecProof: true,
         }),
       ]),
     ) as Record<ChannelKey, ReturnType<typeof validateVideoPublicationForChannel>>;

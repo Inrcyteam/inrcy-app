@@ -13,19 +13,25 @@ const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
 const resultModal = read("app/dashboard/_components/PublishExecutionResultModal.tsx");
 const youtube = read("lib/youtubeShortsPublish.ts");
 const layer = read("app/dashboard/_components/DashboardBoosterModalLayer.tsx");
+const progressPhases = read("lib/boosterProgressPhases.ts");
 
-test("queued publication waits up to 30 seconds for a useful balance, then continues in background", () => {
-  assert.match(publishClient, /BOOSTER_PUBLISH_RESULT_GRACE_MS = 30_000/);
+test("queued publication opens a useful balance by 60 seconds, then continues in background", () => {
+  assert.match(publishClient, /BOOSTER_PUBLISH_RESULT_GRACE_MS = 60_000/);
   assert.match(publishClient, /resultGraceMs/);
   assert.match(publishClient, /resultGraceMs - elapsedBeforePollingMs/);
-  assert.match(publishModal, /estimatedPublishMs = BOOSTER_PUBLISH_RESULT_GRACE_MS/);
-  assert.doesNotMatch(publishModal, /remainingPublishWindowMs/);
+  assert.match(publishModal, /BOOSTER_PUBLISH_VISIBLE_CAP_MS = 60_000/);
+  assert.match(
+    publishModal,
+    /BOOSTER_PUBLISH_WITH_MEDIA_FINALIZATION_VISIBLE_CAP_MS = 90_000/,
+  );
+  assert.match(publishModal, /_clientVisibleWaitMs/);
   assert.doesNotMatch(publishModal, /await sleep\(remainingPublishWindowMs\)/);
-  assert.match(publishModal, /tous les canaux ont obtenu un statut final/);
-  assert.match(publishModal, /plafond de 30 secondes est atteint/);
-  assert.match(publishModal, /"inrsend_recording"[\s\S]*Enregistrement du bilan dans iNr’Send/);
+  assert.match(publishModal, /les workers durables poursuivent l’envoi/);
+  assert.match(progressPhases, /key: "inrsend_recording"/);
   assert.match(publishModal, /completePublicationProgress\([\s\S]*backgroundFinalization/);
   assert.match(publishClient, /releasedToBackground: true/);
+  assert.match(publishClient, /BOOSTER_PUBLISH_MAX_POLL_MS = 8_000/);
+  assert.match(publishClient, /2 \*\* Math\.min\(3, pollAttempt\)/);
   assert.doesNotMatch(publishClient, /8 \* 60_000/);
   assert.match(resultModal, /api\/booster\/publications/);
   assert.match(resultModal, /hasPendingAsyncJob/);
@@ -58,9 +64,8 @@ test("YouTube streams the stored source instead of buffering the full video", ()
   assert.doesNotMatch(youtube, /const blob = await fetchVideoBlob/);
 });
 
-test("media preparation progress no longer stays fixed at 6, 24 or 25 percent", () => {
-  assert.match(publishModal, /uploadPulse = window\.setInterval/);
-  assert.match(publishModal, /visualPreparationFloor/);
-  assert.match(publishModal, /Analyse des \$\{mediaLabel\}/);
-  assert.match(publishModal, /Contrôle des \$\{mediaLabel\}/);
+test("media finalization is the only technical phase exposed after publish", () => {
+  assert.match(publishModal, /Finalisation des médias/);
+  assert.match(publishModal, /Publication parallèle sur/);
+  assert.doesNotMatch(publishModal, /publishPulseTimerRef/);
 });

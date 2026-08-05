@@ -84,10 +84,19 @@ test("a partial preparation can continue only when failures are isolated by chan
   );
 });
 
-test("the client avoids stale background prewarm and keeps one recovery generation", async () => {
+test("immediate publication defers video work while scheduling keeps one recovery", async () => {
   const modal = await read("app/dashboard/booster/publier/PublishModal.tsx");
   assert.match(modal, /options\?\.generateMissingVideoVariants === false/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
+  assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);
+  const immediatePublish = modal.slice(
+    modal.indexOf("const runPublish = async"),
+    modal.indexOf("const onSavePublicationDraft = async"),
+  );
+  assert.doesNotMatch(
+    immediatePublish,
+    /ensureCutoverVideoVariantsReady|prewarmPersistentMediaWorkspace/,
+  );
   assert.match(
     modal,
     /shouldRetryVideoVariantGeneration[\s\S]*generateMissingVideoVariants:\s*true/,
@@ -95,7 +104,7 @@ test("the client avoids stale background prewarm and keeps one recovery generati
   assert.match(modal, /generateMissingVideoVariants:\s*true/);
   assert.match(modal, /allowPartialChannelFailures:\s*true/);
   assert.match(modal, /canContinueWithIsolatedVideoPreparationFailures/);
-  assert.match(modal, /Préparation de la variante vidéo nécessaire/);
+  assert.match(modal, /deferTechnicalPreparationUntilPublish=/);
 });
 
 test("duration-invalid channels turn red before dispatch and are reported as failed", async () => {
@@ -139,10 +148,14 @@ test("duration-invalid channels turn red before dispatch and are reported as fai
   assert.doesNotMatch(layer, /status:\s*"skipped"/);
 });
 
-test("publish-now stays cache/source-only and isolates a missing variant per channel", async () => {
+test("only the durable preparation worker may generate variants and failures stay isolated", async () => {
   const route = await read("app/api/booster/publish-now/route.ts");
-  assert.match(route, /preparePublicationVariants\(false\)/);
+  assert.match(
+    route,
+    /preparePublicationVariants\(\s*internalAsyncPreparationDispatch,?\s*\)/,
+  );
   assert.doesNotMatch(route, /preparePublicationVariants\(true\)/);
+  assert.match(route, /Only the durable preparation worker may run FFmpeg/);
   assert.match(route, /preflightFailuresByChannel/);
   assert.match(route, /buildBoosterPublicationDispatchPlan/);
 });
@@ -157,16 +170,50 @@ test("safe video preparation errors are no longer hidden as a generic action fai
 });
 
 
-test("heavy work stays in prewarm while publish can use a policy-compliant source fallback", async () => {
+test("heavy work stays in prewarm while an explicit adaptation never falls back to the source", async () => {
   const prewarm = await read("app/api/media-pipeline/workspace/prewarm/route.ts");
   assert.match(
     prewarm,
     /allowsOriginalVideoFallback[\s\S]*sourceValidation\.ok/,
   );
   const route = await read("app/api/booster/publish-now/route.ts");
+  const channelContext = await read(
+    "app/api/booster/publish-now/publishNow.channel-context.ts",
+  );
+  const collectStart = route.indexOf("const collectInvalidVideoChannels");
+  const collectEnd = route.indexOf(
+    "// Only the durable preparation worker may run FFmpeg",
+    collectStart,
+  );
+  assert.ok(collectStart >= 0 && collectEnd > collectStart);
+  const adaptationValidation = route.slice(collectStart, collectEnd);
   assert.doesNotMatch(route, /requiresPreparedNetworkVideoVariant/);
-  assert.match(route, /if \(sourceValidation\.ok\) \{\s*return \[\];\s*\}/);
+  assert.doesNotMatch(adaptationValidation, /sourceValidation/);
+  assert.match(adaptationValidation, /reason:\s*"video_variant_required"/);
+  assert.match(route, /usesOriginalSource && sourceDirectlyPublishable/);
+  assert.match(channelContext, /const usesOriginalSource = settings\.format === "original"/);
+  assert.match(
+    channelContext,
+    /if \(usesOriginalSource\) \{\s*return sourceValidation\.ok \? publicationVideo : null;\s*\}/,
+  );
+  assert.match(
+    channelContext,
+    /if \(!variant\?\.publicUrl \|\| !variant\?\.storagePath\) \{\s*return null;\s*\}/,
+  );
   assert.doesNotMatch(route, /generationAttempted:\s*boolean/);
+});
+
+test("video variant planning deduplicates before the ten-signature cap", async () => {
+  const server = await read("lib/boosterVideoVariantServer.ts");
+  assert.match(server, /MAX_VARIANTS_PER_REQUEST = 10/);
+  assert.match(
+    server,
+    /buildVideoTransformPlan\(params\.variants\)\.slice\([\s\S]*MAX_VARIANTS_PER_REQUEST/,
+  );
+  assert.doesNotMatch(
+    server,
+    /buildVideoTransformPlan\([\s\S]{0,80}params\.variants\.slice/,
+  );
 });
 
 test("dedicated Google cached derivatives are validated without poisoning shared social variants", async () => {

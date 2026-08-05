@@ -4,30 +4,70 @@ import { useCallback, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import {
   PROFILE_VERSION_EVENT,
+  PROFILE_VERSION_FIELDS,
   getChangedProfileVersionFields,
   toProfileVersionsSnapshot,
+  type ProfileVersionChangeDetail,
   type ProfileVersionsSnapshot,
 } from "@/lib/profileVersioning";
 
 const PROFILE_VERSION_FOCUS_THROTTLE_MS = 10_000;
 const PROFILE_VERSION_POLL_MS = 60_000;
+const PROFILE_VERSION_EVENT_COALESCE_MS = 750;
 
 export default function ProfileRealtimeBridge() {
   const versionsRef = useRef<ProfileVersionsSnapshot | null>(null);
   const lastServerCheckAtRef = useRef(0);
   const refreshPromiseRef = useRef<Promise<void> | null>(null);
+  const pendingChangesRef = useRef(
+    new Map<ProfileVersionChangeDetail["field"], ProfileVersionChangeDetail>(),
+  );
+  const dispatchTimerRef = useRef<number | null>(null);
+
+  const flushPendingChanges = useCallback(() => {
+    dispatchTimerRef.current = null;
+    const changes = Array.from(pendingChangesRef.current.values());
+    pendingChangesRef.current.clear();
+
+    for (const change of changes) {
+      window.dispatchEvent(
+        new CustomEvent(PROFILE_VERSION_EVENT, { detail: change }),
+      );
+    }
+  }, []);
 
   const dispatchChanges = useCallback((nextRaw: unknown) => {
-    const next = toProfileVersionsSnapshot(nextRaw);
+    const incoming = toProfileVersionsSnapshot(nextRaw);
     const previous = versionsRef.current;
+    const next = previous
+      ? Object.fromEntries(
+          PROFILE_VERSION_FIELDS.map((field) => [
+            field,
+            Math.max(previous[field], incoming[field]),
+          ]),
+        ) as ProfileVersionsSnapshot
+      : incoming;
     versionsRef.current = next;
     if (!previous) return;
 
     const changes = getChangedProfileVersionFields(previous, next);
     for (const change of changes) {
-      window.dispatchEvent(new CustomEvent(PROFILE_VERSION_EVENT, { detail: change }));
+      const pending = pendingChangesRef.current.get(change.field);
+      pendingChangesRef.current.set(
+        change.field,
+        pending
+          ? { ...change, previousValue: pending.previousValue }
+          : change,
+      );
     }
-  }, []);
+
+    if (changes.length > 0 && dispatchTimerRef.current == null) {
+      dispatchTimerRef.current = window.setTimeout(
+        flushPendingChanges,
+        PROFILE_VERSION_EVENT_COALESCE_MS,
+      );
+    }
+  }, [flushPendingChanges]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -129,6 +169,11 @@ export default function ProfileRealtimeBridge() {
     return () => {
       cancelled = true;
       window.clearInterval(pollId);
+      if (dispatchTimerRef.current != null) {
+        window.clearTimeout(dispatchTimerRef.current);
+        dispatchTimerRef.current = null;
+      }
+      pendingChangesRef.current.clear();
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
       if (channel) {

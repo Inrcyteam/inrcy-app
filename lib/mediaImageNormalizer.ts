@@ -37,6 +37,7 @@ export type NormalizedImageVariant = {
 
 export type NormalizedImageBundle = {
   source: {
+    probeProvenance: "server_sharp";
     width: number;
     height: number;
     format: string;
@@ -267,6 +268,7 @@ async function normalizeWithSharp(
 
   return {
     source: {
+      probeProvenance: "server_sharp",
       width: oriented.width,
       height: oriented.height,
       format: String(meta.format || "unknown"),

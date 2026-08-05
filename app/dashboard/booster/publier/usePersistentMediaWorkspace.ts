@@ -55,6 +55,11 @@ type PublicationPreparationSettings = {
   allowOriginalVideoFallback?: boolean;
 };
 
+export type PersistentWorkspaceSourceExpectation = {
+  mediaType: "image" | "video";
+  count: number;
+};
+
 function isAbortError(error: unknown) {
   return (
     (error instanceof DOMException && error.name === "AbortError") ||
@@ -83,6 +88,7 @@ export default function usePersistentMediaWorkspace({
   const [mediaStates, setMediaStates] = useState<
     Record<string, PersistentWorkspaceMediaState>
   >({});
+  const [synchronizing, setSynchronizing] = useState(false);
   const [clientWorkspaceKey, setClientWorkspaceKey] = useState("");
   const mediaStatesRef = useRef<Record<string, PersistentWorkspaceMediaState>>({});
   const referenceRef = useRef<MediaWorkspaceReference | null>(null);
@@ -166,6 +172,11 @@ export default function usePersistentMediaWorkspace({
       operationAbortRef.current?.abort();
       operationAbortRef.current = null;
       ensurePromiseRef.current = null;
+      activeTaskRef.current = Promise.resolve();
+      activeUploadFailureRef.current = "";
+      mediaStatesRef.current = {};
+      setMediaStates({});
+      setSynchronizing(false);
       clientWorkspaceKeyRef.current = next.clientWorkspaceKey;
       setClientWorkspaceKey(next.clientWorkspaceKey);
       referenceRef.current = next;
@@ -174,14 +185,28 @@ export default function usePersistentMediaWorkspace({
     [resetMissionReadiness, resolveClientWorkspaceKey],
   );
 
-  const refreshPreparedMedia = useCallback(async (workspaceId: string) => {
-    const snapshot = await loadMediaPublicationWorkspace({
-      workspaceId,
-      includeUrls: true,
-    });
-    onPreparedMediaRef.current?.(snapshot.media);
-    return snapshot;
-  }, []);
+  const refreshPreparedMedia = useCallback(
+    async (
+      workspaceId: string,
+      operationVersion = operationVersionRef.current,
+    ) => {
+      const snapshot = await loadMediaPublicationWorkspace({
+        workspaceId,
+        includeUrls: true,
+      });
+      // Une lecture lancée pour l'ancien lot peut terminer après un nouvel
+      // ajout, une restauration de brouillon ou un archivage. Elle ne doit
+      // jamais réinjecter ces anciens médias dans l'interface courante.
+      if (
+        operationVersion === operationVersionRef.current &&
+        referenceRef.current?.workspaceId === workspaceId
+      ) {
+        onPreparedMediaRef.current?.(snapshot.media);
+      }
+      return snapshot;
+    },
+    [],
+  );
 
   const scheduleSync = useCallback(
     async (
@@ -193,6 +218,7 @@ export default function usePersistentMediaWorkspace({
 
       const operationVersion = operationVersionRef.current + 1;
       operationVersionRef.current = operationVersion;
+      setSynchronizing(true);
       resetMissionReadiness();
       activeUploadFailureRef.current = "";
       operationAbortRef.current?.abort();
@@ -270,7 +296,10 @@ export default function usePersistentMediaWorkspace({
                 workspacePosition: position,
                 clientMediaKey: localKey,
                 source: "booster_workspace",
-                persistProgress: true,
+                // L'interface possède déjà la progression XHR locale. Écrire
+                // chaque palier en base surchargeait Supabase et déclenchait
+                // inutilement les abonnements temps réel du profil.
+                persistProgress: false,
                 signal: controller.signal,
                 metadata: {
                   ...sourceMetadata,
@@ -361,7 +390,9 @@ export default function usePersistentMediaWorkspace({
             mediaType === "image" &&
             entries.some(({ file }) => requiresBoosterServerImagePreview(file))
           ) {
-            await prepareMediaWorkspaceSourcePreviews({
+            // Une vignette serveur ne doit pas retenir le bouton Générer ou
+            // Publier : la source est déjà stockée et l'aperçu local existe.
+            void prepareMediaWorkspaceSourcePreviews({
               workspaceId: workspace.workspaceId,
               signal: controller.signal,
             }).catch((error) => {
@@ -373,21 +404,33 @@ export default function usePersistentMediaWorkspace({
               }
             });
           }
-          await refreshPreparedMedia(workspace.workspaceId).catch((error) => {
+          // Le snapshot enrichi sert au confort de l'interface, pas à la
+          // validité de l'upload. On le rafraîchit sans allonger le chemin
+          // critique utilisateur.
+          void refreshPreparedMedia(
+            workspace.workspaceId,
+            operationVersion,
+          ).catch((error) => {
             if (!isAbortError(error)) {
               console.warn("[media-pipeline] source snapshot deferred", error);
             }
           });
         }
-      })().catch((error) => {
-        if (!isAbortError(error)) {
-          onError?.(
-            error instanceof Error
-              ? error.message
-              : "Impossible de synchroniser l’espace média.",
-          );
-        }
-      });
+      })()
+        .catch((error) => {
+          if (!isAbortError(error)) {
+            onError?.(
+              error instanceof Error
+                ? error.message
+                : "Impossible de synchroniser l’espace média.",
+            );
+          }
+        })
+        .finally(() => {
+          if (operationVersion === operationVersionRef.current) {
+            setSynchronizing(false);
+          }
+        });
 
       activeTaskRef.current = task;
       await task;
@@ -429,8 +472,8 @@ export default function usePersistentMediaWorkspace({
       if (existing) return await existing;
 
       const operationVersion = operationVersionRef.current;
-      let task: Promise<MediaWorkspacePreparationResult>;
-      task = prepareMediaPublicationWorkspace({
+      const task: Promise<MediaWorkspacePreparationResult> =
+        prepareMediaPublicationWorkspace({
         workspaceId: workspace.workspaceId,
         mission,
       })
@@ -439,7 +482,10 @@ export default function usePersistentMediaWorkspace({
             missionReadyRef.current[mission] = true;
           }
           if (operationVersion === operationVersionRef.current) {
-            await refreshPreparedMedia(workspace.workspaceId).catch(() => undefined);
+            await refreshPreparedMedia(
+              workspace.workspaceId,
+              operationVersion,
+            ).catch(() => undefined);
           }
           return result;
         })
@@ -600,17 +646,96 @@ export default function usePersistentMediaWorkspace({
     [],
   );
 
+  const verifyReadySources = useCallback(
+    async (expectation: PersistentWorkspaceSourceExpectation) => {
+      if (!enabled) return null;
+      const expectedCount = Math.max(0, Math.floor(expectation.count || 0));
+      if (!expectedCount) return null;
+
+      const operationVersion = operationVersionRef.current;
+      const workspace = await ensureWorkspace();
+      if (!workspace) {
+        throw new Error("Impossible de vérifier l'espace média.");
+      }
+
+      // Une seule lecture serveur après waitForIdle : l'état local de l'XHR
+      // ne suffit pas pour garantir qu'un worker retrouvera bien les sources.
+      const snapshot = await loadMediaPublicationWorkspace({
+        workspaceId: workspace.workspaceId,
+        includeUrls: false,
+      });
+      if (
+        operationVersion !== operationVersionRef.current ||
+        referenceRef.current?.workspaceId !== workspace.workspaceId
+      ) {
+        throw new Error(
+          "Les médias ont changé pendant leur vérification. Merci de relancer.",
+        );
+      }
+
+      const sources = snapshot.media.filter(
+        (media) => media.mediaType === expectation.mediaType,
+      );
+      const failedSource = sources.find(
+        (media) => media.uploadStatus === "failed",
+      );
+      if (failedSource) {
+        throw new Error(
+          failedSource.processingErrorMessage ||
+            "L'envoi d'un média a échoué.",
+        );
+      }
+
+      const readyPositions = new Set(
+        sources
+          .filter(
+            (media) =>
+              media.uploadStatus === "uploaded" &&
+              Boolean(String(media.storagePath || "").trim()),
+          )
+          .map((media) => media.position),
+      );
+      const everyExpectedSourceIsReady = Array.from(
+        { length: expectedCount },
+        (_, position) => position,
+      ).every((position) => readyPositions.has(position));
+
+      if (!everyExpectedSourceIsReady) {
+        throw new Error(
+          expectedCount > 1
+            ? "Les médias ne sont pas encore tous disponibles sur le serveur."
+            : "Le média n'est pas encore disponible sur le serveur.",
+        );
+      }
+
+      return snapshot;
+    },
+    [enabled, ensureWorkspace],
+  );
+
   const archiveWorkspace = useCallback(async () => {
     if (!enabled) return;
+    const workspace = referenceRef.current;
+    const taskToStop = activeTaskRef.current;
     operationVersionRef.current += 1;
     resetMissionReadiness();
     operationAbortRef.current?.abort();
-    await activeTaskRef.current.catch(() => undefined);
-    const workspace = referenceRef.current;
+    operationAbortRef.current = null;
+    activeTaskRef.current = Promise.resolve();
+    activeUploadFailureRef.current = "";
+    mediaStatesRef.current = {};
+    setMediaStates({});
+    setSynchronizing(false);
+    await taskToStop.catch(() => undefined);
     if (!workspace) return;
     await archiveMediaPublicationWorkspace({
       workspaceId: workspace.workspaceId,
     });
+    referenceRef.current = null;
+    setReference(null);
+    ensurePromiseRef.current = null;
+    clientWorkspaceKeyRef.current = "";
+    setClientWorkspaceKey("");
     clearBoosterWorkspaceClientKey();
   }, [enabled, resetMissionReadiness]);
 
@@ -651,6 +776,7 @@ export default function usePersistentMediaWorkspace({
     clientWorkspaceKey:
       reference?.clientWorkspaceKey || clientWorkspaceKey || null,
     mediaStates,
+    synchronizing,
     ensureWorkspace,
     adoptWorkspace,
     syncImages,
@@ -664,6 +790,7 @@ export default function usePersistentMediaWorkspace({
     clearWorkspaceMedia,
     linkDraft,
     waitForIdle,
+    verifyReadySources,
     archiveWorkspace,
   };
 }

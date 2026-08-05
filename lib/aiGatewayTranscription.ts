@@ -67,18 +67,40 @@ export async function aiTranscribeMedia(args: {
   mediaType?: string;
   retries?: number;
   timeoutMs?: number;
+  deadlineAt?: number;
+  signal?: AbortSignal;
 }): Promise<AiGatewayTranscriptionResult> {
   const credential = getAiGatewayCredential();
   if (!credential) throw new Error("Configuration AI Gateway manquante.");
 
+  const requestedTimeoutMs = Math.max(
+    1_000,
+    Math.min(110_000, Math.floor(args.timeoutMs ?? 100_000)),
+  );
+  const requestedDeadlineAt = Number(args.deadlineAt || 0);
+  const hardDeadlineAt = Math.min(
+    Date.now() + requestedTimeoutMs,
+    Number.isFinite(requestedDeadlineAt) && requestedDeadlineAt > 0
+      ? requestedDeadlineAt
+      : Number.POSITIVE_INFINITY,
+  );
+  if (args.signal?.aborted || hardDeadlineAt - Date.now() <= 250) {
+    throw Object.assign(new Error("Délai de transcription atteint."), {
+      code: "ai_operation_deadline_exceeded",
+    });
+  }
   const audio = Buffer.from(await args.file.arrayBuffer()).toString("base64");
+  if (args.signal?.aborted || hardDeadlineAt - Date.now() <= 250) {
+    throw Object.assign(new Error("Délai de transcription atteint."), {
+      code: "ai_operation_deadline_exceeded",
+    });
+  }
   const mediaType = normalizeMediaType(args.mediaType || args.file.type);
   const url = getAiGatewayTranscriptionUrl();
   const models = getConfiguredModels();
   const errors: string[] = [];
-  const hardDeadlineAt = Date.now() + Math.max(15_000, Math.min(110_000, Math.floor(args.timeoutMs ?? 100_000)));
-
   for (const model of models) {
+    if (args.signal?.aborted || hardDeadlineAt - Date.now() <= 250) break;
     assertAllowedAiGatewayTranscriptionModel(
       model,
       process.env.AI_GATEWAY_ALLOWED_TRANSCRIPTION_MODELS,
@@ -96,8 +118,12 @@ export async function aiTranscribeMedia(args: {
         },
         body: JSON.stringify({ audio, mediaType }),
         retries: Math.max(0, Math.min(1, Math.floor(args.retries ?? 1))),
-        timeoutMs: Math.max(10_000, Math.min(90_000, Math.floor(args.timeoutMs ?? 70_000))),
+        timeoutMs: Math.max(
+          1_000,
+          Math.min(90_000, requestedTimeoutMs),
+        ),
         deadlineAt: hardDeadlineAt,
+        signal: args.signal,
         retryStatuses: [408, 500, 502, 503, 504],
         onAttempt: async (attempt) => {
           const reservation = await reserveAiGatewayAccountAttempt(args.accountId, {

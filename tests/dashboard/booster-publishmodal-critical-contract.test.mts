@@ -23,6 +23,9 @@ const generationRoute = read("app/api/booster/generate/route.ts");
 const statusRoute = read(
   "app/api/booster/publications/[publicationId]/status/route.ts",
 );
+const videoFormatManager = read(
+  "app/dashboard/booster/publier/components/BoosterVideoFormatManager.tsx",
+);
 
 test("PublishModal keeps the three dedicated media controllers", () => {
   assert.match(publishModal, /usePersistentMediaWorkspace\(/);
@@ -83,20 +86,49 @@ test("legacy uploads stay disabled unless a mixed publication needs the media ty
   assert.match(publishModal, /uploadOriginalImagesForPublication\(/);
 });
 
-test("compatible MP4 or M4V sources bypass a second silent re-encode", () => {
+test("cutover records the format choice and defers every technical adaptation until publication", () => {
   assert.match(publishModal, /canPublishVideoSourceDirectly\(/);
   assert.match(
     publishModal,
-    /allUploaded\s*&&\s*directVideoSource\s*&&\s*purpose !== "generate"/,
+    /const directOriginalAvailable =[\s\S]*canPublishVideoSourceDirectly\([\s\S]*requireCodecProof: true/,
   );
   assert.match(persistentWorkspace, /preparePublicationMedia/);
+  assert.doesNotMatch(publishModal, /prepareCutoverVideoVariants/);
   assert.match(
     publishModal,
     /generateMissingVideoVariants:\s*false,[\s\S]*allowOriginalVideoFallback:\s*true/,
   );
   assert.match(
     publishModal,
-    /generateMissingVideoVariants:\s*true,[\s\S]*allowOriginalVideoFallback:\s*false/,
+    /deferTechnicalPreparationUntilPublish=\{[\s\S]*mediaPipelineCutoverEnabled/,
+  );
+  assert.match(
+    publishModal,
+    /onApplyVideoFormatForChannel=\{[\s\S]*mediaPipelineCutoverEnabled[\s\S]*\? undefined/,
+  );
+  assert.match(
+    publishModal,
+    /onApplyVideoFormatToAllChannels=\{[\s\S]*mediaPipelineCutoverEnabled[\s\S]*\? undefined/,
+  );
+  assert.match(
+    publishModal,
+    /const videoPreparationBlocker =[\s\S]*!mediaPipelineCutoverEnabled/,
+  );
+  assert.match(
+    videoFormatManager,
+    /const appliedFormat = deferTechnicalPreparationUntilPublish[\s\S]*\? currentFormat/,
+  );
+  assert.match(
+    videoFormatManager,
+    /!deferTechnicalPreparationUntilPublish && preparationState/,
+  );
+  assert.match(
+    videoFormatManager,
+    /!deferTechnicalPreparationUntilPublish && onApplyFormat/,
+  );
+  assert.match(
+    videoFormatManager,
+    /!deferTechnicalPreparationUntilPublish &&[\s\S]{0,100}\(onApplyFormat \|\|/,
   );
 });
 
@@ -120,10 +152,16 @@ test("image and video source limits stay centralized", () => {
   assert.match(publishModal, /BOOSTER_MAX_VIDEO_BYTES/);
 });
 
-test("final review blocks invalid channels before the dispatch", () => {
+test("final review excludes invalid channels without blocking the ready subset", () => {
   assert.match(publishModal, /buildFinalReviewItems\(/);
   assert.match(publishModal, /getChannelPublicationRequirements\(/);
-  assert.match(publishModal, /Aucun canal publiable/);
+  assert.match(publishModal, /const preflightFailedChannels = reviewItems/);
+  assert.match(
+    publishModal,
+    /const publishableChannels = reviewItems[\s\S]*item\.blockers\.length === 0/,
+  );
+  assert.match(publishModal, /preflightFailedChannels,/);
+  assert.match(modalLayer, /mergePreflightFailuresIntoPublicationSummary/);
   assert.match(publishModal, /Instagram nécessite une vidéo ou au moins 1 image/);
   assert.match(publishModal, /Choisissez un tableau Pinterest/);
   assert.match(publishModal, /Pinterest nécessite une image ou une vidéo/);
