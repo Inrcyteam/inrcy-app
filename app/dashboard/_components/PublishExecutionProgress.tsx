@@ -10,7 +10,6 @@ export default function PublishExecutionProgress({
   phaseIndex,
   phaseTotal,
   phaseLabel,
-  phaseCaps,
 }: {
   styles: DashboardStyles;
   scheduling?: boolean;
@@ -19,7 +18,6 @@ export default function PublishExecutionProgress({
   phaseIndex?: number;
   phaseTotal?: number;
   phaseLabel?: string;
-  phaseCaps?: readonly number[];
 }) {
   const safeProgress = Math.max(
     0,
@@ -59,16 +57,6 @@ export default function PublishExecutionProgress({
           className={styles.publishProgressFill}
           style={{ width: `${safeProgress}%` }}
         />
-        {(phaseCaps || [])
-          .filter((cap) => cap > 0 && cap < 100)
-          .map((cap) => (
-            <span
-              key={cap}
-              className={styles.publishProgressMarker}
-              data-complete={safeProgress >= cap ? "true" : "false"}
-              style={{ left: `${cap}%` }}
-            />
-          ))}
       </div>
     </div>
   );

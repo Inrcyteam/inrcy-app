@@ -15,7 +15,6 @@ type PublishFooterActionsProps = {
   publishProgressPhaseIndex?: number;
   publishProgressPhaseTotal?: number;
   publishProgressPhaseLabel?: string;
-  publishProgressPhaseCaps?: readonly number[];
   publishError: string;
   onPublish: () => void;
   onSchedule: () => void;
@@ -32,7 +31,6 @@ export default function PublishFooterActions({
   publishProgressPhaseIndex,
   publishProgressPhaseTotal,
   publishProgressPhaseLabel,
-  publishProgressPhaseCaps,
   publishError,
   onPublish,
   onSchedule,
@@ -50,7 +48,6 @@ export default function PublishFooterActions({
             phaseIndex={scheduling ? undefined : publishProgressPhaseIndex}
             phaseTotal={scheduling ? undefined : publishProgressPhaseTotal}
             phaseLabel={scheduling ? undefined : publishProgressPhaseLabel}
-            phaseCaps={scheduling ? undefined : publishProgressPhaseCaps}
           />
         ) : (
           <div className={styles.publishFooterActionsGroup}>

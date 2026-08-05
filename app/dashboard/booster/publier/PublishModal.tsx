@@ -21,7 +21,6 @@ import {
   GENERATION_PROGRESS_PHASES,
   PUBLICATION_PROGRESS_PHASES,
   getProgressPhase,
-  getProgressPhaseCaps,
   getProgressPhaseIndex,
   mapProgressRange,
   resolvePublicationBilanProgress,
@@ -207,13 +206,6 @@ import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCapt
 import MediaLibraryPickerModal, {
   type MediaLibraryPickerItem,
 } from "@/app/dashboard/_components/MediaLibraryPickerModal";
-
-const GENERATION_PROGRESS_CAPS = getProgressPhaseCaps(
-  GENERATION_PROGRESS_PHASES,
-);
-const PUBLICATION_PROGRESS_CAPS = getProgressPhaseCaps(
-  PUBLICATION_PROGRESS_PHASES,
-);
 
 export default function PublishModal({
   styles,
@@ -6045,7 +6037,6 @@ export default function PublishModal({
             generationPhaseIndex={generationPhaseIndex}
             generationPhaseTotal={GENERATION_PROGRESS_PHASES.length}
             generationPhaseLabel={generationPhaseLabel}
-            generationPhaseCaps={GENERATION_PROGRESS_CAPS}
             generationStage={generationStage}
             generationProgress={generationProgress}
             aiPreferredEngine={selectedAiPreferredEngine}
@@ -6294,7 +6285,6 @@ export default function PublishModal({
             publishProgressPhaseIndex={publishProgressPhaseIndex}
             publishProgressPhaseTotal={PUBLICATION_PROGRESS_PHASES.length}
             publishProgressPhaseLabel={publishProgressPhaseLabel}
-            publishProgressPhaseCaps={PUBLICATION_PROGRESS_CAPS}
             publishError={publishError}
             onPublish={onPublish}
             onSchedule={openSchedulePublicationModal}

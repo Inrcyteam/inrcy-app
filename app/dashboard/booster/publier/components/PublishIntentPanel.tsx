@@ -249,7 +249,6 @@ type PublishIntentPanelProps = {
   generationPhaseIndex: number;
   generationPhaseTotal: number;
   generationPhaseLabel: string;
-  generationPhaseCaps: readonly number[];
   generationStage: string;
   generationProgress: number;
   aiPreferredEngine: AiPreferredEngine;
@@ -292,7 +291,6 @@ export default function PublishIntentPanel({
   generationPhaseIndex,
   generationPhaseTotal,
   generationPhaseLabel,
-  generationPhaseCaps,
   generationStage,
   generationProgress,
   aiPreferredEngine,
@@ -1669,33 +1667,6 @@ export default function PublishIntentPanel({
                     transition: "width 420ms ease",
                   }}
                 />
-                {generationPhaseCaps
-                  .filter((cap) => cap > 0 && cap < 100)
-                  .map((cap) => (
-                    <span
-                      key={cap}
-                      aria-hidden="true"
-                      style={{
-                        position: "absolute",
-                        top: "50%",
-                        left: `${cap}%`,
-                        width: 3,
-                        height: 11,
-                        borderRadius: 999,
-                        transform: "translate(-50%, -50%)",
-                        background:
-                          generationProgress >= cap
-                            ? "rgba(255,255,255,0.92)"
-                            : "rgba(255,255,255,0.28)",
-                        boxShadow: "0 0 0 2px rgba(11,16,32,0.34)",
-                        transition: "background 240ms ease",
-                      }}
-                    />
-                  ))}
-              </div>
-              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.56)" }}>
-                Chaque phase avance jusqu’à son propre plafond. Le 100 % apparaît
-                uniquement lorsque les contenus sont prêts dans l’éditeur.
               </div>
             </div>
           ) : null}

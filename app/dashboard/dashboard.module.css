@@ -6597,22 +6597,6 @@
   transition: width 260ms ease;
 }
 
-.publishProgressMarker {
-  position: absolute;
-  top: 50%;
-  width: 3px;
-  height: 12px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 255, 255, 0.26);
-  box-shadow: 0 0 0 2px rgba(8, 14, 30, 0.42);
-  transition: background 220ms ease;
-}
-
-.publishProgressMarker[data-complete="true"] {
-  background: rgba(255, 255, 255, 0.92);
-}
-
 @media (max-width: 640px) {
   .publishFooterRoot {
     justify-items: stretch;
