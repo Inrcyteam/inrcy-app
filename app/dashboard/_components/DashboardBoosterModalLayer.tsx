@@ -231,9 +231,7 @@ export default function DashboardBoosterModalLayer({
         }
 
         if (!summary || Number(summary.successCount || 0) > 0) {
-          // La fidélité ne doit jamais retarder la 30e seconde ni l'ouverture
-          // du bilan. L'attribution est idempotente et secondaire à l'envoi.
-          void award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
+          await award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
         }
         return json;
       } finally {

@@ -57,7 +57,6 @@ import {
   getWarningChannelMessage,
   getPublicationBackgroundMode,
   arePublicationTransformsEquivalent,
-  isCancelledChannelResult,
   isDeletedChannelResult,
   isFailedChannelResult,
   isWarningChannelResult,
@@ -75,6 +74,7 @@ import {
   formatCampaignProgressFromHealth,
   formatVisibleMailError,
   getTiktokAutoPollTarget,
+  getTiktokPublicationUrl,
   getTiktokPublishId,
   getTiktokStatusMeta,
   getYoutubeShortsPublicationUrl,
@@ -103,185 +103,6 @@ function formatTiktokDate(value: string) {
   if (!value) return "";
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toLocaleString() : "";
-}
-
-type ConnectedChannelDetail = {
-  type?: string | null;
-  label?: string | null;
-  href?: string | null;
-};
-
-type PublicationStatusTone = "success" | "pending" | "warning" | "danger" | "muted";
-
-type PublicationStatusMeta = {
-  label: string;
-  tone: PublicationStatusTone;
-  title: string;
-};
-
-function normalizeExternalHref(value: unknown): string {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const candidate = /^(https?:)?\/\//i.test(raw)
-    ? raw.startsWith("//")
-      ? `https:${raw}`
-      : raw
-    : /^www\./i.test(raw)
-      ? `https://${raw}`
-      : "";
-  if (!candidate) return "";
-  try {
-    const url = new URL(candidate);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
-  } catch {
-    return "";
-  }
-}
-
-function getFallbackChannelAccountHref(channel: string, result: any): string {
-  const candidates = [
-    result?.profile_url,
-    result?.profileUrl,
-    result?.page_url,
-    result?.pageUrl,
-    result?.channel_url,
-    result?.channelUrl,
-    result?.organization_url,
-    result?.organizationUrl,
-    result?.account_url,
-    result?.accountUrl,
-    result?.resource_url,
-    result?.resourceUrl,
-    result?.website_url,
-    result?.websiteUrl,
-    result?.site_url,
-    result?.siteUrl,
-    ["inrcy_site", "site_web", "inr_search", "gmb"].includes(channel)
-      ? result?.external_url
-      : "",
-  ];
-  for (const candidate of candidates) {
-    const href = normalizeExternalHref(candidate);
-    if (href) return href;
-  }
-
-  const username = String(result?.username || result?.handle || "")
-    .trim()
-    .replace(/^@+/, "");
-  if (!username) return "";
-  if (channel === "instagram") return `https://www.instagram.com/${encodeURIComponent(username)}/`;
-  if (channel === "tiktok") return `https://www.tiktok.com/@${encodeURIComponent(username)}`;
-  if (channel === "pinterest") return `https://www.pinterest.com/${encodeURIComponent(username)}/`;
-  return "";
-}
-
-function getChannelAccountActionLabel(channel: string, detail?: ConnectedChannelDetail | null) {
-  if (channel === "inrcy_site" || channel === "site_web") return "Ouvrir le site";
-  if (channel === "inr_search") return "Ouvrir la page";
-  if (channel === "gmb") return "Ouvrir la fiche";
-  if (channel === "youtube_shorts") return "Ouvrir la chaîne";
-  const type = String(detail?.type || "").toLowerCase();
-  if (type === "account" || type === "profile") return "Ouvrir le compte";
-  if (type === "channel") return "Ouvrir la chaîne";
-  if (type === "location") return "Ouvrir la fiche";
-  return "Ouvrir la page";
-}
-
-function getLivePublicationEntry(liveStatus: any, channel: string) {
-  const entries = Array.isArray(liveStatus?.summary?.entries)
-    ? liveStatus.summary.entries
-    : [];
-  return entries.find((entry: any) => String(entry?.channel || "").trim() === channel) || null;
-}
-
-function getLivePublicationResult(liveStatus: any, channel: string) {
-  const results = liveStatus?.results && typeof liveStatus.results === "object"
-    ? liveStatus.results
-    : null;
-  if (!results) return null;
-  const result = results[channel];
-  return result && typeof result === "object" ? result : null;
-}
-
-function getPublicationStatusMeta(
-  channel: string,
-  result: any,
-  liveEntry: any,
-): PublicationStatusMeta {
-  if (isCancelledChannelResult(result)) {
-    return { label: "Annulée", tone: "muted", title: "Publication annulée" };
-  }
-  if (isDeletedChannelResult(result)) {
-    return { label: "Supprimée", tone: "muted", title: "Publication supprimée sur ce canal" };
-  }
-
-  if (channel === "tiktok") {
-    const tiktok = getTiktokStatusMeta(result);
-    if (tiktok.cancelled) return { label: "Annulée", tone: "muted", title: "Publication TikTok annulée" };
-    if (tiktok.failed) return { label: tiktok.label || "Échec", tone: "danger", title: tiktok.message || "Publication TikTok en échec" };
-    if (tiktok.complete) return { label: "Publiée", tone: "success", title: "Publication finalisée sur TikTok" };
-    if (tiktok.pending) return { label: tiktok.label || "En traitement", tone: "pending", title: tiktok.message || "TikTok finalise encore la publication" };
-  }
-
-  if (isFailedChannelResult(result) || liveEntry?.ok === false) {
-    return { label: "Échec", tone: "danger", title: "La publication n'a pas abouti sur ce canal" };
-  }
-  if (isWarningChannelResult(result, channel)) {
-    return { label: "Publiée avec avertissement", tone: "warning", title: getWarningChannelMessage(result, channel) || "Publication finalisée avec avertissement" };
-  }
-
-  const status = String(
-    liveEntry?.status ||
-      liveEntry?.technicalStatus ||
-      result?.publication_status ||
-      result?.status ||
-      "",
-  ).toLowerCase();
-  if (["queued", "pending", "waiting", "created"].includes(status)) {
-    return { label: "En attente", tone: "pending", title: "Publication en attente de traitement" };
-  }
-  if (["processing", "running", "submitted", "accepted", "uploading", "external_processing"].includes(status) || result?.pending === true || result?.processing === true) {
-    return { label: "En traitement", tone: "pending", title: "Le canal finalise encore la publication" };
-  }
-  if (["failed", "error", "rejected"].includes(status)) {
-    return { label: "Échec", tone: "danger", title: "La publication n'a pas abouti sur ce canal" };
-  }
-  if (
-    liveEntry?.ok === true ||
-    result?.ok === true ||
-    ["published", "completed", "complete", "done", "success", "sent"].includes(status)
-  ) {
-    return { label: "Publiée", tone: "success", title: "Publication finalisée sur ce canal" };
-  }
-  return { label: "À vérifier", tone: "muted", title: "Le statut sera actualisé automatiquement" };
-}
-
-function getPublicationStatusPillStyle(tone: PublicationStatusTone): React.CSSProperties {
-  if (tone === "success") {
-    return { border: "1px solid rgba(74,222,128,0.34)", background: "rgba(22,101,52,0.22)", color: "#bbf7d0" };
-  }
-  if (tone === "danger") {
-    return { border: "1px solid rgba(248,113,113,0.38)", background: "rgba(127,29,29,0.24)", color: "#fecaca" };
-  }
-  if (tone === "warning") {
-    return { border: "1px solid rgba(251,191,36,0.36)", background: "rgba(120,53,15,0.22)", color: "#fde68a" };
-  }
-  if (tone === "pending") {
-    return { border: "1px solid rgba(56,189,248,0.34)", background: "rgba(7,89,133,0.22)", color: "#bae6fd" };
-  }
-  return { border: "1px solid rgba(148,163,184,0.28)", background: "rgba(51,65,85,0.24)", color: "#e2e8f0" };
-}
-
-function shouldPollPublicationStatus(liveStatus: any) {
-  const pendingCount = Number(liveStatus?.summary?.pendingCount || 0) || 0;
-  return liveStatus?.done === false || liveStatus?.queued === true || pendingCount > 0;
-}
-
-function formatPublicationStatusCheckedAt(value: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
@@ -355,140 +176,15 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [tiktokStatusChecking, setTiktokStatusChecking] = React.useState(false);
   const [tiktokRetrying, setTiktokRetrying] = React.useState(false);
   const [tiktokCancelling, setTiktokCancelling] = React.useState(false);
-  const [connectedChannelDetails, setConnectedChannelDetails] = React.useState<Record<string, ConnectedChannelDetail>>({});
-  const [publicationLiveStatus, setPublicationLiveStatus] = React.useState<any | null>(null);
-  const [publicationStatusRefreshing, setPublicationStatusRefreshing] = React.useState(false);
-  const [publicationStatusCheckedAt, setPublicationStatusCheckedAt] = React.useState("");
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
   const detailsScrollSnapshotRef = React.useRef<number | null>(null);
   const tiktokAutoPollInFlightRef = React.useRef(false);
-  const publicationStatusRefreshInFlightRef = React.useRef<string | null>(null);
-  const activePublicationId = React.useMemo(() => {
-    if (!open || detailsItem?.source !== "app_events") return "";
-    const payload = (detailsItem as any)?.raw?.payload;
-    const payloadId = String(payload?.publication_id || "").trim();
-    const itemId = String(detailsItem?.id || "").trim();
-    const candidate = payloadId || itemId;
-    return /^[0-9a-f-]{36}$/i.test(candidate) ? candidate : "";
-  }, [detailsItem, open]);
-  const activePublicationIdRef = React.useRef("");
-  activePublicationIdRef.current = activePublicationId;
-  const detailsEditModeRef = React.useRef(detailsEditMode);
-  detailsEditModeRef.current = detailsEditMode;
   const tiktokAutoPollTarget = React.useMemo(
     () => (open ? getTiktokAutoPollTarget(detailsItem) : null),
     [open, detailsItem],
   );
   const detailsMailProvider = String(detailsItem?.provider || detailsItem?.payload?.provider || "").trim();
-
-  const refreshPublicationStatus = React.useCallback(async (silent = false) => {
-    const requestedPublicationId = activePublicationId;
-    if (!requestedPublicationId || publicationStatusRefreshInFlightRef.current === requestedPublicationId) return null;
-    publicationStatusRefreshInFlightRef.current = requestedPublicationId;
-    if (!silent) {
-      setPublicationStatusRefreshing(true);
-      setDetailsActionError(null);
-      setDetailsActionSuccess(null);
-    }
-    try {
-      const response = await fetch(
-        `/api/booster/publications/${encodeURIComponent(requestedPublicationId)}/status`,
-        { method: "GET", cache: "no-store" },
-      );
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(json?.error || "Actualisation du statut impossible.");
-      }
-      if (activePublicationIdRef.current !== requestedPublicationId) return null;
-      setPublicationLiveStatus(json);
-      setPublicationStatusCheckedAt(new Date().toISOString());
-      if (!detailsEditModeRef.current) await refreshHistory?.();
-      if (activePublicationIdRef.current !== requestedPublicationId) return null;
-      if (!silent) setDetailsActionSuccess("Statut de publication mis à jour.");
-      return json;
-    } catch (error) {
-      if (!silent) {
-        setDetailsActionError(
-          getSimpleFrenchErrorMessage(
-            error,
-            "Impossible d'actualiser le statut de cette publication pour le moment.",
-          ),
-        );
-      }
-      return null;
-    } finally {
-      if (publicationStatusRefreshInFlightRef.current === requestedPublicationId) {
-        publicationStatusRefreshInFlightRef.current = null;
-      }
-      if (!silent && activePublicationIdRef.current === requestedPublicationId) {
-        setPublicationStatusRefreshing(false);
-      }
-    }
-  }, [
-    activePublicationId,
-    refreshHistory,
-    setDetailsActionError,
-    setDetailsActionSuccess,
-  ]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    if (!open || detailsItem?.source !== "app_events") {
-      setConnectedChannelDetails({});
-      return;
-    }
-
-    void (async () => {
-      try {
-        const response = await fetch("/api/booster/connected-channels", {
-          method: "GET",
-          cache: "no-store",
-        });
-        const json = await response.json().catch(() => ({}));
-        if (!cancelled && response.ok && json?.channelDetails && typeof json.channelDetails === "object") {
-          setConnectedChannelDetails(json.channelDetails as Record<string, ConnectedChannelDetail>);
-        }
-      } catch {
-        // Le lien enregistré dans le résultat reste disponible en repli.
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailsItem?.source, open]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    if (!open || !activePublicationId || detailsItem?.source !== "app_events") {
-      setPublicationLiveStatus(null);
-      setPublicationStatusCheckedAt("");
-      return;
-    }
-
-    setPublicationLiveStatus(null);
-    setPublicationStatusCheckedAt("");
-    const startedAt = Date.now();
-    const run = async () => {
-      const status = await refreshPublicationStatus(true);
-      if (cancelled) return;
-      if (
-        status &&
-        shouldPollPublicationStatus(status) &&
-        Date.now() - startedAt < 30 * 60_000
-      ) {
-        timer = setTimeout(run, 20_000);
-      }
-    };
-    void run();
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [activePublicationId, detailsItem?.source, open, refreshPublicationStatus]);
 
   React.useEffect(() => {
     if (!open || !tiktokAutoPollTarget || tiktokRetrying || tiktokStatusChecking || tiktokCancelling) return;
@@ -908,7 +604,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setTiktokStatusChecking(false);
     setTiktokRetrying(false);
     setTiktokCancelling(false);
-    setPublicationStatusRefreshing(false);
     detailsScrollSnapshotRef.current = null;
     window.requestAnimationFrame(() => {
       detailsBodyRef.current?.scrollTo({ top: 0, behavior: "auto" });
@@ -993,16 +688,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const activePublicationEntry = detailsItem.source === "app_events"
                     ? (publicationChannelEntries.find((entry) => entry.key === detailsChannelKey) || publicationChannelEntries[0] || null)
                     : null;
-                  const persistedActivePublicationResult = detailsItem.source === "app_events" && activePublicationEntry
+                  const activePublicationResult = detailsItem.source === "app_events" && activePublicationEntry
                     ? ((payload?.results && typeof payload.results === "object" ? (payload.results as any)[activePublicationEntry.key] : null) || null)
                     : null;
-                  const activePublicationLiveEntry = activePublicationEntry
-                    ? getLivePublicationEntry(publicationLiveStatus, activePublicationEntry.key)
-                    : null;
-                  const activePublicationLiveResult = activePublicationEntry
-                    ? getLivePublicationResult(publicationLiveStatus, activePublicationEntry.key)
-                    : null;
-                  const activePublicationResult = activePublicationLiveResult || persistedActivePublicationResult;
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
                   const activePublicationFailed = isFailedChannelResult(activePublicationResult);
                   const activePublicationFailureMessage = getFailedChannelMessage(
@@ -1028,37 +716,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const isTiktokPublicationEntry = activePublicationEntry?.key === "tiktok";
                   const isYoutubeShortsPublicationEntry = activePublicationEntry?.key === "youtube_shorts";
                   const isExternalVideoPublicationEntry = isTiktokPublicationEntry || isYoutubeShortsPublicationEntry;
+                  const tiktokPublicationHref = isTiktokPublicationEntry ? getTiktokPublicationUrl(activePublicationResult) : "";
                   const tiktokPublishId = isTiktokPublicationEntry ? getTiktokPublishId(activePublicationResult) : "";
                   const tiktokStatusMeta = isTiktokPublicationEntry ? getTiktokStatusMeta(activePublicationResult) : null;
                   const youtubeShortsPublicationHref = isYoutubeShortsPublicationEntry ? getYoutubeShortsPublicationUrl(activePublicationResult) : "";
-                  const activeConnectedChannelDetail = activePublicationEntry
-                    ? connectedChannelDetails[activePublicationEntry.key] || null
-                    : null;
-                  const activeChannelAccountHref = activePublicationEntry
-                    ? getFallbackChannelAccountHref(activePublicationEntry.key, activePublicationResult) ||
-                      normalizeExternalHref(activeConnectedChannelDetail?.href)
-                    : "";
-                  const activeChannelAccountActionLabel = activePublicationEntry
-                    ? getChannelAccountActionLabel(activePublicationEntry.key, activeConnectedChannelDetail)
-                    : "Ouvrir le canal";
-                  const activePublicationStatusMeta = activePublicationEntry
-                    ? getPublicationStatusMeta(
-                        activePublicationEntry.key,
-                        activePublicationResult,
-                        activePublicationLiveEntry,
-                      )
-                    : null;
-                  const activePublicationStatusTime = formatPublicationStatusCheckedAt(
-                    (isTiktokPublicationEntry ? tiktokStatusMeta?.checkedAt : "") || publicationStatusCheckedAt,
-                  );
-                  const tiktokDirectPublicationHref = isTiktokPublicationEntry
-                    ? normalizeExternalHref(
-                        activePublicationResult?.share_url ||
-                          activePublicationResult?.post_url ||
-                          activePublicationResult?.video_url ||
-                          activePublicationResult?.external_url,
-                      )
-                    : "";
                   const activeParts = activePublicationEntry?.parts || defaultParts;
                   const sourceDocAttachments = detailsItem.source === "send_items"
                     ? extractAttachmentsFromPayload(detailsSourceDocPayload)
@@ -1464,62 +1125,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       <b>Action :</b> {detailsActionSuccess}
                                     </div>
                                   ) : null}
-                                  {!isDraftItem && activePublicationStatusMeta ? (
-                                    <div
-                                      title={activePublicationStatusMeta.title}
-                                      style={{
-                                        ...getPublicationStatusPillStyle(activePublicationStatusMeta.tone),
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: 6,
-                                        minHeight: 34,
-                                        padding: "6px 10px",
-                                        borderRadius: 999,
-                                        fontSize: 12,
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      <span
-                                        aria-hidden="true"
-                                        style={{
-                                          width: 7,
-                                          height: 7,
-                                          borderRadius: 999,
-                                          background: "currentColor",
-                                          opacity: 0.92,
-                                        }}
-                                      />
-                                      <span>
-                                        Statut : <b>{activePublicationStatusMeta.label}</b>
-                                      </span>
-                                      {activePublicationStatusTime ? (
-                                        <span style={{ opacity: 0.66 }}>· {activePublicationStatusTime}</span>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
-                                  {!isDraftItem && activePublicationId ? (
-                                    <button
-                                      type="button"
-                                      className={styles.btnGhost}
-                                      onClick={() => void refreshPublicationStatus(false)}
-                                      disabled={detailsActionBusy || publicationStatusRefreshing}
-                                      title="Actualiser le statut de tous les canaux"
-                                    >
-                                      {publicationStatusRefreshing ? "Actualisation…" : "Actualiser le statut"}
-                                    </button>
-                                  ) : null}
-                                  {!isDraftItem && activeChannelAccountHref ? (
-                                    <a
-                                      className={styles.btnGhost}
-                                      href={activeChannelAccountHref}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      title={activeConnectedChannelDetail?.label || `Ouvrir ${activePublicationEntry.label}`}
-                                      style={{ textDecoration: "none" }}
-                                    >
-                                      {activeChannelAccountActionLabel}
-                                    </a>
-                                  ) : null}
                                   {isTiktokPublicationEntry && !isDraftItem ? (
                                     <>
                                       {!tiktokStatusMeta?.cancelled ? (
@@ -1555,34 +1160,30 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                           {tiktokCancelling ? "Annulation…" : "Annuler"}
                                         </button>
                                       ) : null}
-                                      {tiktokDirectPublicationHref && tiktokDirectPublicationHref !== activeChannelAccountHref ? (
-                                        <button
-                                          type="button"
-                                          className={styles.btnPrimary}
-                                          onClick={() => {
-                                            if (typeof window !== "undefined") window.open(tiktokDirectPublicationHref, "_blank", "noopener,noreferrer");
-                                          }}
-                                          disabled={detailsActionBusy || tiktokCancelling}
-                                          title="Ouvrir la publication TikTok"
-                                        >
-                                          Voir la publication
-                                        </button>
-                                      ) : null}
-                                    </>
-                                  ) : isYoutubeShortsPublicationEntry && !isDraftItem ? (
-                                    youtubeShortsPublicationHref && youtubeShortsPublicationHref !== activeChannelAccountHref ? (
                                       <button
                                         type="button"
                                         className={styles.btnPrimary}
                                         onClick={() => {
-                                          if (typeof window !== "undefined") window.open(youtubeShortsPublicationHref, "_blank", "noopener,noreferrer");
+                                          if (typeof window !== "undefined") window.open(tiktokPublicationHref || "https://www.tiktok.com", "_blank", "noopener,noreferrer");
                                         }}
-                                        disabled={detailsActionBusy}
-                                        title="Ouvrir la vidéo publiée sur YouTube"
+                                        disabled={detailsActionBusy || tiktokCancelling}
+                                        title="Ouvrir TikTok pour gérer la publication"
                                       >
-                                        Voir la vidéo
+                                        Ouvrir TikTok
                                       </button>
-                                    ) : null
+                                    </>
+                                  ) : isYoutubeShortsPublicationEntry && !isDraftItem ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnPrimary}
+                                      onClick={() => {
+                                        if (typeof window !== "undefined") window.open(youtubeShortsPublicationHref || "https://www.youtube.com", "_blank", "noopener,noreferrer");
+                                      }}
+                                      disabled={detailsActionBusy}
+                                      title="Ouvrir la vidéo publiée sur YouTube"
+                                    >
+                                      Voir la vidéo
+                                    </button>
                                   ) : isDraftItem ? (
                                     <button
                                       type="button"

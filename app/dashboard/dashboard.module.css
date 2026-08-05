@@ -6515,86 +6515,44 @@
 }
 
 .publishProgressBox {
-  display: grid;
-  grid-template-columns: minmax(185px, 1.05fr) minmax(140px, 1.25fr) minmax(110px, 0.8fr);
+  display: flex;
   align-items: center;
-  gap: 10px 14px;
-  min-height: 58px;
-  padding: 9px 16px;
-  border-radius: 20px;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: 999px;
   border: 1px solid rgba(76, 195, 255, 0.22);
-  background:
-    linear-gradient(135deg, rgba(76, 195, 255, 0.1), rgba(99, 102, 241, 0.08)),
-    rgba(8, 14, 30, 0.78);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
-  width: min(820px, 100%);
-  min-width: 0;
-  max-width: 820px;
+  background: rgba(76, 195, 255, 0.08);
+  min-width: 420px;
+  max-width: 700px;
 }
 
 .publishProgressHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.publishProgressHeadingGroup {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
+  display: contents;
 }
 
 .publishProgressTitle {
   white-space: nowrap;
-  font-size: 13px;
-  line-height: 1.1;
-}
-
-.publishProgressPhase {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  line-height: 1.2;
-  color: rgba(255, 255, 255, 0.62);
 }
 
 .publishProgressLabel {
-  font-size: 11.5px;
-  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  opacity: 0.9;
+  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .publishProgressPercent {
   white-space: nowrap;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
 }
 
 .publishProgressTrack {
-  position: relative;
-  width: 160px;
+  width: 140px;
   height: 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-.publishProgressFill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(76, 195, 255, 0.92),
-    rgba(99, 102, 241, 0.95)
-  );
-  transition: width 260ms ease;
+  overflow: hidden;
+  flex: 0 0 140px;
 }
 
 @media (max-width: 640px) {
@@ -6671,14 +6629,6 @@
     line-height: 1.1;
   }
 
-  .publishProgressTitle {
-    font-size: 12.5px;
-  }
-
-  .publishProgressPhase {
-    font-size: 10.5px;
-  }
-
   .publishProgressLabel {
     flex: initial;
     min-width: 0;
@@ -6691,6 +6641,32 @@
 
   .publishProgressTrack {
     width: 100%;
+    flex: initial;
+  }
+}
+
+.publishProgressTitle {
+  order: 1;
+}
+.publishProgressLabel {
+  order: 2;
+}
+.publishProgressPercent {
+  order: 3;
+}
+.publishProgressTrack {
+  order: 4;
+}
+
+@media (max-width: 640px) {
+  .publishProgressHeader {
+    order: 1;
+  }
+  .publishProgressLabel {
+    order: 2;
+  }
+  .publishProgressTrack {
+    order: 3;
   }
 }
 
