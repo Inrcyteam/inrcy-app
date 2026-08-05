@@ -605,6 +605,29 @@ export default function usePersistentMediaWorkspace({
     return await runPreparationMission("ai_preparation");
   }, [runPreparationMission]);
 
+  useEffect(() => {
+    if (!enabled || creationMode !== "ai") return;
+    const videoStates = Object.values(mediaStates).filter(
+      (item) => item.mediaType === "video",
+    );
+    if (
+      !videoStates.length ||
+      videoStates.some((item) => item.status !== "ready") ||
+      missionReadyRef.current.ai_preparation ||
+      activePreparationRef.current.ai_preparation
+    ) {
+      return;
+    }
+
+    // Dès que la source est entièrement stockée, les captures IA chauffent
+    // depuis Supabase pendant que le pro rédige/relit. `runPreparationMission`
+    // déduplique l'appel : le clic Générer réutilise exactement la même
+    // promesse au lieu de créer un second job ou de ré-uploader la vidéo.
+    void prepareAiMedia().catch((error) => {
+      console.warn("[media-pipeline] video AI prewarm deferred", error);
+    });
+  }, [creationMode, enabled, mediaStates, prepareAiMedia]);
+
   const preparePublicationMedia = useCallback(
     async () => await runPreparationMission("publication_preparation"),
     [runPreparationMission],

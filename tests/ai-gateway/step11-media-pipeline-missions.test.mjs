@@ -48,7 +48,7 @@ test("étape 2 expose exactement les trois missions média", () => {
   );
 });
 
-test("l'ajout ne lance plus de préparation IA ou publication", () => {
+test("l'ajout n'encode rien dans le navigateur et le préchauffage IA reste idempotent", () => {
   const scheduleStart = hookSource.indexOf("const scheduleSync");
   const preparationStart = hookSource.indexOf("const runPreparationMission");
   assert.ok(scheduleStart >= 0 && preparationStart > scheduleStart);
@@ -57,6 +57,8 @@ test("l'ajout ne lance plus de préparation IA ou publication", () => {
   assert.doesNotMatch(scheduleSource, /prewarmMediaPublicationWorkspace\s*\(/);
   assert.match(scheduleSource, /buildBoosterSourceMediaMetadata/);
   assert.match(scheduleSource, /source_metadata:\s*sourceMetadata/);
+  assert.match(hookSource, /if \(!enabled \|\| creationMode !== "ai"\) return/);
+  assert.match(hookSource, /void prepareAiMedia\(\)\.catch/);
 });
 
 test("les deux préparations sont explicites et idempotentes côté client", () => {
@@ -66,7 +68,7 @@ test("les deux préparations sont explicites et idempotentes côté client", () 
   assert.match(hookSource, /missionReadyRef/);
 });
 
-test("la vidéo n'est plus analysée au moment de son ajout et Générer ne lance aucune préparation lourde", () => {
+test("la vidéo n'est jamais décodée localement et Générer reprend une seule mission serveur", () => {
   const addStart = modalSource.indexOf("const addVideoFile");
   const addEnd = modalSource.indexOf("const onVideoChange", addStart);
   assert.ok(addStart >= 0 && addEnd > addStart);
@@ -86,8 +88,19 @@ test("la vidéo n'est plus analysée au moment de son ajout et Générer ne lanc
   assert.match(readinessSource, /await waitForPersistentWorkspaceIdle/);
   assert.match(readinessSource, /await verifyPersistentWorkspaceSources/);
   assert.doesNotMatch(readinessSource, /preparePersistent/);
-  assert.doesNotMatch(modalSource, /preparePersistentAiMedia/);
   assert.doesNotMatch(modalSource, /preparePersistentPublicationMedia/);
+  assert.match(
+    modalSource,
+    /prepareAiMedia:\s*startPersistentAiMediaPreparation/,
+  );
+  assert.match(
+    modalSource,
+    /startPersistentAiMediaPreparation\(\)[\s\S]*Promise\.race\(/,
+  );
+  assert.match(
+    modalSource,
+    /BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000/,
+  );
   assert.match(
     modalSource,
     /await waitForPersistentWorkspaceReadiness\(\s*"generate"/,
@@ -113,7 +126,15 @@ test("l'upload workspace persiste les métadonnées puis préchauffe les dériv�
   assert.match(uploadEventSource, /sourceMetadataOnly/);
   assert.match(
     uploadEventSource,
-    /mission:\s*sourceMetadataOnly\s*\?\s*"publication_preparation"/,
+    /workspaceAiSource[\s\S]*mission:\s*"ai_preparation"/,
+  );
+  assert.match(
+    uploadEventSource,
+    /if \(!workspaceAiSource\)[\s\S]*reason:\s*"workspace_source_ready"/,
+  );
+  assert.doesNotMatch(
+    uploadEventSource,
+    /sourceMetadataOnly\s*\?\s*"publication_preparation"/,
   );
 
   const imageBlockStart = uploadEventSource.indexOf(

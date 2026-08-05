@@ -29,8 +29,19 @@ const transcribeRoute = await readFile(
   new URL("../../app/api/booster/transcribe/route.ts", import.meta.url),
   "utf8",
 );
+const persistentWorkspace = await readFile(
+  new URL(
+    "../../app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const uploadEventRoute = await readFile(
+  new URL("../../app/api/media-pipeline/upload-event/route.ts", import.meta.url),
+  "utf8",
+);
 
-test("les captures vidéo restent mises en cache, sont absentes de l'insertion et ne déclenchent aucune mission lourde", () => {
+test("l'insertion n'extrait rien dans le navigateur et préchauffe une seule mission serveur en mode IA", () => {
   assert.match(foundations, /type VideoFramesPreparationCache = \{/);
   assert.match(source, /const getOrPrepareVideoFramesForAI = useCallback/);
   assert.match(source, /videoFramesForAiCacheRef\.current = null/);
@@ -39,10 +50,22 @@ test("les captures vidéo restent mises en cache, sont absentes de l'insertion e
     source.indexOf("const onVideoChange"),
   );
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
-  assert.doesNotMatch(source, /preparePersistentAiMedia/);
   assert.doesNotMatch(source, /preparePersistentPublicationMedia/);
   assert.match(source, /await waitForPersistentWorkspaceIdle/);
   assert.match(source, /await verifyPersistentWorkspaceSources/);
+  assert.match(
+    persistentWorkspace,
+    /if \(!enabled \|\| creationMode !== "ai"\) return/,
+  );
+  assert.match(persistentWorkspace, /void prepareAiMedia\(\)\.catch/);
+  assert.match(
+    uploadEventRoute,
+    /workspaceAiSource[\s\S]*mission: "ai_preparation"/,
+  );
+  assert.match(
+    uploadEventRoute,
+    /if \(!workspaceAiSource\)[\s\S]*reason: "workspace_source_ready"/,
+  );
 });
 
 test("la génération rapide utilise les captures locales sans attendre de transcription audio", () => {

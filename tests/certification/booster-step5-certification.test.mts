@@ -59,10 +59,21 @@ test("01 - parcours IA sans média", () => {
     }),
     false,
   );
-  assert.match(modal, /mediaWorkspaceExpected:\s*shouldPrepareMediaForAi/);
   assert.match(
     modal,
-    /const readyMediaWorkspaceId = shouldPrepareMediaForAi[\s\S]*?waitForPersistentWorkspaceReadiness[\s\S]*?: mediaWorkspaceId/,
+    /const shouldUsePersistentMediaWorkspaceForAi =\s*shouldPrepareMediaForAi && unifiedMediaConsumptionClientAvailable/,
+  );
+  assert.match(
+    modal,
+    /let readyMediaWorkspaceId = shouldUsePersistentMediaWorkspaceForAi\s*\? null\s*:\s*mediaWorkspaceId/,
+  );
+  assert.match(
+    modal,
+    /if \(shouldUsePersistentMediaWorkspaceForAi\) \{[\s\S]*?waitForPersistentWorkspaceReadiness/,
+  );
+  assert.match(
+    modal,
+    /mediaWorkspaceExpected:\s*shouldUsePersistentMediaWorkspaceForAi &&\s*Boolean\(readyMediaWorkspaceId\)/,
   );
 });
 

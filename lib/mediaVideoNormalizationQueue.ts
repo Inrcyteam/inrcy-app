@@ -1,13 +1,11 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  BOOSTER_VIDEO_PREPARATION_KEYS,
-  type BoosterPreparationMission,
-} from "@/lib/boosterMediaPipelineMissions";
+import type { BoosterPreparationMission } from "@/lib/boosterMediaPipelineMissions";
 import {
   VIDEO_NORMALIZATION_PIPELINE_VERSION,
   isVideoNormalizationEnabled,
 } from "@/lib/mediaVideoNormalizationPolicy";
 import { loadNormalizationRepairCandidates } from "@/lib/mediaNormalizationRepairQueue";
+import { mergeVideoPreparationRequest } from "@/lib/mediaVideoNormalizationMissionState";
 
 type EnqueueVideoNormalizationParams = {
   mediaId: string;
@@ -37,60 +35,87 @@ async function persistPreparationMission(params: {
 }) {
   if (!params.mission) return;
 
-  const requiredOutputs =
-    BOOSTER_VIDEO_PREPARATION_KEYS[params.mission];
-  const operations: PromiseLike<unknown>[] = [];
-
-  if (params.jobId) {
-    const currentJob = await supabaseAdmin
-      .from("media_processing_jobs")
-      .select("payload")
-      .eq("id", params.jobId)
-      .eq("account_id", params.accountId)
-      .maybeSingle();
-    if (currentJob.error) throw currentJob.error;
-    operations.push(
+  // Le RPC d'enqueue est idempotent et peut réutiliser un job déjà queued ou
+  // processing. Il réinitialise son payload technique : on fusionne donc la
+  // demande depuis le job ET le média, avec verrou optimiste sur updated_at.
+  // Deux appels AI/publication simultanés convergent ainsi sans qu'une mission
+  // tardive puisse écraser la publication déjà demandée.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const [currentJob, currentMedia] = await Promise.all([
+      params.jobId
+        ? supabaseAdmin
+            .from("media_processing_jobs")
+            .select("payload,updated_at")
+            .eq("id", params.jobId)
+            .eq("account_id", params.accountId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
       supabaseAdmin
-        .from("media_processing_jobs")
-        .update({
-          payload: {
-            ...asRecord(currentJob.data?.payload),
-            pipelineMission: params.mission,
-            requiredOutputs: [...requiredOutputs],
-          },
-        })
-        .eq("id", params.jobId)
-        .eq("account_id", params.accountId),
-    );
-  }
+        .from("pro_media_library")
+        .select("media_metadata,updated_at")
+        .eq("id", params.mediaId)
+        .eq("user_id", params.accountId)
+        .maybeSingle(),
+    ]);
+    if (currentJob.error) throw currentJob.error;
+    if (currentMedia.error) throw currentMedia.error;
+    if (!currentMedia.data) throw new Error("video_media_not_found");
 
-  const currentMedia = await supabaseAdmin
-    .from("pro_media_library")
-    .select("media_metadata")
-    .eq("id", params.mediaId)
-    .eq("user_id", params.accountId)
-    .maybeSingle();
-  if (currentMedia.error) throw currentMedia.error;
-  operations.push(
-    supabaseAdmin
+    const merged = mergeVideoPreparationRequest({
+      jobPayload: currentJob.data?.payload,
+      mediaMetadata: currentMedia.data.media_metadata,
+      requestedMission: params.mission,
+    });
+    const previousJobUpdatedAt = String(currentJob.data?.updated_at || "");
+    const previousMediaUpdatedAt = String(currentMedia.data.updated_at || "");
+    const nextTimestamp = new Date(
+      Math.max(
+        Date.now(),
+        Date.parse(previousJobUpdatedAt) + 1 || 0,
+        Date.parse(previousMediaUpdatedAt) + 1 || 0,
+      ),
+    ).toISOString();
+
+    const jobUpdate = params.jobId
+      ? supabaseAdmin
+          .from("media_processing_jobs")
+          .update({
+            payload: {
+              ...asRecord(currentJob.data?.payload),
+              pipelineMission: merged.mission,
+              requiredOutputs: merged.requiredOutputs,
+            },
+            updated_at: nextTimestamp,
+          })
+          .eq("id", params.jobId)
+          .eq("account_id", params.accountId)
+          .eq("updated_at", previousJobUpdatedAt)
+          .select("id")
+          .maybeSingle()
+      : Promise.resolve({ data: { id: "no-job" }, error: null });
+    const mediaUpdate = supabaseAdmin
       .from("pro_media_library")
       .update({
         media_metadata: {
-          ...asRecord(currentMedia.data?.media_metadata),
-          pipeline_mission: params.mission,
-          preparation_scope: params.mission,
-          preparation_required_outputs: [...requiredOutputs],
+          ...asRecord(currentMedia.data.media_metadata),
+          pipeline_mission: merged.mission,
+          preparation_scope: merged.mission,
+          preparation_required_outputs: merged.requiredOutputs,
         },
+        updated_at: nextTimestamp,
       })
       .eq("id", params.mediaId)
-      .eq("user_id", params.accountId),
-  );
-
-  const results = await Promise.all(operations);
-  for (const result of results) {
-    const error = (result as { error?: unknown })?.error;
-    if (error) throw error;
+      .eq("user_id", params.accountId)
+      .eq("updated_at", previousMediaUpdatedAt)
+      .select("id")
+      .maybeSingle();
+    const [jobResult, mediaResult] = await Promise.all([jobUpdate, mediaUpdate]);
+    if (jobResult.error) throw jobResult.error;
+    if (mediaResult.error) throw mediaResult.error;
+    if (jobResult.data && mediaResult.data) return;
   }
+
+  throw new Error("video_preparation_request_contention");
 }
 
 export async function enqueueVideoNormalization(
@@ -105,6 +130,20 @@ export async function enqueueVideoNormalization(
   const workspaceId = String(params.workspaceId || "").trim() || null;
   if (!mediaId || !accountId) {
     throw new Error("video_normalization_scope_missing");
+  }
+
+  // Journaliser l'intention avant l'enqueue ferme la petite fenêtre entre le
+  // RPC (qui peut conserver un job processing) et la fusion de son payload.
+  // Si le worker termine dans cette fenêtre, il relit le média et voit déjà la
+  // publication à chaîner. En cas d'échec RPC, le cron de réparation conserve
+  // également une intention durable au lieu de perdre le clic Publier.
+  if (params.mission) {
+    await persistPreparationMission({
+      accountId,
+      mediaId,
+      jobId: null,
+      mission: params.mission,
+    });
   }
 
   const result = await supabaseAdmin.rpc("inrcy_enqueue_video_normalization", {

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -43,6 +43,9 @@ export const maxDuration = 120;
 const BOOSTER_GENERATION_BURST_LIMIT = 20;
 const BOOSTER_GENERATION_SAFETY_BUDGET_MS = 45_000;
 const BOOSTER_GENERATION_CLOSE_MARGIN_MS = 1_500;
+// Le média est un enrichissement. Même une lecture Supabase dégradée ne
+// peut consommer le budget réservé à la rédaction multicanale.
+const BOOSTER_MEDIA_CONTEXT_SAFETY_BUDGET_MS = 7_500;
 
 type Payload = {
   creationMode?: "ai" | "manual";
@@ -103,14 +106,6 @@ function assertGenerationBudget(deadlineAt: number, minimumRemainingMs = 250) {
   }
 }
 
-function isGenerationDeadlineError(error: unknown) {
-  return (
-    error instanceof Error &&
-    String((error as Error & { code?: unknown }).code || "") ===
-      "ai_operation_deadline_exceeded"
-  );
-}
-
 async function withinGenerationDeadline<T>(
   promise: Promise<T>,
   deadlineAt: number,
@@ -128,6 +123,59 @@ async function withinGenerationDeadline<T>(
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+function mediaContextDeadlineError() {
+  return Object.assign(new Error("Le contexte média a dépassé son budget."), {
+    code: "workspace_media_context_deadline_exceeded",
+  });
+}
+
+async function withinMediaContextBudget<T>(
+  promise: Promise<T>,
+  deadlineAt = Date.now() + BOOSTER_MEDIA_CONTEXT_SAFETY_BUDGET_MS,
+): Promise<T> {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) throw mediaContextDeadlineError();
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(mediaContextDeadlineError()),
+          remainingMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+type MediaAnalysisFallback = {
+  used: true;
+  code: string;
+  message: string;
+};
+
+function buildMediaAnalysisFallback(
+  code: unknown,
+  family: "images" | "video" | "media",
+): MediaAnalysisFallback {
+  const normalizedCode = String(code || "media_analysis_unavailable")
+    .trim()
+    .slice(0, 160);
+  const audioOnly = /audio|transcri/i.test(normalizedCode);
+  return {
+    used: true,
+    code: normalizedCode || "media_analysis_unavailable",
+    message: audioOnly
+      ? "Analyse audio indisponible : contenus générés à partir de votre phrase et de votre profil."
+      : family === "media"
+        ? "Analyse du média indisponible : contenus générés à partir de votre phrase et de votre profil."
+        : "Analyse visuelle indisponible : contenus générés à partir de votre phrase et de votre profil.",
+  };
 }
 
 type BoosterAiImage = {
@@ -385,6 +433,8 @@ const handler = async (req: Request) => {
     routeStartedAt + BOOSTER_GENERATION_SAFETY_BUDGET_MS;
   let quotaReservation: AiCreditReservation | null = null;
   let generationMs = 0;
+  let mediaAnalysisFallback: MediaAnalysisFallback | null = null;
+  let persistedVideoContextFallback: MediaAnalysisFallback | null = null;
   const timingContext: {
     userId?: string;
     engine?: AiPreferredEngine;
@@ -512,7 +562,7 @@ const handler = async (req: Request) => {
       : body;
     const mediaWorkspaceId = String(body.mediaWorkspaceId || "").trim();
     const mediaWorkspaceExpected = body.mediaWorkspaceExpected === true;
-    const useWorkspaceMediaForAI =
+    let useWorkspaceMediaForAI =
       body.useWorkspaceMediaForAI === true ||
       (body.useWorkspaceMediaForAI !== false && mediaWorkspaceExpected);
     if (
@@ -520,17 +570,27 @@ const handler = async (req: Request) => {
       mediaWorkspaceExpected &&
       (!useWorkspaceMediaForAI || !mediaWorkspaceId)
     ) {
-      return NextResponse.json(
-        {
-          code: "media_workspace_required",
-          error: "Le workspace média est requis pour générer avec le nouveau pipeline.",
-        },
-        { status: 409 },
+      useWorkspaceMediaForAI = false;
+      mediaAnalysisFallback = buildMediaAnalysisFallback(
+        "media_workspace_required",
+        "media",
       );
+      console.warn("[booster-generate] workspace missing, text fallback", {
+        mediaWorkspaceExpected,
+        mediaType,
+      });
     }
     timingContext.mediaWorkspaceId = mediaWorkspaceId || undefined;
     timingContext.mediaWorkspaceSource = "none";
     timingContext.videoContextReferenceSource = "none";
+    // The historical cache and the current workspace share one media budget.
+    // They can never consume 7.5 seconds each before the text generation.
+    const mediaContextDeadlineAt =
+      Date.now() + BOOSTER_MEDIA_CONTEXT_SAFETY_BUDGET_MS;
+    if (mediaAnalysisFallback) {
+      timingContext.mediaWorkspaceSource = "legacy_fallback";
+      timingContext.mediaWorkspaceFallbackCode = mediaAnalysisFallback.code;
+    }
 
     if (mediaType === "video" && !strictMediaCutover) {
       const contextRef = normalizeVideoAiContextReference(
@@ -538,56 +598,79 @@ const handler = async (req: Request) => {
       );
       if (contextRef) {
         const contextLoadStartedAt = Date.now();
-        const persistedVideoContext = await loadPersistedInrAgentVideoForAi({
-          userId,
-          reference: contextRef,
-        });
-        timingContext.videoContextLoadMs = Date.now() - contextLoadStartedAt;
-        timingContext.videoContextReferenceSource = persistedVideoContext
-          ? "hit"
-          : "invalid";
-
-        if (persistedVideoContext) {
-          const existingVideo = body.videoForAI || {};
-          const existingFrames = Array.isArray(existingVideo.visualFrames)
-            ? existingVideo.visualFrames
-            : [];
-          const persistedFrames = persistedVideoContext.frames.map(
-            (frame, index) => ({
-              name: `inragent-frame-${index + 1}.jpg`,
-              type: "image/jpeg",
-              dataUrl: frame.dataUrl,
-              frameTarget: (["start", "middle", "end"] as const)[index],
+        try {
+          const persistedVideoContext = await withinMediaContextBudget(
+            loadPersistedInrAgentVideoForAi({
+              userId,
+              reference: contextRef,
             }),
+            mediaContextDeadlineAt,
           );
-          const audioTranscript =
-            cleanVideoTranscript(existingVideo.audioTranscript) ||
-            persistedVideoContext.transcript;
+          timingContext.videoContextReferenceSource = persistedVideoContext
+            ? "hit"
+            : "invalid";
 
-          effectiveBody = {
-            ...body,
-            videoForAI: {
-              ...existingVideo,
-              contextRef,
-              visualFrames: existingFrames.length
-                ? existingFrames
-                : persistedFrames,
-              audioTranscript,
-              rawAudioTranscript:
-                cleanVideoTranscript(existingVideo.rawAudioTranscript) ||
-                persistedVideoContext.rawTranscript ||
+          if (persistedVideoContext) {
+            const existingVideo = body.videoForAI || {};
+            const existingFrames = Array.isArray(existingVideo.visualFrames)
+              ? existingVideo.visualFrames
+              : [];
+            const persistedFrames = persistedVideoContext.frames.map(
+              (frame, index) => ({
+                name: `inragent-frame-${index + 1}.jpg`,
+                type: "image/jpeg",
+                dataUrl: frame.dataUrl,
+                frameTarget: (["start", "middle", "end"] as const)[index],
+              }),
+            );
+            const audioTranscript =
+              cleanVideoTranscript(existingVideo.audioTranscript) ||
+              persistedVideoContext.transcript;
+
+            effectiveBody = {
+              ...body,
+              videoForAI: {
+                ...existingVideo,
+                contextRef,
+                visualFrames: existingFrames.length
+                  ? existingFrames
+                  : persistedFrames,
                 audioTranscript,
-              analysisPlan: {
-                ...existingVideo.analysisPlan,
-                visualFrames:
-                  existingFrames.length || persistedFrames.length
-                    ? "ready"
-                    : "pending",
-                audioTranscript: audioTranscript ? "ready" : "unavailable",
-                frameTargets: ["start", "middle", "end"],
+                rawAudioTranscript:
+                  cleanVideoTranscript(existingVideo.rawAudioTranscript) ||
+                  persistedVideoContext.rawTranscript ||
+                  audioTranscript,
+                analysisPlan: {
+                  ...existingVideo.analysisPlan,
+                  visualFrames:
+                    existingFrames.length || persistedFrames.length
+                      ? "ready"
+                      : "pending",
+                  audioTranscript: audioTranscript ? "ready" : "unavailable",
+                  frameTargets: ["start", "middle", "end"],
+                },
               },
-            },
-          };
+            };
+          }
+        } catch (contextError) {
+          const contextErrorCode = String(
+            (contextError as { code?: unknown } | null)?.code ||
+              "video_context_read_failed",
+          );
+          timingContext.videoContextReferenceSource = "invalid";
+          persistedVideoContextFallback = buildMediaAnalysisFallback(
+            contextErrorCode,
+            "video",
+          );
+          console.warn("[booster-generate] persisted video context skipped", {
+            code: contextErrorCode,
+            message:
+              contextError instanceof Error
+                ? contextError.message
+                : String(contextError || "Erreur inconnue"),
+          });
+        } finally {
+          timingContext.videoContextLoadMs = Date.now() - contextLoadStartedAt;
         }
       }
     }
@@ -595,7 +678,7 @@ const handler = async (req: Request) => {
     if (mediaWorkspaceId && useWorkspaceMediaForAI) {
       const workspaceLoadStartedAt = Date.now();
       try {
-        const workspaceMedia = await withinGenerationDeadline(
+        const workspaceMedia = await withinMediaContextBudget(
           resolveWorkspaceAiConsumption({
             accountId: userId,
             workspaceId: mediaWorkspaceId,
@@ -606,7 +689,7 @@ const handler = async (req: Request) => {
             deadlineAt:
               generationDeadlineAt - BOOSTER_GENERATION_CLOSE_MARGIN_MS,
           }),
-          generationDeadlineAt,
+          mediaContextDeadlineAt,
         );
         timingContext.mediaWorkspaceLoadMs =
           Date.now() - workspaceLoadStartedAt;
@@ -654,19 +737,14 @@ const handler = async (req: Request) => {
             timingContext.mediaWorkspaceSource =
               "workspace_verified_client_ai_preview";
           } else {
-            return NextResponse.json(
-              {
-                code:
-                  expectedDiagnostic.code || "workspace_media_mismatch",
-                error:
-                  expectedDiagnostic.message ||
-                  (workspaceMedia.mediaType === "none"
-                    ? "Le média est encore absent du workspace. Réessayez dans quelques instants."
-                    : "Le contexte média attendu n'est pas encore exploitable pour la génération."),
-                diagnostics: workspaceMedia.diagnostics,
-              },
-              { status: 409 },
+            const fallbackCode =
+              expectedDiagnostic.code || "workspace_media_mismatch";
+            mediaAnalysisFallback = buildMediaAnalysisFallback(
+              fallbackCode,
+              expectedFamily,
             );
+            timingContext.mediaWorkspaceSource = "legacy_fallback";
+            timingContext.mediaWorkspaceFallbackCode = fallbackCode;
           }
         }
 
@@ -683,6 +761,18 @@ const handler = async (req: Request) => {
             degradedFamilies,
             diagnostics: workspaceMedia.diagnostics,
           });
+          const expectedFamily = mediaType === "video" ? "video" : "images";
+          const expectedDiagnostic = workspaceMedia.diagnostics[expectedFamily];
+          if (
+            !mediaAnalysisFallback &&
+            (expectedDiagnostic.state === "partial" ||
+              expectedDiagnostic.state === "unavailable")
+          ) {
+            mediaAnalysisFallback = buildMediaAnalysisFallback(
+              expectedDiagnostic.code || "workspace_media_analysis_partial",
+              expectedFamily,
+            );
+          }
         }
 
         let workspaceVideoForBody:
@@ -791,9 +881,12 @@ const handler = async (req: Request) => {
             workspaceMedia.diagnostics.images.code ||
             workspaceMedia.diagnostics.video.code ||
             "workspace_ai_media_unavailable";
+          mediaAnalysisFallback ||= buildMediaAnalysisFallback(
+            timingContext.mediaWorkspaceFallbackCode,
+            mediaType === "video" ? "video" : "images",
+          );
         }
       } catch (workspaceError) {
-        if (isGenerationDeadlineError(workspaceError)) throw workspaceError;
         timingContext.mediaWorkspaceLoadMs =
           Date.now() - workspaceLoadStartedAt;
         timingContext.mediaWorkspaceSource = "legacy_fallback";
@@ -809,6 +902,10 @@ const handler = async (req: Request) => {
               ? workspaceError.message
               : String(workspaceError || "Erreur inconnue"),
         });
+        mediaAnalysisFallback = buildMediaAnalysisFallback(
+          timingContext.mediaWorkspaceFallbackCode,
+          mediaType === "video" ? "video" : "images",
+        );
         if (strictMediaCutover) {
           const fallbackCode = timingContext.mediaWorkspaceFallbackCode;
           const localVideo = effectiveBody.videoForAI;
@@ -831,21 +928,6 @@ const handler = async (req: Request) => {
           if (canUseVerifiedLocalVideoPreview) {
             timingContext.mediaWorkspaceSource =
               "workspace_verified_client_ai_preview";
-          } else {
-            const status =
-              workspaceError instanceof MediaWorkspaceConsumptionError
-                ? workspaceError.status
-                : 503;
-            return NextResponse.json(
-              {
-                code: timingContext.mediaWorkspaceFallbackCode,
-                error:
-                  workspaceError instanceof Error
-                    ? workspaceError.message
-                    : "Le workspace média n'est pas prêt. Réessayez dans quelques instants.",
-              },
-              { status },
-            );
           }
         }
       }
@@ -857,6 +939,15 @@ const handler = async (req: Request) => {
       mediaType,
     });
     const videoForAI = sanitizeVideoForAI({ ...effectiveBody, mediaType });
+    if (
+      !mediaAnalysisFallback &&
+      persistedVideoContextFallback &&
+      mediaType === "video" &&
+      videoFrameImagesForAI.length === 0 &&
+      !videoForAI?.audioTranscript
+    ) {
+      mediaAnalysisFallback = persistedVideoContextFallback;
+    }
     const mediaGenerationInstructions =
       buildVideoGenerationInstructions(videoForAI, imagesForAI.length);
     timingContext.mediaType = mediaType;
@@ -933,38 +1024,46 @@ const handler = async (req: Request) => {
     const { versions, recoveredChannels, aiFallback } = generationResult;
 
     if (mediaWorkspaceId) {
-      void syncPublicationWorkspaceContext({
-        accountId: userId,
-        workspaceId: mediaWorkspaceId,
-        operation: "generate",
-        idea,
-        theme,
-        selectedChannels: channels,
-        generatedContent: {
-          postByChannel: versions,
-          generatedAt: new Date().toISOString(),
-        },
-        generationOptions: {
-          style,
-          publicationInstruction,
-          aiPreferredEngine: aiPreferredEngine || null,
-          mediaType,
-        },
-        ...((timingContext.mediaWorkspaceSource === "workspace" || timingContext.mediaWorkspaceSource === "workspace_cutover_v1")
-          ? { status: "ready" as const }
-          : {}),
-        metadata: {
-          consumptionSource: timingContext.mediaWorkspaceSource,
-          workspaceRevisionRead: timingContext.mediaWorkspaceRevision || null,
-        },
-      }).catch((workspaceSyncError) => {
-        console.warn("[booster-generate] workspace context sync skipped", {
-          workspaceId: mediaWorkspaceId,
-          message:
-            workspaceSyncError instanceof Error
-              ? workspaceSyncError.message
-              : String(workspaceSyncError || "Erreur inconnue"),
-        });
+      after(async () => {
+        try {
+          await withinMediaContextBudget(
+            syncPublicationWorkspaceContext({
+              accountId: userId,
+              workspaceId: mediaWorkspaceId,
+              operation: "generate",
+              idea,
+              theme,
+              selectedChannels: channels,
+              generatedContent: {
+                postByChannel: versions,
+                generatedAt: new Date().toISOString(),
+              },
+              generationOptions: {
+                style,
+                publicationInstruction,
+                aiPreferredEngine: aiPreferredEngine || null,
+                mediaType,
+              },
+              ...((timingContext.mediaWorkspaceSource === "workspace" ||
+              timingContext.mediaWorkspaceSource === "workspace_cutover_v1")
+                ? { status: "ready" as const }
+                : {}),
+              metadata: {
+                consumptionSource: timingContext.mediaWorkspaceSource,
+                workspaceRevisionRead:
+                  timingContext.mediaWorkspaceRevision || null,
+              },
+            }),
+          );
+        } catch (workspaceSyncError) {
+          console.warn("[booster-generate] workspace context sync skipped", {
+            workspaceId: mediaWorkspaceId,
+            message:
+              workspaceSyncError instanceof Error
+                ? workspaceSyncError.message
+                : String(workspaceSyncError || "Erreur inconnue"),
+          });
+        }
       });
     }
 
@@ -982,6 +1081,7 @@ const handler = async (req: Request) => {
       versions,
       recoveredChannels,
       ...(aiFallback ? { aiFallback } : {}),
+      ...(mediaAnalysisFallback ? { mediaAnalysisFallback } : {}),
     });
   } catch (e: unknown) {
     await rollbackAiCredits(quotaReservation);

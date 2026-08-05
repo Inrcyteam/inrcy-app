@@ -41,7 +41,7 @@ test("le normaliseur produit trois variantes sans recadrer la composition", () =
   assert.match(source, /heicConvert/);
 });
 
-test("l'upload image déclenche une préparation serveur transparente et idempotente", () => {
+test("l'upload image source reste léger et la publication garde sa préparation dédiée", () => {
   const event = read("app/api/media-pipeline/upload-event/route.ts");
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
   const prepare = read("app/api/media-pipeline/workspace/prepare/route.ts");
@@ -52,14 +52,23 @@ test("l'upload image déclenche une préparation serveur transparente et idempot
   );
   assert.match(
     event,
-    /mission:\s*sourceMetadataOnly[\s\S]{0,60}\? "publication_preparation"/,
+    /current\.data\.media_type === "image" &&\s*!sourceMetadataOnly[\s\S]{0,500}enqueueImageNormalization\(\{[\s\S]{0,180}mission:\s*undefined/,
+  );
+  assert.match(
+    event,
+    /current\.data\.media_type === "image" &&\s*sourceMetadataOnly[\s\S]{0,500}reason:\s*"workspace_source_ready"/,
+  );
+  assert.doesNotMatch(
+    event,
+    /mission:\s*sourceMetadataOnly[\s\S]{0,120}\? "publication_preparation"/,
   );
   assert.match(event, /after\(async \(\) =>[\s\S]*processImageNormalizationJobsForMedia\(/);
   assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
   assert.match(intent, /preparation_scope:\s*"source_only"/);
   assert.doesNotMatch(intent, /enqueueImageNormalization\(/);
   assert.match(prepare, /enqueueImageNormalization\(\{/);
-  assert.match(prepare, /mission,/);
+  assert.match(prepare, /mission:\s*params\.mission/);
+  assert.match(prepare, /params\.mission === "publication_preparation"/);
 });
 
 test("le worker ne reçoit aucun binaire navigateur et utilise la source privée", () => {

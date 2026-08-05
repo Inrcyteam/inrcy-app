@@ -150,6 +150,10 @@ import {
   preloadPreparedImagePreview,
   readVideoSourceMetadata,
 } from "./publishModal.videoAiRuntime";
+import {
+  scrollIntoViewWhenAvailable,
+  settleOptionalMediaEnrichment,
+} from "./publishModal.clientResilience";
 import { pillBtn, pillBtnActive } from "./publishModal.styles";
 
 import PublishAiConfigurationDrawer from "./components/PublishAiConfigurationDrawer";
@@ -220,6 +224,13 @@ import MediaLibraryPickerModal, {
 const BOOSTER_GENERATION_TARGET_MS = 30_000;
 const BOOSTER_GENERATION_SAFETY_BUDGET_MS =
   BOOSTER_GENERATION_TARGET_MS + 15_000;
+// Le préchauffage démarre dès l'insertion. Au clic, cette fenêtre absorbe la
+// dernière course éventuelle d'une grosse vidéo sans rogner le budget de l'IA.
+// Au-delà, la génération continue avec le contexte sûr déjà disponible.
+const BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000;
+// Le fallback historique navigateur (cutover OFF) est un bonus court. Aucun
+// FileReader, canvas ou décodeur vidéo ne peut retenir la rédaction IA au-delà.
+const BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS = 2_500;
 const BOOSTER_PUBLISH_VISIBLE_CAP_MS = 60_000;
 const BOOSTER_PUBLISH_WITH_MEDIA_FINALIZATION_VISIBLE_CAP_MS = 90_000;
 
@@ -302,6 +313,7 @@ export default function PublishModal({
 
   const [genError, setGenError] = useState("");
   const [generationNotice, setGenerationNotice] = useState("");
+  const [generationMediaWarning, setGenerationMediaWarning] = useState("");
   const [publishError, setPublishError] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
@@ -495,6 +507,7 @@ export default function PublishModal({
   const siteContentEditorRef = useRef<HTMLDivElement | null>(null);
   const creationPathRef = useRef<HTMLDivElement | null>(null);
   const contentWorkspaceRef = useRef<HTMLDivElement | null>(null);
+  const contentWorkspaceScrollCleanupRef = useRef<(() => void) | null>(null);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [isImageEditorOpen, setIsImageEditorOpen] = useState(false);
   const publishRootRef = useRef<HTMLDivElement | null>(null);
@@ -503,6 +516,13 @@ export default function PublishModal({
     scrollTop: number;
     windowY: number;
   } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      contentWorkspaceScrollCleanupRef.current?.();
+      contentWorkspaceScrollCleanupRef.current = null;
+    };
+  }, []);
 
   const getInitialConnectedChannels = (): Record<ChannelKey, boolean> => ({
     inrcy_site: !!initialConnectedChannels?.inrcy_site,
@@ -1329,6 +1349,7 @@ export default function PublishModal({
     adoptWorkspace: adoptMediaWorkspace,
     syncImages: syncPersistentWorkspaceImages,
     syncVideo: syncPersistentWorkspaceVideo,
+    prepareAiMedia: startPersistentAiMediaPreparation,
     preparePublicationVariants: prewarmPersistentMediaWorkspace,
     clearWorkspaceMedia: clearPersistentWorkspaceMedia,
     linkDraft: linkPersistentWorkspaceDraft,
@@ -1482,6 +1503,7 @@ export default function PublishModal({
       purpose: "generate" | "publish" | "schedule",
       onProgress?: (progress: number, label: string) => void,
       requiredMediaTypes?: readonly ("image" | "video")[],
+      timeoutMs = MEDIA_WORKSPACE_READINESS_TIMEOUT_MS,
     ): Promise<string | null> => {
       if (!persistentMediaWorkspaceEnabled) return null;
 
@@ -1541,7 +1563,7 @@ export default function PublishModal({
           return activeWorkspaceId;
         },
         {
-          timeoutMs: MEDIA_WORKSPACE_READINESS_TIMEOUT_MS,
+          timeoutMs,
           phase: `workspace_readiness_${purpose}`,
           timeoutMessage:
             "Supabase est temporairement saturé pendant la sécurisation des médias. Réessayez dans quelques secondes.",
@@ -1559,9 +1581,9 @@ export default function PublishModal({
     ],
   );
 
-  // Les captures, l'audio et la transcription ne sont plus préparés lors
-  // de l'ajout. Ils appartiennent exclusivement à la mission IA déclenchée
-  // par le bouton Générer avec iNrCy.
+  // Le navigateur ne décode jamais localement le conteneur lourd à l'ajout.
+  // La mission serveur IA préchauffée depuis Storage fournit les captures ;
+  // ce cache local reste uniquement le filet du pipeline historique.
 
   useEffect(() => {
     return () => {
@@ -2693,6 +2715,7 @@ export default function PublishModal({
     setContentStyle("equilibre");
     setGenError("");
     setGenerationNotice("");
+    setGenerationMediaWarning("");
     resetGenerationProgress();
   };
 
@@ -2724,12 +2747,17 @@ export default function PublishModal({
 
   const scrollToContentWorkspace = () => {
     if (typeof window === "undefined") return;
-    window.setTimeout(() => {
-      contentWorkspaceRef.current?.scrollIntoView({
+    contentWorkspaceScrollCleanupRef.current?.();
+    contentWorkspaceScrollCleanupRef.current = scrollIntoViewWhenAvailable({
+      getTarget: () => contentWorkspaceRef.current,
+      requestFrame: (callback) => window.requestAnimationFrame(callback),
+      cancelFrame: (handle) => window.cancelAnimationFrame(handle),
+      maxAttempts: 24,
+      options: {
         behavior: "smooth",
         block: "start",
-      });
-    }, 100);
+      },
+    });
   };
 
   const scrollToCreationPath = () => {
@@ -2795,6 +2823,7 @@ export default function PublishModal({
     setGenError("");
     setImgError("");
     setGenerationNotice("");
+    setGenerationMediaWarning("");
 
     if (creationMode !== "ai") {
       setGenError(
@@ -2843,6 +2872,8 @@ export default function PublishModal({
       hasVideo: hasVideoForGeneration,
       useImagesForAI,
     });
+    const shouldUsePersistentMediaWorkspaceForAi =
+      shouldPrepareMediaForAi && unifiedMediaConsumptionClientAvailable;
     resetGenerationProgress();
     setGenerating(true);
     setGenerationProgressPhase(
@@ -2853,8 +2884,20 @@ export default function PublishModal({
     setDuplicateFeedback(null);
 
     try {
-      const readyMediaWorkspaceId = shouldPrepareMediaForAi
-          ? await waitForPersistentWorkspaceReadiness(
+      // L'upload et l'analyse enrichissent la rédaction mais ne sont jamais un
+      // verrou global. Une seule enveloppe de 12 s couvre la dernière course
+      // upload + captures ; ensuite la phrase, le profil et la configuration IA
+      // partent immédiatement, pendant que le média continue en arrière-plan.
+      const mediaPreparationDeadlineAt =
+        Date.now() + BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS;
+      let mediaFallbackNotice = "";
+      let readyMediaWorkspaceId = shouldUsePersistentMediaWorkspaceForAi
+        ? null
+        : mediaWorkspaceId;
+
+      if (shouldUsePersistentMediaWorkspaceForAi) {
+        try {
+          readyMediaWorkspaceId = await waitForPersistentWorkspaceReadiness(
             "generate",
             (progress) => {
               if (progress <= 24) {
@@ -2878,14 +2921,84 @@ export default function PublishModal({
               );
             },
             hasVideoForGeneration ? ["video"] : ["image"],
-          )
-        : mediaWorkspaceId;
+            Math.max(1_000, mediaPreparationDeadlineAt - Date.now()),
+          );
+        } catch (workspaceError) {
+          console.warn(
+            "[booster-generate] media workspace unavailable, text fallback",
+            workspaceError,
+          );
+          mediaFallbackNotice =
+            "Analyse du média indisponible : contenus générés à partir de votre phrase et de votre profil.";
+          setImgError("");
+          setGenerationMediaWarning(mediaFallbackNotice);
+          readyMediaWorkspaceId = null;
+        }
+        if (!readyMediaWorkspaceId && !mediaFallbackNotice) {
+          mediaFallbackNotice =
+            "Analyse du média indisponible : contenus générés à partir de votre phrase et de votre profil.";
+          setImgError("");
+          setGenerationMediaWarning(mediaFallbackNotice);
+        }
+      }
+
+      let videoAiPreparationReady = false;
+      if (
+        hasVideoForGeneration &&
+        readyMediaWorkspaceId &&
+        persistentMediaWorkspaceEnabled
+      ) {
+        setGenerationProgressPhase(
+          "media_analysis",
+          "Préparation des captures vidéo pour l’IA",
+          34,
+        );
+        // La mission est dédupliquée par le hook et travaille directement
+        // depuis la source Supabase : aucun second upload des 150–300 Mo. On lui
+        // laisse une courte avance pour les vidéos légères, puis on continue
+        // avec les captures déjà prêtes ou le contexte métadonnées/phrase.
+        let graceTimeoutId: number | null = null;
+        const preparation = startPersistentAiMediaPreparation()
+          .then(async (result) => {
+            if (result.status === "ready") return true;
+            if (result.status === "failed") return false;
+            // Si l'ACK indique qu'un worker possède déjà le job, on ne le
+            // ré-enfile pas en boucle. On lui laisse simplement le reste de la
+            // fenêtre ; le resolver relira ensuite les variantes une seule fois.
+            const remainingMs = mediaPreparationDeadlineAt - Date.now();
+            if (remainingMs > 0) {
+              await new Promise<void>((resolve) =>
+                window.setTimeout(resolve, remainingMs),
+              );
+            }
+            return false;
+          })
+          .catch((error) => {
+            console.warn(
+              "[booster-generate] video AI preparation deferred",
+              error,
+            );
+            return false;
+          });
+        videoAiPreparationReady = await Promise.race([
+          preparation,
+          new Promise<boolean>((resolve) => {
+            graceTimeoutId = window.setTimeout(
+              () => resolve(false),
+              Math.max(0, mediaPreparationDeadlineAt - Date.now()),
+            );
+          }),
+        ]);
+        if (graceTimeoutId !== null) window.clearTimeout(graceTimeoutId);
+      }
 
       if (shouldPrepareMediaForAi) {
         setGenerationProgressPhase(
           "media_analysis",
           hasVideoForGeneration
-            ? "Vidéo prête pour l’analyse IA"
+            ? videoAiPreparationReady
+              ? "Vidéo et captures prêtes pour l’analyse IA"
+              : "Vidéo prête · captures finalisées en arrière-plan"
             : shouldUseImagesForAI
               ? "Visuels prêts pour l’analyse IA"
               : "Média prêt pour l’analyse IA",
@@ -2904,13 +3017,31 @@ export default function PublishModal({
       }
       const imagePreparationResults =
         shouldUseImagesForAI && !mediaPipelineCutoverEnabled
-        ? await Promise.allSettled(
-            images.map((file) => getOrPrepareAiImagePayload(file)),
-          )
-        : [];
+          ? await Promise.all(
+              images.map((file) =>
+                settleOptionalMediaEnrichment(
+                  () => getOrPrepareAiImagePayload(file),
+                  BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS,
+                ),
+              ),
+            )
+          : [];
       const imagesForAI = imagePreparationResults.flatMap((result) =>
-        result.status === "fulfilled" ? [result.value] : [],
+        result.ok ? [result.value] : [],
       );
+      if (
+        shouldUseImagesForAI &&
+        !mediaPipelineCutoverEnabled &&
+        imagesForAI.length < images.length
+      ) {
+        const imagePreparationTimedOut = imagePreparationResults.some(
+          (result) => !result.ok && result.reason === "timeout",
+        );
+        mediaFallbackNotice =
+          imagePreparationTimedOut
+            ? "Analyse visuelle non terminée à temps : contenus générés à partir de votre phrase, de votre profil et des visuels déjà exploitables."
+            : "Analyse visuelle partiellement indisponible : contenus générés à partir de votre phrase, de votre profil et des visuels exploitables.";
+      }
       let videoFramesForAI: VideoFramesForAI = [];
       const videoAudioTranscript = "";
       const videoRawAudioTranscript = "";
@@ -2932,12 +3063,18 @@ export default function PublishModal({
         // Générer. Les trois captures locales partent immédiatement ; le serveur
         // peut encore exploiter une piste audio déjà prête dans le workspace,
         // avec son propre budget court et partagé.
-        const framesResult = await Promise.allSettled([
-          getOrPrepareVideoFramesForAI(videoFile),
-        ]);
-        videoFramesForAI =
-          framesResult[0]?.status === "fulfilled" ? framesResult[0].value : [];
+        const framesResult = await settleOptionalMediaEnrichment(
+          () => getOrPrepareVideoFramesForAI(videoFile),
+          BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS,
+        );
+        videoFramesForAI = framesResult.ok ? framesResult.value : [];
         videoAudioTranscriptStatus = "unavailable";
+        if (!videoFramesForAI.length) {
+          mediaFallbackNotice =
+            !framesResult.ok && framesResult.reason === "timeout"
+              ? "Captures vidéo non terminées à temps : contenus générés à partir de votre phrase et de votre profil."
+              : "Analyse visuelle indisponible : contenus générés à partir de votre phrase et de votre profil.";
+        }
 
         setGenerationProgressPhase(
           "media_analysis",
@@ -2986,8 +3123,10 @@ export default function PublishModal({
         useWorkspaceMediaForAI:
           unifiedMediaConsumptionClientAvailable &&
           Boolean(readyMediaWorkspaceId) &&
-          shouldPrepareMediaForAi,
-        mediaWorkspaceExpected: shouldPrepareMediaForAi,
+          shouldUsePersistentMediaWorkspaceForAi,
+        mediaWorkspaceExpected:
+          shouldUsePersistentMediaWorkspaceForAi &&
+          Boolean(readyMediaWorkspaceId),
         idea: trimmed,
         publicationInstruction: publicationInstruction.trim(),
         theme,
@@ -3149,6 +3288,15 @@ export default function PublishModal({
         setSynchronizedActiveChannel(selectedForGeneration[0]);
       }
       scrollToContentWorkspace();
+      const mediaAnalysisFallback = json?.mediaAnalysisFallback;
+      const serverMediaFallbackNotice = String(
+        mediaAnalysisFallback?.message || "",
+      )
+        .trim()
+        .slice(0, 320);
+      setGenerationMediaWarning(
+        serverMediaFallbackNotice || mediaFallbackNotice,
+      );
       const aiFallback = json?.aiFallback;
       if (aiFallback?.used) {
         const primaryLabel = String(
@@ -3177,11 +3325,10 @@ export default function PublishModal({
       }
       completeGenerationProgress("Les contenus sont prêts à être relus");
     } catch (error) {
-      const fallback = shouldUseImagesForAI
-        ? "Impossible de préparer ou d’analyser les images pour le moment. Merci de réessayer."
-        : hasVideoForGeneration
-          ? "Impossible de préparer l’analyse vidéo pour le moment. Merci de réessayer."
-          : "Connexion impossible pour le moment. Merci de réessayer.";
+      // Toute analyse média optionnelle a déjà été isolée ci-dessus. Une
+      // erreur rouge correspond donc uniquement à l'échec de la génération.
+      const fallback =
+        "La génération n'a pas pu aboutir pour le moment. Merci de réessayer.";
       setGenError(
         getSimpleFrenchErrorMessage(
           error instanceof Error ? error.message : error,
@@ -5924,9 +6071,10 @@ export default function PublishModal({
             removeImage={removeImage}
             useImagesForAI={useImagesForAI}
             setUseImagesForAI={setUseImagesForAI}
-            imgError={imgError}
+            imgError={generationMediaWarning ? "" : imgError}
             genError={genError}
             generationNotice={generationNotice}
+            generationMediaWarning={generationMediaWarning}
             generating={generating}
             generationPhaseIndex={generationPhaseIndex}
             generationPhaseTotal={GENERATION_PROGRESS_PHASES.length}

@@ -1466,7 +1466,7 @@ async function resolveWorkspaceAiVideoFamily(params: {
     durationSeconds: item.durationSeconds,
   };
 
-  const frameVariants = pickAllReadyVariants(
+  const preparedFrameVariants = pickAllReadyVariants(
     params.variants,
     item.mediaId,
     "video_frame",
@@ -1477,36 +1477,87 @@ async function resolveWorkspaceAiVideoFamily(params: {
       const bIndex = Number(b.metadata.frame_index || 0);
       if (aIndex !== bIndex) return aIndex - bIndex;
       return String(a.signature || "").localeCompare(String(b.signature || ""));
-    })
+    });
+  // Une miniature déjà produite est un contexte visuel valable pendant que
+  // les trois captures début/milieu/fin terminent en arrière-plan. `ai_preview`
+  // est normalement une vidéo, mais d'anciennes lignes peuvent contenir une
+  // image : on ne la retient que si son MIME est explicitement visuel.
+  const fallbackFrameVariants = [
+    ...pickAllReadyVariants(params.variants, item.mediaId, "thumbnail"),
+    ...pickAllReadyVariants(params.variants, item.mediaId, "ai_preview"),
+  ].filter((variant) =>
+    normalizeMime(variant.mimeType, "application/octet-stream").startsWith(
+      "image/",
+    ),
+  );
+  const frameVariants = (
+    preparedFrameVariants.length
+      ? preparedFrameVariants
+      : fallbackFrameVariants
+  )
+    .filter((variant) => Boolean(variant.storagePath))
+    .filter(
+      (variant, index, variants) =>
+        variants.findIndex(
+          (candidate) => candidate.storagePath === variant.storagePath,
+        ) === index,
+    )
     .slice(0, 3);
-  if (!frameVariants.length) {
-    throw new MediaWorkspaceConsumptionError(
-      "Les captures IA de la vidéo ne sont pas prêtes.",
-      "workspace_video_frames_missing",
-      409,
-    );
-  }
 
   const frameTargets = ["start", "middle", "end"] as const;
   const visualFrames = [] as NonNullable<
     WorkspaceAiConsumption["videoForAI"]
   >["visualFrames"];
-  for (let index = 0; index < frameVariants.length; index += 1) {
-    const frame = frameVariants[index];
-    visualFrames.push({
-      name: `video-frame-${index + 1}.jpg`,
-      type: normalizeMime(frame.mimeType, "image/jpeg"),
-      dataUrl: await variantToDataUrl(frame),
-      frameTarget: frameTargets[index] || "middle",
-      ...(Number.isFinite(
-        Number(frame.metadata.capture_seconds ?? frame.metadata.time_seconds),
-      )
-        ? {
-            timeSeconds: Number(
-              frame.metadata.capture_seconds ?? frame.metadata.time_seconds,
-            ),
-          }
-        : {}),
+  const enrichmentFailures = [] as ReturnType<
+    typeof workspaceAiFamilyFailure
+  >[];
+  const frameResults = await Promise.allSettled(
+    frameVariants.map(async (frame, index) => {
+      const declaredTarget = cleanText(frame.metadata.frame_target).toLowerCase();
+      const frameTarget =
+        declaredTarget === "start" ||
+        declaredTarget === "middle" ||
+        declaredTarget === "end"
+          ? declaredTarget
+          : frameVariants.length === 1
+            ? "middle"
+            : frameTargets[index] || "middle";
+      return {
+        name: `video-frame-${index + 1}.jpg`,
+        type: normalizeMime(frame.mimeType, "image/jpeg"),
+        dataUrl: await variantToDataUrl(frame),
+        frameTarget,
+        ...(Number.isFinite(
+          Number(frame.metadata.capture_seconds ?? frame.metadata.time_seconds),
+        )
+          ? {
+              timeSeconds: Number(
+                frame.metadata.capture_seconds ?? frame.metadata.time_seconds,
+              ),
+            }
+          : {}),
+      };
+    }),
+  );
+  for (const result of frameResults) {
+    if (result.status === "fulfilled") {
+      visualFrames.push(result.value);
+      continue;
+    }
+    enrichmentFailures.push(
+      workspaceAiFamilyFailure(
+        "video",
+        result.reason,
+        "workspace_video_frame_unavailable",
+      ),
+    );
+  }
+  if (!visualFrames.length) {
+    enrichmentFailures.unshift({
+      code: "workspace_video_frames_pending",
+      message:
+        "Les captures IA de la vidéo sont encore en préparation. La génération continue avec la phrase, le profil et les métadonnées disponibles.",
+      mediaId: item.mediaId,
     });
   }
 
@@ -1520,17 +1571,45 @@ async function resolveWorkspaceAiVideoFamily(params: {
     audioVariant?.metadata.available !== false;
   let audioTrackFile: File | null = null;
   if (audioVariant && audioAvailable) {
-    const audio = await downloadVariant(audioVariant);
-    const audioArrayBuffer = audio.buffer.buffer.slice(
-      audio.buffer.byteOffset,
-      audio.buffer.byteOffset + audio.buffer.byteLength,
-    ) as ArrayBuffer;
-    audioTrackFile = new File(
-      [audioArrayBuffer],
-      `${item.originalFileName.replace(/\.[^.]+$/, "") || "video"}-audio.mp3`,
-      { type: normalizeMime(audio.mimeType, "audio/mpeg") },
-    );
+    try {
+      const audio = await downloadVariant(audioVariant);
+      const audioArrayBuffer = audio.buffer.buffer.slice(
+        audio.buffer.byteOffset,
+        audio.buffer.byteOffset + audio.buffer.byteLength,
+      ) as ArrayBuffer;
+      audioTrackFile = new File(
+        [audioArrayBuffer],
+        `${item.originalFileName.replace(/\.[^.]+$/, "") || "video"}-audio.mp3`,
+        { type: normalizeMime(audio.mimeType, "audio/mpeg") },
+      );
+    } catch (error) {
+      enrichmentFailures.push(
+        workspaceAiFamilyFailure(
+          "video",
+          error,
+          "workspace_video_audio_unavailable",
+        ),
+      );
+    }
   }
+
+  // La source stockée et ses métadonnées suffisent toujours à conserver le
+  // mode vidéo. Les enrichissements sont isolés : ils ne transforment jamais
+  // une vidéo de 150–300 Mo déjà uploadée en erreur 409 et la source lourde
+  // n'est pas téléchargée par cette route.
+  const diagnostic: WorkspaceAiFamilyDiagnostic = enrichmentFailures.length
+    ? {
+        state: "partial",
+        requestedCount: 1,
+        resolvedCount: 1,
+        code: enrichmentFailures[0].code,
+        message: enrichmentFailures[0].message,
+        failures: enrichmentFailures.slice(0, 5),
+      }
+    : buildWorkspaceAiFamilyDiagnostic({
+        requestedCount: 1,
+        resolvedCount: 1,
+      });
 
   return {
     videoForAI: {
@@ -1543,12 +1622,9 @@ async function resolveWorkspaceAiVideoFamily(params: {
       storagePath: videoReference.storagePath || item.sourceStoragePath,
       visualFrames,
       audioTrackFile,
-      audioAvailable,
+      audioAvailable: Boolean(audioTrackFile),
     },
-    diagnostic: buildWorkspaceAiFamilyDiagnostic({
-      requestedCount: 1,
-      resolvedCount: 1,
-    }),
+    diagnostic,
   };
 }
 

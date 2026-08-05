@@ -75,7 +75,11 @@ test("ensure, clear, read et readiness utilisent tous le coupe-circuit composabl
   );
   assert.match(
     modal,
-    /waitForPersistentWorkspaceReadiness[\s\S]*withMediaWorkspaceDeadline\([\s\S]*MEDIA_WORKSPACE_READINESS_TIMEOUT_MS/,
+    /waitForPersistentWorkspaceReadiness[\s\S]*timeoutMs = MEDIA_WORKSPACE_READINESS_TIMEOUT_MS/,
+  );
+  assert.match(
+    modal,
+    /withMediaWorkspaceDeadline\([\s\S]*timeoutMs,[\s\S]*workspace_readiness_\$\{purpose\}/,
   );
 });
 

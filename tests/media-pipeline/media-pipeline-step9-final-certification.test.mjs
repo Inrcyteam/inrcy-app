@@ -97,10 +97,39 @@ test("le clic immédiat absorbe l'upload dans Générer, Publier et Programmer",
 
   assert.match(workspaceHook, /const waitForIdle = useCallback/);
   assert.match(workspaceHook, /Upload du média/);
+  assert.match(modal, /const BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000/);
   assert.match(
     modal,
-    /readyMediaWorkspaceId\s*=\s*shouldPrepareMediaForAi[\s\S]*await waitForPersistentWorkspaceReadiness\([\s\S]*"generate"/,
+    /timeoutMs = MEDIA_WORKSPACE_READINESS_TIMEOUT_MS[\s\S]{0,1800}withMediaWorkspaceDeadline\([\s\S]{0,1800}timeoutMs,/,
   );
+  assert.match(
+    modal,
+    /let readyMediaWorkspaceId = shouldUsePersistentMediaWorkspaceForAi\s*\? null\s*:\s*mediaWorkspaceId/,
+  );
+  const generateReadinessStart = modal.indexOf(
+    "readyMediaWorkspaceId = await waitForPersistentWorkspaceReadiness(",
+  );
+  const generateReadinessEnd = modal.indexOf(
+    "let videoAiPreparationReady",
+    generateReadinessStart,
+  );
+  assert.ok(
+    generateReadinessStart >= 0 && generateReadinessEnd > generateReadinessStart,
+  );
+  const generateReadiness = modal.slice(
+    generateReadinessStart,
+    generateReadinessEnd,
+  );
+  assert.match(generateReadiness, /"generate"/);
+  assert.match(
+    generateReadiness,
+    /hasVideoForGeneration \? \["video"\] : \["image"\]/,
+  );
+  assert.match(
+    generateReadiness,
+    /Math\.max\(1_000, mediaPreparationDeadlineAt - Date\.now\(\)\)/,
+  );
+  assert.match(generateReadiness, /media workspace unavailable, text fallback/);
   assert.match(
     modal,
     /readyMediaWorkspaceId\s*=\s*await waitForPersistentWorkspaceReadiness\(\s*"publish"/,
@@ -113,6 +142,23 @@ test("le clic immédiat absorbe l'upload dans Générer, Publier et Programmer",
     modal,
     /unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId/,
   );
+  const generatedContentStart = modal.indexOf(
+    "const versions = json?.versions || {};",
+  );
+  const mediaWarningStart = modal.indexOf(
+    "const mediaAnalysisFallback = json?.mediaAnalysisFallback;",
+    generatedContentStart,
+  );
+  assert.ok(
+    generatedContentStart >= 0 && mediaWarningStart > generatedContentStart,
+  );
+  const generatedContentTransition = modal.slice(
+    generatedContentStart,
+    mediaWarningStart,
+  );
+  assert.match(generatedContentTransition, /setPostsByChannel\(/);
+  assert.match(generatedContentTransition, /setContentWorkspaceOpen\(true\)/);
+  assert.match(generatedContentTransition, /scrollToContentWorkspace\(\)/);
   assert.match(scheduleModal, /PublishExecutionProgress/);
   assert.match(scheduleModal, /publishProgress=\{progress\}/);
   assert.match(scheduleModal, /publishProgressLabel=\{progressLabel\}/);

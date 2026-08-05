@@ -246,6 +246,7 @@ type PublishIntentPanelProps = {
   imgError: string;
   genError: string;
   generationNotice: string;
+  generationMediaWarning: string;
   generating: boolean;
   generationPhaseIndex: number;
   generationPhaseTotal: number;
@@ -288,6 +289,7 @@ export default function PublishIntentPanel({
   imgError,
   genError,
   generationNotice,
+  generationMediaWarning,
   generating,
   generationPhaseIndex,
   generationPhaseTotal,
@@ -1610,6 +1612,23 @@ export default function PublishIntentPanel({
                   : "✨ Générer avec iNrCy"}
             </button>
           </div>
+          {generationMediaWarning ? (
+            <div
+              role="status"
+              style={{
+                width: "min(620px, 100%)",
+                fontSize: 12.5,
+                lineHeight: 1.4,
+                color: "#ffd7a3",
+                border: "1px solid rgba(251, 146, 60, 0.34)",
+                background: "rgba(251, 146, 60, 0.10)",
+                borderRadius: 10,
+                padding: "8px 10px",
+              }}
+            >
+              ⚠️ {generationMediaWarning}
+            </div>
+          ) : null}
           {generating ? (
             <div
               style={{

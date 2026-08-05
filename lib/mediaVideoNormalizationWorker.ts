@@ -12,6 +12,12 @@ import {
 } from "@/lib/boosterMediaPipelineMissions";
 import { claimTargetedProcessingJob } from "@/lib/mediaProcessingTargetedClaim";
 import {
+  findUnfulfilledVideoPreparationKeys,
+  mergeVideoPreparationRequest,
+  readRequestedVideoPreparationKeys,
+  readVideoPreparationMission,
+} from "@/lib/mediaVideoNormalizationMissionState";
+import {
   VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE,
   VIDEO_NORMALIZATION_JOB_TYPE,
   VIDEO_NORMALIZATION_MAX_BATCH_SIZE,
@@ -68,6 +74,7 @@ type MediaRow = {
   publication_status: string;
   original_file_name: string | null;
   media_metadata: Record<string, unknown> | null;
+  updated_at: string;
 };
 
 type VariantRow = {
@@ -89,9 +96,13 @@ type VariantRow = {
 type ProcessedJobSummary = {
   jobId: string;
   mediaId: string;
-  status: "succeeded" | "retry_wait" | "failed" | "cancelled";
+  status: "succeeded" | "queued" | "retry_wait" | "failed" | "cancelled";
   errorCode?: string;
 };
+
+// A 300 MB source gets enough time to cross the private Storage link, while a
+// stalled socket releases the worker well before its 420-second lease expires.
+const VIDEO_SOURCE_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 class VideoNormalizationError extends Error {
   readonly code: string;
@@ -122,19 +133,17 @@ function asRecord(value: unknown): Record<string, unknown> {
 function readPreparationMission(
   job: ClaimedVideoJob,
 ): BoosterPreparationMission | null {
-  const value = String(job.payload?.pipelineMission || "").trim();
-  return value === "ai_preparation" || value === "publication_preparation"
-    ? value
-    : null;
+  return readVideoPreparationMission(job.payload);
 }
 
 function requiredVideoKeys(job: ClaimedVideoJob) {
   const mission = readPreparationMission(job);
   return {
     mission,
-    keys: mission
-      ? [...BOOSTER_VIDEO_PREPARATION_KEYS[mission]]
-      : [...VIDEO_NORMALIZATION_VARIANT_KEYS],
+    keys: readRequestedVideoPreparationKeys({
+      payload: job.payload,
+      fallbackMission: mission,
+    }),
   };
 }
 
@@ -197,7 +206,7 @@ async function loadMedia(job: ClaimedVideoJob): Promise<MediaRow> {
   const result = await supabaseAdmin
     .from("pro_media_library")
     .select(
-      "id,user_id,bucket_name,storage_path,media_type,mime_type,detected_mime_type,size_bytes,width,height,duration_seconds,upload_status,processing_status,publication_status,original_file_name,media_metadata",
+      "id,user_id,bucket_name,storage_path,media_type,mime_type,detected_mime_type,size_bytes,width,height,duration_seconds,upload_status,processing_status,publication_status,original_file_name,media_metadata,updated_at",
     )
     .eq("id", job.media_id)
     .eq("user_id", job.account_id)
@@ -344,48 +353,59 @@ async function downloadSourceToTemp(media: MediaRow, jobId: string) {
     );
   }
 
-  const response = await fetch(signed.data.signedUrl, { cache: "no-store" });
-  if (!response.ok || !response.body) {
-    throw new VideoNormalizationError(
-      "video_source_download_failed",
-      `Téléchargement source impossible (${response.status}).`,
-      response.status >= 500 || response.status === 408 || response.status === 429,
-    );
-  }
-
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (contentLength > VIDEO_NORMALIZATION_MAX_SOURCE_BYTES) {
-    throw new VideoNormalizationError(
-      "video_source_too_large",
-      `La source dépasse le plafond technique de ${VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL} du worker vidéo.`,
-      false,
-    );
-  }
-
-  const workDir = await mkdtemp(path.join(tmpdir(), "inrcy-video-normalize-"));
-  const inputPath = path.join(workDir, `${jobId || randomUUID()}.source`);
-  let bytes = 0;
-  const hash = createHash("sha256");
-  const meter = new Transform({
-    transform(chunk, _encoding, callback) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      bytes += buffer.byteLength;
-      if (bytes > VIDEO_NORMALIZATION_MAX_SOURCE_BYTES) {
-        callback(
-          new VideoNormalizationError(
-            "video_source_too_large",
-            `La source dépasse le plafond technique de ${VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL} du worker vidéo.`,
-            false,
-          ),
-        );
-        return;
-      }
-      hash.update(buffer);
-      callback(null, buffer);
-    },
-  });
-
+  const abortController = new AbortController();
+  const downloadTimeout = setTimeout(
+    () => abortController.abort(),
+    VIDEO_SOURCE_DOWNLOAD_TIMEOUT_MS,
+  );
+  let workDir: string | null = null;
   try {
+    const response = await fetch(signed.data.signedUrl, {
+      cache: "no-store",
+      signal: abortController.signal,
+    });
+    if (!response.ok || !response.body) {
+      throw new VideoNormalizationError(
+        "video_source_download_failed",
+        `Téléchargement source impossible (${response.status}).`,
+        response.status >= 500 ||
+          response.status === 408 ||
+          response.status === 429,
+      );
+    }
+
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > VIDEO_NORMALIZATION_MAX_SOURCE_BYTES) {
+      throw new VideoNormalizationError(
+        "video_source_too_large",
+        `La source dépasse le plafond technique de ${VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL} du worker vidéo.`,
+        false,
+      );
+    }
+
+    workDir = await mkdtemp(path.join(tmpdir(), "inrcy-video-normalize-"));
+    const inputPath = path.join(workDir, `${jobId || randomUUID()}.source`);
+    let bytes = 0;
+    const hash = createHash("sha256");
+    const meter = new Transform({
+      transform(chunk, _encoding, callback) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        bytes += buffer.byteLength;
+        if (bytes > VIDEO_NORMALIZATION_MAX_SOURCE_BYTES) {
+          callback(
+            new VideoNormalizationError(
+              "video_source_too_large",
+              `La source dépasse le plafond technique de ${VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL} du worker vidéo.`,
+              false,
+            ),
+          );
+          return;
+        }
+        hash.update(buffer);
+        callback(null, buffer);
+      },
+    });
+
     await pipeline(
       Readable.fromWeb(response.body as any),
       meter,
@@ -405,8 +425,19 @@ async function downloadSourceToTemp(media: MediaRow, jobId: string) {
       sha256: hash.digest("hex"),
     };
   } catch (error) {
-    await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+    if (workDir) {
+      await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+    if (abortController.signal.aborted) {
+      throw new VideoNormalizationError(
+        "video_source_download_timeout",
+        "Le téléchargement de la source vidéo a dépassé son délai de sécurité.",
+        true,
+      );
+    }
     throw error;
+  } finally {
+    clearTimeout(downloadTimeout);
   }
 }
 
@@ -540,60 +571,171 @@ async function markJobFailure(params: {
   const normalized = classifyWorkerError(params.error);
   const exhausted = params.job.attempt_count >= params.job.max_attempts;
   const retryable = normalized.retryable && !exhausted;
-  const jobStatus = retryable ? "retry_wait" : "failed";
-  const mediaStatus = retryable ? "failed_retryable" : "failed_terminal";
-  const now = new Date();
-  const availableAt = new Date(
-    now.getTime() +
-      getVideoNormalizationRetryDelaySeconds(params.job.attempt_count) * 1_000,
-  ).toISOString();
-
-  const operations: PromiseLike<unknown>[] = [
-    supabaseAdmin
-      .from("media_processing_jobs")
+  if (params.variants.length) {
+    const variantFailure = await supabaseAdmin
+      .from("media_variants")
       .update({
-        status: jobStatus,
-        progress: 0,
-        available_at: retryable ? availableAt : now.toISOString(),
+        status: "failed",
         error_code: normalized.code,
         error_message: normalized.message,
-        completed_at: retryable ? null : now.toISOString(),
+      })
+      .in(
+        "id",
+        params.variants.map((variant) => variant.id),
+      )
+      .eq("account_id", params.job.account_id)
+      .neq("status", "ready");
+    if (variantFailure.error) throw variantFailure.error;
+  }
+
+  const claimedMission = readPreparationMission(params.job);
+  const claimedKeys = new Set(
+    readRequestedVideoPreparationKeys({
+      payload: params.job.payload,
+      fallbackMission: claimedMission,
+    }),
+  );
+  let finalStatus: "queued" | "retry_wait" | "failed" | null = null;
+
+  // Même en cas d'échec terminal des captures, une publication demandée pendant
+  // le traitement AI reste une nouvelle mission. Elle repart seule et ne dépend
+  // donc jamais de l'audio/captures best-effort qui viennent d'échouer.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const [current, currentMedia] = await Promise.all([
+      supabaseAdmin
+        .from("media_processing_jobs")
+        .select("payload,status,updated_at")
+        .eq("id", params.job.id)
+        .eq("account_id", params.job.account_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("pro_media_library")
+        .select("media_metadata")
+        .eq("id", params.job.media_id)
+        .eq("user_id", params.job.account_id)
+        .maybeSingle(),
+    ]);
+    if (current.error) throw current.error;
+    if (currentMedia.error) throw currentMedia.error;
+    if (!current.data) throw new Error("video_job_not_found");
+
+    const currentStatus = String(current.data.status || "");
+    const mergedRequest = claimedMission
+      ? mergeVideoPreparationRequest({
+          jobPayload: current.data.payload,
+          mediaMetadata: currentMedia.data?.media_metadata,
+          requestedMission: claimedMission,
+        })
+      : null;
+    const latestMission =
+      mergedRequest?.mission || readVideoPreparationMission(current.data.payload);
+    const latestKeys =
+      mergedRequest?.requiredOutputs ||
+      readRequestedVideoPreparationKeys({
+        payload: current.data.payload,
+        fallbackMission: latestMission || claimedMission,
+      });
+    const hasUntreatedRequest =
+      (latestMission !== null && latestMission !== claimedMission) ||
+      latestKeys.some((key) => !claimedKeys.has(key));
+    if (currentStatus === "queued") {
+      finalStatus = "queued";
+      break;
+    }
+    if (
+      (currentStatus === "retry_wait" || currentStatus === "failed") &&
+      !hasUntreatedRequest
+    ) {
+      finalStatus = currentStatus;
+      break;
+    }
+    if (
+      currentStatus !== "processing" &&
+      currentStatus !== "retry_wait" &&
+      currentStatus !== "failed"
+    ) {
+      throw new Error("video_job_failure_state_invalid");
+    }
+    const followUpMission =
+      latestMission ||
+      (latestKeys.includes("canonical")
+        ? "publication_preparation"
+        : claimedMission);
+    const now = new Date();
+    const previousUpdatedAt = String(current.data.updated_at || "");
+    const nextUpdatedAt = new Date(
+      Math.max(now.getTime(), Date.parse(previousUpdatedAt) + 1 || 0),
+    ).toISOString();
+    const availableAt = new Date(
+      now.getTime() +
+        getVideoNormalizationRetryDelaySeconds(params.job.attempt_count) * 1_000,
+    ).toISOString();
+    const status = hasUntreatedRequest ? "queued" : retryable ? "retry_wait" : "failed";
+    const payload = hasUntreatedRequest && followUpMission
+      ? {
+          ...asRecord(current.data.payload),
+          pipelineMission: followUpMission,
+          requiredOutputs: [...BOOSTER_VIDEO_PREPARATION_KEYS[followUpMission]],
+          previousMissionFailure: {
+            mission: claimedMission || "legacy_full_normalization",
+            code: normalized.code,
+          },
+        }
+      : current.data.payload;
+    const update = await supabaseAdmin
+      .from("media_processing_jobs")
+      .update({
+        status,
+        payload,
+        progress: 0,
+        attempt_count: hasUntreatedRequest ? 0 : params.job.attempt_count,
+        available_at: hasUntreatedRequest
+          ? nextUpdatedAt
+          : retryable
+            ? availableAt
+            : nextUpdatedAt,
+        error_code: hasUntreatedRequest ? null : normalized.code,
+        error_message: hasUntreatedRequest ? null : normalized.message,
+        completed_at:
+          hasUntreatedRequest || retryable ? null : nextUpdatedAt,
         locked_at: null,
         lock_expires_at: null,
         locked_by: null,
+        updated_at: nextUpdatedAt,
       })
       .eq("id", params.job.id)
-      .eq("account_id", params.job.account_id),
-    supabaseAdmin
-      .from("pro_media_library")
-      .update({
-        processing_status: mediaStatus,
-        publication_status: retryable ? "processing" : "failed",
-        processing_progress: 0,
-        processing_error_code: normalized.code,
-        processing_error_message: normalized.message,
-        processing_completed_at: retryable ? null : now.toISOString(),
-      })
-      .eq("id", params.job.media_id)
-      .eq("user_id", params.job.account_id),
-  ];
-  if (params.variants.length) {
-    operations.push(
-      supabaseAdmin
-        .from("media_variants")
-        .update({
-          status: "failed",
-          error_code: normalized.code,
-          error_message: normalized.message,
-        })
-        .in(
-          "id",
-          params.variants.map((variant) => variant.id),
-        )
-        .eq("account_id", params.job.account_id),
-    );
+      .eq("account_id", params.job.account_id)
+      .eq("status", currentStatus)
+      .eq("updated_at", previousUpdatedAt)
+      .select("id")
+      .maybeSingle();
+    if (update.error) throw update.error;
+    if (!update.data) continue;
+    finalStatus = status;
+    break;
   }
-  await Promise.all(operations);
+  if (!finalStatus) throw new Error("video_job_failure_contention");
+
+  const chained = finalStatus === "queued";
+  const mediaStatus = chained
+    ? "queued"
+    : finalStatus === "retry_wait"
+      ? "failed_retryable"
+      : "failed_terminal";
+  const mediaUpdate = await supabaseAdmin
+    .from("pro_media_library")
+    .update({
+      processing_status: mediaStatus,
+      publication_status: finalStatus === "failed" ? "failed" : "processing",
+      processing_progress: 0,
+      processing_error_code: chained ? null : normalized.code,
+      processing_error_message: chained ? null : normalized.message,
+      processing_completed_at:
+        finalStatus === "failed" ? new Date().toISOString() : null,
+    })
+    .eq("id", params.job.media_id)
+    .eq("user_id", params.job.account_id);
+  if (mediaUpdate.error) throw mediaUpdate.error;
 
   await refreshPublicationWorkspaceStatusesForMedia({
     mediaId: params.job.media_id,
@@ -605,9 +747,248 @@ async function markJobFailure(params: {
   return {
     jobId: params.job.id,
     mediaId: params.job.media_id,
-    status: jobStatus,
-    errorCode: normalized.code,
+    status: finalStatus,
+    errorCode: chained ? undefined : normalized.code,
   };
+}
+
+async function updateMediaAfterSuccessfulNormalization(params: {
+  job: ClaimedVideoJob;
+  media: MediaRow;
+  mission: BoosterPreparationMission | null;
+  normalized: Awaited<ReturnType<typeof normalizeVideoSource>>;
+  outputs: Partial<
+    Record<VideoNormalizationVariantKey, Awaited<ReturnType<typeof uploadVariant>>>
+  >;
+  canonical: Awaited<ReturnType<typeof uploadVariant>> | undefined;
+  hasReadyCanonicalVariant: boolean;
+  sourceSha256: string;
+  completedAt: string;
+}) {
+  // Une demande publication peut arriver pendant FFmpeg. Ne jamais réécrire
+  // media_metadata depuis le snapshot chargé au début du job : on recharge puis
+  // fusionne sous verrou optimiste afin de conserver mission/requiredOutputs.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const current = await supabaseAdmin
+      .from("pro_media_library")
+      .select("media_metadata,publication_status,updated_at")
+      .eq("id", params.job.media_id)
+      .eq("user_id", params.job.account_id)
+      .maybeSingle();
+    if (current.error) throw current.error;
+    if (!current.data) {
+      throw new VideoNormalizationError(
+        "video_media_not_found",
+        "Média vidéo introuvable pendant la finalisation.",
+        false,
+      );
+    }
+
+    const existingMetadata = asRecord(current.data.media_metadata);
+    const previousNormalization = asRecord(
+      existingMetadata.video_normalization,
+    );
+    const previousVariants = asRecord(previousNormalization.variants);
+    const previousUpdatedAt = String(current.data.updated_at || "");
+    const nextUpdatedAt = new Date(
+      Math.max(Date.now(), Date.parse(previousUpdatedAt) + 1 || 0),
+    ).toISOString();
+    const mediaPatch: Record<string, unknown> = {
+      width: params.normalized.source.orientedWidth,
+      height: params.normalized.source.orientedHeight,
+      duration_seconds: params.normalized.source.durationSeconds,
+      detected_mime_type:
+        params.media.detected_mime_type || params.media.mime_type || null,
+      content_hash_sha256: params.sourceSha256,
+      processing_status: "ready",
+      publication_status:
+        params.canonical || params.hasReadyCanonicalVariant
+          ? "ready"
+          : params.mission === "ai_preparation"
+            ? "not_requested"
+            : current.data.publication_status,
+      processing_progress: 100,
+      processing_error_code: null,
+      processing_error_message: null,
+      processing_completed_at: params.completedAt,
+      pipeline_version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
+      media_metadata: {
+        ...existingMetadata,
+        video_normalization: {
+          ...previousNormalization,
+          version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
+          source: params.normalized.source,
+          variants: { ...previousVariants, ...params.outputs },
+          warnings: params.normalized.warnings,
+          last_mission: params.mission || "legacy_full_normalization",
+          completed_at: params.completedAt,
+        },
+      },
+      updated_at: nextUpdatedAt,
+    };
+    if (params.canonical?.bucket && params.canonical.storagePath) {
+      Object.assign(mediaPatch, {
+        canonical_bucket_name: params.canonical.bucket,
+        canonical_storage_path: params.canonical.storagePath,
+        canonical_mime_type: params.canonical.mimeType,
+        canonical_size_bytes: params.canonical.sizeBytes,
+      });
+    }
+
+    const update = await supabaseAdmin
+      .from("pro_media_library")
+      .update(mediaPatch)
+      .eq("id", params.job.media_id)
+      .eq("user_id", params.job.account_id)
+      .eq("updated_at", previousUpdatedAt)
+      .select("id")
+      .maybeSingle();
+    if (update.error) throw update.error;
+    if (update.data) return;
+  }
+
+  throw new VideoNormalizationError(
+    "video_media_completion_contention",
+    "Une nouvelle préparation média a été demandée pendant la finalisation.",
+    true,
+  );
+}
+
+async function settleSuccessfulVideoJob(params: {
+  job: ClaimedVideoJob;
+  fulfilledKeys: Iterable<VideoNormalizationVariantKey>;
+  result: Record<string, unknown>;
+  completedAt: string;
+}): Promise<"succeeded" | "queued"> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const [current, currentMedia] = await Promise.all([
+      supabaseAdmin
+        .from("media_processing_jobs")
+        .select("payload,status,updated_at")
+        .eq("id", params.job.id)
+        .eq("account_id", params.job.account_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("pro_media_library")
+        .select("media_metadata")
+        .eq("id", params.job.media_id)
+        .eq("user_id", params.job.account_id)
+        .maybeSingle(),
+    ]);
+    if (current.error) throw current.error;
+    if (currentMedia.error) throw currentMedia.error;
+    if (!current.data) {
+      throw new VideoNormalizationError(
+        "video_job_not_found",
+        "Job vidéo introuvable pendant la finalisation.",
+        true,
+      );
+    }
+
+    const currentStatus = String(current.data.status || "");
+    if (currentStatus === "succeeded") return "succeeded";
+    if (currentStatus === "queued" || currentStatus === "retry_wait") {
+      return "queued";
+    }
+    if (currentStatus !== "processing") {
+      throw new VideoNormalizationError(
+        "video_job_completion_state_invalid",
+        `État job vidéo inattendu (${currentStatus || "inconnu"}).`,
+        true,
+      );
+    }
+
+    const claimedMission = readPreparationMission(params.job);
+    const mergedRequest = claimedMission
+      ? mergeVideoPreparationRequest({
+          jobPayload: current.data.payload,
+          mediaMetadata: currentMedia.data?.media_metadata,
+          requestedMission: claimedMission,
+        })
+      : null;
+    const latestPayload = mergedRequest
+      ? {
+          ...asRecord(current.data.payload),
+          pipelineMission: mergedRequest.mission,
+          requiredOutputs: mergedRequest.requiredOutputs,
+        }
+      : current.data.payload;
+    const pendingOutputs = findUnfulfilledVideoPreparationKeys({
+      payload: latestPayload,
+      fulfilledKeys: params.fulfilledKeys,
+      fallbackMission: claimedMission,
+    });
+    const previousUpdatedAt = String(current.data.updated_at || "");
+    const nextUpdatedAt = new Date(
+      Math.max(Date.now(), Date.parse(previousUpdatedAt) + 1 || 0),
+    ).toISOString();
+    const chained = pendingOutputs.length > 0;
+    const patch = chained
+      ? {
+          status: "queued",
+          payload: latestPayload,
+          progress: 0,
+          attempt_count: 0,
+          available_at: nextUpdatedAt,
+          result: {
+            ...params.result,
+            chained: true,
+            pendingOutputs,
+          },
+          error_code: null,
+          error_message: null,
+          completed_at: null,
+          locked_at: null,
+          lock_expires_at: null,
+          locked_by: null,
+          updated_at: nextUpdatedAt,
+        }
+      : {
+          status: "succeeded",
+          progress: 100,
+          result: params.result,
+          error_code: null,
+          error_message: null,
+          completed_at: params.completedAt,
+          locked_at: null,
+          lock_expires_at: null,
+          locked_by: null,
+          updated_at: nextUpdatedAt,
+        };
+    const update = await supabaseAdmin
+      .from("media_processing_jobs")
+      .update(patch)
+      .eq("id", params.job.id)
+      .eq("account_id", params.job.account_id)
+      .eq("status", "processing")
+      .eq("updated_at", previousUpdatedAt)
+      .select("id")
+      .maybeSingle();
+    if (update.error) throw update.error;
+    if (!update.data) continue;
+
+    if (chained) {
+      const mediaUpdate = await supabaseAdmin
+        .from("pro_media_library")
+        .update({
+          processing_status: "queued",
+          publication_status: "processing",
+          processing_progress: 0,
+          processing_completed_at: null,
+        })
+        .eq("id", params.job.media_id)
+        .eq("user_id", params.job.account_id);
+      if (mediaUpdate.error) throw mediaUpdate.error;
+      return "queued";
+    }
+    return "succeeded";
+  }
+
+  throw new VideoNormalizationError(
+    "video_job_completion_contention",
+    "Une nouvelle mission vidéo a été enregistrée pendant la finalisation.",
+    true,
+  );
 }
 
 async function processClaimedVideoJob(
@@ -618,6 +999,7 @@ async function processClaimedVideoJob(
   try {
     const media = await loadMedia(job);
     variants = await loadVariants(job);
+    const allVariants = variants;
 
     if (media.upload_status === "removed") {
       return await markJobCancelled(job, variants, "La source a été retirée.");
@@ -645,6 +1027,11 @@ async function processClaimedVideoJob(
       requiredKeySet.has(variant.key),
     );
     variants = selectedVariants;
+    const fulfilledKeys = new Set<VideoNormalizationVariantKey>(
+      allVariants
+        .filter((variant) => Boolean(readyVariantOutput(variant)))
+        .map((variant) => variant.key),
+    );
     const reusableOutputs = Object.fromEntries(
       selectedVariants
         .map((variant) => [variant.key, readyVariantOutput(variant)] as const)
@@ -738,6 +1125,7 @@ async function processClaimedVideoJob(
         variant,
         normalized: normalizedVariant,
       });
+      fulfilledKeys.add(variant.key);
       await updateJobProgress(
         job,
         74 +
@@ -758,86 +1146,39 @@ async function processClaimedVideoJob(
     }
 
     const completedAt = new Date().toISOString();
-    const existingMetadata = asRecord(media.media_metadata);
-    const previousNormalization = asRecord(existingMetadata.video_normalization);
-    const previousVariants = asRecord(previousNormalization.variants);
-    const mediaPatch: Record<string, unknown> = {
-      width: normalized.source.orientedWidth,
-      height: normalized.source.orientedHeight,
-      duration_seconds: normalized.source.durationSeconds,
-      detected_mime_type: media.detected_mime_type || media.mime_type || null,
-      content_hash_sha256: downloaded.sha256,
-      processing_status: "ready",
-      publication_status: canonical || hasReadyCanonicalVariant
-        ? "ready"
-        : mission === "ai_preparation"
-          ? "not_requested"
-          : media.publication_status,
-      processing_progress: 100,
-      processing_error_code: null,
-      processing_error_message: null,
-      processing_completed_at: completedAt,
-      pipeline_version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
-      media_metadata: {
-        ...existingMetadata,
-        video_normalization: {
-          ...previousNormalization,
-          version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
-          source: normalized.source,
-          variants: { ...previousVariants, ...outputs },
-          warnings: normalized.warnings,
-          last_mission: mission || "legacy_full_normalization",
-          completed_at: completedAt,
-        },
-      },
+    await updateMediaAfterSuccessfulNormalization({
+      job,
+      media,
+      mission,
+      normalized,
+      outputs,
+      canonical,
+      hasReadyCanonicalVariant,
+      sourceSha256: downloaded.sha256,
+      completedAt,
+    });
+    const result = {
+      pipelineVersion: VIDEO_NORMALIZATION_PIPELINE_VERSION,
+      pipelineMission: mission || "legacy_full_normalization",
+      sourceSha256: downloaded.sha256,
+      sourceSizeBytes: downloaded.sizeBytes,
+      source: normalized.source,
+      variants: outputs,
+      warnings: normalized.warnings,
     };
-    if (canonical?.bucket && canonical.storagePath) {
-      Object.assign(mediaPatch, {
-        canonical_bucket_name: canonical.bucket,
-        canonical_storage_path: canonical.storagePath,
-        canonical_mime_type: canonical.mimeType,
-        canonical_size_bytes: canonical.sizeBytes,
-      });
-    }
-
-    const mediaUpdate = await supabaseAdmin
-      .from("pro_media_library")
-      .update(mediaPatch)
-      .eq("id", job.media_id)
-      .eq("user_id", job.account_id);
-    if (mediaUpdate.error) throw mediaUpdate.error;
-
-    const jobUpdate = await supabaseAdmin
-      .from("media_processing_jobs")
-      .update({
-        status: "succeeded",
-        progress: 100,
-        result: {
-          pipelineVersion: VIDEO_NORMALIZATION_PIPELINE_VERSION,
-          pipelineMission: mission || "legacy_full_normalization",
-          sourceSha256: downloaded.sha256,
-          sourceSizeBytes: downloaded.sizeBytes,
-          source: normalized.source,
-          variants: outputs,
-          warnings: normalized.warnings,
-        },
-        error_code: null,
-        error_message: null,
-        completed_at: completedAt,
-        locked_at: null,
-        lock_expires_at: null,
-        locked_by: null,
-      })
-      .eq("id", job.id)
-      .eq("account_id", job.account_id);
-    if (jobUpdate.error) throw jobUpdate.error;
+    const disposition = await settleSuccessfulVideoJob({
+      job,
+      fulfilledKeys,
+      result,
+      completedAt,
+    });
 
     await refreshPublicationWorkspaceStatusesForMedia({
       mediaId: job.media_id,
       accountId: job.account_id,
     });
 
-    return { jobId: job.id, mediaId: job.media_id, status: "succeeded" };
+    return { jobId: job.id, mediaId: job.media_id, status: disposition };
   } catch (error) {
     return await markJobFailure({ job, variants, error });
   } finally {
@@ -866,6 +1207,7 @@ export async function processVideoNormalizationJobs(params?: {
       enabled: false,
       claimed: 0,
       succeeded: 0,
+      queued: 0,
       retrying: 0,
       failed: 0,
       cancelled: 0,
@@ -896,6 +1238,7 @@ export async function processVideoNormalizationJobs(params?: {
     enabled: true,
     claimed: jobs.length,
     succeeded: summaries.filter((item) => item.status === "succeeded").length,
+    queued: summaries.filter((item) => item.status === "queued").length,
     retrying: summaries.filter((item) => item.status === "retry_wait").length,
     failed: summaries.filter((item) => item.status === "failed").length,
     cancelled: summaries.filter((item) => item.status === "cancelled").length,
@@ -914,6 +1257,7 @@ export async function processVideoNormalizationJobsForMedia(params: {
       requested: 0,
       claimed: 0,
       succeeded: 0,
+      queued: 0,
       retrying: 0,
       failed: 0,
       cancelled: 0,
@@ -935,6 +1279,7 @@ export async function processVideoNormalizationJobsForMedia(params: {
       requested: mediaIds.length,
       claimed: 0,
       succeeded: 0,
+      queued: 0,
       retrying: 0,
       failed: 0,
       cancelled: 0,
@@ -949,16 +1294,23 @@ export async function processVideoNormalizationJobsForMedia(params: {
   let claimed = 0;
 
   for (const mediaId of mediaIds) {
-    const job = await claimTargetedProcessingJob({
-      accountId,
-      mediaId,
-      jobType: VIDEO_NORMALIZATION_JOB_TYPE,
-      workerId: workerId.slice(0, 180),
-      leaseSeconds: VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
-    });
-    if (!job) continue;
-    claimed += 1;
-    summaries.push(await processClaimedVideoJob(job as ClaimedVideoJob));
+    // Au plus deux missions strictement séquentielles : si publication arrive
+    // pendant AI, le canonical part immédiatement après les captures, jamais en
+    // parallèle. Une éventuelle troisième demande reste durablement au cron.
+    for (let missionIndex = 0; missionIndex < 2; missionIndex += 1) {
+      const job = await claimTargetedProcessingJob({
+        accountId,
+        mediaId,
+        jobType: VIDEO_NORMALIZATION_JOB_TYPE,
+        workerId: workerId.slice(0, 180),
+        leaseSeconds: VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
+      });
+      if (!job) break;
+      claimed += 1;
+      const summary = await processClaimedVideoJob(job as ClaimedVideoJob);
+      summaries.push(summary);
+      if (summary.status !== "queued") break;
+    }
   }
 
   return {
@@ -966,6 +1318,7 @@ export async function processVideoNormalizationJobsForMedia(params: {
     requested: mediaIds.length,
     claimed,
     succeeded: summaries.filter((item) => item.status === "succeeded").length,
+    queued: summaries.filter((item) => item.status === "queued").length,
     retrying: summaries.filter((item) => item.status === "retry_wait").length,
     failed: summaries.filter((item) => item.status === "failed").length,
     cancelled: summaries.filter((item) => item.status === "cancelled").length,

@@ -899,8 +899,9 @@ export async function normalizeVideoSource(params: {
     emitProgress(Math.min(92, combined), stage);
   };
 
-  const canonicalPromise: Promise<CanonicalPreparation | null> = needsCanonical
-    ? prepareCanonical({
+  let canonicalEncoding: CanonicalPreparation | null = null;
+  if (needsCanonical) {
+    canonicalEncoding = await prepareCanonical({
         ffmpegPath,
         inputPath: params.inputPath,
         outputPath: canonicalPath,
@@ -918,8 +919,8 @@ export async function normalizeVideoSource(params: {
               : "Préparation de la vidéo principale",
           );
         },
-      })
-    : Promise.resolve(null);
+      });
+  }
 
   const frameSizes = [0, 0, 0];
   const frameAvailable = [false, false, false];
@@ -929,29 +930,9 @@ export async function normalizeVideoSource(params: {
   let audioSizeBytes = 0;
   let audioAvailable = needsAudio && source.hasAudio;
 
-  const audioPromise =
-    needsAudio && source.hasAudio
-      ? extractAudioTrack({
-          ffmpegPath,
-          inputPath: params.inputPath,
-          outputPath: audioPath,
-        })
-          .then((size) => {
-            audioSizeBytes = size;
-            derivativeCompleted += 1;
-            recalculateProgress("Piste audio extraite");
-          })
-          .catch((error) => {
-            audioAvailable = false;
-            warnings.push(`audio_track_unavailable:${compactError(error)}`);
-            derivativeCompleted += 1;
-            recalculateProgress(
-              "Piste audio indisponible, traitement poursuivi",
-            );
-          })
-      : Promise.resolve();
-
-  const visualPromise = (async () => {
+  // FFmpeg outputs are intentionally serialized for each source. Mission
+  // guards keep fast paths intact, including skipping an unused canonical.
+  {
     for (const index of requestedFrameIndexes) {
       try {
         frameSizes[index] = await extractFrame({
@@ -990,8 +971,8 @@ export async function normalizeVideoSource(params: {
       recalculateProgress(`Capture vidéo ${index + 1}/3`);
     }
 
-    if (!needsThumbnail) return;
-    try {
+    if (needsThumbnail) {
+      try {
       thumbnailSize = await extractFrame({
         ffmpegPath,
         inputPath: params.inputPath,
@@ -1015,13 +996,27 @@ export async function normalizeVideoSource(params: {
     }
     derivativeCompleted += 1;
     recalculateProgress("Miniature vidéo prête");
-  })();
+    }
+  }
 
-  const [canonicalEncoding] = await Promise.all([
-    canonicalPromise,
-    visualPromise,
-    audioPromise,
-  ]);
+  if (needsAudio && source.hasAudio) {
+    try {
+      audioSizeBytes = await extractAudioTrack({
+        ffmpegPath,
+        inputPath: params.inputPath,
+        outputPath: audioPath,
+      });
+      derivativeCompleted += 1;
+      recalculateProgress("Piste audio extraite");
+    } catch (error) {
+      audioAvailable = false;
+      warnings.push(`audio_track_unavailable:${compactError(error)}`);
+      derivativeCompleted += 1;
+      recalculateProgress(
+        "Piste audio indisponible, traitement poursuivi",
+      );
+    }
+  }
   if (
     requestedFrameIndexes.length > 0 &&
     !requestedFrameIndexes.some((index) => frameAvailable[index])
