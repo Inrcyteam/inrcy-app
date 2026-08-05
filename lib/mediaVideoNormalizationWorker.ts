@@ -17,6 +17,7 @@ import {
   readRequestedVideoPreparationKeys,
   readVideoPreparationMission,
 } from "@/lib/mediaVideoNormalizationMissionState";
+import { planVideoNormalizationExecution } from "@/lib/mediaVideoNormalizationExecutionPlan";
 import {
   VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE,
   VIDEO_NORMALIZATION_JOB_TYPE,
@@ -764,6 +765,7 @@ async function updateMediaAfterSuccessfulNormalization(params: {
   hasReadyCanonicalVariant: boolean;
   sourceSha256: string;
   completedAt: string;
+  continuesWithPublication?: boolean;
 }) {
   // Une demande publication peut arriver pendant FFmpeg. Ne jamais réécrire
   // media_metadata depuis le snapshot chargé au début du job : on recharge puis
@@ -800,17 +802,21 @@ async function updateMediaAfterSuccessfulNormalization(params: {
       detected_mime_type:
         params.media.detected_mime_type || params.media.mime_type || null,
       content_hash_sha256: params.sourceSha256,
-      processing_status: "ready",
+      processing_status: params.continuesWithPublication ? "queued" : "ready",
       publication_status:
         params.canonical || params.hasReadyCanonicalVariant
           ? "ready"
+          : params.continuesWithPublication
+            ? "processing"
           : params.mission === "ai_preparation"
             ? "not_requested"
             : current.data.publication_status,
-      processing_progress: 100,
+      processing_progress: params.continuesWithPublication ? 0 : 100,
       processing_error_code: null,
       processing_error_message: null,
-      processing_completed_at: params.completedAt,
+      processing_completed_at: params.continuesWithPublication
+        ? null
+        : params.completedAt,
       pipeline_version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
       media_metadata: {
         ...existingMetadata,
@@ -995,6 +1001,7 @@ async function processClaimedVideoJob(
   job: ClaimedVideoJob,
 ): Promise<ProcessedJobSummary> {
   let variants: VariantRow[] = [];
+  let failureJob = job;
   let workDir = "";
   try {
     const media = await loadMedia(job);
@@ -1015,23 +1022,36 @@ async function processClaimedVideoJob(
       );
     }
 
-    const { mission, keys } = requiredVideoKeys(job);
-    const requiredKeySet = new Set<VideoNormalizationVariantKey>(keys);
+    const requested = requiredVideoKeys(job);
     const hasReadyCanonicalVariant = variants.some(
       (variant) =>
         variant.key === "canonical" &&
         variant.status === "ready" &&
         Boolean(variant.bucket_name && variant.storage_path),
     );
-    const selectedVariants = variants.filter((variant) =>
-      requiredKeySet.has(variant.key),
-    );
-    variants = selectedVariants;
     const fulfilledKeys = new Set<VideoNormalizationVariantKey>(
       allVariants
         .filter((variant) => Boolean(readyVariantOutput(variant)))
         .map((variant) => variant.key),
     );
+    const execution = planVideoNormalizationExecution({
+      mission: requested.mission,
+      requestedKeys: requested.keys,
+      readyKeys: fulfilledKeys,
+    });
+    const requiredKeySet = new Set<VideoNormalizationVariantKey>(execution.keys);
+    const selectedVariants = variants.filter((variant) =>
+      requiredKeySet.has(variant.key),
+    );
+    variants = selectedVariants;
+    failureJob = {
+      ...job,
+      payload: {
+        ...asRecord(job.payload),
+        pipelineMission: execution.mission,
+        requiredOutputs: execution.keys,
+      },
+    };
     const reusableOutputs = Object.fromEntries(
       selectedVariants
         .map((variant) => [variant.key, readyVariantOutput(variant)] as const)
@@ -1135,7 +1155,7 @@ async function processClaimedVideoJob(
 
     const canonical = outputs.canonical;
     if (
-      mission === "publication_preparation" &&
+      execution.mission === "publication_preparation" &&
       (!canonical?.bucket || !canonical.storagePath)
     ) {
       throw new VideoNormalizationError(
@@ -1149,17 +1169,18 @@ async function processClaimedVideoJob(
     await updateMediaAfterSuccessfulNormalization({
       job,
       media,
-      mission,
+      mission: execution.mission,
       normalized,
       outputs,
       canonical,
       hasReadyCanonicalVariant,
       sourceSha256: downloaded.sha256,
       completedAt,
+      continuesWithPublication: execution.continuesWithPublication,
     });
     const result = {
       pipelineVersion: VIDEO_NORMALIZATION_PIPELINE_VERSION,
-      pipelineMission: mission || "legacy_full_normalization",
+      pipelineMission: execution.mission || "legacy_full_normalization",
       sourceSha256: downloaded.sha256,
       sourceSizeBytes: downloaded.sizeBytes,
       source: normalized.source,
@@ -1180,7 +1201,7 @@ async function processClaimedVideoJob(
 
     return { jobId: job.id, mediaId: job.media_id, status: disposition };
   } catch (error) {
-    return await markJobFailure({ job, variants, error });
+    return await markJobFailure({ job: failureJob, variants, error });
   } finally {
     if (workDir) {
       await rm(workDir, { recursive: true, force: true }).catch(() => undefined);

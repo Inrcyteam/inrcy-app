@@ -590,6 +590,19 @@ async function publishNowHandler(req: Request) {
     const hasActiveRequestedMedia = requestedMediaChannels.some(
       (channel) => !deferredPreparationChannels.has(channel),
     );
+    const activeRequestedMediaChannels = requestedMediaChannels.filter(
+      (channel) => !deferredPreparationChannels.has(channel),
+    );
+    const activeRequestedMediaTypes = Array.from(
+      new Set(
+        activeRequestedMediaChannels.map((channel) =>
+          String(rawRequestedModes[channel] || requestedMediaType).trim() ===
+          "video"
+            ? ("video" as const)
+            : ("image" as const),
+        ),
+      ),
+    );
     if (mediaWorkspaceId && hasActiveRequestedMedia) {
       try {
         if (
@@ -600,12 +613,14 @@ async function publishNowHandler(req: Request) {
           workspacePreparationState = await prepareWorkspaceMediaForPublication({
             accountId: userId,
             workspaceId: mediaWorkspaceId,
+            mediaTypes: activeRequestedMediaTypes,
           });
         }
         workspaceConsumption = await resolveWorkspacePublicationConsumption({
           accountId: userId,
           workspaceId: mediaWorkspaceId,
           purpose: workspacePurpose,
+          mediaTypes: activeRequestedMediaTypes,
         });
       } catch (workspaceError) {
         workspaceFallbackCode =
@@ -623,7 +638,7 @@ async function publishNowHandler(req: Request) {
         });
         if (strictMediaCutover) {
           if (internalAsyncPreparationDispatch) {
-            const mediaChannels = requestedMediaChannels;
+            const mediaChannels = activeRequestedMediaChannels;
             const terminalMediaFailure = Boolean(
               workspacePreparationState?.terminalMediaIds.length,
             );

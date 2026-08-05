@@ -345,8 +345,14 @@ async function prioritizeJobs(params: {
 export async function prepareWorkspaceMediaForPublication(params: {
   accountId: string;
   workspaceId: string;
+  mediaTypes?: readonly ("image" | "video")[];
 }) {
-  const media = await loadOwnedWorkspaceMedia(params);
+  const requestedMediaTypes = params.mediaTypes?.length
+    ? new Set(params.mediaTypes)
+    : null;
+  const media = (await loadOwnedWorkspaceMedia(params)).filter(
+    (item) => !requestedMediaTypes || requestedMediaTypes.has(item.mediaType),
+  );
   await resetFailuresFromAnotherMission({
     accountId: params.accountId,
     media,
@@ -432,7 +438,9 @@ export async function prepareWorkspaceMediaForPublication(params: {
   // normal upload/prepare paths already start their targeted worker directly.
 
   await refreshPublicationWorkspaceMediaStatus(params);
-  const refreshedMedia = await loadOwnedWorkspaceMedia(params);
+  const refreshedMedia = (await loadOwnedWorkspaceMedia(params)).filter(
+    (item) => !requestedMediaTypes || requestedMediaTypes.has(item.mediaType),
+  );
   const refreshedCanonicalMediaIds = await loadReadyCanonicalMediaIds({
     accountId: params.accountId,
     mediaIds: refreshedMedia.map((item) => item.mediaId).filter(Boolean),

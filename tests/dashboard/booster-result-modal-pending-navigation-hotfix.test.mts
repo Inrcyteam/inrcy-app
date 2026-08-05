@@ -12,13 +12,17 @@ const resultModal = read(
 const boosterLayer = read(
   "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
 );
+const publicationStatus = read("lib/boosterPublicationStatus.ts");
 
-test("queued and processing channels are displayed as pending before the ok flag is evaluated", () => {
+test("every durable non-terminal channel state is displayed as pending", () => {
+  assert.match(
+    publicationStatus,
+    /BOOSTER_PENDING_PUBLICATION_STATUSES[\s\S]*"queued"[\s\S]*"preparing"[\s\S]*"dispatching"[\s\S]*"processing"[\s\S]*"finalizing"[\s\S]*"pending"/,
+  );
   assert.match(
     resultModal,
-    /PENDING_ENTRY_STATUSES = new Set\(\["queued", "processing", "pending"\]\)/,
+    /isBoosterPublicationPendingStatus\(technicalStatus\)/,
   );
-  assert.match(resultModal, /PENDING_ENTRY_STATUSES\.has\(technicalStatus\)/);
   assert.match(
     resultModal,
     /entry\.status === "skipped"[\s\S]*?: entryIsPending[\s\S]*?\? "⏳"[\s\S]*?: entry\.ok/,

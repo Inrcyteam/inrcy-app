@@ -30,10 +30,9 @@ export default function PublishExecutionProgress({
     Number(phaseIndex) > 0 &&
     Number(phaseTotal) > 0;
   const isComplete = safeProgress >= 100;
-  const fallbackLabel = scheduling
-    ? "Programmation en cours..."
-    : "Publication en cours...";
-  const visibleLabel = publishProgressLabel || fallbackLabel;
+  const visibleLabel =
+    publishProgressLabel ||
+    (scheduling ? "Programmation en cours..." : "Publication en cours...");
   const progressTitle = isComplete
     ? scheduling
       ? "Programmation finalisée"
@@ -43,37 +42,25 @@ export default function PublishExecutionProgress({
       : "Publication en cours";
 
   return (
-    <section
-      className={`${styles.publishProgressBox} ${isComplete ? styles.publishProgressBoxComplete : ""}`}
-      aria-busy={!isComplete}
-    >
-      <div className={styles.publishProgressTopline}>
-        <div className={styles.publishProgressIdentity}>
-          <span className={styles.publishProgressSignal} aria-hidden="true">
-            <span className={styles.publishProgressSignalHalo} />
-            <span className={styles.publishProgressSignalCore} />
-          </span>
-          <div className={styles.publishProgressHeadingGroup}>
-            <strong className={styles.publishProgressTitle}>{progressTitle}</strong>
-            {hasPhaseDetails ? (
-              <span className={styles.publishProgressPhase}>
-                <span className={styles.publishProgressPhaseIndex}>
-                  Étape {phaseIndex} sur {phaseTotal}
-                </span>
-                {phaseLabel ? (
-                  <span className={styles.publishProgressPhaseName}>
-                    {phaseLabel}
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
-          </div>
+    <div className={styles.publishProgressBox}>
+      <div className={styles.publishProgressHeader}>
+        <div className={styles.publishProgressHeadingGroup}>
+          <strong className={styles.publishProgressTitle}>
+            {progressTitle}
+          </strong>
+          {hasPhaseDetails ? (
+            <span className={styles.publishProgressPhase}>
+              Étape {phaseIndex}/{phaseTotal}
+              {phaseLabel ? ` · ${phaseLabel}` : ""}
+            </span>
+          ) : null}
         </div>
-        <div className={styles.publishProgressPercentWrap} aria-hidden="true">
-          <strong className={styles.publishProgressPercent}>{safeProgress}</strong>
-          <span className={styles.publishProgressPercentUnit}>%</span>
-        </div>
+        <strong className={styles.publishProgressPercent}>{safeProgress}%</strong>
       </div>
+
+      <span className={styles.publishProgressLabel} role="status" aria-live="polite">
+        {visibleLabel}
+      </span>
 
       <div
         className={styles.publishProgressTrack}
@@ -89,27 +76,10 @@ export default function PublishExecutionProgress({
         aria-valuenow={safeProgress}
       >
         <div
-          className={`${styles.publishProgressFill} ${safeProgress < 100 ? styles.publishProgressFillActive : ""}`}
+          className={styles.publishProgressFill}
           style={{ width: `${safeProgress}%` }}
-        >
-          <span className={styles.publishProgressLead} aria-hidden="true" />
-        </div>
+        />
       </div>
-
-      <div className={styles.publishProgressFooter}>
-        <span
-          className={styles.publishProgressLabel}
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {visibleLabel}
-        </span>
-        <span className={styles.publishProgressBackgroundHint}>
-          <span className={styles.publishProgressBackgroundDot} aria-hidden="true" />
-          Traitement sécurisé
-        </span>
-      </div>
-    </section>
+    </div>
   );
 }

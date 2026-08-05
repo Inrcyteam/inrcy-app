@@ -443,6 +443,7 @@ function orientationFromDimensions(width: number | null, height: number | null) 
 async function readWorkspaceGraph(params: {
   accountId: string;
   workspaceId: string;
+  mediaTypes?: readonly ("image" | "video")[];
   allowProcessingVideoForAi?: boolean;
   allowUploadedImageSourceForAi?: boolean;
   allowUploadedImageSourceForPublication?: boolean;
@@ -485,41 +486,48 @@ async function readWorkspaceGraph(params: {
     .order("position", { ascending: true });
   if (mediaResult.error) throw mediaResult.error;
 
-  const media: WorkspaceMediaRow[] = (mediaResult.data || []).map((row: any) => {
-    const item = Array.isArray(row.pro_media_library)
-      ? row.pro_media_library[0]
-      : row.pro_media_library;
-    return {
-      mediaId: cleanText(row.media_id || item?.id),
-      position: Number(row.position || 0),
-      mediaType: item?.media_type === "video" ? "video" : "image",
-      uploadStatus: cleanText(item?.upload_status, "pending"),
-      processingStatus: cleanText(item?.processing_status, "not_requested"),
-      publicationStatus: cleanText(item?.publication_status, "not_requested"),
-      originalFileName: cleanText(item?.original_file_name, "media-inrcy"),
-      clientMediaKey: cleanText(item?.client_media_key) || null,
-      sourceMimeType: normalizeMime(
-        item?.mime_type,
-        item?.media_type === "video" ? "video/mp4" : "image/jpeg",
-      ),
-      sourceSizeBytes: Number(item?.size_bytes || 0),
-      sourceBucket: cleanText(item?.bucket_name, PRIVATE_MEDIA_BUCKET),
-      sourceStoragePath: cleanText(item?.storage_path),
-      detectedMimeType: normalizeMime(
-        item?.detected_mime_type,
-        item?.mime_type ||
-          (item?.media_type === "video" ? "video/mp4" : "image/jpeg"),
-      ),
-      durationSeconds:
-        Number.isFinite(Number(item?.duration_seconds)) &&
-        Number(item?.duration_seconds) > 0
-          ? Number(item.duration_seconds)
-          : null,
-      mediaMetadata: asObject(item?.media_metadata),
-      mediaSettings: asObject(row.media_settings),
-      channelSettings: asObject(row.channel_settings),
-    };
-  });
+  const requestedMediaTypes = params.mediaTypes?.length
+    ? new Set(params.mediaTypes)
+    : null;
+  const media: WorkspaceMediaRow[] = (mediaResult.data || [])
+    .map((row: any) => {
+      const item = Array.isArray(row.pro_media_library)
+        ? row.pro_media_library[0]
+        : row.pro_media_library;
+      return {
+        mediaId: cleanText(row.media_id || item?.id),
+        position: Number(row.position || 0),
+        mediaType: item?.media_type === "video" ? "video" : "image",
+        uploadStatus: cleanText(item?.upload_status, "pending"),
+        processingStatus: cleanText(item?.processing_status, "not_requested"),
+        publicationStatus: cleanText(item?.publication_status, "not_requested"),
+        originalFileName: cleanText(item?.original_file_name, "media-inrcy"),
+        clientMediaKey: cleanText(item?.client_media_key) || null,
+        sourceMimeType: normalizeMime(
+          item?.mime_type,
+          item?.media_type === "video" ? "video/mp4" : "image/jpeg",
+        ),
+        sourceSizeBytes: Number(item?.size_bytes || 0),
+        sourceBucket: cleanText(item?.bucket_name, PRIVATE_MEDIA_BUCKET),
+        sourceStoragePath: cleanText(item?.storage_path),
+        detectedMimeType: normalizeMime(
+          item?.detected_mime_type,
+          item?.mime_type ||
+            (item?.media_type === "video" ? "video/mp4" : "image/jpeg"),
+        ),
+        durationSeconds:
+          Number.isFinite(Number(item?.duration_seconds)) &&
+          Number(item?.duration_seconds) > 0
+            ? Number(item.duration_seconds)
+            : null,
+        mediaMetadata: asObject(item?.media_metadata),
+        mediaSettings: asObject(row.media_settings),
+        channelSettings: asObject(row.channel_settings),
+      } as WorkspaceMediaRow;
+    })
+    .filter(
+      (item) => !requestedMediaTypes || requestedMediaTypes.has(item.mediaType),
+    );
 
   if (!media.length) {
     return { workspace, media, variants: [] as ReadyVariant[] };
@@ -1118,6 +1126,7 @@ export async function resolveWorkspacePublicationConsumption(params: {
   accountId: string;
   workspaceId: string;
   purpose: "publish" | "schedule";
+  mediaTypes?: readonly ("image" | "video")[];
 }): Promise<WorkspacePublicationConsumption> {
   const graph = await readWorkspaceGraph({
     ...params,

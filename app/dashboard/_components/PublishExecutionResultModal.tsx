@@ -6,6 +6,7 @@ import {
   ensureFrenchPublicationErrorMessage,
   getFrenchPublicationErrorMessage,
 } from "@/lib/publicationErrorFrench";
+import { isBoosterPublicationPendingStatus } from "@/lib/boosterPublicationStatus";
 import StatusMessage from "./StatusMessage";
 
 type DashboardStyles = Readonly<Record<string, string>>;
@@ -40,8 +41,6 @@ type PublishExecutionSummary = {
 
 type PublishExecutionEntry = NonNullable<PublishExecutionSummary["entries"]>[number];
 
-const PENDING_ENTRY_STATUSES = new Set(["queued", "processing", "pending"]);
-
 function isPendingPublicationEntry(entry: PublishExecutionEntry) {
   const status = String(entry.status || "").trim().toLowerCase();
   const technicalStatus = String(entry.technicalStatus || "")
@@ -50,8 +49,8 @@ function isPendingPublicationEntry(entry: PublishExecutionEntry) {
   const warningKind = String(entry.warning_kind || "").trim().toLowerCase();
 
   return (
-    PENDING_ENTRY_STATUSES.has(status) ||
-    PENDING_ENTRY_STATUSES.has(technicalStatus) ||
+    isBoosterPublicationPendingStatus(status) ||
+    isBoosterPublicationPendingStatus(technicalStatus) ||
     warningKind === "pending"
   );
 }

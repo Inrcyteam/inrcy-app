@@ -9,6 +9,8 @@ function read(path: string) {
 const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 const route = read("app/api/booster/publish-now/route.ts");
 const prewarm = read("app/api/media-pipeline/workspace/prewarm/route.ts");
+const workspaceConsumption = read("lib/mediaWorkspaceConsumption.ts");
+const workspacePreparation = read("lib/mediaWorkspacePublicationPreparation.ts");
 
 test("mixed publications keep workspace media and build a fallback only for the missing type", () => {
   assert.match(modal, /workspaceCarriesImagesForPublish/);
@@ -56,5 +58,25 @@ test("compatible original video is a real fast path and does not require variant
   assert.match(
     modal,
     /directOriginalAvailable[\s\S]*canPublishVideoSourceDirectly/,
+  );
+});
+
+test("a pending media family cannot hold channels assigned to the other family", () => {
+  assert.match(route, /const activeRequestedMediaTypes = Array\.from\(/);
+  assert.match(
+    route,
+    /prepareWorkspaceMediaForPublication\([\s\S]*mediaTypes: activeRequestedMediaTypes/,
+  );
+  assert.match(
+    route,
+    /resolveWorkspacePublicationConsumption\([\s\S]*mediaTypes: activeRequestedMediaTypes/,
+  );
+  assert.match(
+    workspaceConsumption,
+    /requestedMediaTypes[\s\S]*\.filter\([\s\S]*requestedMediaTypes\.has\(item\.mediaType\)/,
+  );
+  assert.match(
+    workspacePreparation,
+    /requestedMediaTypes[\s\S]*loadOwnedWorkspaceMedia\(params\)\)\.filter\([\s\S]*requestedMediaTypes\.has\(item\.mediaType\)/,
   );
 });

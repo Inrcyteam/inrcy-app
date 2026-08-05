@@ -53,13 +53,22 @@ test("the execution UI keeps one clean global bar without a horizontal channel s
     /<section[\s\S]{0,240}aria-live="polite"/,
   );
   assert.match(execution, /Programmation finalisée/);
-  assert.match(execution, /Traitement sécurisé/);
-  assert.match(execution, /publishProgressSignal/);
+  assert.match(execution, /Publication finalisée/);
+  assert.doesNotMatch(
+    execution,
+    /publishProgressSignal|publishProgressBackgroundHint|publishProgressFooter/,
+  );
   assert.doesNotMatch(execution, /overflowX|overflow-x|scroll/);
-  assert.match(css, /\.publishProgressFillActive::after/);
-  assert.match(css, /\.publishProgressBoxComplete/);
-  assert.match(css, /\.publishProgressBackgroundHint/);
-  assert.match(css, /@keyframes publishProgressSweep/);
+  assert.doesNotMatch(
+    css,
+    /publishProgressSignal|publishProgressBackgroundHint|publishProgressFooter|publishProgressSweep/,
+  );
+  assert.match(css, /\.publishProgressTrack/);
+  assert.match(css, /\.publishProgressFill/);
+  assert.match(
+    css,
+    /@media \(max-width: 640px\)[\s\S]*\.publishProgressPhase[\s\S]*white-space: normal[\s\S]*\.publishProgressLabel[\s\S]*white-space: normal/,
+  );
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 

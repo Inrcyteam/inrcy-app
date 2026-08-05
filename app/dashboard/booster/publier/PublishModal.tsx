@@ -29,6 +29,7 @@ import {
   type PublicationProgressPhaseKey,
 } from "@/lib/boosterProgressPhases";
 import type { BoosterPublishProgressUpdate } from "@/lib/boosterPublishClient";
+import { isBoosterPublicationPendingStatus } from "@/lib/boosterPublicationStatus";
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
   getAiEngineOption,
@@ -4576,9 +4577,16 @@ export default function PublishModal({
         0,
         Number(
           result?.summary?.pendingCount ||
-            resultEntries.filter((entry: any) =>
-              ["queued", "processing"].includes(String(entry?.status || "")),
-            ).length,
+            resultEntries.filter((entry: any) => {
+              const status = String(entry?.status || "").trim().toLowerCase();
+              const technicalStatus = String(entry?.technicalStatus || "")
+                .trim()
+                .toLowerCase();
+              return (
+                isBoosterPublicationPendingStatus(status) ||
+                isBoosterPublicationPendingStatus(technicalStatus)
+              );
+            }).length,
         ),
       );
       const warningCount = Math.max(
