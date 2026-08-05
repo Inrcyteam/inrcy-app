@@ -201,3 +201,56 @@ test("queued publication waits 30 seconds and preserves the acquired 8 success /
   assert.equal((result.summary as Record<string, unknown>)?.successCount, 8);
   assert.equal((result.summary as Record<string, unknown>)?.pendingCount, 2);
 });
+
+test("the initial queued acknowledgement is included in the 30-second balance window", async () => {
+  let now = 0;
+  const result = await postBoosterPublication(
+    { channels: ["instagram", "tiktok"] },
+    {
+      maxAttempts: 1,
+      nowImpl: () => now,
+      sleepImpl: async (ms) => {
+        now += ms;
+      },
+      fetchImpl: async (input) => {
+        if (String(input) === "/api/booster/publish-now") {
+          now += 4_000;
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              queued: true,
+              publication_id: "33333333-3333-4333-8333-333333333333",
+              summary: {
+                total: 2,
+                successCount: 0,
+                failureCount: 0,
+                pendingCount: 2,
+                entries: [],
+              },
+            }),
+            { status: 202, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            queued: true,
+            done: false,
+            summary: {
+              total: 2,
+              successCount: 1,
+              failureCount: 0,
+              pendingCount: 1,
+              entries: [],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    },
+  );
+
+  assert.equal(now, BOOSTER_PUBLISH_RESULT_GRACE_MS);
+  assert.equal(result.releasedToBackground, true);
+  assert.equal((result.summary as Record<string, unknown>)?.pendingCount, 1);
+});
