@@ -84,6 +84,10 @@ export function createPublishNowVideoContext(params: {
       duration: variant.duration ?? publicationVideo.duration ?? null,
       url: variant.publicUrl,
       publicUrl: variant.publicUrl,
+      // Server-generated publication variants are always persisted in the
+      // public `booster` bucket, even when their original source is private.
+      // Keep the durable storage identity aligned with the actual bytes.
+      bucket: "booster",
       storagePath:
         variant.storagePath || publicationVideo.storagePath || null,
       sourceMetadata: {

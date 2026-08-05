@@ -2,14 +2,6 @@
 
 type DashboardStyles = Readonly<Record<string, string>>;
 
-export type PublishExecutionChannelProgress = Readonly<{
-  channel: string;
-  label: string;
-  mediaLabel?: string;
-  statusLabel: string;
-  tone: "waiting" | "active" | "success" | "warning" | "error";
-}>;
-
 export default function PublishExecutionProgress({
   styles,
   scheduling = false,
@@ -18,7 +10,6 @@ export default function PublishExecutionProgress({
   phaseIndex,
   phaseTotal,
   phaseLabel,
-  channels = [],
 }: {
   styles: DashboardStyles;
   scheduling?: boolean;
@@ -27,7 +18,6 @@ export default function PublishExecutionProgress({
   phaseIndex?: number;
   phaseTotal?: number;
   phaseLabel?: string;
-  channels?: readonly PublishExecutionChannelProgress[];
 }) {
   const safeProgress = Math.max(
     0,
@@ -75,34 +65,6 @@ export default function PublishExecutionProgress({
           style={{ width: `${safeProgress}%` }}
         />
       </div>
-      {!scheduling && channels.length ? (
-        <div
-          className={styles.publishProgressChannels}
-          aria-label="État de publication par canal"
-        >
-          {channels.map((channel) => (
-            <span
-              key={channel.channel}
-              className={`${styles.publishProgressChannel} ${
-                channel.tone === "success"
-                  ? styles.publishProgressChannelSuccess
-                  : channel.tone === "warning"
-                    ? styles.publishProgressChannelWarning
-                    : channel.tone === "error"
-                      ? styles.publishProgressChannelError
-                      : channel.tone === "active"
-                        ? styles.publishProgressChannelActive
-                        : styles.publishProgressChannelWaiting
-              }`}
-              title={`${channel.label} · ${channel.statusLabel}`}
-            >
-              <strong>{channel.label}</strong>
-              {channel.mediaLabel ? <small>{channel.mediaLabel}</small> : null}
-              <span>{channel.statusLabel}</span>
-            </span>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -28,6 +28,7 @@ import { APP_LANGUAGE_OPTIONS, getAppLanguageOption, type AppLanguageCode } from
 import { isDashboardRequiredSetupProtectedDestination } from "@/lib/dashboardRequiredSetupAccess";
 import { requestDashboardToolWarmup } from "./DashboardToolWarmup";
 import { useDelayedPendingAction } from "@/hooks/useDelayedPendingAction";
+import { useInrAgentPendingCount } from "../_hooks/useInrAgentPendingCount";
 
 
 type DashboardPanelName =
@@ -174,7 +175,7 @@ function ResponsiveBottomNavMobile() {
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [explicitImmersiveModeOpen, setExplicitImmersiveModeOpen] = useState(false);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
-  const [pendingInrAgentCount, setPendingInrAgentCount] = useState(0);
+  const pendingInrAgentCount = useInrAgentPendingCount();
   const [shortcuts, setShortcuts] = useState<MobileShortcutId[]>([...DEFAULT_MOBILE_SHORTCUTS]);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -240,34 +241,6 @@ function ResponsiveBottomNavMobile() {
       window.removeEventListener("inrcy-immersive-mode-change", onExplicitImmersiveStateChange);
     };
   }, []);
-
-  const refreshPendingInrAgentCount = useCallback(async () => {
-    try {
-      const response = await fetch("/api/agent/actions/pending-count", { credentials: "include", cache: "no-store" });
-      if (!response.ok) return;
-      const payload = await response.json().catch(() => null) as { count?: unknown } | null;
-      const nextCount = Number(payload?.count ?? 0);
-      setPendingInrAgentCount(Number.isFinite(nextCount) && nextCount > 0 ? Math.round(nextCount) : 0);
-    } catch {
-      // Le badge ne doit jamais bloquer la navigation mobile.
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshPendingInrAgentCount();
-    const refresh = () => void refreshPendingInrAgentCount();
-    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
-    const interval = window.setInterval(refresh, 60_000);
-    window.addEventListener("focus", refresh);
-    window.addEventListener("inrcy:agent-actions-changed", refresh);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("inrcy:agent-actions-changed", refresh);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [refreshPendingInrAgentCount]);
 
   const refreshShortcuts = useCallback(async () => {
     try {

@@ -21,7 +21,10 @@ test("le rapport est calcule et persiste a chaque progression", () => {
 
 test("le suivi est actualise automatiquement sans recharger toute la page", () => {
   assert.match(reportRoute, /loadAndPersistMailCampaignReport/);
-  assert.match(client, /setInterval/);
+  assert.doesNotMatch(client, /setInterval/);
+  assert.match(client, /document\.hidden/);
+  assert.match(client, /visibilitychange/);
+  assert.match(client, /schedule\(0\)/);
   assert.match(client, /120_000/);
   assert.match(modal, /Suivi automatique toutes les 2 minutes/);
   assert.match(modal, /!isCampaignFinishedStatus/);

@@ -45,6 +45,10 @@ import {
   BOOSTER_REMOTE_VIDEO_TRANSPORT_TIMEOUT_MS,
   validateBoosterRemoteVideoProbeTransport,
 } from "@/lib/boosterVideoRemoteProbePolicy";
+import {
+  authorizeStoredVideoProbeSource,
+  type StoredVideoProbeRegistryIdentity,
+} from "@/lib/boosterStoredVideoProbePolicy";
 
 const execFileAsync = promisify(execFile);
 const BOOSTER_BUCKET = "booster";
@@ -314,8 +318,13 @@ function emptyProbedVideoMetadata(): ProbedVideoMetadata {
   };
 }
 
-type BoosterVideoProbeRegistryRow = {
+type BoosterVideoProbeRegistryRow = StoredVideoProbeRegistryIdentity & {
   id: string;
+  user_id: string;
+  bucket_name: string;
+  storage_path: string;
+  media_type: string;
+  upload_status: string;
   size_bytes: number | null;
   duration_seconds: number | null;
   width: number | null;
@@ -343,12 +352,13 @@ async function loadBoosterVideoProbeRegistryRow(params: {
   const result = await supabaseAdmin
     .from("pro_media_library")
     .select(
-      "id,size_bytes,duration_seconds,width,height,mime_type,media_metadata",
+      "id,user_id,bucket_name,storage_path,media_type,upload_status,size_bytes,duration_seconds,width,height,mime_type,media_metadata",
     )
     .eq("user_id", params.accountId)
     .eq("bucket_name", params.bucket)
     .eq("storage_path", params.storagePath)
     .eq("media_type", "video")
+    .eq("upload_status", "uploaded")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -653,48 +663,61 @@ async function probeVideoMetadata(
 }
 
 /**
- * Atteste un fallback vidéo déjà uploadé dans le bucket Booster.
+ * Atteste un fallback vidéo déjà uploadé dans Storage.
  *
  * Les workspaces historiques ne conservent parfois que le dernier type de
  * média sélectionné. Dans une publication mixte, la vidéo arrive alors comme
  * référence Storage durable à côté d'un workspace d'images. On sonde l'objet
  * appartenant au compte directement depuis son URL Storage serveur : aucune
  * durée/compatibilité fournie par le navigateur n'est utilisée comme preuve.
+ * Un bucket privé exige une ligne de registre vidéo uploadée appartenant au
+ * compte avant la création de son URL signée. Le bucket Booster historique
+ * conserve son contrat public préfixé par le compte.
  */
 export async function probeStoredBoosterVideoForPublication(params: {
   accountId: string;
   bucket?: string | null;
   storagePath?: string | null;
 }) {
-  const bucket = sanitizeBucketName(params.bucket);
+  const bucket = String(params.bucket || BOOSTER_BUCKET).trim();
   const storagePath = sanitizeStoragePath(params.storagePath);
-  const accountPrefix = `${sanitizeUserId(params.accountId)}/`;
-  if (
-    bucket !== BOOSTER_BUCKET ||
-    !storagePath ||
-    !storagePath.startsWith(accountPrefix)
-  ) {
-    throw new Error("video_fallback_storage_reference_untrusted");
-  }
-
-  const publicUrl =
-    supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath)?.data
-      ?.publicUrl || "";
-  if (!/^https:\/\//i.test(publicUrl)) {
-    throw new Error("video_fallback_public_url_unavailable");
-  }
-
   const registryRow = await loadBoosterVideoProbeRegistryRow({
     accountId: params.accountId,
     bucket,
     storagePath,
   });
+  const authorization = authorizeStoredVideoProbeSource({
+    accountId: params.accountId,
+    bucket,
+    storagePath,
+    registryRow,
+  });
+  let publicUrl = "";
+  if (authorization.urlMode === "signed") {
+    const signed = await supabaseAdmin.storage
+      .from(authorization.bucket)
+      .createSignedUrl(authorization.storagePath, 60 * 60 * 24);
+    publicUrl = String(signed.data?.signedUrl || "").trim();
+    if (signed.error || !/^https:\/\//i.test(publicUrl)) {
+      throw new Error(
+        signed.error?.message || "video_fallback_signed_url_unavailable",
+      );
+    }
+  } else {
+    publicUrl =
+      supabaseAdmin.storage
+        .from(authorization.bucket)
+        .getPublicUrl(authorization.storagePath)?.data?.publicUrl || "";
+    if (!/^https:\/\//i.test(publicUrl)) {
+      throw new Error("video_fallback_public_url_unavailable");
+    }
+  }
   const persisted = readPersistedBoosterVideoProbe(registryRow);
   if (persisted) {
     return {
       ...persisted,
-      bucket,
-      storagePath,
+      bucket: authorization.bucket,
+      storagePath: authorization.storagePath,
       publicUrl,
       compatibilityProof: "server_ffmpeg" as const,
       attestationSource: "registry" as const,
@@ -703,7 +726,10 @@ export async function probeStoredBoosterVideoForPublication(params: {
 
   const expectedSizeBytes =
     positiveProbeNumber(registryRow?.size_bytes) ??
-    (await readStoredBoosterVideoSize(bucket, storagePath));
+    (await readStoredBoosterVideoSize(
+      authorization.bucket,
+      authorization.storagePath,
+    ));
   if (!expectedSizeBytes) throw new Error("video_fallback_size_unavailable");
   await verifyRemoteBoosterVideoProbeTransport({
     publicUrl,
@@ -728,8 +754,8 @@ export async function probeStoredBoosterVideoForPublication(params: {
 
   return {
     ...probed,
-    bucket,
-    storagePath,
+    bucket: authorization.bucket,
+    storagePath: authorization.storagePath,
     publicUrl,
     compatibilityProof: "server_ffmpeg" as const,
     attestationSource: "storage_range_probe" as const,

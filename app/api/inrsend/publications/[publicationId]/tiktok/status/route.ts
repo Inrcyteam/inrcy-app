@@ -2,10 +2,22 @@ import { NextResponse } from "next/server";
 
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import {
+  BOOSTER_ASYNC_CHANNEL_EVENT_TYPE,
+  BOOSTER_ASYNC_JOB_EVENT_TYPE,
+  buildAsyncPublicationAggregate,
+  finalizeAsyncPublicationIfReady,
+  updateAsyncChannelEvent,
+  type BoosterAsyncChannelKey,
+} from "@/lib/boosterAsyncPublication";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import { fetchTiktokPublishStatus, getTiktokUserFacingError } from "@/lib/tiktokPublish";
+import {
+  hasMeaningfulTiktokResultChange,
+  shouldUpdateTiktokDelivery,
+} from "@/lib/tiktokStatusPersistence";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 export const runtime = "nodejs";
@@ -14,8 +26,23 @@ type JsonRecord = Record<string, unknown>;
 
 type AppEventRow = {
   id: string | number;
+  type?: string | null;
   payload?: unknown;
 };
+
+type TiktokEventContext = {
+  parent: AppEventRow | null;
+  channelEvent: AppEventRow | null;
+  parentPayload: JsonRecord;
+  channelPayload: JsonRecord;
+  result: JsonRecord;
+  async: boolean;
+};
+
+type TiktokDeliveryState = {
+  status: string;
+  error: string | null;
+} | null;
 
 const TIKTOK_LOCAL_CANCEL_MESSAGE =
   "Publication annulée dans iNrSend. Le suivi automatique est arrêté. Une tentative déjà acceptée par TikTok ne peut pas être interrompue à distance.";
@@ -70,17 +97,24 @@ function buildCancelledEventState(payloadLike: unknown) {
   return { nextPayload, nextResult };
 }
 
-async function getTiktokDeliveryStatus(userId: string, publicationId: string) {
+async function getTiktokDeliveryState(
+  userId: string,
+  publicationId: string,
+): Promise<TiktokDeliveryState> {
   const { data, error } = await supabaseAdmin
     .from("publication_deliveries")
-    .select("status")
+    .select("status,error")
     .eq("user_id", userId)
     .eq("publication_id", publicationId)
     .eq("channel", "tiktok")
     .maybeSingle();
 
   if (error) throw error;
-  return String(data?.status || "").toLowerCase();
+  if (!data) return null;
+  return {
+    status: String(data.status || "").toLowerCase(),
+    error: data.error == null ? null : String(data.error),
+  };
 }
 
 async function ensureCancelledEventState({
@@ -91,7 +125,11 @@ async function ensureCancelledEventState({
   event: AppEventRow | null;
 }) {
   const state = buildCancelledEventState(event?.payload);
-  if (event?.id) {
+  const currentResult = asRecord(asRecord(asRecord(event?.payload).results).tiktok);
+  if (
+    event?.id &&
+    hasMeaningfulTiktokResultChange(currentResult, state.nextResult)
+  ) {
     const { error } = await supabaseAdmin
       .from("app_events")
       .update({ payload: state.nextPayload })
@@ -226,18 +264,268 @@ function dateMs(value: unknown) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-async function loadAppEvent(userId: string, publicationId: string) {
-  const { data, error } = await supabaseAdmin
+const BOOSTER_PUBLICATION_CHANNELS = new Set<BoosterAsyncChannelKey>([
+  "site_web",
+  "inrcy_site",
+  "inr_search",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "tiktok",
+  "youtube_shorts",
+  "pinterest",
+  "gmb",
+]);
+
+function publicationChannels(
+  payload: JsonRecord,
+  results: JsonRecord,
+): BoosterAsyncChannelKey[] {
+  const values = [
+    ...(Array.isArray(payload.attemptedChannels)
+      ? payload.attemptedChannels
+      : []),
+    ...(Array.isArray(payload.channels) ? payload.channels : []),
+    ...Object.keys(results),
+  ];
+  return Array.from(
+    new Set(values.map((value) => String(value || "").trim()).filter(Boolean)),
+  ).filter((channel): channel is BoosterAsyncChannelKey =>
+    BOOSTER_PUBLICATION_CHANNELS.has(channel as BoosterAsyncChannelKey),
+  );
+}
+
+async function loadTiktokEventContext(
+  userId: string,
+  publicationId: string,
+): Promise<TiktokEventContext> {
+  const { data: exactParent, error: exactParentError } = await supabaseAdmin
     .from("app_events")
-    .select("id,payload")
+    .select("id,type,payload")
+    .eq("id", publicationId)
     .eq("user_id", userId)
     .eq("module", "booster")
-    .eq("type", "publish")
-    .order("created_at", { ascending: false })
-    .limit(200);
+    .in("type", ["publish", BOOSTER_ASYNC_JOB_EVENT_TYPE])
+    .maybeSingle();
 
-  if (error) throw error;
-  return ((data || []) as AppEventRow[]).find((row) => String(asRecord(row.payload).publication_id || "") === publicationId) || null;
+  if (exactParentError) throw exactParentError;
+
+  let parent = (exactParent || null) as AppEventRow | null;
+  if (!parent) {
+    // Compatibilite avec les publications synchrones historiques, dont l'id
+    // d'app_event etait distinct de publication_id. Le chemin durable courant
+    // est toujours resolu par sa cle primaire ci-dessus.
+    const { data: legacyParents, error: legacyParentError } = await supabaseAdmin
+      .from("app_events")
+      .select("id,type,payload")
+      .eq("user_id", userId)
+      .eq("module", "booster")
+      .eq("type", "publish")
+      .eq("payload->>publication_id", publicationId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (legacyParentError) throw legacyParentError;
+    parent = ((legacyParents || []) as AppEventRow[])[0] || null;
+  }
+
+  const parentPayload = asRecord(parent?.payload);
+  const isAsync = String(parent?.type || "") === BOOSTER_ASYNC_JOB_EVENT_TYPE;
+  if (!parent || !isAsync) {
+    return {
+      parent,
+      channelEvent: null,
+      parentPayload,
+      channelPayload: {},
+      result: asRecord(asRecord(parentPayload.results).tiktok),
+      async: false,
+    };
+  }
+
+  const channelEventId = String(
+    asRecord(parentPayload.channelEventIds).tiktok || "",
+  ).trim();
+  if (!channelEventId) {
+    return {
+      parent,
+      channelEvent: null,
+      parentPayload,
+      channelPayload: {},
+      result: {},
+      async: true,
+    };
+  }
+
+  const { data: channelEvent, error: channelEventError } = await supabaseAdmin
+    .from("app_events")
+    .select("id,type,payload")
+    .eq("id", channelEventId)
+    .eq("user_id", userId)
+    .eq("module", "booster")
+    .eq("type", BOOSTER_ASYNC_CHANNEL_EVENT_TYPE)
+    .maybeSingle();
+
+  if (channelEventError) throw channelEventError;
+  const typedChannelEvent = (channelEvent || null) as AppEventRow | null;
+  const channelPayload = asRecord(typedChannelEvent?.payload);
+  return {
+    parent,
+    channelEvent: typedChannelEvent,
+    parentPayload,
+    channelPayload,
+    result: asRecord(channelPayload.result),
+    async: true,
+  };
+}
+
+async function persistTerminalParentTiktokResult(params: {
+  userId: string;
+  context: TiktokEventContext;
+  nextResult: JsonRecord;
+  terminal: boolean;
+}) {
+  const results = {
+    ...asRecord(params.context.parentPayload.results),
+    tiktok: params.nextResult,
+  };
+  const selectedChannels = publicationChannels(
+    params.context.parentPayload,
+    results,
+  );
+  const aggregate = buildAsyncPublicationAggregate(results, selectedChannels);
+  const nowIso = new Date().toISOString();
+  const nextPayload = {
+    ...params.context.parentPayload,
+    attemptedChannels: selectedChannels,
+    channels: aggregate.summary.successChannels,
+    results,
+    summary: aggregate.summary,
+    status: aggregate.status,
+    outcome: aggregate.outcome,
+    updatedAt: nowIso,
+    ...(params.terminal
+      ? { completedAt: nowIso, externalCompletedAt: nowIso }
+      : {}),
+  };
+
+  if (params.context.parent?.id) {
+    const { error } = await supabaseAdmin
+      .from("app_events")
+      .update({ payload: nextPayload })
+      .eq("id", params.context.parent.id)
+      .eq("user_id", params.userId)
+      .eq("type", "publish");
+    if (error) throw error;
+  }
+
+  return nextPayload;
+}
+
+async function persistAsyncTiktokResult(params: {
+  userId: string;
+  publicationId: string;
+  context: TiktokEventContext;
+  nextResult: JsonRecord;
+  providerTerminal: boolean;
+}) {
+  const eventId = String(params.context.channelEvent?.id || "").trim();
+  if (!eventId) throw new Error("async_tiktok_channel_event_missing");
+
+  const currentTechnicalStatus = String(
+    params.context.channelPayload.status || "completed",
+  ).toLowerCase();
+  const nextTechnicalStatus =
+    params.nextResult.ok === false
+      ? "failed"
+      : currentTechnicalStatus === "failed"
+        ? "failed"
+        : currentTechnicalStatus === "completed"
+          ? "completed"
+          : params.providerTerminal
+            ? "completed"
+            : currentTechnicalStatus;
+
+  const updatedChannelPayload = await updateAsyncChannelEvent({
+    userId: params.userId,
+    eventId,
+    patch: {
+      status: nextTechnicalStatus,
+      result: params.nextResult,
+      ...(nextTechnicalStatus === "completed" || nextTechnicalStatus === "failed"
+        ? { completedAt: new Date().toISOString() }
+        : {}),
+    },
+  });
+
+  // Le dernier worker peut convertir le parent et supprimer les enfants entre
+  // notre lecture et cette ecriture. Dans ce cas, persister le resultat sur le
+  // parent terminal evite de laisser le bilan iNrSend sur un ancien "pending".
+  if (!updatedChannelPayload) {
+    const refreshed = await loadTiktokEventContext(
+      params.userId,
+      params.publicationId,
+    );
+    if (!refreshed.async) {
+      return persistTerminalParentTiktokResult({
+        userId: params.userId,
+        context: refreshed,
+        nextResult: params.nextResult,
+        terminal: params.providerTerminal,
+      });
+    }
+    throw new Error("async_tiktok_channel_event_missing");
+  }
+
+  if (nextTechnicalStatus === "completed" || nextTechnicalStatus === "failed") {
+    await finalizeAsyncPublicationIfReady({
+      userId: params.userId,
+      publicationId: params.publicationId,
+    });
+  }
+
+  return {
+    ...params.context.parentPayload,
+    publication_id: params.publicationId,
+    results: { tiktok: params.nextResult },
+  };
+}
+
+function buildTiktokResponsePayload(
+  context: TiktokEventContext,
+  publicationId: string,
+  nextResult: JsonRecord,
+) {
+  return {
+    ...context.parentPayload,
+    publication_id: publicationId,
+    results: context.async
+      ? { tiktok: nextResult }
+      : {
+          ...asRecord(context.parentPayload.results),
+          tiktok: nextResult,
+        },
+  };
+}
+
+function needsTerminalEventPersistence(
+  context: TiktokEventContext,
+  providerTerminal: boolean,
+) {
+  if (!providerTerminal) return false;
+  if (context.async) {
+    const technicalStatus = String(
+      context.channelPayload.status || "completed",
+    ).toLowerCase();
+    return technicalStatus !== "completed" && technicalStatus !== "failed";
+  }
+
+  const summary = asRecord(context.parentPayload.summary);
+  return Boolean(
+    !context.parentPayload.completedAt ||
+      Number(summary.pendingCount || 0) > 0 ||
+      String(context.parentPayload.outcome || "").toLowerCase() ===
+        "external_processing",
+  );
 }
 
 async function persistTiktokStatus({
@@ -245,26 +533,43 @@ async function persistTiktokStatus({
   publicationId,
   publishId,
   status,
+  deliveryState,
+  eventContext,
 }: {
   userId: string;
   publicationId: string;
   publishId: string;
   status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>;
+  deliveryState: TiktokDeliveryState;
+  eventContext: TiktokEventContext;
 }) {
-  const event = await loadAppEvent(userId, publicationId);
-  const payload = asRecord(event?.payload);
-  const results = asRecord(payload.results);
-  const current = asRecord(results.tiktok);
+  const context = eventContext;
+  const current = context.result;
   if (isTiktokCancelledResult(current)) {
-    return ensureCancelledEventState({ userId, event });
+    return ensureCancelledEventState({ userId, event: context.parent });
   }
   const diagnostics = asRecord(current.diagnostics);
+  const diagnosticStatus = asRecord(diagnostics.status);
   const nowIso = new Date().toISOString();
-  const previousStatus = String(current.tiktok_status || asRecord(diagnostics.status).status || "").toUpperCase();
-  const previousUploadedBytes = Number(current.tiktok_uploaded_bytes ?? asRecord(diagnostics.status).uploadedBytes ?? -1);
-  const previousDownloadedBytes = Number(current.tiktok_downloaded_bytes ?? asRecord(diagnostics.status).downloadedBytes ?? -1);
-  const nextUploadedBytes = status.uploadedBytes ?? null;
-  const nextDownloadedBytes = status.downloadedBytes ?? null;
+  const previousStatus = String(
+    current.tiktok_status || diagnosticStatus.status || "",
+  ).toUpperCase();
+  const previousUploadedBytes = Number(
+    current.tiktok_uploaded_bytes ?? diagnosticStatus.uploadedBytes ?? -1,
+  );
+  const previousDownloadedBytes = Number(
+    current.tiktok_downloaded_bytes ?? diagnosticStatus.downloadedBytes ?? -1,
+  );
+  const nextUploadedBytes =
+    status.uploadedBytes ??
+    current.tiktok_uploaded_bytes ??
+    diagnosticStatus.uploadedBytes ??
+    null;
+  const nextDownloadedBytes =
+    status.downloadedBytes ??
+    current.tiktok_downloaded_bytes ??
+    diagnosticStatus.downloadedBytes ??
+    null;
   const progressChanged =
     Boolean(status.status && String(status.status).toUpperCase() !== previousStatus) ||
     (nextUploadedBytes !== null && nextUploadedBytes !== previousUploadedBytes) ||
@@ -300,6 +605,7 @@ async function persistTiktokStatus({
     tiktok_status_fetch_error: status.statusFetchFailed ? status.failReason || status.providerErrorCode || null : null,
     tiktok_fail_reason: status.failed ? status.failReason || null : null,
     tiktok_provider_error_code: status.providerErrorCode || null,
+    tiktok_status_retryable: Boolean(status.retryable),
     tiktok_uploaded_bytes: nextUploadedBytes,
     tiktok_downloaded_bytes: nextDownloadedBytes,
     tiktok_public_post_ids: status.publiclyAvailablePostIds?.length
@@ -321,33 +627,67 @@ async function persistTiktokStatus({
     },
   };
 
-  const nextPayload: JsonRecord = {
-    ...payload,
-    results: {
-      ...results,
-      tiktok: nextResult,
-    },
-  };
+  const providerTerminal = Boolean(status.complete || status.failed);
+  const shouldPersistEvent =
+    hasMeaningfulTiktokResultChange(current, nextResult) ||
+    needsTerminalEventPersistence(context, providerTerminal);
+  let nextPayload: JsonRecord = buildTiktokResponsePayload(
+    context,
+    publicationId,
+    nextResult,
+  );
 
-  if (event?.id) {
-    await supabaseAdmin.from("app_events").update({ payload: nextPayload }).eq("id", event.id).eq("user_id", userId);
+  if (shouldPersistEvent) {
+    nextPayload = context.async
+      ? await persistAsyncTiktokResult({
+          userId,
+          publicationId,
+          context,
+          nextResult,
+          providerTerminal,
+        })
+      : await persistTerminalParentTiktokResult({
+          userId,
+          context,
+          nextResult,
+          terminal: providerTerminal,
+        });
   }
 
-  const { error: deliveryUpdateError } = await supabaseAdmin
-    .from("publication_deliveries")
-    .update({
-      status: status.failed ? "failed" : status.complete ? "delivered" : "processing",
-      error: status.failed ? message : null,
-    })
-    .eq("user_id", userId)
-    .eq("publication_id", publicationId)
-    .eq("channel", "tiktok")
-    .neq("status", "deleted");
-  if (deliveryUpdateError) throw deliveryUpdateError;
+  const nextDeliveryStatus = status.failed
+    ? "failed"
+    : status.complete
+      ? "delivered"
+      : "processing";
+  const nextDeliveryError = status.failed ? message : null;
+  const shouldPersistDelivery = shouldUpdateTiktokDelivery(
+    deliveryState,
+    nextDeliveryStatus,
+    nextDeliveryError,
+  );
+  if (shouldPersistDelivery) {
+    const { error: deliveryUpdateError } = await supabaseAdmin
+      .from("publication_deliveries")
+      .update({
+        status: nextDeliveryStatus,
+        error: nextDeliveryError,
+      })
+      .eq("user_id", userId)
+      .eq("publication_id", publicationId)
+      .eq("channel", "tiktok")
+      .neq("status", "deleted");
+    if (deliveryUpdateError) throw deliveryUpdateError;
+  }
 
-  if (await getTiktokDeliveryStatus(userId, publicationId) === "deleted") {
-    const latestEvent = await loadAppEvent(userId, publicationId);
-    return ensureCancelledEventState({ userId, event: latestEvent });
+  if (shouldPersistEvent || shouldPersistDelivery) {
+    const deliveryAfterPersistence = await getTiktokDeliveryState(
+      userId,
+      publicationId,
+    );
+    if (deliveryAfterPersistence?.status === "deleted") {
+      const latestContext = await loadTiktokEventContext(userId, publicationId);
+      return ensureCancelledEventState({ userId, event: latestContext.parent });
+    }
   }
 
   return { nextPayload, nextResult, message, stalled, cancelled: false };
@@ -372,14 +712,16 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
 
     if (deliveryError) throw deliveryError;
 
-    const event = await loadAppEvent(activeUserId, publicationId);
-    const eventPayload = asRecord(event?.payload);
-    const eventResult = asRecord(asRecord(eventPayload.results).tiktok);
+    const eventContext = await loadTiktokEventContext(activeUserId, publicationId);
+    const eventResult = eventContext.result;
     const diagnostics = asRecord(eventResult.diagnostics);
     const publishId = String(eventResult.external_id || diagnostics.publish_id || "").trim();
 
     if (isTiktokCancelledResult(eventResult) || String(delivery?.status || "").toLowerCase() === "deleted") {
-      const cancelledState = await ensureCancelledEventState({ userId: activeUserId, event });
+      const cancelledState = await ensureCancelledEventState({
+        userId: activeUserId,
+        event: eventContext.parent,
+      });
       return NextResponse.json({
         ok: true,
         cancelled: true,
@@ -411,7 +753,19 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
     }
 
     const status = await fetchTiktokPublishStatus(accessToken, publishId);
-    const persisted = await persistTiktokStatus({ userId: activeUserId, publicationId, publishId, status });
+    const persisted = await persistTiktokStatus({
+      userId: activeUserId,
+      publicationId,
+      publishId,
+      status,
+      deliveryState: delivery
+        ? {
+            status: String(delivery.status || "").toLowerCase(),
+            error: delivery.error == null ? null : String(delivery.error),
+          }
+        : null,
+      eventContext,
+    });
 
     return NextResponse.json({
       ok: status.ok,

@@ -261,3 +261,11 @@ create index concurrently if not exists app_events_propulser_metrics_user_create
   on public.app_events (user_id, created_at desc)
   where module in ('propulser', 'booster')
     and type in ('valorize', 'review_mail', 'promo_mail');
+
+-- Booster has a distinct metrics contract: only completed publications and
+-- its two tracked mail types are read. In particular, never include the large
+-- publish_async_job / publish_async_channel transport payloads in this index.
+create index concurrently if not exists app_events_booster_metrics_user_created_idx
+  on public.app_events (user_id, created_at desc)
+  where module = 'booster'
+    and type in ('publish', 'review_mail', 'promo_mail');

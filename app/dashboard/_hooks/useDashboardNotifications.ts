@@ -102,13 +102,28 @@ export function useDashboardNotifications() {
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | null = null;
     const run = () => {
-      if (cancelled) return;
+      if (cancelled || document.hidden) return;
       void refreshNotifications();
     };
+    const stopPolling = () => {
+      if (timer == null) return;
+      window.clearInterval(timer);
+      timer = null;
+    };
+    const startPolling = () => {
+      if (timer != null || document.hidden) return;
+      timer = window.setInterval(run, 120_000);
+    };
     const onFocus = () => run();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") run();
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
+      run();
+      startPolling();
     };
     const onActiveAccountChange = () => {
       notificationsRequestSeqRef.current += 1;
@@ -117,17 +132,19 @@ export function useDashboardNotifications() {
       run();
     };
 
-    run();
-    const timer = window.setInterval(run, 120000);
+    if (!document.hidden) {
+      run();
+      startPolling();
+    }
     window.addEventListener("focus", onFocus);
     window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, onActiveAccountChange);
-    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopPolling();
       window.removeEventListener("focus", onFocus);
       window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, onActiveAccountChange);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [applyNotifications, refreshNotifications]);
 

@@ -48,6 +48,15 @@ test("a typed provider failure can still use the existing one-shot engine fallba
   );
 });
 
+test("an exhausted generation deadline never triggers a second doomed request", () => {
+  assert.equal(
+    isAutomaticBoosterGenerationRetryEligible(504, {
+      error_code: "ai_operation_deadline_exceeded",
+    }),
+    false,
+  );
+});
+
 test("anti-burst and quota messages are explicitly different", () => {
   assert.match(
     getBoosterGenerationSpecialErrorMessage({

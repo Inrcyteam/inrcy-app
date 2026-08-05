@@ -30,6 +30,7 @@ function assertOrdered(source: string, markers: string[]) {
 const route = read("app/api/booster/publish-now/route.ts");
 const cron = read("app/api/cron/booster-publications/route.ts");
 const pinterestPublish = read("lib/pinterestPublish.ts");
+const inrsendActions = read("lib/inrsend/publicationChannelActions.ts");
 const pinterestBranch = sliceBetween(
   route,
   'if (ch === "pinterest")',
@@ -196,18 +197,44 @@ test("cron never redispatches a terminal Pinterest video checkpoint", () => {
   );
 });
 
-test("cover resolution prefers the durable storage path over an expiring URL", () => {
+test("cover resolution signs the durable object in its real bucket", () => {
   const resolver = sliceBetween(
     pinterestPublish,
-    "export function resolvePinterestVideoCoverImageUrl",
+    "export async function resolvePinterestVideoCoverImageUrl",
     "export async function withPinterestVideoProtocolAsset",
   );
   assertOrdered(resolver, [
-    "getBoosterPublicUrl(params.coverStoragePath)",
+    "const coverStoragePath",
+    "const coverBucket",
+    "createSafeStorageSignedUrl(",
     "normalizePublicUrl(params.coverImageUrl)",
   ]);
   assert.match(
+    resolver,
+    /createSafeStorageSignedUrl\(\s*coverBucket,\s*coverStoragePath,\s*PINTEREST_COVER_SIGNED_URL_TTL_SECONDS/,
+  );
+  assert.doesNotMatch(resolver, /getBoosterPublicUrl/);
+  assert.match(
     durableVideoBranch,
-    /resolvePinterestVideoCoverImageUrl\(\{[\s\S]*coverImageUrl:\s*channelVideo\.thumbnailUrl,[\s\S]*coverStoragePath:\s*channelVideo\.thumbnailStoragePath/,
+    /await resolvePinterestVideoCoverImageUrl\(\{[\s\S]*coverImageUrl:\s*channelVideo\.thumbnailUrl,[\s\S]*coverStoragePath:\s*channelVideo\.thumbnailStoragePath,[\s\S]*coverBucket:\s*channelVideo\.thumbnailBucket/,
+  );
+});
+
+test("Booster sync and iNrSend preserve the thumbnail bucket for Pinterest", () => {
+  assert.match(
+    pinterestBranch,
+    /createPinterestVideoPin\(\{[\s\S]*coverStoragePath:\s*channelVideo\.thumbnailStoragePath,[\s\S]*coverBucket:\s*channelVideo\.thumbnailBucket/,
+  );
+  assert.match(
+    inrsendActions,
+    /thumbnailBucket\?:\s*string\s*\|\s*null/,
+  );
+  assert.match(
+    inrsendActions,
+    /thumbnailBucket:\s*[\s\S]*src\.thumbnailBucket[\s\S]*src\.thumbnail_bucket[\s\S]*src\.video_thumbnail_bucket/,
+  );
+  assert.match(
+    inrsendActions,
+    /createPinterestVideoPin\(\{[\s\S]*coverStoragePath:\s*video\.thumbnailStoragePath,[\s\S]*coverBucket:\s*video\.thumbnailBucket/,
   );
 });

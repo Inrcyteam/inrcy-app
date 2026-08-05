@@ -265,7 +265,7 @@ test("l'attestation fallback démarre à l'upload et la vidéo ne retient pas le
   );
   assert.match(
     publish,
-    /requestedImageChannels\.length > 0 &&[\s\S]{0,100}requestedVideoChannels\.length > 0/,
+    /shouldDeferMixedVideoPreparation\(\{[\s\S]{0,240}imageChannelCount:\s*requestedImageChannels\.length,[\s\S]{0,100}videoChannelCount:\s*requestedVideoChannels\.length/,
   );
   assert.match(
     publish,

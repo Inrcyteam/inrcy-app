@@ -22,6 +22,7 @@ import {
 } from "@/lib/instagramPublish";
 import {
   buildInstagramVideoRequestFingerprint,
+  buildInstagramVideoSourceIdentity,
   instagramCreateVideoCheckpointWithTokenFallback,
   instagramPollVideoCheckpointWithTokenFallback,
   instagramPublishVideoCheckpointWithTokenFallback,
@@ -146,6 +147,7 @@ import {
 } from "@/lib/boosterVideoVariantServer";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 import { applyServerVideoFallbackAttestation } from "@/lib/boosterVideoFallbackAttestation";
+import { shouldDeferMixedVideoPreparation } from "@/lib/boosterMixedMediaPreparationPolicy";
 import {
   YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS,
   getYoutubePublicationTypeForDuration,
@@ -571,10 +573,12 @@ async function publishNowHandler(req: Request) {
         deferredPreparationChannels.add(channel),
       );
     } else if (
-      internalAsyncPreparationDispatch &&
-      Number(body._asyncPreparationAttempt || 1) <= 2 &&
-      requestedImageChannels.length > 0 &&
-      requestedVideoChannels.length > 0
+      shouldDeferMixedVideoPreparation({
+        internalAsyncPreparationDispatch,
+        preparationAttempt: body._asyncPreparationAttempt,
+        imageChannelCount: requestedImageChannels.length,
+        videoChannelCount: requestedVideoChannels.length,
+      })
     ) {
       // A remote video attestation/transcode must never hold image channels.
       // Attempt 1 materializes images; the durable next attempt owns video.
@@ -3440,13 +3444,27 @@ async function publishNowHandler(req: Request) {
             fbRow,
           );
           if (mediaModeByChannel[ch] === "video" && channelVideo) {
+            const videoSourceIdentity = buildInstagramVideoSourceIdentity({
+              bucket: channelVideo.bucket,
+              storagePath: channelVideo.storagePath,
+              videoUrl: channelVideo.publicUrl,
+            });
             const expectedRequestFingerprint =
+              buildInstagramVideoRequestFingerprint({
+                igUserId,
+                videoUrl: channelVideo.publicUrl,
+                videoSourceIdentity,
+                caption: instagramCaption,
+                shareToFeed: true,
+              });
+            const compatibleRequestFingerprints = [
               buildInstagramVideoRequestFingerprint({
                 igUserId,
                 videoUrl: channelVideo.publicUrl,
                 caption: instagramCaption,
                 shareToFeed: true,
-              });
+              }),
+            ];
             const rawCheckpoint = internalAsyncDispatch
               ? asRecord(body._instagramVideoCheckpoint)
               : {};
@@ -3490,6 +3508,7 @@ async function publishNowHandler(req: Request) {
                   tokenCandidates: instagramTokenCandidates,
                   caption: instagramCaption,
                   videoUrl: channelVideo.publicUrl,
+                  videoSourceIdentity,
                   shareToFeed: true,
                 });
             } else if (
@@ -3504,6 +3523,7 @@ async function publishNowHandler(req: Request) {
                   accessToken: igToken,
                   tokenCandidates: instagramTokenCandidates,
                   expectedRequestFingerprint,
+                  compatibleRequestFingerprints,
                 });
             } else {
               videoPhaseResult =
@@ -3512,6 +3532,7 @@ async function publishNowHandler(req: Request) {
                   accessToken: igToken,
                   tokenCandidates: instagramTokenCandidates,
                   expectedRequestFingerprint,
+                  compatibleRequestFingerprints,
                 });
             }
 
@@ -3530,6 +3551,7 @@ async function publishNowHandler(req: Request) {
                   accessToken: igToken,
                   tokenCandidates: instagramTokenCandidates,
                   expectedRequestFingerprint,
+                  compatibleRequestFingerprints,
                 });
             }
 
@@ -3549,6 +3571,7 @@ async function publishNowHandler(req: Request) {
                   accessToken: igToken,
                   tokenCandidates: instagramTokenCandidates,
                   expectedRequestFingerprint,
+                  compatibleRequestFingerprints,
                 });
             }
 
@@ -4739,6 +4762,7 @@ async function publishNowHandler(req: Request) {
                 videoFileName: channelVideo.name,
                 coverImageUrl: channelVideo.thumbnailUrl,
                 coverStoragePath: channelVideo.thumbnailStoragePath,
+                coverBucket: channelVideo.thumbnailBucket,
                 link: pinterestLink,
               });
 
@@ -4787,9 +4811,10 @@ async function publishNowHandler(req: Request) {
             }
 
             const pinterestCoverImageUrl =
-              resolvePinterestVideoCoverImageUrl({
+              await resolvePinterestVideoCoverImageUrl({
                 coverImageUrl: channelVideo.thumbnailUrl,
                 coverStoragePath: channelVideo.thumbnailStoragePath,
+                coverBucket: channelVideo.thumbnailBucket,
               });
             if (!pinterestCoverImageUrl) {
               const pinterestUserError =

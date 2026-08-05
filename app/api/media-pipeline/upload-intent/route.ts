@@ -637,16 +637,6 @@ export async function POST(request: Request) {
           position: workspacePosition,
           metadata,
         });
-
-        // Mission 1 uniquement : une reprise réattache la source et ses
-        // métadonnées, sans lancer de normalisation ni de variante. Les
-        // missions IA et publication sont déclenchées explicitement ensuite.
-        if (alreadyUploaded) {
-          await refreshPublicationWorkspaceMediaStatus({
-            workspaceId,
-            accountId: activeUserId,
-          });
-        }
       }
     }
 

@@ -61,21 +61,22 @@ test("a missing expected child becomes one terminal channel failure", () => {
 test("cron reserves independent capacity for queued, stale recovery, and finalization", () => {
   assert.match(
     cron,
-    /queuedChannelQuery[\s\S]*processingChannelQuery[\s\S]*queuedPreparationQuery[\s\S]*activePreparationQuery/,
+    /queuedChannelCandidatesQuery[\s\S]*processingChannelCandidatesQuery[\s\S]*queuedPreparationCandidatesQuery[\s\S]*activePreparationCandidatesQuery/,
   );
   assert.match(cron, /\.eq\("payload->>status", "queued"\)/);
   assert.match(
     cron,
     /\.eq\("payload->>status", "processing"\)[\s\S]*channelRecoveryCutoffIso/,
   );
+  assert.match(cron, /getBoosterCronSweepPlan/);
+  assert.match(cron, /sweepPlan\.runRecoverySweep/);
+  assert.match(cron, /sweepPlan\.runFinalizationSweep/);
   assert.match(
     cron,
-    /oldestFinalizationQuery[\s\S]*newestFinalizationQuery/,
+    /ascending: sweepPlan\.finalizationAscending[\s\S]*\.limit\(ASYNC_FINALIZATION_CANDIDATE_LIMIT\)/,
   );
-  assert.match(cron, /order\("created_at", \{ ascending: true \}\)[\s\S]*limit\(13\)/);
-  assert.match(cron, /order\("created_at", \{ ascending: false \}\)[\s\S]*limit\(12\)/);
   assert.match(cron, /finalizationRecoveryCutoffIso/);
-  assert.match(cron, /new Map\([\s\S]*\.values\(\)/);
+  assert.match(cron, /parentsAlreadyWorking[\s\S]*candidateKey/);
   assert.match(
     cron,
     /lease\.state === "completed"[\s\S]*finalizeAsyncPublicationIfReady/,

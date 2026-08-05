@@ -142,6 +142,7 @@ type PersistedVideoAttachment = {
   storagePath: string | null;
   thumbnailUrl: string | null;
   thumbnailStoragePath?: string | null;
+  thumbnailBucket?: string | null;
   sourceMetadata?: unknown;
   sourceVideo?: unknown;
   transformedVariants?: unknown[];
@@ -498,6 +499,13 @@ function normalizeVideoAttachment(input: unknown): PersistedVideoAttachment | nu
     storagePath: storagePath || null,
     thumbnailUrl: String(src.thumbnailUrl || src.thumbnail_url || src.video_thumbnail_url || "").trim() || null,
     thumbnailStoragePath: String(src.thumbnailStoragePath || src.thumbnail_storage_path || "").trim() || null,
+    thumbnailBucket:
+      String(
+        src.thumbnailBucket ||
+          src.thumbnail_bucket ||
+          src.video_thumbnail_bucket ||
+          "",
+      ).trim() || null,
     sourceMetadata: src.sourceMetadata || src.source_metadata || null,
     sourceVideo: src.sourceVideo || src.source_video || null,
     transformedVariants: Array.isArray(src.transformedVariants || src.transformed_variants) ? (src.transformedVariants || src.transformed_variants) as unknown[] : [],
@@ -1723,6 +1731,7 @@ async function replaceChannelDelivery(params: {
         videoFileName: video.name,
         coverImageUrl: video.thumbnailUrl,
         coverStoragePath: video.thumbnailStoragePath,
+        coverBucket: video.thumbnailBucket,
         link,
       });
       if (!created.id) {

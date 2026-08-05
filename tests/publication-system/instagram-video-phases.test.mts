@@ -71,6 +71,8 @@ const buildInstagramVideoRequestFingerprint = moduleRecord.exports
   .buildInstagramVideoRequestFingerprint as (
   value: UnknownRecord,
 ) => string;
+const buildInstagramVideoSourceIdentity = moduleRecord.exports
+  .buildInstagramVideoSourceIdentity as (value: UnknownRecord) => string;
 
 function jsonResponse(value: unknown, status = 200, headers: HeadersInit = {}) {
   return new Response(JSON.stringify(value), {
@@ -139,7 +141,11 @@ test("Instagram video create, checkpoint, poll and publish are short resumable p
   }) as typeof fetch;
   const dependencies = fixedDependencies(fetchImpl);
   const expectedFingerprint = buildInstagramVideoRequestFingerprint(
-    createInput(),
+    createInput({
+      videoSourceIdentity: buildInstagramVideoSourceIdentity({
+        videoUrl: createInput().videoUrl,
+      }),
+    }),
   );
 
   const created = await instagramCreateVideoCheckpoint(
@@ -219,6 +225,217 @@ test("Instagram video create, checkpoint, poll and publish are short resumable p
     "ig-container-1",
     "ig-container-1",
   ]);
+});
+
+test("a private Supabase video resumes after its signed delivery URL changes", async () => {
+  const firstSignedUrl =
+    "https://project.supabase.co/storage/v1/object/sign/inrcy-pro-media/user/video.mp4?token=first";
+  const renewedSignedUrl =
+    "https://project.supabase.co/storage/v1/object/sign/inrcy-pro-media/user/video.mp4?token=renewed";
+  const storageReference = {
+    bucket: "inrcy-pro-media",
+    storagePath: "user/video.mp4",
+  };
+  const firstSourceIdentity = buildInstagramVideoSourceIdentity({
+    ...storageReference,
+    videoUrl: firstSignedUrl,
+  });
+  const renewedSourceIdentity = buildInstagramVideoSourceIdentity({
+    ...storageReference,
+    videoUrl: renewedSignedUrl,
+  });
+  assert.equal(firstSourceIdentity, renewedSourceIdentity);
+
+  const firstRequest = createInput({
+    videoUrl: firstSignedUrl,
+    videoSourceIdentity: firstSourceIdentity,
+  });
+  const renewedRequest = createInput({
+    videoUrl: renewedSignedUrl,
+    videoSourceIdentity: renewedSourceIdentity,
+  });
+  const renewedFingerprint =
+    buildInstagramVideoRequestFingerprint(renewedRequest);
+  assert.equal(
+    buildInstagramVideoRequestFingerprint(firstRequest),
+    renewedFingerprint,
+  );
+  assert.notEqual(
+    buildInstagramVideoRequestFingerprint(
+      createInput({ videoUrl: firstSignedUrl }),
+    ),
+    buildInstagramVideoRequestFingerprint(
+      createInput({ videoUrl: renewedSignedUrl }),
+    ),
+  );
+
+  let createCalls = 0;
+  let pollCalls = 0;
+  let publishCalls = 0;
+  const dependencies = fixedDependencies(
+    (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = init?.method || "GET";
+      if (url.pathname.endsWith("/ig-user-1/media") && method === "POST") {
+        createCalls += 1;
+        assert.equal(url.searchParams.get("video_url"), firstSignedUrl);
+        return jsonResponse({ id: "ig-private-container" });
+      }
+      if (url.pathname.endsWith("/ig-private-container") && method === "GET") {
+        pollCalls += 1;
+        return jsonResponse({ status_code: "FINISHED", status: "Finished" });
+      }
+      if (
+        url.pathname.endsWith("/ig-user-1/media_publish") &&
+        method === "POST"
+      ) {
+        publishCalls += 1;
+        return jsonResponse({ id: "ig-private-media" });
+      }
+      throw new Error(`Unexpected request ${method} ${url}`);
+    }) as typeof fetch,
+  );
+
+  const created = await instagramCreateVideoCheckpoint(
+    firstRequest,
+    dependencies,
+  );
+  assert.equal(created.ok, true);
+  assert.equal(created.checkpoint?.version, 2);
+  const restartedCheckpoint = JSON.parse(
+    JSON.stringify(created.checkpoint),
+  ) as UnknownRecord;
+  const ready = await instagramPollVideoCheckpoint(
+    {
+      checkpoint: restartedCheckpoint,
+      accessToken: "token-primary",
+      expectedRequestFingerprint: renewedFingerprint,
+    },
+    dependencies,
+  );
+  assert.equal(ready.ok, true);
+  assert.equal(ready.outcome, "ready");
+
+  const published = await instagramPublishVideoCheckpoint(
+    {
+      checkpoint: JSON.parse(JSON.stringify(ready.checkpoint)),
+      igUserId: "ig-user-1",
+      accessToken: "token-primary",
+      expectedRequestFingerprint: renewedFingerprint,
+    },
+    dependencies,
+  );
+  assert.equal(published.ok, true);
+  assert.equal(published.mediaId, "ig-private-media");
+  assert.equal(createCalls, 1, "a continuation must never recreate the container");
+  assert.equal(pollCalls, 1);
+  assert.equal(publishCalls, 1);
+});
+
+test("durable source identity remains fail-closed for another storage object", async () => {
+  const sourceIdentity = buildInstagramVideoSourceIdentity({
+    bucket: "inrcy-pro-media",
+    storagePath: "user/original.mp4",
+    videoUrl: "https://storage.test/original.mp4?token=one",
+  });
+  const created = await instagramCreateVideoCheckpoint(
+    createInput({
+      videoUrl: "https://storage.test/original.mp4?token=one",
+      videoSourceIdentity: sourceIdentity,
+    }),
+    fixedDependencies(
+      (async () => jsonResponse({ id: "ig-source-locked" })) as typeof fetch,
+    ),
+  );
+  let followUpFetches = 0;
+  const wrongSourceFingerprint = buildInstagramVideoRequestFingerprint(
+    createInput({
+      videoUrl: "https://storage.test/other.mp4?token=two",
+      videoSourceIdentity: buildInstagramVideoSourceIdentity({
+        bucket: "inrcy-pro-media",
+        storagePath: "user/other.mp4",
+        videoUrl: "https://storage.test/other.mp4?token=two",
+      }),
+    }),
+  );
+  const rejected = await instagramPollVideoCheckpoint(
+    {
+      checkpoint: created.checkpoint,
+      accessToken: "token-primary",
+      expectedRequestFingerprint: wrongSourceFingerprint,
+      compatibleRequestFingerprints: [
+        buildInstagramVideoRequestFingerprint(
+          createInput({
+            videoUrl: "https://storage.test/original.mp4?token=one",
+          }),
+        ),
+      ],
+    },
+    fixedDependencies(
+      (async () => {
+        followUpFetches += 1;
+        return jsonResponse({ status_code: "FINISHED" });
+      }) as typeof fetch,
+    ),
+  );
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.code, "instagram_video_checkpoint_invalid");
+  assert.equal(followUpFetches, 0);
+});
+
+test("v1 public-URL checkpoints remain compatible without weakening v2", async () => {
+  const stableUrl = "https://storage.test/legacy.mp4";
+  const legacyFingerprint = buildInstagramVideoRequestFingerprint(
+    createInput({ videoUrl: stableUrl }),
+  );
+  const currentFingerprint = buildInstagramVideoRequestFingerprint(
+    createInput({
+      videoUrl: stableUrl,
+      videoSourceIdentity: buildInstagramVideoSourceIdentity({
+        bucket: "booster",
+        storagePath: "legacy/video.mp4",
+        videoUrl: stableUrl,
+      }),
+    }),
+  );
+  const created = await instagramCreateVideoCheckpoint(
+    createInput({ videoUrl: stableUrl }),
+    fixedDependencies(
+      (async () => jsonResponse({ id: "ig-legacy-container" })) as typeof fetch,
+    ),
+  );
+  const legacyCheckpoint = {
+    ...created.checkpoint,
+    version: 1,
+    requestFingerprint: legacyFingerprint,
+  };
+  assert.ok(parseInstagramVideoPublishCheckpoint(legacyCheckpoint));
+
+  let pollCalls = 0;
+  const resumed = await instagramPollVideoCheckpoint(
+    {
+      checkpoint: legacyCheckpoint,
+      accessToken: "token-primary",
+      expectedRequestFingerprint: currentFingerprint,
+      compatibleRequestFingerprints: [legacyFingerprint],
+    },
+    fixedDependencies(
+      (async () => {
+        pollCalls += 1;
+        return jsonResponse({ status_code: "FINISHED" });
+      }) as typeof fetch,
+    ),
+  );
+  assert.equal(resumed.ok, true);
+  assert.equal(pollCalls, 1);
+
+  const canonicalUrlA = buildInstagramVideoSourceIdentity({
+    videoUrl: "https://cdn.test/video.mp4?b=2&a=1#preview",
+  });
+  const canonicalUrlB = buildInstagramVideoSourceIdentity({
+    videoUrl: "https://cdn.test/video.mp4?a=1&b=2",
+  });
+  assert.equal(canonicalUrlA, canonicalUrlB);
 });
 
 test("an ambiguous create never falls through to another token", async () => {

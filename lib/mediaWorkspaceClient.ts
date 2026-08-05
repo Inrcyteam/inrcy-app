@@ -1,5 +1,10 @@
 import { isUniversalMediaUploadEnabled } from "@/lib/universalMediaUploadClient";
 import type { BoosterMediaPipelineMission } from "@/lib/boosterMediaPipelineMissions";
+import {
+  MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+  MEDIA_WORKSPACE_READ_TIMEOUT_MS,
+  withMediaWorkspaceDeadline,
+} from "@/lib/mediaWorkspaceTimeout";
 
 export type MediaWorkspaceReference = {
   workspaceId: string;
@@ -50,8 +55,19 @@ const BOOSTER_WORKSPACE_SESSION_KEY = "inrcy:booster:media-workspace:v1";
 
 const WORKSPACE_READ_TRANSIENT_STATUS = new Set([502, 503, 504]);
 
-async function waitWorkspaceRetry(ms: number) {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+async function waitWorkspaceRetry(ms: number, signal?: AbortSignal | null) {
+  if (signal?.aborted) throw signal.reason;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 async function fetchWorkspaceSnapshotWithRetry(
@@ -61,19 +77,26 @@ async function fetchWorkspaceSnapshotWithRetry(
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const response = await fetch(input, init);
+      const response = await withMediaWorkspaceDeadline(
+        (signal) => fetch(input, { ...init, signal }),
+        {
+          signal: init.signal || undefined,
+          timeoutMs: MEDIA_WORKSPACE_READ_TIMEOUT_MS,
+          phase: "workspace_read",
+        },
+      );
       if (
         attempt === 0 &&
         WORKSPACE_READ_TRANSIENT_STATUS.has(response.status)
       ) {
-        await waitWorkspaceRetry(700);
+        await waitWorkspaceRetry(700, init.signal);
         continue;
       }
       return response;
     } catch (error) {
       lastError = error;
       if (init.signal?.aborted || attempt > 0) throw error;
-      await waitWorkspaceRetry(700);
+      await waitWorkspaceRetry(700, init.signal);
     }
   }
   throw lastError instanceof Error
@@ -149,19 +172,27 @@ export async function ensureMediaPublicationWorkspace(params: {
   selectedChannels?: readonly string[];
   signal?: AbortSignal;
 }): Promise<MediaWorkspaceReference> {
-  const response = await fetch("/api/media-pipeline/workspace", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      action: "ensure",
-      clientWorkspaceKey: params.clientWorkspaceKey,
-      sourceModule: "booster",
-      draftId: params.draftId || null,
-      selectedChannels: params.selectedChannels || [],
-    }),
-    signal: params.signal,
-    cache: "no-store",
-  });
+  const response = await withMediaWorkspaceDeadline(
+    (signal) =>
+      fetch("/api/media-pipeline/workspace", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "ensure",
+          clientWorkspaceKey: params.clientWorkspaceKey,
+          sourceModule: "booster",
+          draftId: params.draftId || null,
+          selectedChannels: params.selectedChannels || [],
+        }),
+        signal,
+        cache: "no-store",
+      }),
+    {
+      signal: params.signal,
+      timeoutMs: MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+      phase: "workspace_ensure",
+    },
+  );
   const json = await readWorkspaceResponse(
     response,
     "Impossible de préparer l’espace média.",
@@ -180,18 +211,26 @@ export async function clearMediaPublicationWorkspace(params: {
   reason?: string;
   signal?: AbortSignal;
 }) {
-  const response = await fetch("/api/media-pipeline/workspace", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      action: "clear_media",
-      workspaceId: params.workspaceId,
-      mediaType: params.mediaType,
-      reason: params.reason || "workspace_sync",
-    }),
-    signal: params.signal,
-    cache: "no-store",
-  });
+  const response = await withMediaWorkspaceDeadline(
+    (signal) =>
+      fetch("/api/media-pipeline/workspace", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "clear_media",
+          workspaceId: params.workspaceId,
+          mediaType: params.mediaType,
+          reason: params.reason || "workspace_sync",
+        }),
+        signal,
+        cache: "no-store",
+      }),
+    {
+      signal: params.signal,
+      timeoutMs: MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+      phase: "workspace_clear",
+    },
+  );
   await readWorkspaceResponse(response, "Impossible de synchroniser les médias.");
 }
 

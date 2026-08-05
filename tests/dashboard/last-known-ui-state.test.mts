@@ -11,6 +11,7 @@ const dashboardBootstrap = read("app/dashboard/dashboard.bootstrap-cache.ts");
 const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
 const notificationsHook = read("app/dashboard/_hooks/useDashboardNotifications.ts");
 const dashboardTopbar = read("app/dashboard/_components/DashboardTopbar.tsx");
+const pendingCountHook = read("app/dashboard/_hooks/useInrAgentPendingCount.ts");
 const accountCache = read("lib/browserAccountCache.ts");
 
 test("generator power reuses the last confirmed details before live checks settle", () => {
@@ -42,9 +43,10 @@ test("notification and iNrAgent badges hydrate from account-scoped caches before
   assert.match(notificationsHook, /DASHBOARD_NOTIFICATIONS_CACHE_KEY = "inrcy_dashboard_notifications_v1"/);
   assert.match(notificationsHook, /\(\) => readCachedNotifications\(\)\.items/);
   assert.match(notificationsHook, /ACTIVE_INRCY_ACCOUNT_EVENT/);
-  assert.match(dashboardTopbar, /INR_AGENT_PENDING_COUNT_CACHE_KEY = "inrcy_inr_agent_pending_count_v1"/);
-  assert.match(dashboardTopbar, /\(\) => readCachedPendingInrAgentCount\(\)/);
-  assert.match(dashboardTopbar, /ACTIVE_INRCY_ACCOUNT_EVENT/);
+  assert.match(pendingCountHook, /INR_AGENT_PENDING_COUNT_CACHE_KEY =\s*"inrcy_inr_agent_pending_count_v1"/);
+  assert.match(pendingCountHook, /readCachedPendingInrAgentCount\(nextAccountId\)/);
+  assert.match(pendingCountHook, /ACTIVE_INRCY_ACCOUNT_EVENT/);
+  assert.match(dashboardTopbar, /useInrAgentPendingCount\(\)/);
   assert.match(accountCache, /"inrcy_dashboard_notifications_v1"/);
   assert.match(accountCache, /"inrcy_inr_agent_pending_count_v1"/);
 });

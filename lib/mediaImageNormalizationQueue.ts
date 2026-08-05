@@ -7,6 +7,7 @@ import {
   IMAGE_NORMALIZATION_PIPELINE_VERSION,
   isImageNormalizationEnabled,
 } from "@/lib/mediaImageNormalizationPolicy";
+import { loadNormalizationRepairCandidates } from "@/lib/mediaNormalizationRepairQueue";
 
 type EnqueueImageNormalizationParams = {
   mediaId: string;
@@ -138,28 +139,17 @@ export async function repairPendingImageNormalizationQueue(params?: {
   }
 
   const limit = Math.max(1, Math.min(50, Math.round(params?.limit || 20)));
-  const result = await supabaseAdmin
-    .from("pro_media_library")
-    .select("id,user_id,media_metadata,processing_status")
-    .eq("media_type", "image")
-    .eq("upload_status", "uploaded")
-    .gte("pipeline_version", IMAGE_NORMALIZATION_PIPELINE_VERSION)
-    .in("processing_status", ["not_requested", "failed_retryable"])
-    .order("updated_at", { ascending: true })
-    .limit(limit);
-  if (result.error) throw result.error;
+  const candidates = await loadNormalizationRepairCandidates({
+    supabase: supabaseAdmin,
+    mediaType: "image",
+    minimumPipelineVersion: IMAGE_NORMALIZATION_PIPELINE_VERSION,
+    limit,
+  });
 
   let queued = 0;
   let failed = 0;
-  for (const row of result.data || []) {
+  for (const row of candidates) {
     const metadata = asRecord(row.media_metadata);
-    if (
-      metadata.pipeline_mission === "source_metadata" &&
-      metadata.preparation_scope === "source_only" &&
-      String(row.processing_status || "") === "not_requested"
-    ) {
-      continue;
-    }
     const mission =
       metadata.pipeline_mission === "ai_preparation" ||
       metadata.pipeline_mission === "publication_preparation"
@@ -186,7 +176,7 @@ export async function repairPendingImageNormalizationQueue(params?: {
 
   return {
     enabled: true,
-    scanned: result.data?.length || 0,
+    scanned: candidates.length,
     queued,
     failed,
   };

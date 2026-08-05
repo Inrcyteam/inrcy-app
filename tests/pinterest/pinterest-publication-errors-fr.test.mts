@@ -19,6 +19,18 @@ test("L'erreur de ratios Pinterest est traduite en français", () => {
   );
 });
 
+test("L'échec de récupération de couverture Pinterest est traduit en français", () => {
+  const message = getProviderPublicationErrorMessage(
+    "pinterest",
+    "Sorry we could not fetch the image.",
+  );
+
+  assert.equal(
+    message,
+    "Pinterest n’a pas pu récupérer une image. Vérifiez qu’elle reste publique et accessible, puis réessayez.",
+  );
+});
+
 test("L'erreur d'URL photo TikTok est traduite et explique localhost", () => {
   const message = getProviderPublicationErrorMessage(
     "tiktok",

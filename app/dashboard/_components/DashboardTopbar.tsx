@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 
 import styles from "../dashboard.module.css";
@@ -11,8 +11,7 @@ import EstablishmentMenu from "./EstablishmentMenu";
 import RequiredSetupLock from "./RequiredSetupLock";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import type { NotificationItem } from "../dashboard.types";
-import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
-import { ACTIVE_INRCY_ACCOUNT_EVENT } from "@/lib/multicompte/constants";
+import { useInrAgentPendingCount } from "../_hooks/useInrAgentPendingCount";
 
 type DashboardPanelName =
   | "contact"
@@ -45,7 +44,6 @@ type DashboardPanelName =
 
 
 const INR_AGENT_ROUTE = "/dashboard/agent";
-const INR_AGENT_PENDING_COUNT_CACHE_KEY = "inrcy_inr_agent_pending_count_v1";
 const INR_AGENT_PRELOAD_ASSETS = [
   "/agent/inr-agent-robot-cutout.webp",
   "/icons/inr-agent-header.png",
@@ -61,27 +59,6 @@ const INR_AGENT_PRELOAD_ASSETS = [
 ];
 
 const preloadedInrAgentAssets = new Set<string>();
-
-function readCachedPendingInrAgentCount() {
-  try {
-    const raw = readAccountCacheValue(INR_AGENT_PENDING_COUNT_CACHE_KEY);
-    const count = Number(raw);
-    return Number.isFinite(count) && count > 0 ? Math.round(count) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writeCachedPendingInrAgentCount(count: number) {
-  try {
-    writeAccountCacheValue(
-      INR_AGENT_PENDING_COUNT_CACHE_KEY,
-      String(Number.isFinite(count) && count > 0 ? Math.round(count) : 0),
-    );
-  } catch {
-    // Le cache visuel du badge ne doit jamais bloquer le dashboard.
-  }
-}
 
 function GearIcon() {
   return (
@@ -199,32 +176,8 @@ export default function DashboardTopbar({
 }: DashboardTopbarProps) {
   const router = useRouter();
   const t = useDashboardI18n();
-  const [pendingInrAgentCount, setPendingInrAgentCount] = useState(
-    () => readCachedPendingInrAgentCount(),
-  );
+  const pendingInrAgentCount = useInrAgentPendingCount();
   const inrAgentSetupLocked = inrAgentEnabled && requiredSetupLockVisible;
-
-  const refreshPendingInrAgentCount = useCallback(async () => {
-    if (!inrAgentEnabled) {
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/agent/actions/pending-count", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) return;
-
-      const payload = await response.json().catch(() => null) as { count?: unknown } | null;
-      const nextCount = Number(payload?.count ?? 0);
-      const safeCount = Number.isFinite(nextCount) && nextCount > 0 ? Math.round(nextCount) : 0;
-      setPendingInrAgentCount(safeCount);
-      writeCachedPendingInrAgentCount(safeCount);
-    } catch {
-      // Le badge ne doit jamais bloquer le dashboard.
-    }
-  }, [inrAgentEnabled]);
 
   const pendingInrAgentLabel = pendingInrAgentCount > 99 ? "99+" : String(pendingInrAgentCount);
   const agentTitle = inrAgentEnabled
@@ -239,48 +192,6 @@ export default function DashboardTopbar({
     router.prefetch(INR_AGENT_ROUTE);
     preloadInrAgentImages();
   }, [inrAgentEnabled, router]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleActiveAccountChange = () => {
-      setPendingInrAgentCount(readCachedPendingInrAgentCount());
-      void refreshPendingInrAgentCount();
-    };
-    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
-
-    refreshPendingInrAgentCount();
-
-    if (!inrAgentEnabled) {
-      return () => {
-        window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
-      };
-    }
-
-    const handleVisible = () => {
-      if (document.visibilityState === "visible") {
-        void refreshPendingInrAgentCount();
-      }
-    };
-    const handleFocus = () => void refreshPendingInrAgentCount();
-    const handleAgentActionsChanged = () => void refreshPendingInrAgentCount();
-    const interval = window.setInterval(() => {
-      void refreshPendingInrAgentCount();
-    }, 60_000);
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("inrcy:agent-actions-changed", handleAgentActionsChanged);
-    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
-    document.addEventListener("visibilitychange", handleVisible);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("inrcy:agent-actions-changed", handleAgentActionsChanged);
-      window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
-      document.removeEventListener("visibilitychange", handleVisible);
-    };
-  }, [inrAgentEnabled, refreshPendingInrAgentCount]);
 
   const warmInrAgent = () => {
     if (!inrAgentEnabled) return;

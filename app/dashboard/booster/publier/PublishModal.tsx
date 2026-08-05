@@ -29,7 +29,6 @@ import {
   type PublicationProgressPhaseKey,
 } from "@/lib/boosterProgressPhases";
 import type { BoosterPublishProgressUpdate } from "@/lib/boosterPublishClient";
-import type { PublishExecutionChannelProgress } from "@/app/dashboard/_components/PublishExecutionProgress";
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
   getAiEngineOption,
@@ -197,6 +196,10 @@ import {
   loadMediaPublicationWorkspace,
   type MediaWorkspaceMediaSummary,
 } from "@/lib/mediaWorkspaceClient";
+import {
+  MEDIA_WORKSPACE_READINESS_TIMEOUT_MS,
+  withMediaWorkspaceDeadline,
+} from "@/lib/mediaWorkspaceTimeout";
 import usePublishVideoController, {
   normalizeRestoredVideoVariants,
   type VideoVariantPreparationState,
@@ -219,70 +222,6 @@ const BOOSTER_GENERATION_SAFETY_BUDGET_MS =
   BOOSTER_GENERATION_TARGET_MS + 15_000;
 const BOOSTER_PUBLISH_VISIBLE_CAP_MS = 60_000;
 const BOOSTER_PUBLISH_WITH_MEDIA_FINALIZATION_VISIBLE_CAP_MS = 90_000;
-
-function getPublicationMediaModeLabel(mode: ChannelMediaMode) {
-  if (mode === "video") return "Vidéo";
-  if (mode === "images") return "Photos";
-  return "Texte";
-}
-
-function resolvePublicationChannelProgress(
-  channel: ChannelKey,
-  mode: ChannelMediaMode,
-  entry: Record<string, any> | null,
-  fallback?: PublishExecutionChannelProgress,
-): PublishExecutionChannelProgress {
-  const base = {
-    channel,
-    label: CHANNEL_LABELS[channel] || channel,
-    mediaLabel: getPublicationMediaModeLabel(mode),
-  };
-  if (!entry) {
-    return (
-      fallback || {
-        ...base,
-        statusLabel: "Prêt",
-        tone: "waiting" as const,
-      }
-    );
-  }
-
-  const technicalStatus = String(
-    entry.technicalStatus || entry.status || "",
-  ).toLowerCase();
-  if (
-    entry.ok === false ||
-    technicalStatus === "failed" ||
-    technicalStatus === "error"
-  ) {
-    return { ...base, statusLabel: "Échec", tone: "error" };
-  }
-  if (
-    technicalStatus === "published_with_warning" ||
-    entry.warning ||
-    entry.warning_kind
-  ) {
-    return { ...base, statusLabel: "Publié · alerte", tone: "warning" };
-  }
-  if (
-    entry.ok === true ||
-    ["published", "completed", "success", "succeeded"].includes(
-      technicalStatus,
-    )
-  ) {
-    return { ...base, statusLabel: "Publié", tone: "success" };
-  }
-  if (technicalStatus === "preparing") {
-    return { ...base, statusLabel: "Finalisation média", tone: "active" };
-  }
-  if (technicalStatus === "processing") {
-    return { ...base, statusLabel: "Envoi en cours", tone: "active" };
-  }
-  if (technicalStatus === "queued") {
-    return { ...base, statusLabel: "En file", tone: "active" };
-  }
-  return { ...base, statusLabel: "Pris en charge", tone: "active" };
-}
 
 export default function PublishModal({
   styles,
@@ -378,9 +317,6 @@ export default function PublishModal({
   const [publishProgressLabel, setPublishProgressLabel] = useState("");
   const [publishProgressPhaseIndex, setPublishProgressPhaseIndex] = useState(0);
   const [publishProgressPhaseLabel, setPublishProgressPhaseLabel] = useState("");
-  const [publishChannelProgress, setPublishChannelProgress] = useState<
-    PublishExecutionChannelProgress[]
-  >([]);
   const publishProgressTargetRef = useRef(0);
   const publishProgressPhaseIndexRef = useRef(0);
   const phasedPublicationProgressRef = useRef(false);
@@ -1566,36 +1502,51 @@ export default function PublishModal({
       );
       if (!expectedCount) return null;
 
-      await waitForPersistentWorkspaceIdle(
-        (progress, label) => {
-          onProgress?.(
-            Math.max(6, Math.min(42, Math.round(progress * 0.36) + 6)),
-            label || "Envoi sécurisé du média en cours...",
+      return await withMediaWorkspaceDeadline(
+        async (readinessSignal) => {
+          await waitForPersistentWorkspaceIdle(
+            (progress, label) => {
+              onProgress?.(
+                Math.max(6, Math.min(42, Math.round(progress * 0.36) + 6)),
+                label || "Envoi sécurisé du média en cours...",
+              );
+            },
+            {
+              mediaTypes: sourceExpectations.map((item) => item.mediaType),
+              signal: readinessSignal,
+            },
           );
+
+          const ensuredWorkspace = mediaWorkspaceId
+            ? null
+            : await ensurePersistentMediaWorkspace();
+          const activeWorkspaceId =
+            mediaWorkspaceId || ensuredWorkspace?.workspaceId || "";
+          if (!activeWorkspaceId) {
+            throw new Error("Impossible de préparer l'espace média.");
+          }
+
+          await verifyPersistentWorkspaceSources(sourceExpectations, {
+            signal: readinessSignal,
+          });
+
+          const mediaLabel =
+            expectedCount > 1 ? "Médias sécurisés" : "Média sécurisé";
+          onProgress?.(
+            42,
+            purpose === "generate"
+              ? `${mediaLabel} · prêt pour la génération`
+              : `${mediaLabel} · prêt pour l’envoi`,
+          );
+          return activeWorkspaceId;
         },
-        { mediaTypes: sourceExpectations.map((item) => item.mediaType) },
+        {
+          timeoutMs: MEDIA_WORKSPACE_READINESS_TIMEOUT_MS,
+          phase: `workspace_readiness_${purpose}`,
+          timeoutMessage:
+            "Supabase est temporairement saturé pendant la sécurisation des médias. Réessayez dans quelques secondes.",
+        },
       );
-
-      const ensuredWorkspace = mediaWorkspaceId
-        ? null
-        : await ensurePersistentMediaWorkspace();
-      const activeWorkspaceId =
-        mediaWorkspaceId || ensuredWorkspace?.workspaceId || "";
-      if (!activeWorkspaceId) {
-        throw new Error("Impossible de préparer l'espace média.");
-      }
-
-      await verifyPersistentWorkspaceSources(sourceExpectations);
-
-      const mediaLabel =
-        expectedCount > 1 ? "Médias sécurisés" : "Média sécurisé";
-      onProgress?.(
-        42,
-        purpose === "generate"
-          ? `${mediaLabel} · prêt pour la génération`
-          : `${mediaLabel} · prêt pour l’envoi`,
-      );
-      return activeWorkspaceId;
     },
     [
       ensurePersistentMediaWorkspace,
@@ -2893,8 +2844,6 @@ export default function PublishModal({
       useImagesForAI,
     });
     resetGenerationProgress();
-    const generationDeadlineAt =
-      Date.now() + BOOSTER_GENERATION_SAFETY_BUDGET_MS;
     setGenerating(true);
     setGenerationProgressPhase(
       "initialization",
@@ -3020,6 +2969,12 @@ export default function PublishModal({
         49,
       );
 
+      // Uploading and verifying the workspace is media preparation, not AI
+      // generation. Start the generation safety window only once the request is
+      // ready to leave; otherwise a slow batch of images can consume the whole
+      // deadline before the AI is even called.
+      const generationDeadlineAt =
+        Date.now() + BOOSTER_GENERATION_SAFETY_BUDGET_MS;
       const generationPayload = {
         creationMode: "ai" as const,
         generationDeadlineAt,
@@ -4109,18 +4064,6 @@ export default function PublishModal({
     const preflightFailureChannels = new Set(
       preflightFailedChannels.map((failure) => failure.channel),
     );
-    setPublishChannelProgress(
-      publishTargetChannels.map((channel) => {
-        const mode = publishTargetMediaModeByChannel[channel] || "none";
-        if (preflightFailureChannels.has(channel)) {
-          return resolvePublicationChannelProgress(channel, mode, {
-            status: "failed",
-            ok: false,
-          });
-        }
-        return resolvePublicationChannelProgress(channel, mode, null);
-      }),
-    );
 
     const onPublicationProgress = (update: BoosterPublishProgressUpdate) => {
       const payload =
@@ -4137,60 +4080,6 @@ export default function PublishModal({
               Boolean(entry && typeof entry === "object"),
           ) as Record<string, any>[])
         : [];
-      const entryByChannel = new Map(
-        entries.map((entry) => [String(entry.channel || ""), entry]),
-      );
-
-      setPublishChannelProgress((current) => {
-        const currentByChannel = new Map(
-          current.map((channel) => [channel.channel, channel]),
-        );
-        return publishTargetChannels.map((channel) => {
-          const mode = publishTargetMediaModeByChannel[channel] || "none";
-          const previous = currentByChannel.get(channel);
-          const entry = entryByChannel.get(channel);
-          if (entry) {
-            return resolvePublicationChannelProgress(
-              channel,
-              mode,
-              entry,
-              previous,
-            );
-          }
-          if (preflightFailureChannels.has(channel)) {
-            return resolvePublicationChannelProgress(channel, mode, {
-              status: "failed",
-              ok: false,
-            });
-          }
-          if (update.stage === "released_to_background") {
-            if (
-              previous?.tone === "success" ||
-              previous?.tone === "warning" ||
-              previous?.tone === "error"
-            ) {
-              return previous;
-            }
-            return {
-              channel,
-              label: CHANNEL_LABELS[channel] || channel,
-              mediaLabel: getPublicationMediaModeLabel(mode),
-              statusLabel: "En arrière-plan",
-              tone: "active",
-            };
-          }
-          if (update.stage === "request_accepted") {
-            return resolvePublicationChannelProgress(channel, mode, {
-              status:
-                String(payload.status || "") === "preparing" && mode !== "none"
-                  ? "preparing"
-                  : "queued",
-            });
-          }
-          return previous || resolvePublicationChannelProgress(channel, mode, null);
-        });
-      });
-
       const terminalChannels = new Set<string>(preflightFailureChannels);
       let preparingCount = 0;
       let activeCount = 0;
@@ -6315,7 +6204,6 @@ export default function PublishModal({
             publishProgressPhaseIndex={publishProgressPhaseIndex}
             publishProgressPhaseTotal={PUBLICATION_PROGRESS_STAGES.length}
             publishProgressPhaseLabel={publishProgressPhaseLabel}
-            publishChannelProgress={publishChannelProgress}
             publishError={publishError}
             onPublish={onPublish}
             onSchedule={openSchedulePublicationModal}

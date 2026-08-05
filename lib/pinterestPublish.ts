@@ -11,6 +11,7 @@ import {
   ensureFrenchPublicationErrorMessage,
   getProviderPublicationErrorMessage,
 } from "@/lib/publicationErrorFrench";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { getVideoPublicationPolicy } from "@/lib/videoPublicationPolicy";
 import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { randomUUID } from "crypto";
@@ -62,6 +63,7 @@ export type PinterestCreateVideoPinArgs = {
   videoFileName?: string | null;
   coverImageUrl?: string | null;
   coverStoragePath?: string | null;
+  coverBucket?: string | null;
   link?: string | null;
 };
 
@@ -86,15 +88,6 @@ function normalizePublicUrl(value: unknown) {
   const raw = String(value || "").trim();
   if (!/^https?:\/\//i.test(raw)) return "";
   return raw;
-}
-
-function getBoosterPublicUrl(storagePath: unknown) {
-  const cleanPath = sanitizeStoragePath(storagePath);
-  if (!cleanPath) return "";
-  return normalizePublicUrl(
-    supabaseAdmin.storage.from(PINTEREST_COVER_BUCKET).getPublicUrl(cleanPath)
-      .data.publicUrl,
-  );
 }
 
 function buildPinterestPinUrl(pinId: string | null) {
@@ -167,6 +160,7 @@ async function pinterestApiRequest<T = unknown>(
 const execFileAsync = promisify(execFile);
 const PINTEREST_VIDEO_POLICY = getVideoPublicationPolicy("pinterest");
 const PINTEREST_COVER_BUCKET = "booster";
+const PINTEREST_COVER_SIGNED_URL_TTL_SECONDS = 60 * 60 * 24;
 const PINTEREST_VIDEO_TIMEOUT_MS = 120000;
 const PINTEREST_SOURCE_DOWNLOAD_TIMEOUT_MS = 150000;
 
@@ -580,16 +574,37 @@ export async function createPinterestImagePin({
   };
 }
 
-export function resolvePinterestVideoCoverImageUrl(params: {
+export async function resolvePinterestVideoCoverImageUrl(params: {
   coverImageUrl?: string | null;
   coverStoragePath?: string | null;
+  coverBucket?: string | null;
 }) {
-  // Prefer the public URL rebuilt from the durable storage path. A signed URL
-  // captured in a dispatch payload may expire while Pinterest processes media.
-  return (
-    getBoosterPublicUrl(params.coverStoragePath) ||
-    normalizePublicUrl(params.coverImageUrl)
-  );
+  const coverStoragePath = sanitizeStoragePath(params.coverStoragePath);
+  const requestedBucket = String(params.coverBucket || "").trim();
+  const coverBucket =
+    requestedBucket &&
+    !requestedBucket.includes("/") &&
+    !requestedBucket.includes("\\") &&
+    !requestedBucket.includes("..")
+      ? requestedBucket
+      : PINTEREST_COVER_BUCKET;
+
+  // The durable registry owns both the bucket and the path. Re-sign the real
+  // object on every worker invocation so a private inrcy-pro-media thumbnail
+  // remains fetchable by Pinterest throughout background processing. Never
+  // rebuild an inrcy-pro-media path inside the unrelated booster bucket.
+  if (coverStoragePath) {
+    const signedUrl = await createSafeStorageSignedUrl(
+      coverBucket,
+      coverStoragePath,
+      PINTEREST_COVER_SIGNED_URL_TTL_SECONDS,
+    );
+    const cleanSignedUrl = normalizePublicUrl(signedUrl);
+    if (cleanSignedUrl) return cleanSignedUrl;
+  }
+
+  // Compatibility fallback for old publications that only persisted a URL.
+  return normalizePublicUrl(params.coverImageUrl);
 }
 
 export async function withPinterestVideoProtocolAsset<T>(
@@ -669,14 +684,13 @@ export async function createPinterestVideoPin({
   videoFileName,
   coverImageUrl,
   coverStoragePath,
+  coverBucket,
   link,
 }: PinterestCreateVideoPinArgs): Promise<PinterestCreatePinResult> {
   const token = String(accessToken || "").trim();
   const cleanUserId = String(userId || "").trim();
   const cleanBoardId = String(boardId || "").trim();
   const cleanVideoUrl = normalizePublicUrl(videoUrl);
-  const cleanCoverUrl =
-    normalizePublicUrl(coverImageUrl) || getBoosterPublicUrl(coverStoragePath);
 
   if (!token) throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
   if (!cleanUserId) throw new Error("Compte iNrCy introuvable pour Pinterest.");
@@ -685,6 +699,11 @@ export async function createPinterestVideoPin({
   if (!cleanVideoUrl && !sanitizeStoragePath(videoStoragePath)) {
     throw new Error("Pinterest nécessite une vidéo publique valide.");
   }
+  const cleanCoverUrl = await resolvePinterestVideoCoverImageUrl({
+    coverImageUrl,
+    coverStoragePath,
+    coverBucket,
+  });
 
   const sourceFormat = inferPinterestVideoFormat({
     contentType: videoContentType,

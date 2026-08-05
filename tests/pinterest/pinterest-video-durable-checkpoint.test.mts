@@ -463,6 +463,28 @@ test("une erreur de poll GET est reprenable, un statut média failed est termina
   assert.match(failed.checkpoint.failure?.message || "", /Format refusé/);
 });
 
+test("une couverture Pinterest inaccessible est terminale et traduite", async () => {
+  const fetchImpl = (async () =>
+    jsonResponse({ message: "Sorry we could not fetch the image." }, 400)) as typeof fetch;
+  const ready = checkpoint({
+    phase: "media_ready",
+    mediaId: "media-cover",
+    mediaStatus: "succeeded",
+    mediaReadyAt: new Date(START_TIME).toISOString(),
+  });
+
+  const state = await advancePinterestVideoProtocol(
+    durableArgs({ checkpoint: ready, fetchImpl, now: () => START_TIME }),
+  );
+
+  assert.equal(state.state, "failed");
+  assert.equal(state.checkpoint.failure?.code, "pinterest_create_pin_http_error");
+  assert.equal(
+    state.checkpoint.failure?.message,
+    "Pinterest n’a pas pu récupérer une image. Vérifiez qu’elle reste publique et accessible, puis réessayez.",
+  );
+});
+
 test("un checkpoint d'une autre source est refusé avant tout appel réseau", async () => {
   let calls = 0;
   const fetchImpl = (async () => {

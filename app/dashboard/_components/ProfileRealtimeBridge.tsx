@@ -74,13 +74,21 @@ export default function ProfileRealtimeBridge() {
     let cancelled = false;
     let userId: string | null = null;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let channelHealthy = false;
+    let pollId: number | null = null;
+    let activationSequence = 0;
 
     const loadVersions = async () => {
-      const response = await fetch("/api/profile/versions", {
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      });
+      let response: Response;
+      try {
+        response = await fetch("/api/profile/versions", {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+      } catch {
+        return null;
+      }
 
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent("inrcy:auth-session-invalid"));
@@ -125,22 +133,42 @@ export default function ProfileRealtimeBridge() {
     };
 
     const handleFocus = () => {
+      if (document.visibilityState === "hidden") return;
       void refreshVersionsFromServer(false);
     };
 
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void refreshVersionsFromServer(false);
-      }
+    const stopPolling = () => {
+      if (pollId == null) return;
+      window.clearInterval(pollId);
+      pollId = null;
     };
 
-    const boot = async () => {
-      const snapshot = await loadVersions();
-      if (!snapshot || cancelled) return;
-      userId = snapshot.userId;
-      versionsRef.current = toProfileVersionsSnapshot(snapshot.versions);
+    const ensureRecoveryPolling = () => {
+      if (pollId != null || document.visibilityState === "hidden") return;
+      pollId = window.setInterval(() => {
+        if (document.visibilityState === "hidden" || channelHealthy) return;
+        if (!userId) {
+          void activate(false).catch(() => {});
+          return;
+        }
+        void refreshVersionsFromServer(false);
+      }, PROFILE_VERSION_POLL_MS);
+    };
 
-      channel = supabase
+    const stopRealtime = () => {
+      const current = channel;
+      channel = null;
+      channelHealthy = false;
+      if (!current) return;
+      try {
+        void Promise.resolve(supabase.removeChannel(current)).catch(() => {});
+      } catch {}
+    };
+
+    const subscribeToProfile = () => {
+      if (!userId || cancelled || document.visibilityState === "hidden" || channel) return;
+
+      const nextChannel = supabase
         .channel(`inrcy-profile-versions:${userId}`)
         .on(
           "postgres_changes",
@@ -153,22 +181,61 @@ export default function ProfileRealtimeBridge() {
           (payload) => {
             dispatchChanges(payload.new ?? payload.old ?? null);
           },
-        )
-        .subscribe();
-
-      window.addEventListener("focus", handleFocus);
-      document.addEventListener("visibilitychange", handleVisibility);
+        );
+      channel = nextChannel;
+      nextChannel.subscribe((status) => {
+        if (cancelled || channel !== nextChannel) return;
+        channelHealthy = status === "SUBSCRIBED";
+        if (channelHealthy) {
+          stopPolling();
+        } else {
+          ensureRecoveryPolling();
+        }
+      });
     };
 
-    const pollId = window.setInterval(() => {
-      void refreshVersionsFromServer(false);
-    }, PROFILE_VERSION_POLL_MS);
+    const activate = async (forceRefresh: boolean) => {
+      if (cancelled || document.visibilityState === "hidden") return;
+      const sequence = ++activationSequence;
+      ensureRecoveryPolling();
 
-    void boot();
+      if (!userId) {
+        const snapshot = await loadVersions();
+        if (!snapshot || cancelled || sequence !== activationSequence) return;
+        userId = snapshot.userId;
+        versionsRef.current = toProfileVersionsSnapshot(snapshot.versions);
+      }
+
+      subscribeToProfile();
+      if (forceRefresh) {
+        await refreshVersionsFromServer(true);
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        activationSequence += 1;
+        stopPolling();
+        stopRealtime();
+        return;
+      }
+
+      // Subscribe first, then reconcile the counters to cover every change
+      // committed while the tab was hidden.
+      void activate(true).catch(() => {});
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    if (document.visibilityState !== "hidden") {
+      void activate(false).catch(() => {});
+    }
 
     return () => {
       cancelled = true;
-      window.clearInterval(pollId);
+      activationSequence += 1;
+      stopPolling();
+      stopRealtime();
       if (dispatchTimerRef.current != null) {
         window.clearTimeout(dispatchTimerRef.current);
         dispatchTimerRef.current = null;
@@ -176,9 +243,6 @@ export default function ProfileRealtimeBridge() {
       pendingChangesRef.current.clear();
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
-      if (channel) {
-        void supabase.removeChannel(channel);
-      }
     };
   }, [dispatchChanges]);
 

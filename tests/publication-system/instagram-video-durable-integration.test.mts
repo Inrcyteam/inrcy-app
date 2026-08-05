@@ -26,6 +26,9 @@ function assertOrdered(source: string, markers: string[]) {
 const route = read("app/api/booster/publish-now/route.ts");
 const cron = read("app/api/cron/booster-publications/route.ts");
 const phases = read("lib/instagramVideoPublishPhases.ts");
+const channelContext = read(
+  "app/api/booster/publish-now/publishNow.channel-context.ts",
+);
 const instagramBranch = sliceBetween(
   route,
   'if (ch === "instagram")',
@@ -83,6 +86,36 @@ test("the exact provider container survives every create, poll and publish resta
   assert.match(
     instagramBranch.slice(readyCommit, committedPublish),
     /persistInstagramVideoCheckpoint\(/,
+  );
+});
+
+test("durable Instagram identity is independent from expiring signed URLs", () => {
+  assert.match(route, /buildInstagramVideoSourceIdentity/);
+  assertOrdered(instagramBranch, [
+    "const videoSourceIdentity = buildInstagramVideoSourceIdentity",
+    "const expectedRequestFingerprint",
+    "videoSourceIdentity,",
+    "const compatibleRequestFingerprints",
+    "await instagramCreateVideoCheckpointWithTokenFallback",
+    "videoSourceIdentity,",
+  ]);
+  assert.match(
+    instagramBranch,
+    /bucket:\s*channelVideo\.bucket[\s\S]*storagePath:\s*channelVideo\.storagePath/,
+  );
+  assert.match(
+    instagramBranch,
+    /expectedRequestFingerprint,[\s\S]*compatibleRequestFingerprints/,
+  );
+  assert.match(phases, /const INSTAGRAM_VIDEO_CHECKPOINT_VERSION = 2 as const/);
+  assert.match(phases, /checkpoint\.version === 1/);
+  assert.match(
+    phases,
+    /videoSourceIdentity[\s\S]*Preserve the exact v1 canonical request/,
+  );
+  assert.match(
+    channelContext,
+    /publicUrl:\s*variant\.publicUrl,[\s\S]*bucket:\s*"booster",[\s\S]*storagePath:/,
   );
 });
 

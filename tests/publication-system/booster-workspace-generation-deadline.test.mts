@@ -56,7 +56,16 @@ test("generation targets 30 seconds but keeps a 45-second safety window without 
   );
   assert.doesNotMatch(modal, /await sleep\(320\)|await sleep\(650\)/);
   assert.doesNotMatch(modal, /transcribeVideoAudioForAI\(/);
-  assert.match(modal, /generationDeadlineAt/);
+  const mediaReadinessIndex = modal.indexOf(
+    'await waitForPersistentWorkspaceReadiness(',
+  );
+  const deadlineStartIndex = modal.indexOf(
+    'const generationDeadlineAt =\n        Date.now() + BOOSTER_GENERATION_SAFETY_BUDGET_MS',
+  );
+  const requestBuildIndex = modal.indexOf('const generationPayload = {');
+  assert.ok(mediaReadinessIndex >= 0);
+  assert.ok(deadlineStartIndex > mediaReadinessIndex);
+  assert.ok(requestBuildIndex > deadlineStartIndex);
 });
 
 test("the server shares the route-entry deadline with transcription and generation", () => {

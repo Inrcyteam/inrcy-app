@@ -42,6 +42,7 @@ import {
   setActiveBrowserUserId,
   writeAccountCacheValue,
 } from "@/lib/browserAccountCache";
+import { ACTIVE_INRCY_ACCOUNT_EVENT } from "@/lib/multicompte/constants";
 import { expectedUiSnapshotDate, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { buildBubbleAccessMap, isBubbleEnabled, type AppBubbleAccessMap } from "@/lib/bubbleAccess";
@@ -506,6 +507,7 @@ export default function DashboardClient({
   } = useDashboardNotifications();
   const kpisRequestSeqRef = useRef(0);
   const siteConfigRequestSeqRef = useRef(0);
+  const inrSearchSettingsRequestRef = useRef<Promise<void> | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
   const latestApplyBootstrapRefreshRef = useRef<((bootstrap: DailyStatsRefreshBootstrapResponse) => { syncAt: number; bootstrapSnapshotDate: string | null }) | null>(null);
   const latestSyncFromServerCacheIfNeededRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
@@ -1173,37 +1175,77 @@ useEffect(() => {
     };
   }
 
-  const syncInrSearch = async () => {
-    try {
-      const response = await fetch("/api/inr-search/settings", { cache: "no-store", credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (cancelled || !response.ok || !payload?.ok) return;
-      const config = payload.inrSearch && typeof payload.inrSearch === "object" ? payload.inrSearch : {};
-      const publication = payload.publication && typeof payload.publication === "object" ? payload.publication : {};
-      const slug = String(config.slug || "").trim();
-      const connected = Boolean(config.enabled && slug && publication.allowed);
-      const directoryEnabled = Boolean(config.enabled && config.directoryEnabled && publication.allowed);
-      const profileUrl = slug ? `${getRuntimeInrSearchOrigin()}/entreprises/${slug}` : "";
-      setInrSearchConnected(connected);
-      setInrSearchUrl(profileUrl);
-      setInrSearchDirectoryEnabled(directoryEnabled);
-      mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl, inrSearchDirectoryEnabled: directoryEnabled });
-    } catch {
-      // Le dernier état connu reste affiché si la synchronisation réseau échoue.
-    }
+  const syncInrSearch = () => {
+    const existingRequest = inrSearchSettingsRequestRef.current;
+    if (existingRequest) return existingRequest;
+
+    const requestAccountId = getActiveBrowserUserId();
+    const job = (async () => {
+      try {
+        const response = await fetch("/api/inr-search/settings", { cache: "no-store", credentials: "include" });
+        const payload = await response.json().catch(() => null);
+        if (
+          cancelled ||
+          requestAccountId !== getActiveBrowserUserId() ||
+          !response.ok ||
+          !payload?.ok
+        ) return;
+        const config = payload.inrSearch && typeof payload.inrSearch === "object" ? payload.inrSearch : {};
+        const publication = payload.publication && typeof payload.publication === "object" ? payload.publication : {};
+        const slug = String(config.slug || "").trim();
+        const connected = Boolean(config.enabled && slug && publication.allowed);
+        const directoryEnabled = Boolean(config.enabled && config.directoryEnabled && publication.allowed);
+        const profileUrl = slug ? `${getRuntimeInrSearchOrigin()}/entreprises/${slug}` : "";
+        setInrSearchConnected(connected);
+        setInrSearchUrl(profileUrl);
+        setInrSearchDirectoryEnabled(directoryEnabled);
+        mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl, inrSearchDirectoryEnabled: directoryEnabled });
+      } catch {
+        // Le dernier état connu reste affiché si la synchronisation réseau échoue.
+      }
+    })();
+
+    inrSearchSettingsRequestRef.current = job;
+    void job.finally(() => {
+      if (inrSearchSettingsRequestRef.current === job) {
+        inrSearchSettingsRequestRef.current = null;
+      }
+    });
+    return job;
   };
 
-  void syncInrSearch();
-  const intervalId = window.setInterval(() => { void syncInrSearch(); }, 30_000);
-  const handleFocus = () => { void syncInrSearch(); };
-  const handleVisibility = () => {
-    if (document.visibilityState === "visible") void syncInrSearch();
+  let intervalId: number | null = null;
+  const stopPolling = () => {
+    if (intervalId == null) return;
+    window.clearInterval(intervalId);
+    intervalId = null;
   };
+  const syncIfVisible = () => {
+    if (cancelled || document.hidden) return;
+    void syncInrSearch();
+  };
+  const startPolling = () => {
+    if (intervalId != null || document.hidden) return;
+    intervalId = window.setInterval(syncIfVisible, 30_000);
+  };
+  const handleFocus = () => syncIfVisible();
+  const handleVisibility = () => {
+    if (document.hidden) {
+      stopPolling();
+      return;
+    }
+    syncIfVisible();
+    startPolling();
+  };
+  if (!document.hidden) {
+    syncIfVisible();
+    startPolling();
+  }
   window.addEventListener("focus", handleFocus);
   document.addEventListener("visibilitychange", handleVisibility);
   return () => {
     cancelled = true;
-    window.clearInterval(intervalId);
+    stopPolling();
     window.removeEventListener("focus", handleFocus);
     document.removeEventListener("visibilitychange", handleVisibility);
   };
@@ -2832,14 +2874,45 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   // ✅ Auto-refresh Générateur + statuts modules dès qu'un module se connecte / se déconnecte
   // On écoute les changements Postgres sur les tables qui impactent:
   // - integrations (OAuth/connecteurs)
-  // - pro_tools_configs / inrcy_site_configs / profiles (mirrors/settings)
+  // - pro_tools_configs / inrcy_site_configs (mirrors/settings)
+  // `profiles` reste centralise dans ProfileRealtimeBridge pour eviter une
+  // seconde souscription sur la meme ligne dans chaque onglet.
   useEffect(() => {
     const supabase = createClient();
     let disposed = false;
-    let t: any = null;
+    let t: number | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let authUserId: string | null = null;
+    let subscribedUserId: string | null = null;
+    let refreshAfterVisibilityRestore = false;
+
+    const isSafeUserId = (value: unknown): value is string =>
+      typeof value === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+    const resolveScopedUserId = (candidate?: unknown) => {
+      if (isSafeUserId(candidate)) return candidate;
+      if (!isSafeUserId(authUserId)) return null;
+      const resolved = resolveActiveBrowserUserId(authUserId);
+      return isSafeUserId(resolved) ? resolved : authUserId;
+    };
+
+    const removeRealtimeChannel = () => {
+      const current = channel;
+      channel = null;
+      subscribedUserId = null;
+      if (!current) return;
+      try {
+        void Promise.resolve(supabase.removeChannel(current)).catch(() => {});
+      } catch {}
+    };
 
     const scheduleRefresh = (payload?: any) => {
       if (disposed) return;
+      if (document.visibilityState === "hidden") {
+        refreshAfterVisibilityRestore = true;
+        return;
+      }
       if (Date.now() - lastGeneratorRefreshAtRef.current < 2500) return;
       if (t) window.clearTimeout(t);
 
@@ -2857,37 +2930,81 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }, 500);
     };
 
-    const ch = supabase
-      .channel("inrcy-generator-sync")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "integrations" },
-        (payload: any) => scheduleRefresh(payload)
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pro_tools_configs" },
-        (payload: any) => scheduleRefresh(payload)
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "inrcy_site_configs" },
-        (payload: any) => scheduleRefresh(payload)
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        (payload: any) => scheduleRefresh(payload)
-      )
-      .subscribe();
+    const subscribeForUser = (userId: string | null) => {
+      if (
+        disposed ||
+        document.visibilityState === "hidden" ||
+        !isSafeUserId(userId) ||
+        subscribedUserId === userId
+      ) {
+        return;
+      }
+
+      removeRealtimeChannel();
+      subscribedUserId = userId;
+      const userFilter = `user_id=eq.${userId}`;
+      channel = supabase
+        .channel(`inrcy-generator-sync:${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "integrations", filter: userFilter },
+          (payload: any) => scheduleRefresh(payload),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "pro_tools_configs", filter: userFilter },
+          (payload: any) => scheduleRefresh(payload),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "inrcy_site_configs", filter: userFilter },
+          (payload: any) => scheduleRefresh(payload),
+        )
+        .subscribe();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        refreshAfterVisibilityRestore = true;
+        if (t) {
+          window.clearTimeout(t);
+          t = null;
+        }
+        removeRealtimeChannel();
+        return;
+      }
+
+      subscribeForUser(resolveScopedUserId());
+      if (refreshAfterVisibilityRestore) {
+        refreshAfterVisibilityRestore = false;
+        void latestFallbackToServerSyncThenGlobalRef.current?.();
+      }
+    };
+
+    const handleActiveAccountChange = (event: Event) => {
+      const nextUserId = (event as CustomEvent<{ activeUserId?: unknown }>).detail?.activeUserId;
+      const scopedUserId = resolveScopedUserId(nextUserId);
+      if (!scopedUserId) return;
+      refreshAfterVisibilityRestore = true;
+      subscribeForUser(scopedUserId);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange as EventListener);
+
+    void supabase.auth.getUser().then(({ data }) => {
+      if (disposed) return;
+      authUserId = data.user?.id ?? null;
+      subscribeForUser(resolveScopedUserId());
+    });
 
     return () => {
       disposed = true;
       if (t) window.clearTimeout(t);
       clearScheduledGeneratorRefreshes();
-      try {
-        supabase.removeChannel(ch);
-      } catch {}
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange as EventListener);
+      removeRealtimeChannel();
     };
   }, [clearScheduledGeneratorRefreshes]);
 

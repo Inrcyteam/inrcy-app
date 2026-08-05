@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { readInrSearchAnalytics } from "@/lib/inrSearchAnalytics";
-import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
+import { getInrSearchMinimalPublicStatus } from "@/lib/inrSearchMinimalStatus";
 import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
 import { loadInrSearchQuality } from "@/lib/inrSearchQuality";
 import { requireUser } from "@/lib/requireUser";
@@ -17,7 +17,10 @@ export async function GET() {
     const [analytics, quality, publicStatus] = await Promise.all([
       readInrSearchAnalytics(activeUserId),
       loadInrSearchQuality(activeUserId, provisioned.inrSearch),
-      getInrSearchPublicStatus(slug),
+      getInrSearchMinimalPublicStatus({
+        accountId: activeUserId,
+        inrSearch: provisioned.inrSearch,
+      }),
     ]);
 
     return NextResponse.json({
@@ -27,7 +30,7 @@ export async function GET() {
         enabled: publicStatus.published,
         loading: false,
         slug,
-        publicUrl: slug ? buildInrSearchPublicUrl(slug) : "",
+        publicUrl: publicStatus.publicUrl,
         pageTitle: String(provisioned.inrSearch.pageTitle || "").trim(),
         qualityScore: quality.score,
         qualityLabel: quality.level,

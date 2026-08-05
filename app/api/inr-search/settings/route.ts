@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { purgeInrSearchDirectoryCache } from "@/lib/inrSearchDirectoryCache";
-import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { getInrSearchPublicationEligibility } from "@/lib/inrSearchEligibility";
+import { getInrSearchMinimalPublicStatus } from "@/lib/inrSearchMinimalStatus";
 import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
 import { revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { requireUser } from "@/lib/requireUser";
@@ -23,7 +23,10 @@ async function syncSystemManagedPage(directoryCache?: DirectoryCacheSync) {
   try {
     const provisioned = await ensureSystemManagedInrSearch(supabase, activeUserId);
     if (provisioned.changed) await clearAllToolCaches(supabase, activeUserId);
-    const publicStatus = await getInrSearchPublicStatus(provisioned.inrSearch.slug);
+    const publicStatus = await getInrSearchMinimalPublicStatus({
+      accountId: activeUserId,
+      inrSearch: provisioned.inrSearch,
+    });
     return NextResponse.json(
       {
         ok: true,

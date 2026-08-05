@@ -52,13 +52,13 @@ test("status reads are shared with recovery finalization and channel fan-in stay
   assert.match(asyncLib, /\.eq\(FINALIZATION_CLAIM_ID_PATH, params\.claimId\)/);
 });
 
-test("a one-minute cron recovers queued jobs and only stale processing workers", () => {
+test("the one-minute cron checks queues continuously and only recovers stale workers", () => {
   assert.match(cron, /publish_async_channel|BOOSTER_ASYNC_CHANNEL_EVENT_TYPE/);
-  assert.match(cron, /queuedChannelQuery/);
-  assert.match(cron, /processingChannelQuery/);
+  assert.match(cron, /queuedChannelCandidatesQuery/);
+  assert.match(cron, /processingChannelCandidatesQuery/);
   assert.match(
     cron,
-    /\.eq\("payload->>status", "queued"\)[\s\S]*?\.limit\(50\)/,
+    /\.eq\("payload->>status", "queued"\)[\s\S]*?\.limit\(ASYNC_CHANNEL_CANDIDATE_LIMIT\)/,
   );
   assert.match(
     cron,

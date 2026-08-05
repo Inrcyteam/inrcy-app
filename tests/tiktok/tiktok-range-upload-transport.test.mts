@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   TikTokRangeUploadError,
+  normalizeTikTokUploadedOffset,
   probeTikTokRangeSource,
   uploadTikTokVideoFromRangeSource,
   validateTikTokSourceRangeHeaders,
@@ -116,6 +117,96 @@ test("une réponse Range incohérente est refusée strictement", () => {
   );
 });
 
+test("la progression TikTok accepte le compteur exclusif documenté et l'ancienne borne inclusive", () => {
+  const common = {
+    totalBytes: 6,
+    chunkSize: 3,
+    totalChunkCount: 2,
+  };
+
+  assert.equal(
+    normalizeTikTokUploadedOffset({
+      ...common,
+      contentRange: "bytes 0-3/6",
+      expectedOffset: 3,
+    }),
+    3,
+  );
+  assert.equal(
+    normalizeTikTokUploadedOffset({
+      ...common,
+      contentRange: "bytes 0-6/6",
+      expectedOffset: 6,
+    }),
+    6,
+  );
+  assert.equal(
+    normalizeTikTokUploadedOffset({
+      ...common,
+      contentRange: "bytes 0-2/6",
+      expectedOffset: 3,
+    }),
+    3,
+  );
+  assert.equal(
+    normalizeTikTokUploadedOffset({
+      ...common,
+      contentRange: "bytes 0-5/6",
+      expectedOffset: 6,
+    }),
+    6,
+  );
+});
+
+test("la progression TikTok refuse les plages hors borne ou ambiguës", () => {
+  const common = {
+    totalBytes: 6,
+    expectedOffset: 3,
+    chunkSize: 3,
+    totalChunkCount: 2,
+  };
+
+  for (const contentRange of [
+    "bytes 1-3/6",
+    "bytes 0-7/6",
+    "bytes 0-3/7",
+    "invalid",
+  ]) {
+    assert.throws(
+      () => normalizeTikTokUploadedOffset({ ...common, contentRange }),
+      (error: unknown) =>
+        error instanceof TikTokRangeUploadError &&
+        error.code === "tiktok_upload_content_range_invalid",
+    );
+  }
+
+  assert.throws(
+    () =>
+      normalizeTikTokUploadedOffset({
+        contentRange: "bytes 0-1/3",
+        totalBytes: 3,
+        expectedOffset: 2,
+        chunkSize: 1,
+        totalChunkCount: 3,
+      }),
+    (error: unknown) =>
+      error instanceof TikTokRangeUploadError &&
+      error.code === "tiktok_upload_progress_invalid",
+  );
+
+  assert.throws(
+    () =>
+      normalizeTikTokUploadedOffset({
+        ...common,
+        contentRange: "bytes 0-2/6",
+        allowAhead: true,
+      }),
+    (error: unknown) =>
+      error instanceof TikTokRangeUploadError &&
+      error.code === "tiktok_upload_progress_invalid",
+  );
+});
+
 test("un échec transitoire recharge la même Range puis reprend les chunks", async () => {
   const sourceRanges: string[] = [];
   const uploadRanges: string[] = [];
@@ -150,12 +241,12 @@ test("un échec transitoire recharge la même Range puis reprend les chunks", as
       }
       return new Response(null, {
         status: 206,
-        headers: { "Content-Range": "bytes 0-2/6" },
+        headers: { "Content-Range": "bytes 0-3/6" },
       });
     }
     return new Response(null, {
       status: 201,
-      headers: { "Content-Range": "bytes 0-5/6" },
+      headers: { "Content-Range": "bytes 0-6/6" },
     });
   }) as typeof fetch;
 
@@ -196,7 +287,7 @@ test("la reprise durable repart à l'offset suivant sans renvoyer le début", as
     assert.equal(await consumeRequestBody(init), 3);
     return new Response(null, {
       status: 201,
-      headers: { "Content-Range": "bytes 0-5/6" },
+      headers: { "Content-Range": "bytes 0-6/6" },
     });
   }) as typeof fetch;
 
@@ -240,11 +331,11 @@ test("un 416 avec progression confirmée récupère le chunk validé avant le cr
     return range === "bytes 0-2/6"
       ? new Response(null, {
           status: 416,
-          headers: { "Content-Range": "bytes 0-2/6" },
+          headers: { "Content-Range": "bytes 0-3/6" },
         })
       : new Response(null, {
           status: 201,
-          headers: { "Content-Range": "bytes 0-5/6" },
+          headers: { "Content-Range": "bytes 0-6/6" },
         });
   }) as typeof fetch;
 
@@ -262,6 +353,153 @@ test("un 416 avec progression confirmée récupère le chunk validé avant le cr
   assert.equal(result.responses[0]?.responseStatus, 416);
   assert.equal(result.responses[0]?.recoveredFromAlreadyUploadedChunk, true);
   assert.deepEqual(uploadedRanges, ["bytes 0-2/6", "bytes 3-5/6"]);
+});
+
+test("un 416 peut récupérer plusieurs chunks sans renvoyer les octets déjà confirmés", async () => {
+  const sourceRanges: string[] = [];
+  const uploadedRanges: string[] = [];
+  const fetchImpl = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input);
+    if (url.includes("storage.example.test")) {
+      const range = String(new Headers(init?.headers).get("range") || "");
+      sourceRanges.push(range);
+      const match = /bytes=(\d+)-(\d+)/.exec(range);
+      assert.ok(match);
+      return sourceResponse({
+        firstByte: Number(match[1]),
+        lastByte: Number(match[2]),
+        totalBytes: 9,
+      });
+    }
+    const headers = new Headers(init?.headers);
+    const range = String(headers.get("content-range") || "");
+    uploadedRanges.push(range);
+    await consumeRequestBody(init);
+    return range === "bytes 0-2/9"
+      ? new Response(null, {
+          status: 416,
+          headers: { "Content-Range": "bytes 0-6/9" },
+        })
+      : new Response(null, {
+          status: 201,
+          headers: { "Content-Range": "bytes 0-9/9" },
+        });
+  }) as typeof fetch;
+
+  const result = await uploadTikTokVideoFromRangeSource({
+    source: makeSource(),
+    uploadUrl: "https://open-upload.tiktokapis.com/video/?upload_id=ahead",
+    contentType: "video/mp4",
+    totalBytes: 9,
+    chunkSize: 3,
+    totalChunkCount: 3,
+    fetchImpl,
+  });
+
+  assert.equal(result.nextOffset, 9);
+  assert.deepEqual(sourceRanges, ["bytes=0-2", "bytes=6-8"]);
+  assert.deepEqual(uploadedRanges, ["bytes 0-2/9", "bytes 6-8/9"]);
+});
+
+test("le dernier chunk fusionné utilise les frontières du plan TikTok réel", async () => {
+  const uploadedRanges: string[] = [];
+  const fetchImpl = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input);
+    if (url.includes("storage.example.test")) {
+      const range = String(new Headers(init?.headers).get("range") || "");
+      const match = /bytes=(\d+)-(\d+)/.exec(range);
+      assert.ok(match);
+      return sourceResponse({
+        firstByte: Number(match[1]),
+        lastByte: Number(match[2]),
+        totalBytes: 11,
+      });
+    }
+    const range = String(
+      new Headers(init?.headers).get("content-range") || "",
+    );
+    uploadedRanges.push(range);
+    await consumeRequestBody(init);
+    return range === "bytes 0-3/11"
+      ? new Response(null, {
+          status: 206,
+          headers: { "Content-Range": "bytes 0-4/11" },
+        })
+      : new Response(null, {
+          status: 201,
+          headers: { "Content-Range": "bytes 0-11/11" },
+        });
+  }) as typeof fetch;
+
+  const result = await uploadTikTokVideoFromRangeSource({
+    source: makeSource(),
+    uploadUrl: "https://open-upload.tiktokapis.com/video/?upload_id=remainder",
+    contentType: "video/mp4",
+    totalBytes: 11,
+    chunkSize: 4,
+    totalChunkCount: 2,
+    fetchImpl,
+  });
+
+  assert.equal(result.nextOffset, 11);
+  assert.deepEqual(uploadedRanges, ["bytes 0-3/11", "bytes 4-10/11"]);
+  assert.throws(
+    () =>
+      normalizeTikTokUploadedOffset({
+        contentRange: "bytes 0-8/11",
+        totalBytes: 11,
+        expectedOffset: 4,
+        chunkSize: 4,
+        totalChunkCount: 2,
+        allowAhead: true,
+      }),
+    (error: unknown) =>
+      error instanceof TikTokRangeUploadError &&
+      error.code === "tiktok_upload_progress_invalid",
+  );
+});
+
+test("un 416 final récupère une réponse 201 perdue sans réinitialiser l'upload", async () => {
+  const uploadedRanges: string[] = [];
+  const fetchImpl = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input);
+    if (url.includes("storage.example.test")) {
+      return sourceResponse({ firstByte: 4, lastByte: 10, totalBytes: 11 });
+    }
+    const range = String(
+      new Headers(init?.headers).get("content-range") || "",
+    );
+    uploadedRanges.push(range);
+    await consumeRequestBody(init);
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": "bytes 0-11/11" },
+    });
+  }) as typeof fetch;
+
+  const result = await uploadTikTokVideoFromRangeSource({
+    source: makeSource(),
+    uploadUrl: "https://open-upload.tiktokapis.com/video/?upload_id=lost-201",
+    contentType: "video/mp4",
+    totalBytes: 11,
+    chunkSize: 4,
+    totalChunkCount: 2,
+    initialOffset: 4,
+    fetchImpl,
+  });
+
+  assert.equal(result.nextOffset, 11);
+  assert.equal(result.responses[0]?.recoveredFromAlreadyUploadedChunk, true);
+  assert.deepEqual(uploadedRanges, ["bytes 4-10/11"]);
 });
 
 test("publish-now ne matérialise plus la vidéo TikTok et cron réinjecte le checkpoint", async () => {

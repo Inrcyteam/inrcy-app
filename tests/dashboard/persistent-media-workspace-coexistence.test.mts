@@ -255,7 +255,7 @@ test("generation library is exclusive while publication keeps the 5 + 1 path", (
   assert.match(readiness, /mediaType:\s*"video" as const/);
   assert.match(
     readiness,
-    /verifyPersistentWorkspaceSources\(sourceExpectations\)/,
+    /verifyPersistentWorkspaceSources\(sourceExpectations,[\s\S]{0,100}signal: readinessSignal/,
   );
 });
 

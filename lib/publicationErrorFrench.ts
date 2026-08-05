@@ -50,12 +50,13 @@ export function getProviderPublicationErrorMessage(
       return "Le tableau Pinterest sélectionné est introuvable. Choisissez un autre tableau puis réessayez.";
     }
     if (
-      message.includes("image url") &&
-      (message.includes("unreachable") ||
-        message.includes("not accessible") ||
-        message.includes("could not fetch") ||
-        message.includes("failed to fetch") ||
-        message.includes("download"))
+      message.includes("could not fetch the image") ||
+      (message.includes("image url") &&
+        (message.includes("unreachable") ||
+          message.includes("not accessible") ||
+          message.includes("could not fetch") ||
+          message.includes("failed to fetch") ||
+          message.includes("download")))
     ) {
       return "Pinterest n’a pas pu récupérer une image. Vérifiez qu’elle reste publique et accessible, puis réessayez.";
     }

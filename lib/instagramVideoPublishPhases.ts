@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 
 import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 
-const INSTAGRAM_VIDEO_CHECKPOINT_VERSION = 1 as const;
+const INSTAGRAM_VIDEO_CHECKPOINT_VERSION = 2 as const;
 const INSTAGRAM_VIDEO_DEFAULT_RETRY_AFTER_MS = 3_000;
 const INSTAGRAM_VIDEO_HTTP_TIMEOUT_MS = 15_000;
 
@@ -25,7 +25,7 @@ export type InstagramVideoCheckpointState =
   | "publish_unknown";
 
 export type InstagramVideoPublishCheckpoint = {
-  version: typeof INSTAGRAM_VIDEO_CHECKPOINT_VERSION;
+  version: 1 | typeof INSTAGRAM_VIDEO_CHECKPOINT_VERSION;
   containerId: string;
   igUserId: string;
   requestFingerprint: string;
@@ -144,7 +144,7 @@ export function parseInstagramVideoPublishCheckpoint(
   const tokenSource = cleanString(record.tokenSource) || null;
 
   if (
-    version !== INSTAGRAM_VIDEO_CHECKPOINT_VERSION ||
+    (version !== 1 && version !== INSTAGRAM_VIDEO_CHECKPOINT_VERSION) ||
     !containerId ||
     !igUserId ||
     !/^[a-f0-9]{64}$/.test(requestFingerprint) ||
@@ -161,7 +161,7 @@ export function parseInstagramVideoPublishCheckpoint(
   }
 
   return {
-    version: INSTAGRAM_VIDEO_CHECKPOINT_VERSION,
+    version: version as InstagramVideoPublishCheckpoint["version"],
     containerId,
     igUserId,
     requestFingerprint,
@@ -176,18 +176,68 @@ export function parseInstagramVideoPublishCheckpoint(
   };
 }
 
+function canonicalizeVideoUrlIdentity(value: unknown) {
+  const rawUrl = cleanString(value);
+  if (!rawUrl) return "";
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.hash = "";
+    parsed.searchParams.sort();
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+/**
+ * Returns the durable identity of the bytes sent to Instagram.
+ *
+ * Supabase signed URLs are delivery credentials and can change between two
+ * serverless invocations. A storage reference is therefore authoritative when
+ * available. URL identity is only a compatibility fallback for remote media
+ * that has no durable storage reference.
+ */
+export function buildInstagramVideoSourceIdentity(params: {
+  bucket?: string | null;
+  storagePath?: string | null;
+  videoUrl?: string | null;
+}) {
+  const storagePath = cleanString(params.storagePath)
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  if (storagePath) {
+    const bucket = cleanString(params.bucket) || "booster";
+    return `storage:${JSON.stringify([bucket, storagePath])}`;
+  }
+
+  const videoUrl = canonicalizeVideoUrlIdentity(params.videoUrl);
+  return videoUrl ? `url:${videoUrl}` : "";
+}
+
 export function buildInstagramVideoRequestFingerprint(params: {
   igUserId: string;
   videoUrl: string;
+  videoSourceIdentity?: string;
   caption: string;
   shareToFeed?: boolean;
 }) {
-  const canonicalRequest = JSON.stringify({
-    igUserId: cleanString(params.igUserId),
-    videoUrl: cleanString(params.videoUrl),
-    caption: String(params.caption || ""),
-    shareToFeed: params.shareToFeed !== false,
-  });
+  const videoSourceIdentity = cleanString(params.videoSourceIdentity);
+  const canonicalRequest = JSON.stringify(
+    videoSourceIdentity
+      ? {
+          igUserId: cleanString(params.igUserId),
+          videoSourceIdentity,
+          caption: String(params.caption || ""),
+          shareToFeed: params.shareToFeed !== false,
+        }
+      : {
+          // Preserve the exact v1 canonical request for rolling compatibility.
+          igUserId: cleanString(params.igUserId),
+          videoUrl: cleanString(params.videoUrl),
+          caption: String(params.caption || ""),
+          shareToFeed: params.shareToFeed !== false,
+        },
+  );
   return createHash("sha256").update(canonicalRequest).digest("hex");
 }
 
@@ -301,9 +351,22 @@ function withAttemptDiagnostics<T extends InstagramVideoPhaseResult>(
 function validateExpectedFingerprint(
   checkpoint: InstagramVideoPublishCheckpoint,
   expectedRequestFingerprint?: string,
+  compatibleRequestFingerprints?: string[],
 ) {
   const expected = cleanString(expectedRequestFingerprint).toLowerCase();
-  return !expected || expected === checkpoint.requestFingerprint;
+  const compatible = (compatibleRequestFingerprints || [])
+    .map((candidate) => cleanString(candidate).toLowerCase())
+    .filter((candidate) => /^[a-f0-9]{64}$/.test(candidate));
+  if (!expected && compatible.length === 0) return true;
+  if (expected === checkpoint.requestFingerprint) return true;
+
+  // A v2 checkpoint must only match its durable-source fingerprint. A v1
+  // checkpoint may additionally match the exact historical URL fingerprint,
+  // which keeps stable public-URL jobs resumable during a rolling deployment.
+  return (
+    checkpoint.version === 1 &&
+    compatible.includes(checkpoint.requestFingerprint)
+  );
 }
 
 export async function instagramCreateVideoCheckpoint(
@@ -312,6 +375,7 @@ export async function instagramCreateVideoCheckpoint(
     accessToken: string;
     caption: string;
     videoUrl: string;
+    videoSourceIdentity?: string;
     shareToFeed?: boolean;
     tokenSource?: string;
   },
@@ -332,6 +396,9 @@ export async function instagramCreateVideoCheckpoint(
       authorizationError: !accessToken,
     };
   }
+  const videoSourceIdentity =
+    cleanString(params.videoSourceIdentity) ||
+    buildInstagramVideoSourceIdentity({ videoUrl });
 
   const createParams = new URLSearchParams({
     media_type: "REELS",
@@ -411,6 +478,7 @@ export async function instagramCreateVideoCheckpoint(
     requestFingerprint: buildInstagramVideoRequestFingerprint({
       igUserId,
       videoUrl,
+      videoSourceIdentity,
       caption: params.caption,
       shareToFeed: params.shareToFeed,
     }),
@@ -439,6 +507,7 @@ export async function instagramCreateVideoCheckpointWithTokenFallback(
     tokenCandidates?: InstagramVideoTokenCandidate[];
     caption: string;
     videoUrl: string;
+    videoSourceIdentity?: string;
     shareToFeed?: boolean;
   },
   dependencies: InstagramVideoPhaseDependencies = {},
@@ -495,6 +564,7 @@ export async function instagramPollVideoCheckpoint(
     checkpoint: unknown;
     accessToken: string;
     expectedRequestFingerprint?: string;
+    compatibleRequestFingerprints?: string[];
   },
   dependencies: InstagramVideoPhaseDependencies = {},
 ): Promise<InstagramVideoPhaseResult> {
@@ -504,6 +574,7 @@ export async function instagramPollVideoCheckpoint(
     !validateExpectedFingerprint(
       checkpoint,
       params.expectedRequestFingerprint,
+      params.compatibleRequestFingerprints,
     )
   ) {
     return invalidCheckpointResult("poll");
@@ -706,6 +777,7 @@ async function runCheckpointPhaseWithTokenFallback(
     accessToken: string;
     tokenCandidates?: InstagramVideoTokenCandidate[];
     expectedRequestFingerprint?: string;
+    compatibleRequestFingerprints?: string[];
     igUserId?: string;
   },
   dependencies: InstagramVideoPhaseDependencies,
@@ -773,6 +845,7 @@ export function instagramPollVideoCheckpointWithTokenFallback(
     accessToken: string;
     tokenCandidates?: InstagramVideoTokenCandidate[];
     expectedRequestFingerprint?: string;
+    compatibleRequestFingerprints?: string[];
   },
   dependencies: InstagramVideoPhaseDependencies = {},
 ) {
@@ -785,6 +858,7 @@ export async function instagramPublishVideoCheckpoint(
     igUserId: string;
     accessToken: string;
     expectedRequestFingerprint?: string;
+    compatibleRequestFingerprints?: string[];
   },
   dependencies: InstagramVideoPhaseDependencies = {},
 ): Promise<InstagramVideoPhaseResult> {
@@ -794,6 +868,7 @@ export async function instagramPublishVideoCheckpoint(
     !validateExpectedFingerprint(
       checkpoint,
       params.expectedRequestFingerprint,
+      params.compatibleRequestFingerprints,
     ) ||
     checkpoint.igUserId !== cleanString(params.igUserId)
   ) {
@@ -956,6 +1031,7 @@ export function instagramPublishVideoCheckpointWithTokenFallback(
     accessToken: string;
     tokenCandidates?: InstagramVideoTokenCandidate[];
     expectedRequestFingerprint?: string;
+    compatibleRequestFingerprints?: string[];
   },
   dependencies: InstagramVideoPhaseDependencies = {},
 ) {

@@ -28,7 +28,6 @@ test("publication progress consumes existing durable snapshots without an extra 
   assert.match(client, /payload: latestPayload/);
   assert.match(modal, /_onPublicationProgress: onPublicationProgress/);
   assert.match(modal, /summary\.entries/);
-  assert.match(modal, /entryByChannel/);
   assert.match(modal, /terminalCount/);
   assert.doesNotMatch(modal, /publishPulseTimerRef/);
 });
@@ -42,14 +41,10 @@ test("the client-only callback is deleted before the server payload is built", (
   assert.match(layer, /onProgress: onPublicationProgress/);
 });
 
-test("the execution UI exposes real per-channel states and an indeterminate sweep", () => {
-  assert.match(modal, /setPublishChannelProgress/);
-  assert.match(modal, /statusLabel: "Finalisation média"/);
-  assert.match(modal, /statusLabel: "Envoi en cours"/);
-  assert.match(modal, /statusLabel: "Publié"/);
-  assert.match(modal, /statusLabel: "Échec"/);
-  assert.match(footer, /channels=\{scheduling \? \[\] : publishChannelProgress\}/);
-  assert.match(execution, /État de publication par canal/);
+test("the execution UI keeps one clean global bar without a horizontal channel strip", () => {
+  assert.doesNotMatch(modal, /setPublishChannelProgress/);
+  assert.doesNotMatch(footer, /publishChannelProgress|channels=/);
+  assert.doesNotMatch(execution, /État de publication par canal|channels\.map/);
   assert.match(execution, /role="progressbar"/);
   assert.match(css, /\.publishProgressFillActive::after/);
   assert.match(css, /@keyframes publishProgressSweep/);

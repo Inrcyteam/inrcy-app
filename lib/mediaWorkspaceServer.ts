@@ -85,13 +85,13 @@ export async function refreshPublicationWorkspaceMediaStatus(params: {
 
   const update = await supabaseAdmin
     .from("publication_workspaces")
-    .update({
-      status: nextStatus,
-      last_opened_at: new Date().toISOString(),
-    })
+    .update({ status: nextStatus })
     .eq("id", params.workspaceId)
     .eq("account_id", params.accountId)
-    .in("status", [...MUTABLE_WORKSPACE_STATUSES]);
+    .in("status", [...MUTABLE_WORKSPACE_STATUSES])
+    // Ne réécrit ni updated_at ni les abonnements Realtime quand le calcul
+    // aboutit au statut déjà stocké. revision/metadata restent inchangées ici.
+    .neq("status", nextStatus);
   if (update.error) throw update.error;
   return nextStatus;
 }

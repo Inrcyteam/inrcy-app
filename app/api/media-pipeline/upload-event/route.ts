@@ -424,10 +424,15 @@ export async function POST(request: Request) {
       };
     }
 
-    await refreshPublicationWorkspaceStatusesForMedia({
-      mediaId,
-      accountId: activeUserId,
-    });
+    // L'intent a déjà placé le workspace en waiting_media. Un simple palier
+    // "uploading" ne peut donc changer son statut et ne doit pas relancer la
+    // lecture agrégée. Les événements terminaux restent confirmés avant l'ACK.
+    if (event !== "uploading") {
+      await refreshPublicationWorkspaceStatusesForMedia({
+        mediaId,
+        accountId: activeUserId,
+      });
+    }
 
     return NextResponse.json({
       ok: true,

@@ -41,11 +41,11 @@ test("le healthcheck interne certifie flags, tables, buckets et files", () => {
   assert.match(cron, /report\.checks\.media_pipeline/);
 });
 
-test("les crons image et vidéo restent certifiés toutes les minutes", () => {
+test("les crons image et vidéo sont espacés et décalés", () => {
   const vercel = JSON.parse(read("vercel.json"));
   const byPath = new Map(vercel.crons.map((item) => [item.path, item.schedule]));
-  assert.equal(byPath.get("/api/cron/media-image-normalization"), "*/1 * * * *");
-  assert.equal(byPath.get("/api/cron/media-video-normalization"), "*/1 * * * *");
+  assert.equal(byPath.get("/api/cron/media-image-normalization"), "2-59/5 * * * *");
+  assert.equal(byPath.get("/api/cron/media-video-normalization"), "4-59/5 * * * *");
   assert.match(
     vercel.functions["app/api/cron/media-video-normalization/route.ts"].includeFiles,
     /ffmpeg-static/,

@@ -426,9 +426,10 @@ export async function prepareWorkspaceMediaForPublication(params: {
       workerId: `publish-preparation-image-${workerId}`,
     });
   }
-  // Do not run the video worker here. The one-minute durable media cron owns
-  // this already-prioritized queue and has maxDuration=300; publish-now has
-  // only 180 seconds and must be free to dispatch every other channel.
+  // Do not run the video worker here. The durable media recovery cron owns
+  // this already-prioritized fallback and has maxDuration=300; publish-now has
+  // only 180 seconds and must be free to dispatch every other channel. The
+  // normal upload/prepare paths already start their targeted worker directly.
 
   await refreshPublicationWorkspaceMediaStatus(params);
   const refreshedMedia = await loadOwnedWorkspaceMedia(params);

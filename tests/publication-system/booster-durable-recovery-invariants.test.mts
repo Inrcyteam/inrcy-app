@@ -70,16 +70,18 @@ test("missing technical children become isolated terminal failures", () => {
 });
 
 test("cron retries finalization independently from media preparation state", () => {
-  assert.match(cron, /queuedPreparationQuery/);
-  assert.match(cron, /activePreparationQuery/);
-  assert.match(cron, /oldestFinalizationQuery/);
-  assert.match(cron, /newestFinalizationQuery/);
+  assert.match(cron, /queuedPreparationCandidatesQuery/);
+  assert.match(cron, /activePreparationCandidatesQuery/);
+  assert.match(cron, /finalizationCandidatesQuery/);
+  assert.match(cron, /sweepPlan\.runFinalizationSweep/);
   assert.match(
     cron,
-    /new Map\([\s\S]*?oldestFinalizationQuery\.data[\s\S]*?newestFinalizationQuery\.data/,
+    /ascending: sweepPlan\.finalizationAscending[\s\S]*?\.limit\(ASYNC_FINALIZATION_CANDIDATE_LIMIT\)/,
   );
-  assert.match(cron, /\.order\("created_at", \{ ascending: true \}\)[\s\S]*?\.limit\(13\)/);
-  assert.match(cron, /\.order\("created_at", \{ ascending: false \}\)[\s\S]*?\.limit\(12\)/);
+  assert.match(
+    cron,
+    /parentsAlreadyWorking[\s\S]*?!parentsAlreadyWorking\.has\(candidateKey\(row\)\)/,
+  );
   assert.match(
     cron,
     /finalizationJobs\.map\(\(job\) =>[\s\S]*?finalizeAsyncPublicationIfReady/,

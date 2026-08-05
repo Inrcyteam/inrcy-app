@@ -74,6 +74,11 @@ export async function GET(req: Request) {
     .select("type, created_at, payload")
     .eq("user_id", userId)
     .eq("module", "booster")
+    // Les jobs techniques de publication contiennent des payloads média bien
+    // plus volumineux et ne participent jamais aux métriques. Les charger ici
+    // transformait chaque rafraîchissement du tableau de bord en scan/transfert
+    // de tout l'historique asynchrone du compte.
+    .in("type", ["publish", "review_mail", "promo_mail"])
     .gte("created_at", sinceMonth)
     .order("created_at", { ascending: false });
 

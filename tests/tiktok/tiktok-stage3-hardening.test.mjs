@@ -50,6 +50,24 @@ test("TikTok status progress and stalled state are persisted", () => {
   assert.match(statusRoute, /15 \* 60 \* 1000/);
 });
 
+test("TikTok status polling resolves the durable async child before terminal history exists", () => {
+  const loader = statusRoute.slice(
+    statusRoute.indexOf("async function loadTiktokEventContext"),
+    statusRoute.indexOf("async function persistTerminalParentTiktokResult"),
+  );
+  assert.match(loader, /\.eq\("id", publicationId\)/);
+  assert.match(loader, /BOOSTER_ASYNC_JOB_EVENT_TYPE/);
+  assert.match(loader, /parentPayload\.channelEventIds/);
+  assert.match(loader, /BOOSTER_ASYNC_CHANNEL_EVENT_TYPE/);
+  assert.match(loader, /result:\s*asRecord\(channelPayload\.result\)/);
+  assert.doesNotMatch(loader, /\.limit\(200\)/);
+
+  assert.match(statusRoute, /updateAsyncChannelEvent\(/);
+  assert.match(statusRoute, /finalizeAsyncPublicationIfReady\(/);
+  assert.match(statusRoute, /buildAsyncPublicationAggregate\(results, selectedChannels\)/);
+  assert.match(statusRoute, /if \(!updatedChannelPayload\)[\s\S]{0,500}persistTerminalParentTiktokResult/);
+});
+
 test("iNrSend automatically polls pending TikTok publications", () => {
   assert.match(detailsModal, /getTiktokAutoPollTarget/);
   assert.match(detailsModal, /tiktokAutoPollInFlightRef/);

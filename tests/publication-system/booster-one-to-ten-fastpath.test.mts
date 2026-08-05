@@ -17,6 +17,10 @@ const asyncPublication = read("lib/boosterAsyncPublication.ts");
 const migration = read(
   "ops/sql/2026-08-05_publication_realtime_load_hardening.sql",
 );
+const migrationVerification = read(
+  "ops/sql/2026-08-05_publication_realtime_load_hardening_verify.sql",
+);
+const boosterMetrics = read("app/api/booster/metrics/route.ts");
 const propulserMetrics = read("app/api/propulser/metrics/route.ts");
 
 test("generation targets 30 seconds and the strict workspace path avoids local media work", () => {
@@ -94,10 +98,39 @@ test("workers claim before uploads and patch status atomically", () => {
   assert.match(migration, /create or replace function public\.inrcy_patch_app_event_payload/);
 });
 
-test("dashboard metrics exclude publication payloads from their query", () => {
+test("dashboard metrics exclude asynchronous publication payloads from their queries", () => {
+  assert.match(
+    boosterMetrics,
+    /\.eq\("module", "booster"\)[\s\S]*?\.in\("type", \["publish", "review_mail", "promo_mail"\]\)[\s\S]*?\.gte\("created_at", sinceMonth\)/,
+  );
   assert.match(
     propulserMetrics,
     /\.in\("type", \["valorize", "review_mail", "promo_mail"\]\)/,
   );
   assert.match(migration, /app_events_propulser_metrics_user_created_idx/);
+  assert.match(
+    migration,
+    /create index concurrently if not exists app_events_booster_metrics_user_created_idx\s+on public\.app_events \(user_id, created_at desc\)\s+where module = 'booster'\s+and type in \('publish', 'review_mail', 'promo_mail'\)/,
+  );
+});
+
+test("publication hardening has a read-only index validity audit", () => {
+  assert.match(
+    migration,
+    /commit;[\s\S]*create index concurrently if not exists app_events_booster_metrics_user_created_idx/,
+  );
+  assert.match(
+    migrationVerification,
+    /'app_events_booster_metrics_user_created_idx'/,
+  );
+  for (const status of ["MISSING", "VALID", "INVALID"]) {
+    assert.match(migrationVerification, new RegExp(`'${status}'`));
+  }
+  assert.match(migrationVerification, /pg_index\.indisvalid/);
+  assert.match(migrationVerification, /pg_index\.indisready/);
+  const verificationStatements = migrationVerification.replace(/^--.*$/gm, "");
+  assert.doesNotMatch(
+    verificationStatements,
+    /\b(?:insert|update|delete|create|alter|drop|truncate)\b/i,
+  );
 });

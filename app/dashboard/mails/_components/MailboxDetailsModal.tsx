@@ -471,22 +471,51 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setPublicationLiveStatus(null);
     setPublicationStatusCheckedAt("");
     const startedAt = Date.now();
+
+    const clearTimer = () => {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = null;
+    };
+
+    const schedule = (delayMs: number) => {
+      clearTimer();
+      if (cancelled || document.hidden) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void run();
+      }, delayMs);
+    };
+
     const run = async () => {
+      if (cancelled || document.hidden) return;
       const status = await refreshPublicationStatus(true);
-      if (cancelled) return;
+      if (cancelled || document.hidden) return;
       if (
         status &&
         shouldPollPublicationStatus(status) &&
         Date.now() - startedAt < 30 * 60_000
       ) {
-        timer = setTimeout(run, 20_000);
+        schedule(20_000);
       }
     };
-    void run();
+
+    const handleVisibilityChange = () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        clearTimer();
+        return;
+      }
+      schedule(0);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!document.hidden) void run();
 
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [activePublicationId, detailsItem?.source, open, refreshPublicationStatus]);
 
@@ -495,6 +524,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let resumeRequested = false;
     const startedAt = Date.now();
     const lastCheckedAt = Date.parse(tiktokAutoPollTarget.checkedAt || "");
     const initialIntervalMs = tiktokAutoPollTarget.statusFetchFailed ? 60_000 : 20_000;
@@ -502,37 +532,77 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
       ? Math.max(3_000, initialIntervalMs - Math.max(0, Date.now() - lastCheckedAt))
       : 8_000;
 
+    const clearTimer = () => {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = null;
+    };
+
     const schedule = (delayMs: number) => {
-      timer = setTimeout(async () => {
-        if (cancelled || tiktokAutoPollInFlightRef.current) return;
-        tiktokAutoPollInFlightRef.current = true;
-        let shouldContinue = true;
-        let nextDelay = Date.now() - startedAt >= 5 * 60_000 ? 60_000 : 20_000;
-        try {
-          const res = await fetch(
-            `/api/inrsend/publications/${encodeURIComponent(tiktokAutoPollTarget.publicationId)}/tiktok/status`,
-            { method: "POST", headers: { "Content-Type": "application/json" } },
-          );
-          const json = await res.json().catch(() => ({}));
-          const status = String(json?.status?.status || "").toUpperCase();
-          shouldContinue = !["PUBLISH_COMPLETE", "DONE", "SUCCESS", "FAILED", "PUBLISH_FAILED", "ERROR", "CANCELLED", "CANCELED"].includes(status);
-          if (!res.ok || json?.status?.statusFetchFailed) nextDelay = 60_000;
-          await refreshHistory?.();
-        } catch {
-          nextDelay = 60_000;
-        } finally {
-          tiktokAutoPollInFlightRef.current = false;
-        }
-        if (!cancelled && shouldContinue && Date.now() - startedAt < 30 * 60_000) {
-          schedule(nextDelay);
-        }
+      clearTimer();
+      if (cancelled || document.hidden) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void run();
       }, delayMs);
     };
 
-    schedule(initialDelay);
+    const run = async () => {
+      if (cancelled || document.hidden) return;
+      if (tiktokAutoPollInFlightRef.current) {
+        schedule(1_000);
+        return;
+      }
+
+      tiktokAutoPollInFlightRef.current = true;
+      let shouldContinue = true;
+      let nextDelay = Date.now() - startedAt >= 5 * 60_000 ? 60_000 : 20_000;
+      try {
+        const res = await fetch(
+          `/api/inrsend/publications/${encodeURIComponent(tiktokAutoPollTarget.publicationId)}/tiktok/status`,
+          { method: "POST", headers: { "Content-Type": "application/json" } },
+        );
+        const json = await res.json().catch(() => ({}));
+        const status = String(json?.status?.status || "").toUpperCase();
+        shouldContinue = !["PUBLISH_COMPLETE", "DONE", "SUCCESS", "FAILED", "PUBLISH_FAILED", "ERROR", "CANCELLED", "CANCELED"].includes(status);
+        if (!res.ok || json?.status?.statusFetchFailed) nextDelay = 60_000;
+        await refreshHistory?.();
+      } catch {
+        nextDelay = 60_000;
+      } finally {
+        tiktokAutoPollInFlightRef.current = false;
+      }
+
+      if (cancelled || document.hidden) return;
+      if (resumeRequested) {
+        resumeRequested = false;
+        schedule(0);
+        return;
+      }
+      if (shouldContinue && Date.now() - startedAt < 30 * 60_000) {
+        schedule(nextDelay);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        clearTimer();
+        return;
+      }
+      if (tiktokAutoPollInFlightRef.current) {
+        resumeRequested = true;
+        return;
+      }
+      schedule(0);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!document.hidden) schedule(initialDelay);
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [
     open,

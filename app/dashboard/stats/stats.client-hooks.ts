@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import {
   getClientUserFacingApiError as getSimpleFrenchApiError,
   getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage,
@@ -76,6 +76,8 @@ type SummaryProfileState = {
 };
 
 type RefValue<T> = { current: T };
+
+const INR_SEARCH_ANALYTICS_POLL_MS = 120_000;
 
 type UseStatsChannelIdentitySyncArgs = {
   refreshNonce: number;
@@ -184,6 +186,8 @@ export function useStatsDataController({
   setInrSearchStats,
   hydrateMailStatsFromCache,
 }: UseStatsDataControllerArgs) {
+  const inrSearchStatsRequestRef = useRef<Promise<void> | null>(null);
+
   const applyBulkPayload = useCallback((targetPeriod: Period, next: BulkFetchResult, syncedAt: number) => {
     const snap = next.overviews as Record<CubeKey, Overview>;
     periodCacheRef.current.set(targetPeriod, snap);
@@ -560,24 +564,37 @@ export function useStatsDataController({
     }
   }, []);
 
-  const refreshInrSearchStats = useCallback(async () => {
-    setInrSearchStats((prev) => ({
-      ...prev,
-      loading: prev.enabled ? false : true,
-      error: undefined,
-    }));
-    try {
-      const res = await fetch("/api/inr-search/analytics", { cache: "no-store", credentials: "include" });
-      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
-      const json = await res.json().catch(() => ({}));
-      setInrSearchStats(normalizeInrSearchStatsSnapshot(json));
-    } catch (error) {
+  const refreshInrSearchStats = useCallback(() => {
+    const existingRequest = inrSearchStatsRequestRef.current;
+    if (existingRequest) return existingRequest;
+
+    const job = (async () => {
       setInrSearchStats((prev) => ({
         ...prev,
-        loading: false,
-        error: getSimpleFrenchErrorMessage(error, "Impossible de charger les données iNr'Search pour le moment."),
+        loading: prev.enabled ? false : true,
+        error: undefined,
       }));
-    }
+      try {
+        const res = await fetch("/api/inr-search/analytics", { cache: "no-store", credentials: "include" });
+        if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
+        const json = await res.json().catch(() => ({}));
+        setInrSearchStats(normalizeInrSearchStatsSnapshot(json));
+      } catch (error) {
+        setInrSearchStats((prev) => ({
+          ...prev,
+          loading: false,
+          error: getSimpleFrenchErrorMessage(error, "Impossible de charger les données iNr'Search pour le moment."),
+        }));
+      }
+    })();
+
+    inrSearchStatsRequestRef.current = job;
+    void job.finally(() => {
+      if (inrSearchStatsRequestRef.current === job) {
+        inrSearchStatsRequestRef.current = null;
+      }
+    });
+    return job;
   }, []);
 
   const refreshMailStats = useCallback(async () => {
@@ -624,17 +641,37 @@ export function useStatsDataController({
   }, [refreshInrBadgeStats, refreshNonce]);
 
   useEffect(() => {
-    void refreshInrSearchStats();
-    const handler = () => void refreshInrSearchStats();
-    const visibilityHandler = () => {
-      if (document.visibilityState === "visible") void refreshInrSearchStats();
+    let intervalId: number | null = null;
+    const handler = () => {
+      if (document.hidden) return;
+      void refreshInrSearchStats();
     };
-    const intervalId = window.setInterval(handler, 30_000);
+    const stopPolling = () => {
+      if (intervalId == null) return;
+      window.clearInterval(intervalId);
+      intervalId = null;
+    };
+    const startPolling = () => {
+      if (intervalId != null || document.hidden) return;
+      intervalId = window.setInterval(handler, INR_SEARCH_ANALYTICS_POLL_MS);
+    };
+    const visibilityHandler = () => {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
+      handler();
+      startPolling();
+    };
+    if (!document.hidden) {
+      handler();
+      startPolling();
+    }
     window.addEventListener("focus", handler);
     window.addEventListener("inrcy:inr-search-settings-updated", handler);
     document.addEventListener("visibilitychange", visibilityHandler);
     return () => {
-      window.clearInterval(intervalId);
+      stopPolling();
       window.removeEventListener("focus", handler);
       window.removeEventListener("inrcy:inr-search-settings-updated", handler);
       document.removeEventListener("visibilitychange", visibilityHandler);

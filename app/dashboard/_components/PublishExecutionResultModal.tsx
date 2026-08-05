@@ -91,43 +91,87 @@ export default function PublishExecutionResultModal({
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    let resumeRequested = false;
     const startedAt = Date.now();
 
-    const schedule = (delayMs: number) => {
-      timer = setTimeout(async () => {
-        if (cancelled) return;
-        let shouldContinue = true;
-        try {
-          const response = await fetch(
-            `/api/booster/publications/${encodeURIComponent(publicationId)}/status`,
-            { method: "GET", cache: "no-store" },
-          );
-          const payload = await response.json().catch(() => ({}));
-          if (response.ok && payload?.summary) {
-            setLiveSummary((current) => ({
-              ...(current || {}),
-              ...payload.summary,
-              publicationId,
-              publication_id: publicationId,
-              channelLinks: current?.channelLinks || {},
-              retryableFailureCount: current?.retryableFailureCount || 0,
-            }));
-            shouldContinue = payload?.done !== true;
-          }
-        } catch {
-          shouldContinue = true;
-        }
+    const clearTimer = () => {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = null;
+    };
 
-        if (!cancelled && shouldContinue && Date.now() - startedAt < 8 * 60_000) {
-          schedule(Date.now() - startedAt < 60_000 ? 3_000 : 10_000);
-        }
+    const schedule = (delayMs: number) => {
+      clearTimer();
+      if (cancelled || document.hidden) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void run();
       }, delayMs);
     };
 
-    schedule(2_000);
+    const run = async () => {
+      if (cancelled || document.hidden) return;
+      if (inFlight) {
+        resumeRequested = true;
+        return;
+      }
+
+      inFlight = true;
+      let shouldContinue = true;
+      try {
+        const response = await fetch(
+          `/api/booster/publications/${encodeURIComponent(publicationId)}/status`,
+          { method: "GET", cache: "no-store" },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && payload?.summary) {
+          setLiveSummary((current) => ({
+            ...(current || {}),
+            ...payload.summary,
+            publicationId,
+            publication_id: publicationId,
+            channelLinks: current?.channelLinks || {},
+            retryableFailureCount: current?.retryableFailureCount || 0,
+          }));
+          shouldContinue = payload?.done !== true;
+        }
+      } catch {
+        shouldContinue = true;
+      } finally {
+        inFlight = false;
+      }
+
+      if (cancelled || document.hidden) return;
+      if (resumeRequested) {
+        resumeRequested = false;
+        schedule(0);
+        return;
+      }
+      if (shouldContinue && Date.now() - startedAt < 8 * 60_000) {
+        schedule(Date.now() - startedAt < 60_000 ? 3_000 : 10_000);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        clearTimer();
+        return;
+      }
+      if (inFlight) {
+        resumeRequested = true;
+        return;
+      }
+      schedule(0);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!document.hidden) schedule(2_000);
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [publicationId, hasPendingAsyncJob]);
   const pendingTiktokEntry = liveEntries.find(
@@ -140,111 +184,151 @@ export default function PublishExecutionResultModal({
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let resumeRequested = false;
     const startedAt = Date.now();
 
+    const clearTimer = () => {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = null;
+    };
+
     const schedule = (delayMs: number) => {
-      timer = setTimeout(async () => {
-        if (cancelled || tiktokPollInFlightRef.current) return;
-        tiktokPollInFlightRef.current = true;
-        let shouldContinue = true;
-        try {
-          const res = await fetch(
-            `/api/inrsend/publications/${encodeURIComponent(publicationId)}/tiktok/status`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              cache: "no-store",
-            },
-          );
-          const json = await res.json().catch(() => ({}));
-          const status = String(json?.status?.status || "").toUpperCase();
-          const complete = ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
-          const failed = ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status);
-          const message = String(
-            json?.message ||
-              (failed
-                ? "TikTok n'a pas pu finaliser la publication."
-                : "TikTok traite encore la publication."),
-          ).trim();
-          shouldContinue = !complete && !failed;
-
-          setLiveSummary((current) => {
-            if (!current || !Array.isArray(current.entries)) return current;
-            const previousEntry = current.entries.find(
-              (entry) => entry.channel === "tiktok",
-            );
-            if (!previousEntry) return current;
-
-            const nextEntries = current.entries.map((entry) => {
-              if (entry.channel !== "tiktok") return entry;
-              if (complete) {
-                return {
-                  ...entry,
-                  ok: true,
-                  status: "published",
-                  error: null,
-                  warning: null,
-                  warning_kind: null,
-                  warning_message: null,
-                };
-              }
-              if (failed) {
-                return {
-                  ...entry,
-                  ok: false,
-                  status: "failed",
-                  error: message,
-                  warning: null,
-                  warning_kind: null,
-                  warning_message: null,
-                };
-              }
-              return {
-                ...entry,
-                ok: true,
-                status: "processing",
-                warning: "pending",
-                warning_kind: "pending",
-                warning_message: message,
-              };
-            });
-
-            let successCount = Number(current.successCount || 0);
-            let failureCount = Number(current.failureCount || 0);
-            let pendingCount = Number(current.pendingCount || 0);
-            if (previousEntry.status === "processing" && complete) {
-              pendingCount = Math.max(0, pendingCount - 1);
-            } else if (previousEntry.status === "processing" && failed) {
-              pendingCount = Math.max(0, pendingCount - 1);
-              successCount = Math.max(0, successCount - 1);
-              failureCount += 1;
-            }
-
-            return {
-              ...current,
-              entries: nextEntries,
-              successCount,
-              failureCount,
-              pendingCount,
-              allFailed: failureCount > 0 && successCount === 0,
-            };
-          });
-        } catch {
-          shouldContinue = true;
-        } finally {
-          tiktokPollInFlightRef.current = false;
-        }
-
-        if (!cancelled && shouldContinue && Date.now() - startedAt < 5 * 60_000) {
-          schedule(Date.now() - startedAt >= 2 * 60_000 ? 30_000 : 15_000);
-        }
+      clearTimer();
+      if (cancelled || document.hidden) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void run();
       }, delayMs);
     };
 
-    schedule(8_000);
+    const run = async () => {
+      if (cancelled || document.hidden) return;
+      if (tiktokPollInFlightRef.current) {
+        schedule(1_000);
+        return;
+      }
+
+      tiktokPollInFlightRef.current = true;
+      let shouldContinue = true;
+      try {
+        const res = await fetch(
+          `/api/inrsend/publications/${encodeURIComponent(publicationId)}/tiktok/status`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+          },
+        );
+        const json = await res.json().catch(() => ({}));
+        const status = String(json?.status?.status || "").toUpperCase();
+        const complete = ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
+        const failed = ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status);
+        const message = String(
+          json?.message ||
+            (failed
+              ? "TikTok n'a pas pu finaliser la publication."
+              : "TikTok traite encore la publication."),
+        ).trim();
+        shouldContinue = !complete && !failed;
+
+        setLiveSummary((current) => {
+          if (!current || !Array.isArray(current.entries)) return current;
+          const previousEntry = current.entries.find(
+            (entry) => entry.channel === "tiktok",
+          );
+          if (!previousEntry) return current;
+
+          const nextEntries = current.entries.map((entry) => {
+            if (entry.channel !== "tiktok") return entry;
+            if (complete) {
+              return {
+                ...entry,
+                ok: true,
+                status: "published",
+                error: null,
+                warning: null,
+                warning_kind: null,
+                warning_message: null,
+              };
+            }
+            if (failed) {
+              return {
+                ...entry,
+                ok: false,
+                status: "failed",
+                error: message,
+                warning: null,
+                warning_kind: null,
+                warning_message: null,
+              };
+            }
+            return {
+              ...entry,
+              ok: true,
+              status: "processing",
+              warning: "pending",
+              warning_kind: "pending",
+              warning_message: message,
+            };
+          });
+
+          let successCount = Number(current.successCount || 0);
+          let failureCount = Number(current.failureCount || 0);
+          let pendingCount = Number(current.pendingCount || 0);
+          if (previousEntry.status === "processing" && complete) {
+            pendingCount = Math.max(0, pendingCount - 1);
+          } else if (previousEntry.status === "processing" && failed) {
+            pendingCount = Math.max(0, pendingCount - 1);
+            successCount = Math.max(0, successCount - 1);
+            failureCount += 1;
+          }
+
+          return {
+            ...current,
+            entries: nextEntries,
+            successCount,
+            failureCount,
+            pendingCount,
+            allFailed: failureCount > 0 && successCount === 0,
+          };
+        });
+      } catch {
+        shouldContinue = true;
+      } finally {
+        tiktokPollInFlightRef.current = false;
+      }
+
+      if (cancelled || document.hidden) return;
+      if (resumeRequested) {
+        resumeRequested = false;
+        schedule(0);
+        return;
+      }
+      if (shouldContinue && Date.now() - startedAt < 5 * 60_000) {
+        schedule(Date.now() - startedAt >= 2 * 60_000 ? 30_000 : 15_000);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        clearTimer();
+        return;
+      }
+      if (tiktokPollInFlightRef.current) {
+        resumeRequested = true;
+        return;
+      }
+      schedule(0);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!document.hidden) schedule(8_000);
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [publicationId, hasPendingTiktok]);
 

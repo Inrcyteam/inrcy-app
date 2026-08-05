@@ -44,6 +44,16 @@ type ParsedContentRange = {
   totalBytes: number;
 };
 
+type ParsedTikTokUploadContentRange = {
+  firstByte: number;
+  /**
+   * TikTok documents this value as UPLOADED_BYTES (a next offset), while some
+   * responses use the usual inclusive Content-Range last-byte convention.
+   */
+  reportedEnd: number;
+  totalBytes: number;
+};
+
 export class TikTokRangeUploadError extends Error {
   readonly code: string;
   readonly retryable: boolean;
@@ -152,6 +162,30 @@ export function parseTikTokContentRange(value: unknown): ParsedContentRange | nu
     return null;
   }
   return { firstByte, lastByte, totalBytes };
+}
+
+function parseTikTokUploadContentRange(
+  value: unknown,
+): ParsedTikTokUploadContentRange | null {
+  const match = /^bytes\s+(\d+)-(\d+)\/(\d+)$/i.exec(
+    String(value || "").trim(),
+  );
+  if (!match) return null;
+  const firstByte = Number(match[1]);
+  const reportedEnd = Number(match[2]);
+  const totalBytes = Number(match[3]);
+  if (
+    !Number.isSafeInteger(firstByte) ||
+    !Number.isSafeInteger(reportedEnd) ||
+    !Number.isSafeInteger(totalBytes) ||
+    firstByte < 0 ||
+    reportedEnd < firstByte ||
+    totalBytes <= 0 ||
+    reportedEnd > totalBytes
+  ) {
+    return null;
+  }
+  return { firstByte, reportedEnd, totalBytes };
 }
 
 export function validateTikTokSourceRangeHeaders(params: {
@@ -400,22 +434,6 @@ function createExactLengthStream(
   return { stream, exact };
 }
 
-function parseTikTokUploadedOffset(response: Response, totalBytes: number) {
-  const progress = parseTikTokContentRange(response.headers.get("content-range"));
-  if (
-    !progress ||
-    progress.firstByte !== 0 ||
-    progress.totalBytes !== totalBytes
-  ) {
-    throw new TikTokRangeUploadError(
-      "tiktok_upload_content_range_invalid",
-      "TikTok a renvoyé une progression d'upload incohérente.",
-      { status: response.status },
-    );
-  }
-  return progress.lastByte + 1;
-}
-
 function isValidChunkBoundary(params: {
   offset: number;
   totalBytes: number;
@@ -425,6 +443,82 @@ function isValidChunkBoundary(params: {
   if (params.offset === params.totalBytes) return true;
   if (params.offset <= 0 || params.offset % params.chunkSize !== 0) return false;
   return params.offset / params.chunkSize < params.totalChunkCount;
+}
+
+export function normalizeTikTokUploadedOffset(params: {
+  contentRange: unknown;
+  totalBytes: number;
+  expectedOffset: number;
+  chunkSize: number;
+  totalChunkCount: number;
+  allowAhead?: boolean;
+  status?: number | null;
+}) {
+  const progress = parseTikTokUploadContentRange(params.contentRange);
+  if (
+    !progress ||
+    progress.firstByte !== 0 ||
+    progress.totalBytes !== params.totalBytes
+  ) {
+    throw new TikTokRangeUploadError(
+      "tiktok_upload_content_range_invalid",
+      "TikTok a renvoyé une progression d'upload incohérente.",
+      { status: params.status },
+    );
+  }
+
+  // TikTok's documented response uses an exclusive uploaded-byte count, but a
+  // successful 201/206 has historically also appeared as an inclusive last
+  // byte. Matching the acknowledged request makes that compatibility safe.
+  // A 416 is recovery state and does not acknowledge this request, so only the
+  // official exclusive form is trusted there; interpreting a partial count as
+  // an inclusive byte could skip data after a crash.
+  const rawCandidates = params.allowAhead
+    ? [progress.reportedEnd]
+    : [progress.reportedEnd, progress.reportedEnd + 1];
+  const candidates = rawCandidates.filter(
+    (offset, index, values) =>
+      Number.isSafeInteger(offset) &&
+      offset <= params.totalBytes &&
+      values.indexOf(offset) === index &&
+      isValidChunkBoundary({
+        offset,
+        totalBytes: params.totalBytes,
+        chunkSize: params.chunkSize,
+        totalChunkCount: params.totalChunkCount,
+      }),
+  );
+  const acceptable = candidates.filter((offset) =>
+    params.allowAhead
+      ? offset >= params.expectedOffset
+      : offset === params.expectedOffset,
+  );
+
+  if (acceptable.length !== 1 || candidates.length !== 1) {
+    throw new TikTokRangeUploadError(
+      "tiktok_upload_progress_invalid",
+      "TikTok n'a pas confirmé exactement le morceau vidéo envoyé.",
+      { status: params.status },
+    );
+  }
+  return acceptable[0];
+}
+
+function parseTikTokUploadedOffset(
+  response: Response,
+  params: {
+    totalBytes: number;
+    expectedOffset: number;
+    chunkSize: number;
+    totalChunkCount: number;
+    allowAhead?: boolean;
+  },
+) {
+  return normalizeTikTokUploadedOffset({
+    contentRange: response.headers.get("content-range"),
+    status: response.status,
+    ...params,
+  });
 }
 
 export function validateTikTokCheckpointOffset(params: {
@@ -453,6 +547,8 @@ async function uploadOneChunk(params: {
   uploadUrl: string;
   contentType: string;
   totalBytes: number;
+  chunkSize: number;
+  totalChunkCount: number;
   firstByte: number;
   lastByte: number;
   finalChunk: boolean;
@@ -496,23 +592,19 @@ async function uploadOneChunk(params: {
 
       if (response.status === 416) {
         await exactBody.catch(() => undefined);
-        const uploadedOffset = parseTikTokUploadedOffset(response, params.totalBytes);
-        if (
-          uploadedOffset >= params.lastByte + 1 &&
-          isValidChunkBoundary({
-            offset: uploadedOffset,
-            totalBytes: params.totalBytes,
-            chunkSize: params.lastByte - params.firstByte + 1,
-            totalChunkCount: Math.ceil(params.totalBytes / expectedLength),
-          })
-        ) {
-          await response.body?.cancel().catch(() => undefined);
-          return {
-            nextOffset: uploadedOffset,
-            responseStatus: response.status,
-            recoveredFromAlreadyUploadedChunk: true,
-          } satisfies TikTokRangeUploadProgress;
-        }
+        const uploadedOffset = parseTikTokUploadedOffset(response, {
+          totalBytes: params.totalBytes,
+          expectedOffset: params.lastByte + 1,
+          chunkSize: params.chunkSize,
+          totalChunkCount: params.totalChunkCount,
+          allowAhead: true,
+        });
+        await response.body?.cancel().catch(() => undefined);
+        return {
+          nextOffset: uploadedOffset,
+          responseStatus: response.status,
+          recoveredFromAlreadyUploadedChunk: true,
+        } satisfies TikTokRangeUploadProgress;
       }
 
       const expectedStatus = params.finalChunk ? 201 : 206;
@@ -528,14 +620,12 @@ async function uploadOneChunk(params: {
         );
       }
 
-      const uploadedOffset = parseTikTokUploadedOffset(response, params.totalBytes);
-      if (uploadedOffset !== params.lastByte + 1) {
-        throw new TikTokRangeUploadError(
-          "tiktok_upload_progress_invalid",
-          "TikTok n'a pas confirmé exactement le morceau vidéo envoyé.",
-          { status: response.status },
-        );
-      }
+      const uploadedOffset = parseTikTokUploadedOffset(response, {
+        totalBytes: params.totalBytes,
+        expectedOffset: params.lastByte + 1,
+        chunkSize: params.chunkSize,
+        totalChunkCount: params.totalChunkCount,
+      });
       await response.body?.cancel().catch(() => undefined);
       await exactBody;
       return {
@@ -607,6 +697,8 @@ export async function uploadTikTokVideoFromRangeSource(params: {
       uploadUrl,
       contentType: normalizeUploadContentType(params.contentType),
       totalBytes,
+      chunkSize,
+      totalChunkCount,
       firstByte: nextOffset,
       lastByte,
       finalChunk,

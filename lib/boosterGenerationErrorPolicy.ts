@@ -17,7 +17,6 @@ const RETRYABLE_PROVIDER_CODES = new Set([
   "ai_gateway_unavailable",
   "ai_gateway_request_failed",
   "ai_gateway_invalid_request",
-  "ai_operation_deadline_exceeded",
 ]);
 
 export function getBoosterGenerationErrorCode(
@@ -32,6 +31,9 @@ export function isAutomaticBoosterGenerationRetryEligible(
 ): boolean {
   const code = getBoosterGenerationErrorCode(payload);
   if (NON_RETRYABLE_GENERATION_CODES.has(code)) return false;
+  // A deadline response has already consumed the shared client-side safety
+  // window. Retrying immediately cannot succeed and only creates a second 504.
+  if (code === "ai_operation_deadline_exceeded") return false;
   if (RETRYABLE_PROVIDER_CODES.has(code)) return true;
 
   // A generic 429 may be the user's anti-burst limit or product quota.

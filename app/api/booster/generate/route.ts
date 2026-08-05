@@ -381,7 +381,7 @@ Règles vidéo obligatoires :
 
 const handler = async (req: Request) => {
   const routeStartedAt = Date.now();
-  let generationDeadlineAt =
+  const generationDeadlineAt =
     routeStartedAt + BOOSTER_GENERATION_SAFETY_BUDGET_MS;
   let quotaReservation: AiCreditReservation | null = null;
   let generationMs = 0;
@@ -441,10 +441,10 @@ const handler = async (req: Request) => {
     const requestParseStartedAt = Date.now();
     const parsedRequest = await readBoosterGenerationRequest(req);
     const body = parsedRequest.body as Payload;
-    const clientDeadlineAt = Number(body.generationDeadlineAt || 0);
-    if (Number.isFinite(clientDeadlineAt) && clientDeadlineAt > 0) {
-      generationDeadlineAt = Math.min(generationDeadlineAt, clientDeadlineAt);
-    }
+    // Never clamp a server deadline with an absolute browser timestamp. The
+    // client clock can drift and its media preparation happens before this
+    // route starts. The browser keeps its own AbortController UX deadline;
+    // every server-side operation shares this route-entry safety budget.
     assertGenerationBudget(generationDeadlineAt);
     timingContext.requestTransport = parsedRequest.transport;
     timingContext.requestParseMs = Date.now() - requestParseStartedAt;

@@ -9,6 +9,10 @@ import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import { fetchTiktokPublishStatus, getTiktokUserFacingError } from "@/lib/tiktokPublish";
+import {
+  hasMeaningfulTiktokResultChange,
+  shouldUpdateTiktokDelivery,
+} from "@/lib/tiktokStatusPersistence";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 type JsonRecord = Record<string, unknown>;
@@ -21,6 +25,8 @@ type EventRow = {
 type PendingDeliveryRow = {
   publication_id: string;
   user_id: string;
+  status?: string | null;
+  error?: string | null;
   created_at?: string | null;
 };
 
@@ -118,8 +124,13 @@ async function getTiktokAccessToken(userId: string) {
   return accessToken;
 }
 
-function statusLabel(status: string | null | undefined, fetchFailed: boolean) {
+function statusLabel(
+  status: string | null | undefined,
+  fetchFailed: boolean,
+  stalled = false,
+) {
   if (fetchFailed) return "Vérification temporairement impossible";
+  if (stalled) return "Traitement prolongé";
   const value = String(status || "").toUpperCase();
   if (value === "PUBLISH_COMPLETE" || value === "DONE" || value === "SUCCESS") return "Publié";
   if (value === "FAILED" || value === "PUBLISH_FAILED" || value === "ERROR") return "Échec";
@@ -128,11 +139,22 @@ function statusLabel(status: string | null | undefined, fetchFailed: boolean) {
   return "En traitement";
 }
 
-function statusMessage(status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>) {
+function statusMessage(
+  status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>,
+  stalled = false,
+) {
   if (status.failed) return getTiktokUserFacingError(status.failReason || status.status || "tiktok_publish_failed");
   if (status.statusFetchFailed) return getTiktokUserFacingError(status.failReason || status.providerErrorCode || "internal_error");
   if (status.complete) return "TikTok confirme que la publication est terminée.";
+  if (stalled) {
+    return "TikTok conserve la publication en traitement sans progression récente. iNrSend continue le suivi.";
+  }
   return "TikTok traite encore la publication. iNrSend poursuit automatiquement le suivi.";
+}
+
+function dateMs(value: unknown) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function isPendingTikTokResult(resultLike: unknown) {
@@ -147,14 +169,66 @@ function isPendingTikTokResult(resultLike: unknown) {
   );
 }
 
-async function persistStatus(row: EventRow, publicationId: string, status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>) {
+async function persistStatus(
+  row: EventRow,
+  delivery: PendingDeliveryRow,
+  publicationId: string,
+  status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>,
+) {
   const payload = asRecord(row.payload);
   const results = asRecord(payload.results);
   const current = asRecord(results.tiktok);
   const diagnostics = asRecord(current.diagnostics);
+  const diagnosticStatus = asRecord(diagnostics.status);
   const publishId = String(current.external_id || diagnostics.publish_id || "").trim();
   const nowIso = new Date().toISOString();
-  const message = statusMessage(status);
+  const previousStatus = String(
+    current.tiktok_status || diagnosticStatus.status || "",
+  ).toUpperCase();
+  const previousUploadedBytes = Number(
+    current.tiktok_uploaded_bytes ?? diagnosticStatus.uploadedBytes ?? -1,
+  );
+  const previousDownloadedBytes = Number(
+    current.tiktok_downloaded_bytes ?? diagnosticStatus.downloadedBytes ?? -1,
+  );
+  const nextUploadedBytes =
+    status.uploadedBytes ??
+    current.tiktok_uploaded_bytes ??
+    diagnosticStatus.uploadedBytes ??
+    null;
+  const nextDownloadedBytes =
+    status.downloadedBytes ??
+    current.tiktok_downloaded_bytes ??
+    diagnosticStatus.downloadedBytes ??
+    null;
+  const progressChanged =
+    Boolean(status.status && String(status.status).toUpperCase() !== previousStatus) ||
+    (status.uploadedBytes != null && status.uploadedBytes !== previousUploadedBytes) ||
+    (status.downloadedBytes != null && status.downloadedBytes !== previousDownloadedBytes);
+  const submittedAt = String(
+    current.tiktok_submitted_at ||
+      diagnostics.submitted_at ||
+      row.created_at ||
+      nowIso,
+  );
+  const previousProgressAt = String(
+    current.tiktok_status_progress_at ||
+      diagnostics.status_progress_at ||
+      submittedAt,
+  );
+  const progressAt = progressChanged ? nowIso : previousProgressAt;
+  const submittedAtMs = dateMs(submittedAt);
+  const progressAtMs = dateMs(progressAt);
+  const nowMs = Date.now();
+  const stalled = Boolean(
+    status.pending &&
+      !status.statusFetchFailed &&
+      submittedAtMs !== null &&
+      progressAtMs !== null &&
+      nowMs - submittedAtMs >= 15 * 60 * 1000 &&
+      nowMs - progressAtMs >= 10 * 60 * 1000,
+  );
+  const message = statusMessage(status, stalled);
   const nextResult: JsonRecord = {
     ...current,
     ok: status.failed ? false : true,
@@ -163,19 +237,26 @@ async function persistStatus(row: EventRow, publicationId: string, status: Await
     share_url: status.shareUrl || current.share_url || null,
     external_url: status.shareUrl || current.external_url || current.profile_url || null,
     tiktok_status: status.status || current.tiktok_status || "PROCESSING",
-    tiktok_status_label: statusLabel(status.status, Boolean(status.statusFetchFailed)),
+    tiktok_status_label: statusLabel(
+      status.status,
+      Boolean(status.statusFetchFailed),
+      stalled,
+    ),
     tiktok_status_message: message,
     tiktok_status_checked_at: nowIso,
-    tiktok_status_progress_at: nowIso,
+    tiktok_submitted_at: submittedAt,
+    tiktok_status_progress_at: progressAt,
     tiktok_status_fetch_failed: Boolean(status.statusFetchFailed),
     tiktok_status_fetch_error: status.statusFetchFailed ? status.failReason || status.providerErrorCode || null : null,
     tiktok_fail_reason: status.failed ? status.failReason || null : null,
     tiktok_provider_error_code: status.providerErrorCode || null,
-    tiktok_uploaded_bytes: status.uploadedBytes ?? current.tiktok_uploaded_bytes ?? null,
-    tiktok_downloaded_bytes: status.downloadedBytes ?? current.tiktok_downloaded_bytes ?? null,
+    tiktok_status_retryable: Boolean(status.retryable),
+    tiktok_uploaded_bytes: nextUploadedBytes,
+    tiktok_downloaded_bytes: nextDownloadedBytes,
     tiktok_public_post_ids: status.publiclyAvailablePostIds?.length
       ? status.publiclyAvailablePostIds
       : current.tiktok_public_post_ids || [],
+    tiktok_stalled: stalled,
     warning: Boolean(status.pending || status.statusFetchFailed),
     warning_message: status.pending || status.statusFetchFailed ? message : null,
     error: status.failed ? message : null,
@@ -184,48 +265,72 @@ async function persistStatus(row: EventRow, publicationId: string, status: Await
       publish_id: publishId,
       status,
       share_url: status.shareUrl || diagnostics.share_url || null,
+      submitted_at: submittedAt,
+      status_progress_at: progressAt,
       status_checked_at: nowIso,
+      stalled,
     },
   };
-  const nextResults = { ...results, tiktok: nextResult };
-  const selectedChannels = publicationChannels(payload, nextResults);
-  const aggregate = buildAsyncPublicationAggregate(
-    nextResults,
-    selectedChannels,
-  );
   const terminal = status.complete || status.failed;
-  const nextPayload = {
-    ...payload,
-    attemptedChannels: selectedChannels,
-    channels: aggregate.summary.successChannels,
-    results: nextResults,
-    summary: aggregate.summary,
-    status: aggregate.status,
-    outcome: aggregate.outcome,
-    updatedAt: nowIso,
-    ...(terminal
-      ? { completedAt: nowIso, externalCompletedAt: nowIso }
-      : {}),
-  };
+  const shouldPersistEvent = hasMeaningfulTiktokResultChange(
+    current,
+    nextResult,
+  );
+  if (shouldPersistEvent) {
+    const nextResults = { ...results, tiktok: nextResult };
+    const selectedChannels = publicationChannels(payload, nextResults);
+    const aggregate = buildAsyncPublicationAggregate(
+      nextResults,
+      selectedChannels,
+    );
+    const nextPayload = {
+      ...payload,
+      attemptedChannels: selectedChannels,
+      channels: aggregate.summary.successChannels,
+      results: nextResults,
+      summary: aggregate.summary,
+      status: aggregate.status,
+      outcome: aggregate.outcome,
+      updatedAt: nowIso,
+      ...(terminal
+        ? { completedAt: nowIso, externalCompletedAt: nowIso }
+        : {}),
+    };
 
-  const { error: eventError } = await supabaseAdmin
-    .from("app_events")
-    .update({ payload: nextPayload })
-    .eq("id", row.id)
-    .eq("user_id", row.user_id);
-  if (eventError) throw eventError;
+    const { error: eventError } = await supabaseAdmin
+      .from("app_events")
+      .update({ payload: nextPayload })
+      .eq("id", row.id)
+      .eq("user_id", row.user_id);
+    if (eventError) throw eventError;
+  }
 
-  const { error: deliveryError } = await supabaseAdmin
-    .from("publication_deliveries")
-    .update({
-      status: status.failed ? "failed" : status.complete ? "delivered" : "processing",
-      error: status.failed ? message : null,
-    })
-    .eq("user_id", row.user_id)
-    .eq("publication_id", publicationId)
-    .eq("channel", "tiktok")
-    .neq("status", "deleted");
-  if (deliveryError) throw deliveryError;
+  const nextDeliveryStatus = status.failed
+    ? "failed"
+    : status.complete
+      ? "delivered"
+      : "processing";
+  const nextDeliveryError = status.failed ? message : null;
+  const shouldPersistDelivery = shouldUpdateTiktokDelivery(
+    delivery,
+    nextDeliveryStatus,
+    nextDeliveryError,
+  );
+  if (shouldPersistDelivery) {
+    const { error: deliveryError } = await supabaseAdmin
+      .from("publication_deliveries")
+      .update({
+        status: nextDeliveryStatus,
+        error: nextDeliveryError,
+      })
+      .eq("user_id", row.user_id)
+      .eq("publication_id", publicationId)
+      .eq("channel", "tiktok")
+      .neq("status", "deleted");
+    if (deliveryError) throw deliveryError;
+  }
+
+  return { shouldPersistEvent, shouldPersistDelivery };
 }
 
 export async function processPendingTiktokPublications({ limit = 75 }: { limit?: number } = {}) {
@@ -236,7 +341,7 @@ export async function processPendingTiktokPublications({ limit = 75 }: { limit?:
   // avoidable Supabase CPU consumers.
   const { data: deliveryData, error: deliveryError } = await supabaseAdmin
     .from("publication_deliveries")
-    .select("publication_id,user_id,created_at")
+    .select("publication_id,user_id,status,error,created_at")
     .eq("channel", "tiktok")
     .eq("status", "processing")
     .gte("created_at", since)
@@ -245,6 +350,12 @@ export async function processPendingTiktokPublications({ limit = 75 }: { limit?:
   if (deliveryError) throw deliveryError;
 
   const deliveries = (deliveryData || []) as PendingDeliveryRow[];
+  const deliveryByKey = new Map(
+    deliveries.map((row) => [
+      `${String(row.user_id)}:${String(row.publication_id)}`,
+      row,
+    ]),
+  );
   const deliveryKeys = new Set(
     deliveries.map(
       (row) => `${String(row.user_id)}:${String(row.publication_id)}`,
@@ -270,11 +381,17 @@ export async function processPendingTiktokPublications({ limit = 75 }: { limit?:
       const payload = asRecord(row.payload);
       const publicationId = String(payload.publication_id || "").trim();
       const result = asRecord(asRecord(payload.results).tiktok);
-      return { row, publicationId, result };
+      return {
+        row,
+        publicationId,
+        result,
+        delivery: deliveryByKey.get(`${row.user_id}:${publicationId}`) || null,
+      };
     })
     .filter(
       (entry) =>
         entry.publicationId &&
+        entry.delivery &&
         deliveryKeys.has(`${entry.row.user_id}:${entry.publicationId}`) &&
         isPendingTikTokResult(entry.result),
     )
@@ -311,7 +428,12 @@ export async function processPendingTiktokPublications({ limit = 75 }: { limit?:
             "",
         ).trim();
         const status = await fetchTiktokPublishStatus(token, publishId);
-        await persistStatus(candidate.row, candidate.publicationId, status);
+        await persistStatus(
+          candidate.row,
+          candidate.delivery!,
+          candidate.publicationId,
+          status,
+        );
         if (status.complete) completed += 1;
         else if (status.failed) failed += 1;
         else pending += 1;

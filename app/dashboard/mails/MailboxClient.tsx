@@ -1680,11 +1680,73 @@ export default function MailboxClient() {
     if (["completed", "partial", "failed", "sent"].includes(status)) return;
 
     const campaignId = detailsItem.id;
-    const timer = window.setInterval(() => {
-      void loadCampaignHealth(campaignId, (detailsItem as any).raw || {});
-      void loadCampaignRecipients(campaignId, campaignRecipientsPage, campaignRecipientsFilter);
-    }, 120_000);
-    return () => window.clearInterval(timer);
+    const campaignRaw = (detailsItem as any).raw || {};
+    let cancelled = false;
+    let inFlight = false;
+    let resumeRequested = false;
+    let timer: number | null = null;
+
+    const clearTimer = () => {
+      if (!timer) return;
+      window.clearTimeout(timer);
+      timer = null;
+    };
+
+    const schedule = (delayMs: number) => {
+      clearTimer();
+      if (cancelled || document.hidden) return;
+      timer = window.setTimeout(() => {
+        timer = null;
+        void run();
+      }, delayMs);
+    };
+
+    const run = async () => {
+      if (cancelled || document.hidden) return;
+      if (inFlight) {
+        resumeRequested = true;
+        return;
+      }
+
+      inFlight = true;
+      try {
+        await Promise.all([
+          loadCampaignHealth(campaignId, campaignRaw),
+          loadCampaignRecipients(campaignId, campaignRecipientsPage, campaignRecipientsFilter),
+        ]);
+      } finally {
+        inFlight = false;
+      }
+
+      if (cancelled || document.hidden) return;
+      if (resumeRequested) {
+        resumeRequested = false;
+        schedule(0);
+        return;
+      }
+      schedule(120_000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        clearTimer();
+        return;
+      }
+      if (inFlight) {
+        resumeRequested = true;
+        return;
+      }
+      schedule(0);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!document.hidden) schedule(120_000);
+    return () => {
+      cancelled = true;
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [
     campaignRecipientsFilter,
     campaignRecipientsPage,

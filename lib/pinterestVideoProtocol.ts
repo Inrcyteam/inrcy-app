@@ -1,4 +1,8 @@
 import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
+import {
+  ensureFrenchPublicationErrorMessage,
+  getProviderPublicationErrorMessage,
+} from "./publicationErrorFrench.ts";
 
 export type PinterestFetch = typeof fetch;
 
@@ -483,13 +487,16 @@ function isAmbiguousMutationStatus(status: number | null) {
 function providerErrorDetails(payload: unknown, fallback: string) {
   const record = asRecord(payload);
   const nested = asRecord(record.error);
+  const rawMessage =
+    asString(record.message) ||
+    asString(record.error_description) ||
+    asString(nested.message) ||
+    asString(record.error) ||
+    fallback;
   return {
     message:
-      asString(record.message) ||
-      asString(record.error_description) ||
-      asString(nested.message) ||
-      asString(record.error) ||
-      fallback,
+      getProviderPublicationErrorMessage("pinterest", rawMessage) ||
+      ensureFrenchPublicationErrorMessage(rawMessage, fallback),
     pinterestCode:
       asString(record.code) ||
       asString(record.error_code) ||

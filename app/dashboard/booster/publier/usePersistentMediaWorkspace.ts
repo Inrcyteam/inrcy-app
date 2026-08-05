@@ -743,6 +743,7 @@ export default function usePersistentMediaWorkspace({
       options?: {
         mediaTypes?: readonly WorkspaceMediaFamily[];
         tolerateFailures?: boolean;
+        signal?: AbortSignal;
       },
     ) => {
       const includesFamily = (mediaType: WorkspaceMediaFamily) =>
@@ -761,6 +762,7 @@ export default function usePersistentMediaWorkspace({
           : Promise.resolve();
       };
       while (true) {
+        if (options?.signal?.aborted) throw options.signal.reason;
         const uploadFailure = getWorkspaceMediaFamilyFailure(
           activeUploadFailureRef.current,
           options?.mediaTypes,
@@ -858,6 +860,7 @@ export default function usePersistentMediaWorkspace({
       expectationOrExpectations:
         | PersistentWorkspaceSourceExpectation
         | readonly PersistentWorkspaceSourceExpectation[],
+      options?: { signal?: AbortSignal },
     ) => {
       if (!enabled) return null;
       const expectations = (
@@ -883,6 +886,7 @@ export default function usePersistentMediaWorkspace({
       const snapshot = await loadMediaPublicationWorkspace({
         workspaceId: workspace.workspaceId,
         includeUrls: false,
+        signal: options?.signal,
       });
       if (
         operationVersion !== operationVersionRef.current ||

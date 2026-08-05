@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "../../dashboard.module.css";
 import localStyles from "./InrSearchSettingsContent.module.css";
 import StatusMessage from "../../_components/StatusMessage";
@@ -204,6 +204,8 @@ export default function InrSearchSettingsContent({
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const lastLoadStartedAtRef = useRef(0);
 
   const publicUrl = useMemo(
     () => settings.slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${settings.slug}` : "",
@@ -214,57 +216,71 @@ export default function InrSearchSettingsContent({
     [settings.slug],
   );
 
-  const load = useCallback(async ({ blocking = false }: { blocking?: boolean } = {}) => {
-    if (blocking) setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/inr-search/settings", { cache: "no-store", credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Chargement impossible.");
+  const load = useCallback(({ blocking = false }: { blocking?: boolean } = {}) => {
+    if (loadInFlightRef.current) return loadInFlightRef.current;
 
-      const next = normalizeSettings(payload.inrSearch);
-      const publicationValue = asRecord(payload.publication);
-      const nextPublication: InrSearchPublicationState = {
-        allowed: Boolean(publicationValue.allowed),
-        reason: [
-          "published",
-          "slug_missing",
-          "config_missing",
-          "page_disabled",
-          "bubble_disabled",
-          "subscription_inactive",
-          "profile_missing",
-          "data_unavailable",
-        ].includes(String(publicationValue.reason))
-          ? publicationValue.reason as InrSearchPublicationState["reason"]
-          : "data_unavailable",
-        subscriptionStatus: typeof publicationValue.subscriptionStatus === "string" ? publicationValue.subscriptionStatus : undefined,
-      };
+    lastLoadStartedAtRef.current = Date.now();
+    const request = (async () => {
+      if (blocking) setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/inr-search/settings", { cache: "no-store", credentials: "include" });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Chargement impossible.");
 
-      setSettings(next);
-      setPublication(nextPublication);
-      writePanelSnapshot(
-        publicUrl || (next.slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${next.slug}` : ""),
-        { settings: next, publication: nextPublication },
-      );
-      emitDashboardUpdate(next, nextPublication.allowed);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Chargement de la page iNr'Search impossible.");
-    } finally {
-      setLoading(false);
-    }
-  }, [publicUrl]);
+        const next = normalizeSettings(payload.inrSearch);
+        const publicationValue = asRecord(payload.publication);
+        const nextPublication: InrSearchPublicationState = {
+          allowed: Boolean(publicationValue.allowed),
+          reason: [
+            "published",
+            "slug_missing",
+            "config_missing",
+            "page_disabled",
+            "bubble_disabled",
+            "subscription_inactive",
+            "profile_missing",
+            "data_unavailable",
+          ].includes(String(publicationValue.reason))
+            ? publicationValue.reason as InrSearchPublicationState["reason"]
+            : "data_unavailable",
+          subscriptionStatus: typeof publicationValue.subscriptionStatus === "string" ? publicationValue.subscriptionStatus : undefined,
+        };
+
+        setSettings(next);
+        setPublication(nextPublication);
+        writePanelSnapshot(
+          next.slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${next.slug}` : "",
+          { settings: next, publication: nextPublication },
+        );
+        emitDashboardUpdate(next, nextPublication.allowed);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Chargement de la page iNr'Search impossible.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+
+    loadInFlightRef.current = request;
+    void request.finally(() => {
+      if (loadInFlightRef.current === request) loadInFlightRef.current = null;
+    });
+    return request;
+  }, []);
 
   useEffect(() => {
     void load({ blocking: !initialSnapshot && initialConnected === null });
     const refresh = () => {
-      if (document.visibilityState === "visible") void load();
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadStartedAtRef.current >= 30_000
+      ) {
+        void load();
+      }
     };
-    const interval = window.setInterval(refresh, 30_000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => {
-      window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };

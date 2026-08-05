@@ -18,6 +18,7 @@ import {
   updateAsyncChannelEvent,
   updateAsyncPublicationJobEvent,
 } from "@/lib/boosterAsyncPublication";
+import { getBoosterCronSweepPlan } from "@/lib/boosterCronScheduling";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -28,6 +29,22 @@ type AsyncEventRow = {
   user_id: string;
   payload: unknown;
   created_at?: string | null;
+};
+type AsyncEventCandidateRow = {
+  id: string;
+  user_id: string;
+  created_at?: string | null;
+  candidate_status?: unknown;
+  candidate_updated_at?: unknown;
+};
+type AsyncChannelCandidateRow = AsyncEventCandidateRow & {
+  candidate_channel?: unknown;
+  candidate_instagram_checkpoint?: unknown;
+  candidate_instagram_next_poll_at?: unknown;
+  candidate_youtube_checkpoint?: unknown;
+  candidate_youtube_next_run_at?: unknown;
+  candidate_pinterest_checkpoint?: unknown;
+  candidate_pinterest_next_poll_at?: unknown;
 };
 type AsyncDispatchJob = {
   id: string;
@@ -64,6 +81,30 @@ const MAX_ASYNC_DISPATCH_ATTEMPTS = 3;
 const MAX_INSTAGRAM_VIDEO_CONTINUATION_ATTEMPTS = 480;
 const MAX_YOUTUBE_UPLOAD_CONTINUATION_ATTEMPTS = 128;
 const MAX_PINTEREST_VIDEO_CONTINUATION_ATTEMPTS = 480;
+const ASYNC_CHANNEL_CANDIDATE_LIMIT = 50;
+const ASYNC_PREPARATION_CANDIDATE_LIMIT = 25;
+const ASYNC_FINALIZATION_CANDIDATE_LIMIT = 25;
+const ASYNC_CHANNEL_EXACT_LOAD_LIMIT = ASYNC_CHANNEL_CANDIDATE_LIMIT * 2;
+const ASYNC_PREPARATION_EXACT_LOAD_LIMIT =
+  ASYNC_PREPARATION_CANDIDATE_LIMIT * 2;
+const ASYNC_EVENT_CANDIDATE_COLUMNS = [
+  "id",
+  "user_id",
+  "created_at",
+  "candidate_status:payload->>status",
+  "candidate_updated_at:payload->>updatedAt",
+].join(",");
+const ASYNC_CHANNEL_CANDIDATE_COLUMNS = [
+  ASYNC_EVENT_CANDIDATE_COLUMNS,
+  "candidate_channel:payload->>channel",
+  "candidate_instagram_checkpoint:payload->instagramVideoCheckpoint",
+  "candidate_instagram_next_poll_at:payload->>instagramVideoNextPollAt",
+  "candidate_youtube_checkpoint:payload->youtubeUploadCheckpoint",
+  "candidate_youtube_next_run_at:payload->>youtubeUploadNextRunAt",
+  "candidate_pinterest_checkpoint:payload->pinterestVideoCheckpoint",
+  "candidate_pinterest_next_poll_at:payload->>pinterestVideoNextPollAt",
+].join(",");
+const ASYNC_FINALIZATION_CANDIDATE_COLUMNS = "id,user_id,created_at";
 const PINTEREST_VIDEO_TERMINAL_PHASES = new Set([
   "completed",
   "failed",
@@ -83,6 +124,86 @@ function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
+}
+
+function uniqueBoundedIds(rows: AsyncEventCandidateRow[], limit: number) {
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => String(row.id || "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, limit);
+}
+
+function candidateKey(row: Pick<AsyncEventCandidateRow, "id" | "user_id">) {
+  return `${String(row.user_id || "").trim()}:${String(row.id || "").trim()}`;
+}
+
+function isChannelCandidateDue(row: AsyncChannelCandidateRow, nowMs: number) {
+  const channel = String(row.candidate_channel || "").trim();
+  const instagramCheckpoint = asRecord(row.candidate_instagram_checkpoint);
+  const hasYoutubeCheckpoint =
+    row.candidate_youtube_checkpoint !== null &&
+    row.candidate_youtube_checkpoint !== undefined;
+  const pinterestCheckpoint = asRecord(row.candidate_pinterest_checkpoint);
+  const hasPinterestCheckpoint =
+    row.candidate_pinterest_checkpoint !== null &&
+    row.candidate_pinterest_checkpoint !== undefined;
+  const pinterestTerminal =
+    channel === "pinterest" &&
+    hasPinterestCheckpoint &&
+    PINTEREST_VIDEO_TERMINAL_PHASES.has(
+      String(pinterestCheckpoint.phase || "").trim().toLowerCase(),
+    );
+  if (pinterestTerminal) return false;
+
+  if (
+    channel === "instagram" &&
+    Object.keys(instagramCheckpoint).length > 0 &&
+    timestampMs(row.candidate_instagram_next_poll_at) > nowMs
+  ) {
+    return false;
+  }
+  if (
+    channel === "youtube_shorts" &&
+    hasYoutubeCheckpoint &&
+    timestampMs(row.candidate_youtube_next_run_at) > nowMs
+  ) {
+    return false;
+  }
+  if (
+    channel === "pinterest" &&
+    hasPinterestCheckpoint &&
+    timestampMs(
+      row.candidate_pinterest_next_poll_at,
+      pinterestCheckpoint.nextPollAt,
+    ) > nowMs
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function loadExactAsyncEventRows(params: {
+  eventType: string;
+  ids: string[];
+  limit: number;
+}) {
+  const ids = Array.from(new Set(params.ids.filter(Boolean))).slice(
+    0,
+    params.limit,
+  );
+  if (!ids.length) {
+    return { data: [] as AsyncEventRow[], error: null };
+  }
+  const { data, error } = await supabaseAdmin
+    .from("app_events")
+    .select("id,user_id,payload,created_at")
+    .eq("type", params.eventType)
+    .in("id", ids)
+    .limit(params.limit);
+  return { data: (data || []) as AsyncEventRow[], error };
 }
 
 function readDispatchJob(row: AsyncEventRow): AsyncDispatchJob {
@@ -411,16 +532,18 @@ export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ ok: false, error: "Non autorisé." }, { status: 401 });
   }
+  const nowMs = Date.now();
+  const sweepPlan = getBoosterCronSweepPlan(nowMs);
   const finalizationRecoveryCutoffIso = new Date(
-    Date.now() - 2 * 60 * 1000,
+    nowMs - 2 * 60 * 1000,
   ).toISOString();
   const channelRecoveryCutoffIso = new Date(
-    Date.now() -
+    nowMs -
       BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS -
       PROCESSING_RECOVERY_GRACE_MS,
   ).toISOString();
   const preparationRecoveryCutoffIso = new Date(
-    Date.now() -
+    nowMs -
       BOOSTER_ASYNC_PREPARATION_LOCK_TTL_MS -
       PROCESSING_RECOVERY_GRACE_MS,
   ).toISOString();
@@ -429,85 +552,153 @@ export async function GET(request: Request) {
   // separating it from active recovery rows: a wall of fresh processing jobs
   // must not hide a queued job whose initial after() dispatch was lost.
   const [
-    queuedChannelQuery,
-    processingChannelQuery,
-    queuedPreparationQuery,
-    activePreparationQuery,
-    oldestFinalizationQuery,
-    newestFinalizationQuery,
+    queuedChannelCandidatesQuery,
+    processingChannelCandidatesQuery,
+    queuedPreparationCandidatesQuery,
+    activePreparationCandidatesQuery,
   ] = await Promise.all([
     supabaseAdmin
       .from("app_events")
-      .select("id,user_id,payload,created_at")
+      .select(ASYNC_CHANNEL_CANDIDATE_COLUMNS)
       .eq("type", BOOSTER_ASYNC_CHANNEL_EVENT_TYPE)
       .eq("payload->>status", "queued")
       .not("payload->dispatchRequest", "is", null)
       .order("created_at", { ascending: true })
-      .limit(50),
+      .limit(ASYNC_CHANNEL_CANDIDATE_LIMIT),
+    sweepPlan.runRecoverySweep
+      ? supabaseAdmin
+          .from("app_events")
+          .select(ASYNC_CHANNEL_CANDIDATE_COLUMNS)
+          .eq("type", BOOSTER_ASYNC_CHANNEL_EVENT_TYPE)
+          .eq("payload->>status", "processing")
+          .lt("payload->>updatedAt", channelRecoveryCutoffIso)
+          .order("created_at", { ascending: true })
+          .limit(ASYNC_CHANNEL_CANDIDATE_LIMIT)
+      : Promise.resolve({ data: [], error: null }),
     supabaseAdmin
       .from("app_events")
-      .select("id,user_id,payload,created_at")
-      .eq("type", BOOSTER_ASYNC_CHANNEL_EVENT_TYPE)
-      .eq("payload->>status", "processing")
-      .lt("payload->>updatedAt", channelRecoveryCutoffIso)
-      .order("created_at", { ascending: true })
-      .limit(50),
-    supabaseAdmin
-      .from("app_events")
-      .select("id,user_id,payload,created_at")
+      .select(ASYNC_EVENT_CANDIDATE_COLUMNS)
       .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
       .eq("payload->>status", "queued")
       .not("payload->preparationRequest", "is", null)
       .order("created_at", { ascending: true })
-      .limit(25),
-    supabaseAdmin
-      .from("app_events")
-      .select("id,user_id,payload,created_at")
-      .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
-      .in("payload->>status", ["preparing", "dispatching"])
-      .lt("payload->>updatedAt", preparationRecoveryCutoffIso)
-      .order("created_at", { ascending: true })
-      .limit(25),
-    supabaseAdmin
-      .from("app_events")
-      .select("id,user_id,payload,created_at")
-      .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
-      .in("payload->>status", ["queued", "preparing", "dispatching"])
-      .lt("payload->>updatedAt", finalizationRecoveryCutoffIso)
-      .order("created_at", { ascending: true })
-      .limit(13),
-    supabaseAdmin
-      .from("app_events")
-      .select("id,user_id,payload,created_at")
-      .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
-      .in("payload->>status", ["queued", "preparing", "dispatching"])
-      .lt("payload->>updatedAt", finalizationRecoveryCutoffIso)
-      .order("created_at", { ascending: false })
-      .limit(12),
+      .limit(ASYNC_PREPARATION_CANDIDATE_LIMIT),
+    sweepPlan.runRecoverySweep
+      ? supabaseAdmin
+          .from("app_events")
+          .select(ASYNC_EVENT_CANDIDATE_COLUMNS)
+          .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
+          .in("payload->>status", ["preparing", "dispatching"])
+          .lt("payload->>updatedAt", preparationRecoveryCutoffIso)
+          .order("created_at", { ascending: true })
+          .limit(ASYNC_PREPARATION_CANDIDATE_LIMIT)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const queryError = [
-    queuedChannelQuery.error,
-    processingChannelQuery.error,
-    queuedPreparationQuery.error,
-    activePreparationQuery.error,
-    oldestFinalizationQuery.error,
-    newestFinalizationQuery.error,
+  const candidateQueryError = [
+    queuedChannelCandidatesQuery.error,
+    processingChannelCandidatesQuery.error,
+    queuedPreparationCandidatesQuery.error,
+    activePreparationCandidatesQuery.error,
   ].find(Boolean);
-  if (queryError) {
+  if (candidateQueryError) {
     return NextResponse.json(
       {
         ok: false,
-        error: queryError.message,
+        error: candidateQueryError.message,
       },
       { status: 500 },
     );
   }
 
-  const queuedDispatchJobs = (
-    (queuedChannelQuery.data || []) as AsyncEventRow[]
-  )
-    .map(readDispatchJob)
+  const queuedChannelCandidates = (
+    (queuedChannelCandidatesQuery.data || []) as unknown as AsyncChannelCandidateRow[]
+  ).filter(
+    (row) =>
+      String(row.candidate_status || "") === "queued" &&
+      isChannelCandidateDue(row, nowMs),
+  );
+  const processingChannelCandidates = (
+    (processingChannelCandidatesQuery.data || []) as unknown as AsyncChannelCandidateRow[]
+  ).filter(
+    (row) =>
+      String(row.candidate_status || "") === "processing" &&
+      nowMs - timestampMs(row.candidate_updated_at, row.created_at) >=
+        BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS + PROCESSING_RECOVERY_GRACE_MS &&
+      isChannelCandidateDue(row, nowMs),
+  );
+  const queuedPreparationCandidates = (
+    (queuedPreparationCandidatesQuery.data || []) as unknown as AsyncEventCandidateRow[]
+  ).filter((row) => String(row.candidate_status || "") === "queued");
+  const activePreparationCandidates = (
+    (activePreparationCandidatesQuery.data || []) as unknown as AsyncEventCandidateRow[]
+  ).filter(
+    (row) =>
+      ["preparing", "dispatching"].includes(
+        String(row.candidate_status || ""),
+      ) &&
+      nowMs - timestampMs(row.candidate_updated_at, row.created_at) >=
+        BOOSTER_ASYNC_PREPARATION_LOCK_TTL_MS +
+          PROCESSING_RECOVERY_GRACE_MS,
+  );
+
+  // Full transport payloads are fetched by primary key only after the compact
+  // queue rows pass status, staleness and continuation scheduling checks.
+  const [channelRowsQuery, preparationRowsQuery, finalizationCandidatesQuery] =
+    await Promise.all([
+      loadExactAsyncEventRows({
+        eventType: BOOSTER_ASYNC_CHANNEL_EVENT_TYPE,
+        ids: uniqueBoundedIds(
+          [...queuedChannelCandidates, ...processingChannelCandidates],
+          ASYNC_CHANNEL_EXACT_LOAD_LIMIT,
+        ),
+        limit: ASYNC_CHANNEL_EXACT_LOAD_LIMIT,
+      }),
+      loadExactAsyncEventRows({
+        eventType: BOOSTER_ASYNC_JOB_EVENT_TYPE,
+        ids: uniqueBoundedIds(
+          [...queuedPreparationCandidates, ...activePreparationCandidates],
+          ASYNC_PREPARATION_EXACT_LOAD_LIMIT,
+        ),
+        limit: ASYNC_PREPARATION_EXACT_LOAD_LIMIT,
+      }),
+      sweepPlan.runFinalizationSweep
+        ? supabaseAdmin
+            .from("app_events")
+            .select(ASYNC_FINALIZATION_CANDIDATE_COLUMNS)
+            .eq("type", BOOSTER_ASYNC_JOB_EVENT_TYPE)
+            .in("payload->>status", ["queued", "preparing", "dispatching"])
+            .lt("payload->>updatedAt", finalizationRecoveryCutoffIso)
+            .order("created_at", {
+              ascending: sweepPlan.finalizationAscending,
+            })
+            .limit(ASYNC_FINALIZATION_CANDIDATE_LIMIT)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+  const exactQueryError = [
+    channelRowsQuery.error,
+    preparationRowsQuery.error,
+    finalizationCandidatesQuery.error,
+  ].find(Boolean);
+  if (exactQueryError) {
+    return NextResponse.json(
+      { ok: false, error: exactQueryError.message },
+      { status: 500 },
+    );
+  }
+
+  const queuedChannelKeys = new Set(queuedChannelCandidates.map(candidateKey));
+  const processingChannelKeys = new Set(
+    processingChannelCandidates.map(candidateKey),
+  );
+  const exactDispatchJobs = (channelRowsQuery.data || []).map(readDispatchJob);
+  const queuedDispatchJobs = exactDispatchJobs
+    .filter(
+      (job) =>
+        queuedChannelKeys.has(`${job.userId}:${job.id}`) &&
+        job.status === "queued",
+    )
     .filter(
       (job) =>
         job.id &&
@@ -515,25 +706,34 @@ export async function GET(request: Request) {
         Object.keys(job.dispatchRequest).length > 0 &&
         !job.pinterestVideoTerminal,
     );
-  const recoveredDispatchJobs = (
-    (processingChannelQuery.data || []) as AsyncEventRow[]
-  )
-    .map(readDispatchJob)
+  const recoveredDispatchJobs = exactDispatchJobs
+    .filter(
+      (job) =>
+        processingChannelKeys.has(`${job.userId}:${job.id}`) &&
+        job.status === "processing",
+    )
     .filter(
       (job) =>
         job.id &&
         job.userId &&
         Object.keys(job.dispatchRequest).length > 0 &&
         !job.pinterestVideoTerminal &&
-        Date.now() - job.lastActivityAt >=
+        nowMs - job.lastActivityAt >=
           BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS + PROCESSING_RECOVERY_GRACE_MS,
     );
   const dispatchJobs = [...queuedDispatchJobs, ...recoveredDispatchJobs];
 
-  const queuedPreparationJobs = (
-    (queuedPreparationQuery.data || []) as AsyncEventRow[]
-  )
-    .map(readPreparationJob)
+  const queuedPreparationKeys = new Set(
+    queuedPreparationCandidates.map(candidateKey),
+  );
+  const activePreparationKeys = new Set(
+    activePreparationCandidates.map(candidateKey),
+  );
+  const exactPreparationJobs = (preparationRowsQuery.data || []).map(
+    readPreparationJob,
+  );
+  const queuedPreparationJobs = exactPreparationJobs
+    .filter((job) => queuedPreparationKeys.has(`${job.userId}:${job.id}`))
     .filter(
       (job) =>
         job.id &&
@@ -541,16 +741,14 @@ export async function GET(request: Request) {
         Object.keys(job.preparationRequest).length > 0 &&
         job.status === "queued",
     );
-  const recoveredPreparationJobs = (
-    (activePreparationQuery.data || []) as AsyncEventRow[]
-  )
-    .map(readPreparationJob)
+  const recoveredPreparationJobs = exactPreparationJobs
+    .filter((job) => activePreparationKeys.has(`${job.userId}:${job.id}`))
     .filter(
       (job) =>
         job.id &&
         job.userId &&
         Object.keys(job.preparationRequest).length > 0 &&
-        Date.now() - job.lastActivityAt >=
+        nowMs - job.lastActivityAt >=
           BOOSTER_ASYNC_PREPARATION_LOCK_TTL_MS +
             PROCESSING_RECOVERY_GRACE_MS,
     );
@@ -563,17 +761,22 @@ export async function GET(request: Request) {
   // branches that terminalized children early, and parents whose technical
   // child is missing. finalizeAsyncPublicationIfReady remains idempotent and
   // returns cheaply while any real child is still pending.
-  const finalizationJobs = Array.from(
-    new Map(
-      [
-        ...((oldestFinalizationQuery.data || []) as AsyncEventRow[]),
-        ...((newestFinalizationQuery.data || []) as AsyncEventRow[]),
-      ]
-        .map(readPreparationJob)
-        .filter((job) => job.id && job.userId)
-        .map((job) => [`${job.userId}:${job.id}`, job] as const),
-    ).values(),
-  ).slice(0, 25);
+  const parentsAlreadyWorking = new Set([
+    ...preparationJobs.map((job) => `${job.userId}:${job.id}`),
+    ...dispatchJobs.map((job) => `${job.userId}:${job.publicationId}`),
+  ]);
+  const finalizationJobs = (
+    (finalizationCandidatesQuery.data || []) as AsyncEventCandidateRow[]
+  )
+    .filter((row) => row.id && row.user_id)
+    // A dispatch/exhaustion branch finalizes its own parent. Do not launch a
+    // competing reconciliation for that parent in this same cron tick.
+    .filter((row) => !parentsAlreadyWorking.has(candidateKey(row)))
+    .slice(0, ASYNC_FINALIZATION_CANDIDATE_LIMIT)
+    .map((row) => ({
+      id: String(row.id),
+      userId: String(row.user_id),
+    }));
 
   if (
     dispatchJobs.length ||
@@ -604,6 +807,8 @@ export async function GET(request: Request) {
     queued: queuedDispatchJobs.length,
     recovered: recoveredDispatchJobs.length,
     finalizationsChecked: finalizationJobs.length,
+    recoverySweep: sweepPlan.runRecoverySweep,
+    finalizationSweep: sweepPlan.runFinalizationSweep,
     publicationIds: Array.from(
       new Set(
         [
