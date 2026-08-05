@@ -16,12 +16,20 @@ const layer = read("app/dashboard/_components/DashboardBoosterModalLayer.tsx");
 
 test("queued publication waits up to 30 seconds for a useful balance, then continues in background", () => {
   assert.match(publishClient, /BOOSTER_PUBLISH_RESULT_GRACE_MS = 30_000/);
-  assert.match(publishClient, /options\.maxPollingMs \|\| BOOSTER_PUBLISH_RESULT_GRACE_MS/);
+  assert.match(publishClient, /resultGraceMs/);
+  assert.match(publishClient, /resultGraceMs - elapsedBeforePollingMs/);
   assert.match(publishModal, /estimatedPublishMs = BOOSTER_PUBLISH_RESULT_GRACE_MS/);
+  assert.doesNotMatch(publishModal, /remainingPublishWindowMs/);
+  assert.doesNotMatch(publishModal, /await sleep\(remainingPublishWindowMs\)/);
+  assert.match(publishModal, /tous les canaux ont obtenu un statut final/);
+  assert.match(publishModal, /plafond de 30 secondes est atteint/);
+  assert.match(publishModal, /"inrsend_recording"[\s\S]*Enregistrement du bilan dans iNr’Send/);
+  assert.match(publishModal, /completePublicationProgress\([\s\S]*backgroundFinalization/);
   assert.match(publishClient, /releasedToBackground: true/);
   assert.doesNotMatch(publishClient, /8 \* 60_000/);
   assert.match(resultModal, /api\/booster\/publications/);
   assert.match(resultModal, /hasPendingAsyncJob/);
+  assert.match(layer, /void award\("create_actu"/);
   assert.match(layer, /void Promise\.resolve\(refreshMetrics\(\)\)/);
   assert.doesNotMatch(layer, /finally \{\s*await refreshMetrics\(\)/);
 });

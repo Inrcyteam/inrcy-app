@@ -246,6 +246,10 @@ type PublishIntentPanelProps = {
   genError: string;
   generationNotice: string;
   generating: boolean;
+  generationPhaseIndex: number;
+  generationPhaseTotal: number;
+  generationPhaseLabel: string;
+  generationPhaseCaps: readonly number[];
   generationStage: string;
   generationProgress: number;
   aiPreferredEngine: AiPreferredEngine;
@@ -285,6 +289,10 @@ export default function PublishIntentPanel({
   genError,
   generationNotice,
   generating,
+  generationPhaseIndex,
+  generationPhaseTotal,
+  generationPhaseLabel,
+  generationPhaseCaps,
   generationStage,
   generationProgress,
   aiPreferredEngine,
@@ -1604,12 +1612,34 @@ export default function PublishIntentPanel({
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
+                  alignItems: "flex-start",
                   gap: 10,
                   fontSize: 12,
                   lineHeight: 1.25,
                 }}
               >
-                <span>{generationStage || "Génération en cours"}</span>
+                <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+                  <strong
+                    style={{
+                      color: "rgba(255,255,255,0.94)",
+                      fontSize: 12,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    Étape {Math.max(1, generationPhaseIndex)}/{generationPhaseTotal}
+                    {generationPhaseLabel ? ` · ${generationPhaseLabel}` : ""}
+                  </strong>
+                  <span
+                    style={{
+                      color: "rgba(255,255,255,0.66)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {generationStage || "Génération en cours"}
+                  </span>
+                </div>
                 <strong
                   style={{
                     color: "rgba(255,255,255,0.9)",
@@ -1625,8 +1655,8 @@ export default function PublishIntentPanel({
                   height: 7,
                   borderRadius: 999,
                   background: "rgba(255,255,255,0.10)",
-                  overflow: "hidden",
                   border: "1px solid rgba(255,255,255,0.08)",
+                  position: "relative",
                 }}
               >
                 <div
@@ -1639,15 +1669,33 @@ export default function PublishIntentPanel({
                     transition: "width 420ms ease",
                   }}
                 />
+                {generationPhaseCaps
+                  .filter((cap) => cap > 0 && cap < 100)
+                  .map((cap) => (
+                    <span
+                      key={cap}
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        top: "50%",
+                        left: `${cap}%`,
+                        width: 3,
+                        height: 11,
+                        borderRadius: 999,
+                        transform: "translate(-50%, -50%)",
+                        background:
+                          generationProgress >= cap
+                            ? "rgba(255,255,255,0.92)"
+                            : "rgba(255,255,255,0.28)",
+                        boxShadow: "0 0 0 2px rgba(11,16,32,0.34)",
+                        transition: "background 240ms ease",
+                      }}
+                    />
+                  ))}
               </div>
-              <div style={{ fontSize: 12 }}>
-                {videoFile && images.length && useImagesForAI
-                  ? "iNrCy analyse la vidéo, l’audio et les images, puis prépare les variantes par canal."
-                  : videoFile
-                    ? "iNrCy analyse l’audio et les captures de votre vidéo, puis prépare les variantes par canal."
-                    : images.length && useImagesForAI
-                      ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
-                      : "iNrCy prépare les variantes adaptées à chaque canal."}
+              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.56)" }}>
+                Chaque phase avance jusqu’à son propre plafond. Le 100 % apparaît
+                uniquement lorsque les contenus sont prêts dans l’éditeur.
               </div>
             </div>
           ) : null}

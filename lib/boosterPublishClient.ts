@@ -155,6 +155,11 @@ export async function postBoosterPublication(
   const fetchImpl = options.fetchImpl || globalThis.fetch.bind(globalThis);
   const sleepImpl = options.sleepImpl || sleep;
   const nowImpl = options.nowImpl || Date.now;
+  const requestStartedAt = nowImpl();
+  const resultGraceMs = Math.max(
+    0,
+    options.maxPollingMs ?? BOOSTER_PUBLISH_RESULT_GRACE_MS,
+  );
   const maxAttempts = Math.max(1, Math.min(4, options.maxAttempts || 3));
   const idempotencyKey = String(
     payload.idempotencyKey || payload.idempotency_key || createBoosterPublishIdempotencyKey(),
@@ -191,13 +196,20 @@ export async function postBoosterPublication(
     const json = asRecord(await response.json().catch(() => ({})));
     if (response.ok) {
       if (json.queued === true && typeof json.publication_id === "string") {
+        const elapsedBeforePollingMs = Math.max(
+          0,
+          nowImpl() - requestStartedAt,
+        );
         return pollQueuedPublication(String(json.publication_id), json, {
           fetchImpl,
           sleepImpl,
-          // Keep a 30-second grace window so ordinary channels can return a
-          // useful final balance. Only the genuinely slow channels are then
-          // released to the durable worker and iNrSend in the background.
-          maxPollingMs: Math.max(8_000, options.maxPollingMs || BOOSTER_PUBLISH_RESULT_GRACE_MS),
+          // La fenêtre de bilan dure 30 secondes au total, accusé initial
+          // compris. Les canaux encore lents sont ensuite libérés vers le
+          // worker durable et restent consultables dans iNr’Send.
+          maxPollingMs: Math.max(
+            0,
+            resultGraceMs - elapsedBeforePollingMs,
+          ),
           nowImpl,
         });
       }
