@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+function read(path: string) {
+  return readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+}
+
+const resultModal = read(
+  "app/dashboard/_components/PublishExecutionResultModal.tsx",
+);
+const boosterLayer = read(
+  "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
+);
+
+test("queued and processing channels are displayed as pending before the ok flag is evaluated", () => {
+  assert.match(
+    resultModal,
+    /PENDING_ENTRY_STATUSES = new Set\(\["queued", "processing", "pending"\]\)/,
+  );
+  assert.match(resultModal, /PENDING_ENTRY_STATUSES\.has\(technicalStatus\)/);
+  assert.match(
+    resultModal,
+    /entry\.status === "skipped"[\s\S]*?: entryIsPending[\s\S]*?\? "⏳"[\s\S]*?: entry\.ok/,
+  );
+  assert.match(
+    resultModal,
+    /entryIsPending[\s\S]*?\? "En attente"[\s\S]*?: entry\.ok/,
+  );
+  assert.match(resultModal, /const visibleError = !entryIsPending && entry\.error/);
+});
+
+test("opening iNrSend does not call the dashboard close handler that resets the URL", () => {
+  const handler = boosterLayer.match(
+    /onOpenInrSend=\{\(\) => \{([\s\S]*?)router\.push\("\/dashboard\/mails\?folder=publications"\);([\s\S]*?)\}\}/,
+  );
+
+  assert.ok(handler, "the iNrSend navigation handler must exist");
+  assert.doesNotMatch(handler[1], /closePublishModal\(\)/);
+  assert.match(handler[1], /setPublishHasUnsavedChanges\(false\)/);
+  assert.match(handler[1], /publishRetryFailedRef\.current = null/);
+});

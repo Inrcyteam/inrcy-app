@@ -38,6 +38,24 @@ type PublishExecutionSummary = {
   retryableFailureCount?: number;
 };
 
+type PublishExecutionEntry = NonNullable<PublishExecutionSummary["entries"]>[number];
+
+const PENDING_ENTRY_STATUSES = new Set(["queued", "processing", "pending"]);
+
+function isPendingPublicationEntry(entry: PublishExecutionEntry) {
+  const status = String(entry.status || "").trim().toLowerCase();
+  const technicalStatus = String(entry.technicalStatus || "")
+    .trim()
+    .toLowerCase();
+  const warningKind = String(entry.warning_kind || "").trim().toLowerCase();
+
+  return (
+    PENDING_ENTRY_STATUSES.has(status) ||
+    PENDING_ENTRY_STATUSES.has(technicalStatus) ||
+    warningKind === "pending"
+  );
+}
+
 export default function PublishExecutionResultModal({
   styles,
   summary,
@@ -66,15 +84,7 @@ export default function PublishExecutionResultModal({
   const liveEntries = Array.isArray(liveSummary?.entries)
     ? liveSummary.entries
     : [];
-  const hasPendingAsyncJob = liveEntries.some((entry) => {
-    const technicalStatus = String(entry.technicalStatus || "").toLowerCase();
-    const status = String(entry.status || "").toLowerCase();
-    return (
-      status === "queued" ||
-      technicalStatus === "queued" ||
-      technicalStatus === "processing"
-    );
-  });
+  const hasPendingAsyncJob = liveEntries.some(isPendingPublicationEntry);
 
   useEffect(() => {
     if (!publicationId || !hasPendingAsyncJob) return;
@@ -253,17 +263,13 @@ export default function PublishExecutionResultModal({
   );
   const pendingCount = Math.max(
     Number(effectiveSummary?.pendingCount || 0),
-    entries.filter((entry) =>
-      ["queued", "processing"].includes(String(entry.status || "")),
-    ).length,
+    entries.filter(isPendingPublicationEntry).length,
   );
   const skippedCount = Math.max(
     Number(effectiveSummary?.skippedCount || 0),
     entries.filter((entry) => entry.status === "skipped").length,
   );
-  const pendingEntries = entries.filter((entry) =>
-    ["queued", "processing"].includes(String(entry.status || "")),
-  );
+  const pendingEntries = entries.filter(isPendingPublicationEntry);
   const pendingLabels = Array.from(
     new Set(pendingEntries.map((entry) => entry.label).filter(Boolean)),
   );
@@ -382,8 +388,9 @@ export default function PublishExecutionResultModal({
         {entries.length ? (
           <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
             {entries.map((entry) => {
+              const entryIsPending = isPendingPublicationEntry(entry);
               const channelHref = String(effectiveSummary?.channelLinks?.[entry.channel] || "").trim();
-              const visibleError = entry.error
+              const visibleError = !entryIsPending && entry.error
                 ? getFrenchPublicationErrorMessage(
                     entry.channel,
                     entry.error,
@@ -393,7 +400,9 @@ export default function PublishExecutionResultModal({
               const visibleWarning = entry.warning_message
                 ? ensureFrenchPublicationErrorMessage(
                     entry.warning_message,
-                    `${entry.label} a publié avec un avertissement.`,
+                    entryIsPending
+                      ? `${entry.label} est encore en attente de finalisation.`
+                      : `${entry.label} a publié avec un avertissement.`,
                   )
                 : "";
               const visibleBlockers = (entry.blockers || []).map((blocker) =>
@@ -423,13 +432,13 @@ export default function PublishExecutionResultModal({
                     <strong>
                       {entry.status === "skipped"
                         ? "⏭️"
-                        : entry.ok
-                        ? entry.status === "published_with_warning"
-                          ? "⚠️"
-                          : entry.status === "processing"
-                            ? "⏳"
-                            : "✅"
-                        : "❌"} {entry.label}
+                        : entryIsPending
+                          ? "⏳"
+                          : entry.ok
+                            ? entry.status === "published_with_warning"
+                              ? "⚠️"
+                              : "✅"
+                            : "❌"} {entry.label}
                     </strong>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       {channelHref ? (
@@ -453,13 +462,13 @@ export default function PublishExecutionResultModal({
                       <span style={{ fontSize: 12, opacity: 0.75 }}>
                         {entry.status === "skipped"
                           ? "Ignoré avant envoi"
-                          : entry.ok
-                          ? entry.status === "processing"
-                            ? "En traitement"
-                            : entry.status === "published_with_warning"
-                              ? "Publié avec avertissement"
-                              : "Publié"
-                          : "Échec"}
+                          : entryIsPending
+                            ? "En attente"
+                            : entry.ok
+                              ? entry.status === "published_with_warning"
+                                ? "Publié avec avertissement"
+                                : "Publié"
+                              : "Échec"}
                       </span>
                     </span>
                   </div>

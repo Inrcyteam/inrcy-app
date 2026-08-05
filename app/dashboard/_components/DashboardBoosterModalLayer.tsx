@@ -502,8 +502,13 @@ export default function DashboardBoosterModalLayer({
               : undefined
           }
           onOpenInrSend={() => {
+            // Ne pas appeler closePublishModal ici : son onClose remet l'URL sur
+            // /dashboard et peut écraser la navigation vers iNrSend.
             setPublishSuccessOpen(false);
-            closePublishModal();
+            setPublishEditorOverlayOpen(false);
+            setPublishHasUnsavedChanges(false);
+            publishRetryFailedRef.current = null;
+            setPublishRetrying(false);
             router.push("/dashboard/mails?folder=publications");
           }}
         />
