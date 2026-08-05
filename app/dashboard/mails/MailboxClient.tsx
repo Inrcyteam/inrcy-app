@@ -272,8 +272,6 @@ export default function MailboxClient() {
   );
   const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [detailsActionBusy, setDetailsActionBusy] = useState(false);
-  const [detailsActionChannelKey, setDetailsActionChannelKey] = useState<string | null>(null);
-  const [detailsActionKind, setDetailsActionKind] = useState<"save" | "delete" | null>(null);
   const [detailsActionError, setDetailsActionError] = useState<string | null>(
     null,
   );
@@ -3300,8 +3298,6 @@ export default function MailboxClient() {
     setDetailsChannelKey(null);
     setDetailsEditMode(false);
     setDetailsActionBusy(false);
-    setDetailsActionChannelKey(null);
-    setDetailsActionKind(null);
     setDetailsActionError(null);
     setDetailsActionSuccess(null);
     setDetailsSourceDocPayload(null);
@@ -4122,8 +4118,6 @@ export default function MailboxClient() {
     if (!publicationId || !channel) return;
 
     setDetailsActionBusy(true);
-    setDetailsActionChannelKey(channel);
-    setDetailsActionKind("save");
     setDetailsActionError(null);
     setDetailsActionSuccess(null);
     try {
@@ -4306,8 +4300,6 @@ export default function MailboxClient() {
       );
     } finally {
       setDetailsActionBusy(false);
-      setDetailsActionChannelKey(null);
-      setDetailsActionKind(null);
     }
   }
 
@@ -4329,8 +4321,6 @@ export default function MailboxClient() {
     if (!ok) return;
 
     setDetailsActionBusy(true);
-    setDetailsActionChannelKey(channel);
-    setDetailsActionKind("delete");
     setDetailsActionError(null);
     setDetailsActionSuccess(null);
     try {
@@ -4353,8 +4343,6 @@ export default function MailboxClient() {
       // the background so the professional may inspect another channel while
       // the remote deletion is being reflected in iNrSend.
       setDetailsActionBusy(false);
-      setDetailsActionChannelKey(null);
-      setDetailsActionKind(null);
       setDetailsChannelKey(channel);
       void loadHistory();
     } catch (e: any) {
@@ -4365,8 +4353,6 @@ export default function MailboxClient() {
       setDetailsActionError(baseMessage);
     } finally {
       setDetailsActionBusy(false);
-      setDetailsActionChannelKey(null);
-      setDetailsActionKind(null);
     }
   }
 
@@ -4655,8 +4641,6 @@ export default function MailboxClient() {
           detailsEditMode={detailsEditMode}
           setDetailsEditMode={setDetailsEditMode}
           detailsActionBusy={detailsActionBusy}
-          detailsActionChannelKey={detailsActionChannelKey}
-          detailsActionKind={detailsActionKind}
           detailsActionError={detailsActionError}
           detailsActionSuccess={detailsActionSuccess}
           setDetailsActionError={setDetailsActionError}

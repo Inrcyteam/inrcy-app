@@ -6,6 +6,7 @@ import {
   ensureFrenchPublicationErrorMessage,
   getFrenchPublicationErrorMessage,
 } from "@/lib/publicationErrorFrench";
+import StatusMessage from "./StatusMessage";
 
 type DashboardStyles = Readonly<Record<string, string>>;
 
@@ -36,40 +37,6 @@ type PublishExecutionSummary = {
   channelLinks?: Record<string, string>;
   retryableFailureCount?: number;
 };
-
-type EntryVisualState =
-  | "published"
-  | "warning"
-  | "finalizing"
-  | "failed"
-  | "skipped";
-
-function getEntryVisualState(
-  entry: NonNullable<PublishExecutionSummary["entries"]>[number],
-): EntryVisualState {
-  const status = String(entry.status || entry.technicalStatus || "").toLowerCase();
-  if (status === "queued" || status === "processing") return "finalizing";
-  if (status === "skipped") return "skipped";
-  if (status === "published_with_warning") return "warning";
-  if (status === "failed" || entry.ok === false) return "failed";
-  return "published";
-}
-
-function entryVisualMeta(state: EntryVisualState) {
-  if (state === "finalizing") {
-    return { icon: "⏳", label: "Finalisation", color: "#fbbf24", background: "rgba(251,191,36,0.08)", border: "rgba(251,191,36,0.24)" };
-  }
-  if (state === "failed") {
-    return { icon: "❌", label: "Échec", color: "#fca5a5", background: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.24)" };
-  }
-  if (state === "warning") {
-    return { icon: "⚠️", label: "Publié avec avertissement", color: "#fde68a", background: "rgba(251,191,36,0.07)", border: "rgba(251,191,36,0.22)" };
-  }
-  if (state === "skipped") {
-    return { icon: "⏭️", label: "Ignoré", color: "#fde68a", background: "rgba(251,191,36,0.06)", border: "rgba(251,191,36,0.18)" };
-  }
-  return { icon: "✅", label: "Publié", color: "#86efac", background: "rgba(34,197,94,0.07)", border: "rgba(34,197,94,0.20)" };
-}
 
 export default function PublishExecutionResultModal({
   styles,
@@ -104,7 +71,6 @@ export default function PublishExecutionResultModal({
     const status = String(entry.status || "").toLowerCase();
     return (
       status === "queued" ||
-      status === "processing" ||
       technicalStatus === "queued" ||
       technicalStatus === "processing"
     );
@@ -273,36 +239,37 @@ export default function PublishExecutionResultModal({
   }, [publicationId, hasPendingTiktok]);
 
   const effectiveSummary = liveSummary || summary;
-  const entries = Array.isArray(effectiveSummary?.entries)
-    ? effectiveSummary.entries
-    : [];
-  const visualStates = entries.map(getEntryVisualState);
-  const hasDetailedEntries = visualStates.length > 0;
-  const successCount = hasDetailedEntries
-    ? visualStates.filter(
-        (state) => state === "published" || state === "warning",
-      ).length
-    : Number(effectiveSummary?.successCount || 0);
-  const failureCount = hasDetailedEntries
-    ? visualStates.filter((state) => state === "failed").length
-    : Number(effectiveSummary?.failureCount || 0);
-  const warningCount = hasDetailedEntries
-    ? visualStates.filter((state) => state === "warning").length
-    : Number(effectiveSummary?.warningCount || 0);
-  const pendingCount = hasDetailedEntries
-    ? visualStates.filter((state) => state === "finalizing").length
-    : Number(effectiveSummary?.pendingCount || 0);
-  const skippedCount = hasDetailedEntries
-    ? visualStates.filter((state) => state === "skipped").length
-    : Number(effectiveSummary?.skippedCount || 0);
-  const allFailed = hasDetailedEntries
-    ? failureCount > 0 && successCount === 0 && pendingCount === 0
-    : Boolean(effectiveSummary?.allFailed);
-  const retryableFailureCount = Math.max(
-    Number(effectiveSummary?.retryableFailureCount || 0),
-    entries.filter(
-      (entry) => getEntryVisualState(entry) === "failed" && entry.retryable,
+  const failureCount = Number(effectiveSummary?.failureCount || 0);
+  const successCount = Number(effectiveSummary?.successCount || 0);
+  const allFailed = Boolean(effectiveSummary?.allFailed);
+  const entries = Array.isArray(effectiveSummary?.entries) ? effectiveSummary.entries : [];
+  const warningCount = Math.max(
+    Number(effectiveSummary?.warningCount || 0),
+    entries.filter((entry) => entry.status === "published_with_warning").length,
+  );
+  const mediaWarningCount = Math.max(
+    Number(effectiveSummary?.mediaWarningCount || 0),
+    entries.filter((entry) => entry.warning_kind === "media_degraded").length,
+  );
+  const pendingCount = Math.max(
+    Number(effectiveSummary?.pendingCount || 0),
+    entries.filter((entry) =>
+      ["queued", "processing"].includes(String(entry.status || "")),
     ).length,
+  );
+  const skippedCount = Math.max(
+    Number(effectiveSummary?.skippedCount || 0),
+    entries.filter((entry) => entry.status === "skipped").length,
+  );
+  const pendingEntries = entries.filter((entry) =>
+    ["queued", "processing"].includes(String(entry.status || "")),
+  );
+  const pendingLabels = Array.from(
+    new Set(pendingEntries.map((entry) => entry.label).filter(Boolean)),
+  );
+  const retryableFailureCount = Math.max(
+    0,
+    Number(effectiveSummary?.retryableFailureCount || 0),
   );
 
   return (
@@ -356,44 +323,65 @@ export default function PublishExecutionResultModal({
         >
           ✕
         </button>
-        <div style={{ fontSize: 30, marginBottom: 6 }}>
-          {allFailed ? "❌" : failureCount ? "⚠️" : pendingCount ? "⏳" : "🎉"}
+        <div style={{ fontSize: 42, marginBottom: 8 }}>
+          {allFailed
+            ? "❌"
+            : failureCount
+              ? "⚠️"
+              : pendingCount
+                ? "⏳"
+                : warningCount || skippedCount
+                  ? "⚠️"
+                  : "🎉"}
         </div>
-        <div
-          className={styles.blockTitle}
-          style={{ marginBottom: 6, fontSize: 19 }}
-        >
-          Bilan de publication
+        <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
+          {allFailed
+            ? "Publication échouée"
+            : failureCount
+              ? "Publication envoyée partiellement"
+              : pendingCount
+                ? "Envoi accepté, traitement en cours"
+              : warningCount
+                ? `Publication publiée avec avertissement${warningCount > 1 ? "s" : ""}`
+              : skippedCount
+                ? "Publication envoyée sur les canaux prêts"
+                : "Publication envoyée avec succès"}
         </div>
         <div
           className={styles.subtitle}
-          style={{ maxWidth: 480, margin: "0 auto 12px auto", fontSize: 14 }}
+          style={{ maxWidth: 460, margin: "0 auto 14px auto" }}
         >
-          {[
-            successCount > 0
-              ? `${successCount} publié${successCount > 1 ? "s" : ""}`
-              : null,
-            pendingCount > 0
-              ? `${pendingCount} finalisation${pendingCount > 1 ? "s" : ""}`
-              : null,
-            failureCount > 0
-              ? `${failureCount} échec${failureCount > 1 ? "s" : ""}`
-              : null,
-            warningCount > 0
-              ? `${warningCount} avertissement${warningCount > 1 ? "s" : ""}`
-              : null,
-            skippedCount > 0
-              ? `${skippedCount} ignoré${skippedCount > 1 ? "s" : ""}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || "Résultats en cours de synchronisation"}
+          {allFailed
+            ? "Aucun canal n’a pu publier. Vérifiez le détail ci-dessous."
+            : failureCount
+              ? `Votre publication a été envoyée sur ${successCount} canal(aux). ${failureCount} canal(aux) n'ont pas pu publier.`
+              : pendingCount
+                ? `${pendingLabels.length ? pendingLabels.join(", ") : `${pendingCount} canal(aux)`} ${pendingCount > 1 ? "sont encore en traitement" : "est encore en traitement"}. Le statut final peut être vérifié dans iNrSend.`
+              : warningCount
+                ? `${successCount} canal(aux) ont publié. ${mediaWarningCount || warningCount} publication(s) comportent un avertissement${mediaWarningCount ? " lié au média" : ""}.`
+              : skippedCount
+                ? `${successCount} canal(aux) ont publié. ${skippedCount} canal(aux) ont été ignorés avant l’envoi car ils n’étaient pas prêts.`
+                : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
         </div>
+        <StatusMessage
+          variant={failureCount ? "error" : pendingCount || warningCount || skippedCount ? "warning" : "success"}
+          style={{ marginTop: 0, fontSize: 14 }}
+        >
+          {allFailed
+            ? "Échec : vérifiez le détail ci-dessous."
+            : failureCount
+              ? "Succès partiel : vérifiez le détail ci-dessous."
+              : pendingCount
+                ? "Envoi accepté : suivez les canaux en traitement dans iNrSend."
+              : warningCount
+                ? "La publication est bien en ligne. Vérifiez les canaux signalés ci-dessous."
+              : skippedCount
+                ? "Les canaux prêts ont été publiés ; corrigez les canaux ignorés avant de les relancer."
+                : "C’est parfait, votre publication est lancée."}
+        </StatusMessage>
         {entries.length ? (
           <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
             {entries.map((entry) => {
-              const visualState = getEntryVisualState(entry);
-              const visualMeta = entryVisualMeta(visualState);
               const channelHref = String(effectiveSummary?.channelLinks?.[entry.channel] || "").trim();
               const visibleError = entry.error
                 ? getFrenchPublicationErrorMessage(
@@ -420,8 +408,8 @@ export default function PublishExecutionResultModal({
                   style={{
                     borderRadius: 14,
                     padding: "10px 12px",
-                    border: `1px solid ${visualMeta.border}`,
-                    background: visualMeta.background,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.03)",
                   }}
                 >
                   <div
@@ -433,7 +421,15 @@ export default function PublishExecutionResultModal({
                     }}
                   >
                     <strong>
-                      {visualMeta.icon} {entry.label}
+                      {entry.status === "skipped"
+                        ? "⏭️"
+                        : entry.ok
+                        ? entry.status === "published_with_warning"
+                          ? "⚠️"
+                          : entry.status === "processing"
+                            ? "⏳"
+                            : "✅"
+                        : "❌"} {entry.label}
                     </strong>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       {channelHref ? (
@@ -454,28 +450,30 @@ export default function PublishExecutionResultModal({
                           Voir
                         </a>
                       ) : null}
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: visualMeta.color,
-                        }}
-                      >
-                        {visualMeta.label}
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>
+                        {entry.status === "skipped"
+                          ? "Ignoré avant envoi"
+                          : entry.ok
+                          ? entry.status === "processing"
+                            ? "En traitement"
+                            : entry.status === "published_with_warning"
+                              ? "Publié avec avertissement"
+                              : "Publié"
+                          : "Échec"}
                       </span>
                     </span>
                   </div>
-                  {visibleError && visualState === "failed" ? (
-                    <div style={{ marginTop: 6, fontSize: 13, color: "#ffb4b4" }}>
+                  {visibleError ? (
+                    <div style={{ marginTop: 6, fontSize: 13, color: entry.status === "skipped" ? "#fde68a" : "#ffb4b4" }}>
                       {visibleError}
                     </div>
                   ) : null}
-                  {visualState === "skipped" && visibleBlockers.length ? (
+                  {entry.status === "skipped" && visibleBlockers.length ? (
                     <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>
                       {visibleBlockers.join(" · ")}
                     </div>
                   ) : null}
-                  {visibleWarning && visualState === "warning" ? (
+                  {visibleWarning ? (
                     <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>
                       {visibleWarning}
                     </div>

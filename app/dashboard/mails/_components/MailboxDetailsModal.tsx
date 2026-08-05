@@ -63,7 +63,6 @@ import {
   isImageAttachment,
   isRetryableCampaignItem,
   isVideoAttachment,
-  normalizeChannelKey,
   orderChannelKeys,
   pill,
   splitList,
@@ -76,7 +75,6 @@ import {
   formatVisibleMailError,
   getTiktokAutoPollTarget,
   getTiktokPublicationUrl,
-  getVideoAttachmentUrl,
   getTiktokPublishId,
   getTiktokStatusMeta,
   getYoutubeShortsPublicationUrl,
@@ -118,8 +116,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     detailsEditMode,
     setDetailsEditMode,
     detailsActionBusy,
-    detailsActionChannelKey,
-    detailsActionKind,
     detailsActionError,
     detailsActionSuccess,
     setDetailsActionError,
@@ -695,11 +691,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const activePublicationResult = detailsItem.source === "app_events" && activePublicationEntry
                     ? ((payload?.results && typeof payload.results === "object" ? (payload.results as any)[activePublicationEntry.key] : null) || null)
                     : null;
-                  const activeDetailsActionBusy = Boolean(
-                    detailsActionBusy &&
-                      normalizeChannelKey(detailsActionChannelKey || "") ===
-                        normalizeChannelKey(activePublicationEntry?.key || ""),
-                  );
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
                   const activePublicationFailed = isFailedChannelResult(activePublicationResult);
                   const activePublicationFailureMessage = getFailedChannelMessage(
@@ -754,27 +745,21 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                     ? [...(activeParts.attachments || []), ...publicationDraftAttachments]
                     : [...(detailsItem.attachments || [])];
                   const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
-                    const key = `${getVideoAttachmentUrl(att) || att.url || ""}|${att.name || ""}`;
-                    return arr.findIndex((x) => `${getVideoAttachmentUrl(x) || x.url || ""}|${x.name || ""}` === key) === idx;
+                    const key = `${att.url || ""}|${att.name || ""}`;
+                    return arr.findIndex((x) => `${x.url || ""}|${x.name || ""}` === key) === idx;
                   });
-                  const imageAttachments = dedupedAttachments.filter((att) => Boolean(att?.url || att?.downloadUrl) && isImageAttachment(att));
-                  const videoAttachments = dedupedAttachments.filter((att) => Boolean(getVideoAttachmentUrl(att)) && isVideoAttachment(att));
+                  const imageAttachments = dedupedAttachments.filter((att) => att?.url && isImageAttachment(att));
+                  const videoAttachments = dedupedAttachments.filter((att) => att?.url && isVideoAttachment(att));
                   const activeVideoAttachment = videoAttachments[0] || null;
-                  const activeSourceVideoAttachment =
-                    activeParts.sourceVideo &&
-                    Boolean(getVideoAttachmentUrl(activeParts.sourceVideo)) &&
-                    !sameVideoAttachment(activeParts.sourceVideo, activeVideoAttachment)
-                      ? activeParts.sourceVideo
-                      : null;
+                  const activeSourceVideoAttachment = activeParts.sourceVideo && !sameVideoAttachment(activeParts.sourceVideo, activeVideoAttachment)
+                    ? activeParts.sourceVideo
+                    : null;
                   // iNrSend conserve la vidéo originale comme source de travail, même si une variante publiée existe.
                   const activeVideoDisplayAttachment = activeSourceVideoAttachment || activeVideoAttachment;
-                  const activeVideoDisplayUrl = getVideoAttachmentUrl(
-                    activeVideoDisplayAttachment,
-                  );
                   const activeVideoSourceMetadata = (activeSourceVideoAttachment as any)?.sourceMetadata || (activeVideoAttachment as any)?.sourceMetadata || null;
                   const isVideoPublication = detailsItem.source === "app_events" && (
                     String(payload?.mediaType || payload?.media_type || "").toLowerCase() === "video" ||
-                    Boolean(activeVideoAttachment || activeSourceVideoAttachment)
+                    Boolean(activeVideoAttachment)
                   );
                   const activeVideoSettings = isVideoPublication ? activeParts.videoSettings || null : null;
                   const activeVideoFormatLabel = activeVideoSettings && activePublicationEntry
@@ -829,13 +814,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                       cta: previewCta,
                       hashtags,
                       imageCount: isVideoPublication ? 0 : selectedAssets.length,
-                      video: isVideoPublication && activeVideoDisplayUrl
+                      video: isVideoPublication && activeVideoDisplayAttachment?.url
                         ? {
-                            previewUrl: activeVideoDisplayUrl,
-                            name: activeVideoDisplayAttachment?.name || "Vidéo iNrCy",
-                            type: activeVideoDisplayAttachment?.type || "video/mp4",
-                            size: activeVideoDisplayAttachment?.size || null,
-                            duration: (activeVideoDisplayAttachment as any)?.duration || null,
+                            previewUrl: activeVideoDisplayAttachment.url,
+                            name: activeVideoDisplayAttachment.name || "Vidéo iNrCy",
+                            type: activeVideoDisplayAttachment.type || "video/mp4",
+                            size: activeVideoDisplayAttachment.size || null,
+                            duration: (activeVideoDisplayAttachment as any).duration || null,
                             aspectRatio: activeVideoSettings
                               ? getVideoPreviewAspectRatio(activeVideoSettings.format as any, activeVideoSourceMetadata as any)
                               : null,
@@ -1147,7 +1132,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                           type="button"
                                           className={styles.btnGhost}
                                           onClick={() => void checkTiktokPublicationStatus(publicationId)}
-                                          disabled={activeDetailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling || !tiktokPublishId}
+                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling || !tiktokPublishId}
                                           title={tiktokPublishId ? "Vérifier le statut réel auprès de TikTok" : "Identifiant TikTok introuvable"}
                                         >
                                           {tiktokStatusChecking ? "Vérification…" : "Vérifier le statut"}
@@ -1158,7 +1143,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                           type="button"
                                           className={tiktokStatusMeta?.failed ? styles.btnPrimary : styles.btnGhost}
                                           onClick={() => void retryTiktokPublication(publicationId, tiktokStatusMeta)}
-                                          disabled={activeDetailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling}
+                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling}
                                           title={tiktokStatusMeta?.pending ? "Retenter avec confirmation pour éviter les doublons" : "Retenter l’envoi TikTok"}
                                         >
                                           {tiktokRetrying ? "Relance…" : "Retenter l’envoi"}
@@ -1169,7 +1154,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                           type="button"
                                           className={styles.btnDangerSmall}
                                           onClick={() => void cancelPendingTiktokPublication(publicationId, tiktokStatusMeta)}
-                                          disabled={activeDetailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling}
+                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying || tiktokCancelling}
                                           title="Arrêter le suivi iNrSend et annuler cette publication en attente"
                                         >
                                           {tiktokCancelling ? "Annulation…" : "Annuler"}
@@ -1181,7 +1166,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         onClick={() => {
                                           if (typeof window !== "undefined") window.open(tiktokPublicationHref || "https://www.tiktok.com", "_blank", "noopener,noreferrer");
                                         }}
-                                        disabled={activeDetailsActionBusy || tiktokCancelling}
+                                        disabled={detailsActionBusy || tiktokCancelling}
                                         title="Ouvrir TikTok pour gérer la publication"
                                       >
                                         Ouvrir TikTok
@@ -1194,7 +1179,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       onClick={() => {
                                         if (typeof window !== "undefined") window.open(youtubeShortsPublicationHref || "https://www.youtube.com", "_blank", "noopener,noreferrer");
                                       }}
-                                      disabled={activeDetailsActionBusy}
+                                      disabled={detailsActionBusy}
                                       title="Ouvrir la vidéo publiée sur YouTube"
                                     >
                                       Voir la vidéo
@@ -1213,16 +1198,16 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       type="button"
                                       className={styles.btnPrimary}
                                       onClick={saveChannelPublication}
-                                      disabled={activeDetailsActionBusy}
+                                      disabled={detailsActionBusy}
                                     >
-                                      {activeDetailsActionBusy && detailsActionKind === "save" ? "Enregistrement…" : "Enregistrer"}
+                                      {detailsActionBusy ? "Enregistrement…" : "Enregistrer"}
                                     </button>
                                   ) : (
                                     <button
                                       type="button"
                                       className={styles.btnGhost}
                                       onClick={() => { setPublicationEditDirty(false); setDetailsEditMode(true); setDetailsActionError(null); setDetailsActionSuccess(null); }}
-                                      disabled={activeDetailsActionBusy}
+                                      disabled={detailsActionBusy}
                                       title="Modifier la publication"
                                       aria-label="Modifier la publication"
                                     >
@@ -1234,11 +1219,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       type="button"
                                       className={styles.btnDangerSmall}
                                       onClick={deleteChannelPublication}
-                                      disabled={activeDetailsActionBusy}
+                                      disabled={detailsActionBusy}
                                       title="Supprimer la publication"
                                       aria-label="Supprimer la publication"
                                     >
-                                      {activeDetailsActionBusy && detailsActionKind === "delete" ? "Suppression…" : "Supprimer"}
+                                      {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
                                     </button>
                                   ) : null}
                                 </div>
@@ -1878,7 +1863,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     isMobile={isMobileViewport}
                                     channel={(activePublicationEntry.key as ChannelKey)}
                                     videoName={detailsEditMode ? (activePublicationEditVideo?.name || activeVideoDisplayAttachment?.name) : activeVideoDisplayAttachment?.name}
-                                    videoDisplayUrl={detailsEditMode ? (activePublicationEditVideo?.previewUrl || "") : getVideoAttachmentUrl(activeVideoDisplayAttachment)}
+                                    videoDisplayUrl={detailsEditMode ? (activePublicationEditVideo?.previewUrl || "") : (activeVideoDisplayAttachment?.url || "")}
                                     videoSize={detailsEditMode ? (activePublicationEditVideo?.size || activeVideoDisplayAttachment?.size || 0) : (activeVideoDisplayAttachment?.size || 0)}
                                     videoDurationSeconds={detailsEditMode ? (activePublicationEditVideo?.duration || activeVideoDisplayAttachment?.duration || null) : (activeVideoDisplayAttachment?.duration || null)}
                                     videoSourceMetadata={detailsEditMode ? (activePublicationEditVideo?.sourceMetadata || null) : null}
@@ -1898,8 +1883,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     compact={detailsEditMode}
                                   />
 
-                                  {activeVideoDisplayUrl && !detailsEditMode ? (
-                                    <a className={styles.attachmentDownloadHint} href={activeVideoDisplayUrl} target="_blank" rel="noreferrer" style={{ justifySelf: "start" }}>
+                                  {activeVideoDisplayAttachment?.url && !detailsEditMode ? (
+                                    <a className={styles.attachmentDownloadHint} href={activeVideoDisplayAttachment.url} target="_blank" rel="noreferrer" style={{ justifySelf: "start" }}>
                                       Télécharger
                                     </a>
                                   ) : null}

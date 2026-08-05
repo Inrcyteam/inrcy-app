@@ -503,10 +503,7 @@ export default function DashboardBoosterModalLayer({
           }
           onOpenInrSend={() => {
             setPublishSuccessOpen(false);
-            setPublishEditorOverlayOpen(false);
-            setPublishHasUnsavedChanges(false);
-            publishRetryFailedRef.current = null;
-            setPublishRetrying(false);
+            closePublishModal();
             router.push("/dashboard/mails?folder=publications");
           }}
         />

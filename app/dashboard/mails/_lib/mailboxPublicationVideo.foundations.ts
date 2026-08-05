@@ -45,14 +45,7 @@ export function normalizeBoosterChannelKeyForVideo(value: string): BoosterChanne
 }
 
 export function attachmentToVideoPayload(att: any): VideoPayload | null {
-  const url = String(
-    att?.publicUrl ||
-      att?.url ||
-      att?.renderedUrl ||
-      att?.downloadUrl ||
-      att?.videoUrl ||
-      "",
-  ).trim();
+  const url = String(att?.publicUrl || att?.url || att?.videoUrl || "").trim();
   if (!url) return null;
   return {
     name: String(att?.name || "video-inrcy.mp4"),
