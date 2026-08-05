@@ -57,6 +57,7 @@ import {
   type ImageTransform,
   type PublicationMediaType,
 } from "./publishModal.shared";
+import { setImageKeysForChannel } from "./imageChannelAssignment";
 
 function buildServerPreviewPlaceholder(file: Pick<File, "name">) {
   const safeName = String(file.name || "Image")
@@ -163,6 +164,7 @@ export default function usePublishImageController({
   restorePublishScroll,
   syncPersistentWorkspaceImages,
 }: UsePublishImageControllerParams) {
+  const imagePickerTargetChannelRef = useRef<ChannelKey | null>(null);
   const dragStateRef = useRef<{
     pointerId: number;
     startX: number;
@@ -403,8 +405,16 @@ export default function usePublishImageController({
   };
 
   const onPickImagesClick = () => {
+    imagePickerTargetChannelRef.current = null;
     setImgError("");
     if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
+    fileInputRef.current?.click();
+  };
+
+  const onPickImagesForChannel = (channel: ChannelKey) => {
+    setImgError("");
+    if (images.length > 0 || !channelSupportsImages(channel)) return;
+    imagePickerTargetChannelRef.current = channel;
     fileInputRef.current?.click();
   };
 
@@ -487,6 +497,8 @@ export default function usePublishImageController({
       ImageMeta
     >;
     const newKeys = allowed.map((file) => makeImageKey(file));
+    const previousPoolKeys = images.map((file) => makeImageKey(file));
+    const nextPoolKeys = nextFiles.map((file) => makeImageKey(file));
 
     setImages(nextFiles);
     setImagePreviews(nextPreviews);
@@ -499,7 +511,7 @@ export default function usePublishImageController({
       })),
     );
 
-    if (!hasVideoMedia) {
+    if (targetChannel || (!hasVideoMedia && images.length === 0)) {
       setChannelMediaModes((prev) => {
         const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
         if (targetChannel) {
@@ -515,37 +527,66 @@ export default function usePublishImageController({
 
     if (targetChannel) {
       setChannelImageEditors((prev) => {
-        const next = syncChannelImageEditors({
+        let next = syncChannelImageEditors({
           previous: prev,
-          imageKeys: nextFiles.map((file) => makeImageKey(file)),
+          imageKeys: nextPoolKeys,
           selectedChannels,
           imageMetaByKey: { ...imageMetaByKey, ...nextMetaMap },
         });
         if (!channelSupportsImages(targetChannel)) return next;
-        const current = next[targetChannel] || {
-          imageKeys: [],
-          transforms: {},
-        };
-        next[targetChannel] = {
-          ...current,
-          imageKeys: Array.from(new Set([...current.imageKeys, ...newKeys])).slice(
-            0,
-            BOOSTER_MAX_IMAGE_COUNT,
+
+        // Synchronizing the physical pool must not assign its new keys to
+        // another channel. Persist every other channel's previous mapping and
+        // only append the picked keys to the channel that opened the picker.
+        for (const channel of selectedChannels) {
+          if (channel === targetChannel) continue;
+          const preservedKeys = (
+            prev[channel]?.imageKeys ||
+            (channelSupportsImages(channel) ? previousPoolKeys : [])
+          ).filter((key) => previousPoolKeys.includes(key));
+          next = setImageKeysForChannel(next, channel, preservedKeys, {
+            fallback: { imageKeys: [], transforms: {} },
+            patch: { synchronizedImageKeys: [...nextPoolKeys] },
+          });
+        }
+
+        const targetKeys = [
+          ...(prev[targetChannel]?.imageKeys || []).filter((key) =>
+            previousPoolKeys.includes(key),
           ),
-          transforms: current.transforms,
-          customizedImageKeys: current.customizedImageKeys || [],
-        };
+          ...newKeys,
+        ];
+        next = setImageKeysForChannel(next, targetChannel, targetKeys, {
+          fallback: { imageKeys: [], transforms: {} },
+          patch: { synchronizedImageKeys: [...nextPoolKeys] },
+        });
         return next;
       });
     } else {
-      setChannelImageEditors((prev) =>
-        syncChannelImageEditors({
+      setChannelImageEditors((prev) => {
+        let next = syncChannelImageEditors({
           previous: prev,
-          imageKeys: nextFiles.map((file) => makeImageKey(file)),
+          imageKeys: nextPoolKeys,
           selectedChannels,
           imageMetaByKey: { ...imageMetaByKey, ...nextMetaMap },
-        }),
-      );
+        });
+        for (const channel of selectedChannels) {
+          const selectedKeys =
+            images.length === 0
+              ? channelSupportsImages(channel)
+                ? nextPoolKeys
+                : []
+              : (
+                  prev[channel]?.imageKeys ||
+                  (channelSupportsImages(channel) ? previousPoolKeys : [])
+                ).filter((key) => previousPoolKeys.includes(key));
+          next = setImageKeysForChannel(next, channel, selectedKeys, {
+            fallback: { imageKeys: [], transforms: {} },
+            patch: { synchronizedImageKeys: [...nextPoolKeys] },
+          });
+        }
+        return next;
+      });
     }
   };
 
@@ -553,8 +594,58 @@ export default function usePublishImageController({
     files: FileList | null,
     targetChannel?: ChannelKey,
   ) => {
+    const resolvedTargetChannel =
+      targetChannel || imagePickerTargetChannelRef.current || undefined;
+    imagePickerTargetChannelRef.current = null;
     if (!files?.length) return;
-    await addImageFiles(Array.from(files), targetChannel);
+    await addImageFiles(Array.from(files), resolvedTargetChannel);
+  };
+
+  const assignExistingImagesToChannel = (channel: ChannelKey) => {
+    if (!imageKeys.length || !channelSupportsImages(channel)) return;
+    setChannelImageEditors((prev) => {
+      const current = prev[channel] || { imageKeys: [], transforms: {} };
+      const transforms = Object.fromEntries(
+        imageKeys.map((key) => [
+          key,
+          current.transforms?.[key] ||
+            getOptimizedTransform(channel, imageMetaByKey[key]),
+        ]),
+      );
+      return setImageKeysForChannel(prev, channel, imageKeys, {
+        fallback: { imageKeys: [], transforms: {} },
+        patch: {
+          transforms,
+          synchronizedImageKeys: [...imageKeys],
+        },
+      });
+    });
+    setActiveImageKeyByChannel((prev) => ({
+      ...prev,
+      [channel]: imageKeys[0],
+    }));
+    setChannelMediaModes((prev) => ({
+      ...prev,
+      [channel]: "images",
+    }));
+  };
+
+  const removeImagesFromChannel = (channel: ChannelKey) => {
+    setChannelImageEditors((prev) =>
+      setImageKeysForChannel(prev, channel, [], {
+        fallback: { imageKeys: [], transforms: {} },
+        patch: { synchronizedImageKeys: [...imageKeys] },
+      }),
+    );
+    setActiveImageKeyByChannel((prev) => {
+      const next = { ...prev };
+      delete next[channel];
+      return next;
+    });
+    setChannelMediaModes((prev) => ({
+      ...prev,
+      [channel]: "none",
+    }));
   };
 
   const removeImage = (index: number) => {
@@ -1427,8 +1518,11 @@ export default function usePublishImageController({
     previewLayout,
     clearImagesMedia,
     onPickImagesClick,
+    onPickImagesForChannel,
     addImageFiles,
     onImagesChange,
+    assignExistingImagesToChannel,
+    removeImagesFromChannel,
     removeImage,
     getDraftImageSettingsByChannel,
     uploadPublicationDraftImages,

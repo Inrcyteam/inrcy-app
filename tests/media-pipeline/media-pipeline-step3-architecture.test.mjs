@@ -49,7 +49,11 @@ test("le client TUS possède reprise locale, chunks de 6 Mo, progression et annu
 
 test("un échec TUS réel remonte immédiatement au bouton Générer", () => {
   assert.match(workspaceHook, /activeUploadFailureRef/);
-  assert.match(workspaceHook, /throw new Error\(activeUploadFailureRef\.current\)/);
+  assert.match(
+    workspaceHook,
+    /getWorkspaceMediaFamilyFailure\([\s\S]{0,80}activeUploadFailureRef\.current/,
+  );
+  assert.match(workspaceHook, /throw new Error\(uploadFailure\)/);
   assert.match(workspaceHook, /onError\?\.\(message\)/);
 });
 

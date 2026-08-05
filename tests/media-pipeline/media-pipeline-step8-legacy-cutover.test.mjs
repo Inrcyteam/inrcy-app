@@ -20,12 +20,16 @@ test("la migration étape 8 est additive et prépare les lectures de publication
   assert.doesNotMatch(verify, /\binsert\b|\bupdate\b|\bdelete\b|\bdrop\b|\btruncate\b/i);
 });
 
-test("Générer coupe les binaires navigateur et échoue fermé sans workspace", () => {
+test("Générer garde une seule famille IA et échoue fermé sans workspace", () => {
   const generate = read("app/api/booster/generate/route.ts");
   assert.match(generate, /mediaPipelineCutoverV1\?: boolean/);
   assert.match(generate, /isLegacyMediaTransportCutoverEnabled\(\)/);
   assert.match(generate, /imagesForAI:\s*\[\]/);
-  assert.match(generate, /videoForAI:\s*null/);
+  assert.match(
+    generate,
+    /videoForAI:\s*mediaType === "video" \? body\.videoForAI : null/,
+  );
+  assert.match(generate, /allowMixedMedia:\s*false/);
   assert.match(generate, /mediaWorkspaceExpected\?: boolean/);
   assert.match(
     generate,
@@ -53,7 +57,14 @@ test("Publier recrée images et vidéos côté serveur depuis le workspace", () 
   assert.match(imageServer, /supabaseAdmin\.storage\.from\(bucket\)\.download\(storagePath\)/);
   assert.match(imageServer, /settingsByChannel/);
   assert.match(imageServer, /sharp\(params\.buffer/);
-  assert.match(videoServer, /supabaseAdmin\.storage[\s\S]*\.from\(bucket\)[\s\S]*\.download\(storagePath\)/);
+  assert.match(videoServer, /async function resolveSourceDownloadUrl\(/);
+  assert.match(videoServer, /\.from\(bucket\)\s*\.createSignedUrl\(storagePath/);
+  assert.match(videoServer, /const response = await fetch\(resolved\.downloadUrl/);
+  assert.match(videoServer, /await pipeline\([\s\S]*createWriteStream\(inputPath/);
+  assert.doesNotMatch(
+    videoServer,
+    /\.download\(storagePath\)|await\s+[^;\n]+\.arrayBuffer\(\)/,
+  );
   assert.match(videoServer, /ffmpeg-static/);
   assert.match(videoServer, /buildVideoTransformPlan/);
 });

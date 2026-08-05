@@ -4,6 +4,17 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { fetchTiktokCreatorInfo } from "@/lib/tiktokOAuth";
 import type { TiktokCommercialContent } from "@/lib/tiktokSettings";
 import { buildTikTokVideoUploadPlan } from "@/lib/tiktokUploadPlan";
+import {
+  assertTikTokRangeVideoSize,
+  probeTikTokRangeSource,
+  TIKTOK_RANGE_UPLOAD_MAX_ATTEMPTS,
+  TikTokRangeUploadError,
+  uploadTikTokVideoFromRangeSource,
+  validateTikTokCheckpointOffset,
+  type TikTokRangeSource,
+  type TikTokRangeSourceProbe,
+  type TikTokVideoUploadCheckpoint,
+} from "@/lib/tiktokRangeUpload";
 import { validateVideoDurationForChannel } from "@/lib/videoPublicationPolicy";
 import {
   ensureFrenchPublicationErrorMessage,
@@ -49,6 +60,31 @@ export type TiktokPublicationSettings = {
   aiContent?: boolean;
   photoAutoMusic?: boolean;
   musicUsageConfirmed?: boolean;
+};
+
+type TiktokVideoPublishCommon = {
+  accessToken: string;
+  title: string;
+  publicationSettings: TiktokPublicationSettings;
+  videoDurationSeconds?: number | null;
+};
+
+type TiktokBufferedVideoPublish = TiktokVideoPublishCommon & {
+  /** Legacy iNr'Send retry path. Booster publish-now uses rangeSource only. */
+  videoBuffer: Buffer;
+  contentType?: string | null;
+  rangeSource?: never;
+};
+
+type TiktokRangeVideoPublish = TiktokVideoPublishCommon & {
+  rangeSource: TikTokRangeSource;
+  verifiedSourceProbe?: TikTokRangeSourceProbe | null;
+  checkpoint?: unknown;
+  onCheckpoint?: (
+    checkpoint: TikTokVideoUploadCheckpoint,
+  ) => Promise<void> | void;
+  videoBuffer?: never;
+  contentType?: never;
 };
 
 type TiktokPostInfo = {
@@ -224,6 +260,26 @@ async function postTikTokJson(accessToken: string, url: string, body: unknown) {
       raw: null,
     };
   }
+}
+
+async function postTikTokJsonWithBoundedHttpRetry(
+  accessToken: string,
+  url: string,
+  body: unknown,
+) {
+  let response = await postTikTokJson(accessToken, url, body);
+  for (
+    let attempt = 1;
+    !response.ok &&
+    response.retryable &&
+    response.statusCode > 0 &&
+    attempt < TIKTOK_RANGE_UPLOAD_MAX_ATTEMPTS;
+    attempt += 1
+  ) {
+    await sleep(500 * 2 ** (attempt - 1));
+    response = await postTikTokJson(accessToken, url, body);
+  }
+  return response;
 }
 
 async function uploadTikTokVideoChunks({
@@ -506,23 +562,262 @@ export async function tiktokDirectPostVideo({
   };
 }
 
-export async function tiktokDirectPostVideoFileUpload({
-  accessToken,
-  videoBuffer,
-  contentType,
-  title,
-  publicationSettings,
-  videoDurationSeconds,
-}: {
-  accessToken: string;
-  videoBuffer: Buffer;
-  contentType?: string | null;
-  title: string;
-  publicationSettings: TiktokPublicationSettings;
-  videoDurationSeconds?: number | null;
-}): Promise<TiktokPublishResult> {
+function ensureTrustedTikTokUploadUrl(value: unknown) {
+  const uploadUrl = String(value || "").trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(uploadUrl);
+  } catch {
+    throw new TikTokRangeUploadError(
+      "tiktok_upload_checkpoint_invalid",
+      "Le checkpoint TikTok contient une URL d'upload invalide.",
+    );
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    (parsed.hostname !== "tiktokapis.com" &&
+      !parsed.hostname.endsWith(".tiktokapis.com"))
+  ) {
+    throw new TikTokRangeUploadError(
+      "tiktok_upload_checkpoint_invalid",
+      "Le checkpoint TikTok contient une destination non reconnue.",
+    );
+  }
+  return parsed.toString();
+}
+
+function readTikTokVideoUploadCheckpoint(params: {
+  value: unknown;
+  sourceKey: string;
+  totalBytes: number;
+  contentType: string;
+  chunkSize: number;
+  totalChunkCount: number;
+}) {
+  const raw = asRecord(params.value);
+  if (!Object.keys(raw).length) return null;
+  const publishId = String(raw.publishId || "").trim();
+  const sourceKey = String(raw.sourceKey || "").trim();
+  const initializedAt = String(raw.initializedAt || "").trim();
+  const totalBytes = Number(raw.totalBytes);
+  const chunkSize = Number(raw.chunkSize);
+  const totalChunkCount = Number(raw.totalChunkCount);
+  const contentType = String(raw.contentType || "").trim().toLowerCase();
+  if (
+    Number(raw.version) !== 1 ||
+    !publishId ||
+    sourceKey !== params.sourceKey ||
+    totalBytes !== params.totalBytes ||
+    chunkSize !== params.chunkSize ||
+    totalChunkCount !== params.totalChunkCount ||
+    contentType !== params.contentType ||
+    !initializedAt ||
+    !Number.isFinite(Date.parse(initializedAt))
+  ) {
+    throw new TikTokRangeUploadError(
+      "tiktok_upload_checkpoint_invalid",
+      "Le checkpoint TikTok ne correspond plus à la vidéo ; l'upload n'est pas relancé pour éviter un doublon.",
+    );
+  }
+  const nextOffset = validateTikTokCheckpointOffset({
+    offset: raw.nextOffset,
+    totalBytes,
+    chunkSize,
+    totalChunkCount,
+  });
+  return {
+    version: 1,
+    publishId,
+    uploadUrl: ensureTrustedTikTokUploadUrl(raw.uploadUrl),
+    sourceKey,
+    totalBytes,
+    contentType,
+    chunkSize,
+    totalChunkCount,
+    nextOffset,
+    initializedAt,
+    updatedAt: String(raw.updatedAt || initializedAt),
+  } satisfies TikTokVideoUploadCheckpoint;
+}
+
+function tiktokRangeErrorResult(params: {
+  error: unknown;
+  creatorInfo: Record<string, unknown>;
+  privacyLevel: string;
+  publishId?: string | null;
+}) {
+  const rangeError =
+    params.error instanceof TikTokRangeUploadError
+      ? params.error
+      : new TikTokRangeUploadError(
+          "tiktok_video_range_upload_failed",
+          params.error instanceof Error
+            ? params.error.message
+            : "Le transfert vidéo TikTok a échoué.",
+          { cause: params.error },
+        );
+  return {
+    ok: false,
+    publishId: params.publishId || null,
+    error: getTiktokUserFacingError(rangeError.message),
+    raw: {
+      code: rangeError.code,
+      retryable: rangeError.retryable,
+      status: rangeError.status,
+      transfer: "FILE_UPLOAD_RANGE_STREAM",
+    },
+    creatorInfo: params.creatorInfo,
+    privacyLevel: params.privacyLevel,
+  } satisfies TiktokPublishResult;
+}
+
+export async function tiktokDirectPostVideoFileUpload(
+  params: TiktokBufferedVideoPublish | TiktokRangeVideoPublish,
+): Promise<TiktokPublishResult> {
+  const {
+    accessToken,
+    title,
+    publicationSettings,
+    videoDurationSeconds,
+  } = params;
   const creatorInfo = await fetchTiktokCreatorInfo(accessToken);
   const postInfo = buildPostInfo({ title, publicationSettings, creatorInfo, isPhoto: false, videoDurationSeconds });
+
+  if ("rangeSource" in params && params.rangeSource) {
+    let publishId: string | null = null;
+    try {
+      const probe =
+        params.verifiedSourceProbe ||
+        (await probeTikTokRangeSource({ source: params.rangeSource }));
+      const videoSize = assertTikTokRangeVideoSize(probe.totalBytes);
+      const contentType = String(probe.contentType || "video/mp4").toLowerCase();
+      const uploadPlan = buildTikTokVideoUploadPlan(videoSize);
+      let checkpoint = readTikTokVideoUploadCheckpoint({
+        value: params.checkpoint,
+        sourceKey: params.rangeSource.sourceKey,
+        totalBytes: videoSize,
+        contentType,
+        chunkSize: uploadPlan.chunkSize,
+        totalChunkCount: uploadPlan.totalChunkCount,
+      });
+
+      if (!checkpoint) {
+        const response = await postTikTokJsonWithBoundedHttpRetry(
+          accessToken,
+          "https://open.tiktokapis.com/v2/post/publish/video/init/",
+          {
+            post_info: postInfo,
+            source_info: {
+              source: "FILE_UPLOAD",
+              video_size: videoSize,
+              chunk_size: uploadPlan.chunkSize,
+              total_chunk_count: uploadPlan.totalChunkCount,
+            },
+          },
+        );
+        if (!response.ok) {
+          return {
+            ok: false,
+            error: getTiktokUserFacingError(response.error),
+            raw: response.raw,
+            creatorInfo,
+            privacyLevel: postInfo.privacy_level,
+          };
+        }
+
+        const data = asRecord(response.data);
+        publishId = String(data.publish_id || "").trim() || null;
+        const uploadUrl = ensureTrustedTikTokUploadUrl(data.upload_url);
+        if (!publishId) {
+          throw new TikTokRangeUploadError(
+            "tiktok_publish_id_missing",
+            "TikTok n'a pas renvoyé d'identifiant de suivi.",
+          );
+        }
+        const initializedAt = new Date().toISOString();
+        checkpoint = {
+          version: 1,
+          publishId,
+          uploadUrl,
+          sourceKey: params.rangeSource.sourceKey,
+          totalBytes: videoSize,
+          contentType,
+          chunkSize: uploadPlan.chunkSize,
+          totalChunkCount: uploadPlan.totalChunkCount,
+          nextOffset: 0,
+          initializedAt,
+          updatedAt: initializedAt,
+        };
+        await params.onCheckpoint?.(checkpoint);
+      } else {
+        publishId = checkpoint.publishId;
+      }
+
+      const upload = await uploadTikTokVideoFromRangeSource({
+        source: params.rangeSource,
+        uploadUrl: checkpoint.uploadUrl,
+        contentType: checkpoint.contentType,
+        totalBytes: checkpoint.totalBytes,
+        chunkSize: checkpoint.chunkSize,
+        totalChunkCount: checkpoint.totalChunkCount,
+        initialOffset: checkpoint.nextOffset,
+        onProgress: async (progress) => {
+          checkpoint = {
+            ...checkpoint!,
+            nextOffset: progress.nextOffset,
+            updatedAt: new Date().toISOString(),
+          };
+          await params.onCheckpoint?.(checkpoint);
+        },
+      });
+
+      // Le 201 final confirme déjà que tous les octets sont chez TikTok. Une
+      // seule lecture de statut suffit ici ; le watcher durable suit ensuite
+      // la modération sans garder le worker d'upload ouvert ~24 secondes.
+      const status = await fetchTiktokPublishStatus(
+        accessToken,
+        checkpoint.publishId,
+      );
+      if (status.failed) {
+        return {
+          ok: false,
+          publishId: checkpoint.publishId,
+          error: statusToError(status),
+          raw: {
+            transfer: "FILE_UPLOAD_RANGE_STREAM",
+            uploadedChunks: upload.responses,
+          },
+          creatorInfo,
+          privacyLevel: postInfo.privacy_level,
+          status,
+        };
+      }
+      return {
+        ok: true,
+        publishId: checkpoint.publishId,
+        raw: {
+          transfer: "FILE_UPLOAD_RANGE_STREAM",
+          uploadedChunks: upload.responses,
+          resumedAtOffset: Number(
+            asRecord(params.checkpoint).nextOffset || 0,
+          ),
+        },
+        creatorInfo,
+        privacyLevel: postInfo.privacy_level,
+        status,
+        shareUrl: status.shareUrl || null,
+      };
+    } catch (error) {
+      return tiktokRangeErrorResult({
+        error,
+        creatorInfo,
+        privacyLevel: postInfo.privacy_level,
+        publishId,
+      });
+    }
+  }
+
+  const { videoBuffer, contentType } = params;
   const videoSize = videoBuffer.length;
 
   if (!videoSize) {

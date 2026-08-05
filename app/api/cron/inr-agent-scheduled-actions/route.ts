@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { buildInternalCronHeaders, getAppOriginFromRequest, isAuthorizedCronRequest } from "@/lib/cronAuth";
+import {
+  buildScheduledPublicationRequest,
+  interpretScheduledPublicationResponse,
+} from "@/lib/inrAgentScheduledPublication";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -33,7 +37,7 @@ type ScheduledActionCronRow = {
 
 type ExecutionResult = {
   ok: boolean;
-  status: "done" | "failed" | "retried" | "skipped";
+  status: "done" | "processing" | "failed" | "retried" | "skipped";
   scheduledActionId: string;
   targetTool: string;
   error?: string | null;
@@ -51,6 +55,10 @@ type ExecutionResult = {
   idempotencyKey?: string | null;
   idempotencyState?: "completed" | "running" | "acquired" | "none" | null;
   idempotent?: boolean;
+  entrusted?: boolean;
+  queued?: boolean;
+  asyncDispatch?: boolean;
+  phase?: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -104,17 +112,6 @@ function parseRetryAfterSeconds(value: unknown, fallback = 60) {
     return Math.min(15 * 60, Math.max(30, Math.round(numeric)));
   }
   return fallback;
-}
-
-function getScheduledPublicationIdempotencyKey(
-  row: ScheduledActionCronRow,
-  publishPayload: Record<string, unknown>,
-) {
-  return (
-    trimDiagnosticText(publishPayload.idempotencyKey, 180) ||
-    trimDiagnosticText(asRecord(publishPayload.origin).idempotencyKey, 180) ||
-    `scheduled_publication:${row.id}`
-  );
 }
 
 function getScheduledCampaignIdempotencyKey(
@@ -254,71 +251,6 @@ function normalizeScheduledCampaignOrigin(
   };
 }
 
-type PublicationOriginMeta = {
-  source: "inr_agent" | "booster_scheduled" | "booster_manual" | "manual";
-  label: string;
-  agentActionId?: string | null;
-  scheduledActionId?: string | null;
-  automationKey?: string | null;
-  workflowTool?: string | null;
-  workflowAction?: string | null;
-};
-
-function normalizePublicationOrigin(row: ScheduledActionCronRow, publishPayload: Record<string, unknown>): PublicationOriginMeta {
-  const scheduledPayload = asRecord(row.payload);
-  const rawOrigin = asRecord(publishPayload.origin);
-  const rawScheduledOrigin = asRecord(scheduledPayload.origin);
-  const scheduleGrouping = asRecord(scheduledPayload.scheduleGrouping);
-  const rawSource = trimDiagnosticText(
-    publishPayload.source ||
-      rawOrigin.source ||
-      rawScheduledOrigin.source ||
-      scheduledPayload.origin ||
-      "",
-    80,
-  );
-  const createdFrom = trimDiagnosticText(scheduleGrouping.createdFrom, 120);
-
-  if (rawSource === "inr_agent") {
-    return {
-      source: "inr_agent",
-      label: trimDiagnosticText(rawOrigin.label || rawScheduledOrigin.label, 120) || "iNr'Agent",
-      agentActionId: trimDiagnosticText(
-        publishPayload.inrAgentActionId || rawOrigin.agentActionId || rawScheduledOrigin.agentActionId,
-        120,
-      ) || null,
-      scheduledActionId: row.id,
-      automationKey: trimDiagnosticText(rawOrigin.automationKey || row.automation_key || "publish", 80) || "publish",
-      workflowTool: "booster",
-      workflowAction: "publier",
-    };
-  }
-
-  if (
-    rawSource === "booster_scheduled" ||
-    rawSource === "booster" ||
-    createdFrom === "booster_publish_schedule"
-  ) {
-    return {
-      source: "booster_scheduled",
-      label: trimDiagnosticText(rawOrigin.label || rawScheduledOrigin.label, 120) || "Booster programmé",
-      scheduledActionId: row.id,
-      automationKey: trimDiagnosticText(row.automation_key || "publish", 80) || "publish",
-      workflowTool: "booster",
-      workflowAction: "publier",
-    };
-  }
-
-  return {
-    source: "manual",
-    label: trimDiagnosticText(rawOrigin.label || rawScheduledOrigin.label, 120) || "Programmation manuelle",
-    scheduledActionId: row.id,
-    automationKey: trimDiagnosticText(row.automation_key || "", 80) || null,
-    workflowTool: "booster",
-    workflowAction: "publier",
-  };
-}
-
 function mergeExecutionPayload(row: ScheduledActionCronRow, execution: Record<string, unknown>) {
   return {
     ...asRecord(row.payload),
@@ -343,7 +275,7 @@ function scheduledActionLabel(row: ScheduledActionCronRow) {
 }
 
 async function notifyScheduledActionOutcome(row: ScheduledActionCronRow, args: {
-  outcome: "done" | "failed";
+  outcome: "done" | "processing" | "failed";
   error?: string | null;
   campaignId?: string | null;
   publicationId?: string | null;
@@ -351,17 +283,26 @@ async function notifyScheduledActionOutcome(row: ScheduledActionCronRow, args: {
   const title = String(row.title || scheduledActionLabel(row) || "Action programmée").trim();
   const label = scheduledActionLabel(row);
   const isDone = args.outcome === "done";
-  const notificationTitle = isDone
-    ? `${label} exécutée par iNr’Agent`
-    : `${label} en erreur`;
-  const notificationBody = isDone
-    ? `${title} a bien été exécutée au moment prévu.`
-    : `${title} n’a pas pu être exécutée. ${trimDiagnosticText(args.error || row.last_error || "Consultez le planning iNr’Agent pour corriger l’action.", 500)}`;
+  const isProcessing = args.outcome === "processing";
+  const notificationTitle = isProcessing
+    ? `${label} confiée par iNr’Agent`
+    : isDone
+      ? `${label} exécutée par iNr’Agent`
+      : `${label} en erreur`;
+  const notificationBody = isProcessing
+    ? `${title} a été confiée au service de publication et continue en arrière-plan.`
+    : isDone
+      ? `${title} a bien été exécutée au moment prévu.`
+      : `${title} n’a pas pu être exécutée. ${trimDiagnosticText(args.error || row.last_error || "Consultez le planning iNr’Agent pour corriger l’action.", 500)}`;
 
   const { error } = await supabaseAdmin.from("notifications").insert({
     user_id: row.user_id,
-    category: isDone ? "information" : "action",
-    kind: isDone ? "inragent_scheduled_action_done" : "inragent_scheduled_action_failed",
+    category: isDone || isProcessing ? "information" : "action",
+    kind: isProcessing
+      ? "inragent_scheduled_action_processing"
+      : isDone
+        ? "inragent_scheduled_action_done"
+        : "inragent_scheduled_action_failed",
     title: notificationTitle,
     body: notificationBody,
     cta_label: "Ouvrir iNr’Agent",
@@ -413,6 +354,7 @@ async function claimAction(row: ScheduledActionCronRow) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", row.id)
+    .eq("user_id", row.user_id)
     .eq("status", "scheduled")
     .select(SCHEDULED_ACTION_SELECT)
     .maybeSingle();
@@ -423,18 +365,24 @@ async function claimAction(row: ScheduledActionCronRow) {
 
 async function markDone(row: ScheduledActionCronRow, execution: Record<string, unknown>) {
   const now = new Date().toISOString();
-  const { error } = await supabaseAdmin
+  const executionStatus = execution.status === "processing" ? "processing" : "done";
+  let builder: any = supabaseAdmin
     .from("inr_agent_scheduled_actions")
     .update({
       status: "done",
       executed_at: now,
       last_error: null,
-      payload: mergeExecutionPayload(row, { ...execution, status: "done" }),
+      payload: mergeExecutionPayload(row, { ...execution, status: executionStatus }),
       updated_at: now,
     })
-    .eq("id", row.id);
+    .eq("id", row.id)
+    .eq("user_id", row.user_id)
+    .eq("status", "running");
+  if (row.updated_at) builder = builder.eq("updated_at", row.updated_at);
+  const { data, error } = await builder.select("id").maybeSingle();
 
   if (error) throw error;
+  return Boolean(data);
 }
 
 async function markFailedOrRetry(row: ScheduledActionCronRow, args: {
@@ -472,7 +420,7 @@ async function markFailedOrRetry(row: ScheduledActionCronRow, args: {
   const nextAttemptCount = args.preserveAttemptCount
     ? Math.max(0, attemptCount - 1)
     : attemptCount;
-  const { error } = await supabaseAdmin
+  let builder: any = supabaseAdmin
     .from("inr_agent_scheduled_actions")
     .update({
       status,
@@ -498,10 +446,14 @@ async function markFailedOrRetry(row: ScheduledActionCronRow, args: {
       }),
       updated_at: now.toISOString(),
     })
-    .eq("id", row.id);
+    .eq("id", row.id)
+    .eq("user_id", row.user_id)
+    .eq("status", "running");
+  if (row.updated_at) builder = builder.eq("updated_at", row.updated_at);
+  const { data, error } = await builder.select("id").maybeSingle();
 
   if (error) throw error;
-  return { status, nextRetryAt };
+  return { status, nextRetryAt, updated: Boolean(data) };
 }
 
 async function postInternalJson(args: { origin: string; userId: string; path: string; body: Record<string, unknown>; timeoutMs: number }) {
@@ -651,9 +603,8 @@ async function executeMailCampaign(row: ScheduledActionCronRow, origin: string, 
 }
 
 async function executePublication(row: ScheduledActionCronRow, origin: string, timeoutMs: number): Promise<ExecutionResult> {
-  const payload = asRecord(row.payload);
-  const publishPayload = asRecord(payload.publishPayload);
-  if (!Object.keys(publishPayload).length) {
+  const publicationRequest = buildScheduledPublicationRequest(row);
+  if (!publicationRequest) {
     return {
       ok: false,
       status: "failed",
@@ -666,108 +617,25 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
   }
 
   try {
-    const publicationOrigin = normalizePublicationOrigin(row, publishPayload);
-    const idempotencyKey = getScheduledPublicationIdempotencyKey(
-      row,
-      publishPayload,
-    );
     const { response, responseText, payload: responsePayload } = await postInternalJson({
       origin,
       userId: row.user_id,
       path: "/api/booster/publish-now",
       timeoutMs,
-      body: {
-        ...publishPayload,
-        source: publicationOrigin.source,
-        idempotencyKey,
-        origin: {
-          ...asRecord(publishPayload.origin),
-          ...publicationOrigin,
-          idempotencyKey,
-        },
-      },
+      body: publicationRequest.body,
     });
-
-    const idempotent = responsePayload.idempotent === true;
-    const idempotencyPending = responsePayload.idempotencyPending === true;
-    const retryAfterSeconds = parseRetryAfterSeconds(
-      responsePayload.retryAfterSeconds || response.headers.get("Retry-After"),
-      60,
-    );
-
-    if (idempotencyPending || responsePayload.code === "execution_already_running") {
-      const error = errorFromPayload(
-        responsePayload,
-        "Publication programmée déjà en cours de traitement.",
-      );
-      const detail =
-        trimDiagnosticText(responsePayload.detail, 900) ||
-        trimDiagnosticText(responseText, 900) ||
-        null;
-      return {
-        ok: false,
-        status: "failed",
-        scheduledActionId: row.id,
-        targetTool: String(row.target_tool || "booster"),
-        error,
-        detail,
-        retriable: true,
-        retryAfterSeconds,
-        preserveAttemptCount: true,
-        idempotencyKey,
-        idempotencyState: "running",
-        idempotent,
-      };
-    }
-
-    const okFlag = responsePayload.ok !== false;
-    if (!response.ok || !okFlag) {
-      const error = errorFromPayload(responsePayload, response.statusText || "Publication impossible.");
-      const detail = trimDiagnosticText(responsePayload.detail, 900) || trimDiagnosticText(responseText, 900) || null;
-      return {
-        ok: false,
-        status: "failed",
-        scheduledActionId: row.id,
-        targetTool: String(row.target_tool || "booster"),
-        error,
-        detail,
-        retriable: response.ok ? false : isRetriableHttpFailure(response.status, error),
-        retryAfterSeconds: response.ok ? null : retryAfterSeconds,
-        publicationId:
-          typeof responsePayload.publication_id === "string"
-            ? responsePayload.publication_id
-            : null,
-        historyEventId:
-          typeof responsePayload.historyEventId === "string"
-            ? responsePayload.historyEventId
-            : null,
-        historyPersisted: responsePayload.historyPersisted === true,
-        summary: asRecord(responsePayload.summary),
-        results: asRecord(responsePayload.results),
-        idempotencyKey,
-        idempotencyState: idempotent ? "completed" : "acquired",
-        idempotent,
-      };
-    }
-
-    const publicationId = typeof responsePayload.publication_id === "string" ? responsePayload.publication_id : null;
-    const historyEventId = typeof responsePayload.historyEventId === "string" ? responsePayload.historyEventId : null;
-    const historyPersisted = responsePayload.historyPersisted === true;
-    const summary = asRecord(responsePayload.summary);
-    const results = asRecord(responsePayload.results);
+    const dispatch = interpretScheduledPublicationResponse({
+      httpStatus: response.status,
+      httpOk: response.ok,
+      responsePayload,
+      responseText,
+      retryAfter: response.headers.get("Retry-After"),
+      idempotencyKey: publicationRequest.idempotencyKey,
+    });
     return {
-      ok: true,
-      status: "done",
+      ...dispatch,
       scheduledActionId: row.id,
       targetTool: String(row.target_tool || "booster"),
-      publicationId,
-      historyEventId,
-      historyPersisted,
-      summary,
-      results,
-      idempotencyKey,
-      idempotencyState: idempotent ? "completed" : "acquired",
-      idempotent,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Publication programmée impossible.";
@@ -779,6 +647,8 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
       error: message,
       detail: error instanceof Error ? error.stack?.slice(0, 1600) || null : null,
       retriable: isRetriableHttpFailure(null, message),
+      idempotencyKey: publicationRequest.idempotencyKey,
+      idempotencyState: "none",
     };
   }
 }
@@ -879,7 +749,8 @@ async function processDueScheduledActions(args: { origin: string; maxRows: numbe
     const result = await executeScheduledAction(claimed, args.origin, args.timeoutMs);
     try {
       if (result.ok) {
-        await markDone(claimed, {
+        const transitioned = await markDone(claimed, {
+          status: result.status,
           targetTool: result.targetTool,
           campaignId: result.campaignId || null,
           publicationId: result.publicationId || null,
@@ -890,12 +761,20 @@ async function processDueScheduledActions(args: { origin: string; maxRows: numbe
           idempotencyKey: result.idempotencyKey || null,
           idempotencyState: result.idempotencyState || null,
           idempotent: result.idempotent === true,
+          entrusted: result.entrusted === true,
+          queued: result.queued === true,
+          asyncDispatch: result.asyncDispatch === true,
+          phase: result.phase || null,
         });
-        await notifyScheduledActionOutcome(claimed, {
-          outcome: "done",
-          campaignId: result.campaignId || null,
-          publicationId: result.publicationId || null,
-        });
+        if (transitioned) {
+          await notifyScheduledActionOutcome(claimed, {
+            outcome: result.status === "processing" ? "processing" : "done",
+            campaignId: result.campaignId || null,
+            publicationId: result.publicationId || null,
+          });
+        } else {
+          result.detail = result.detail || "claim_lost_after_execution";
+        }
       } else {
         const failure = await markFailedOrRetry(claimed, {
           error: result.error || "Action programmée impossible.",
@@ -903,15 +782,26 @@ async function processDueScheduledActions(args: { origin: string; maxRows: numbe
           retriable: result.retriable === true,
           retryAfterSeconds: result.retryAfterSeconds || null,
           preserveAttemptCount: result.preserveAttemptCount === true,
+          publicationId: result.publicationId || null,
+          historyEventId: result.historyEventId || null,
+          historyPersisted: result.historyPersisted,
+          summary: result.summary || null,
+          results: result.results || null,
           payload: {
             idempotencyKey: result.idempotencyKey || null,
             idempotencyState: result.idempotencyState || null,
             idempotent: result.idempotent === true,
           },
         });
-        result.status = failure.status === "scheduled" ? "retried" : "failed";
-        result.nextRetryAt = failure.nextRetryAt;
-        if (result.status === "failed") {
+        result.status = failure.updated
+          ? failure.status === "scheduled"
+            ? "retried"
+            : "failed"
+          : "skipped";
+        result.nextRetryAt = failure.updated ? failure.nextRetryAt : null;
+        if (!failure.updated) {
+          result.detail = result.detail || "claim_lost_after_execution";
+        } else if (result.status === "failed") {
           await notifyScheduledActionOutcome(claimed, {
             outcome: "failed",
             error: result.error || "Action programmée impossible.",

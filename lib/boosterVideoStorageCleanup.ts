@@ -189,6 +189,19 @@ export async function cleanupUnusedBoosterVideoStorage(userId: string, rawPaths:
   if (removable.length) {
     const { error } = await supabaseAdmin.storage.from(BOOSTER_BUCKET).remove(removable);
     if (error) throw error;
+    const registryCleanup = await supabaseAdmin
+      .from("pro_media_library")
+      .update({
+        is_active: false,
+        upload_status: "removed",
+        upload_progress: 0,
+        publication_status: "removed",
+        original_deleted_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("bucket_name", BOOSTER_BUCKET)
+      .in("storage_path", removable);
+    if (registryCleanup.error) throw registryCleanup.error;
   }
 
   return { removed: removable, kept };

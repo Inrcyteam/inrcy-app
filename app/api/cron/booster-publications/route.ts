@@ -38,6 +38,16 @@ type AsyncDispatchJob = {
   dispatchRequest: JsonRecord;
   lastActivityAt: number;
   attempt: number;
+  instagramVideoContinuation: boolean;
+  instagramContinuationAttempt: number;
+  instagramVideoNextPollAt: number;
+  youtubeUploadContinuation: boolean;
+  youtubeContinuationAttempt: number;
+  youtubeUploadNextRunAt: number;
+  pinterestVideoContinuation: boolean;
+  pinterestContinuationAttempt: number;
+  pinterestVideoNextPollAt: number;
+  pinterestVideoTerminal: boolean;
 };
 type AsyncPreparationJob = {
   id: string;
@@ -51,6 +61,15 @@ type AsyncPreparationJob = {
 
 const PROCESSING_RECOVERY_GRACE_MS = 30 * 1000;
 const MAX_ASYNC_DISPATCH_ATTEMPTS = 3;
+const MAX_INSTAGRAM_VIDEO_CONTINUATION_ATTEMPTS = 480;
+const MAX_YOUTUBE_UPLOAD_CONTINUATION_ATTEMPTS = 128;
+const MAX_PINTEREST_VIDEO_CONTINUATION_ATTEMPTS = 480;
+const PINTEREST_VIDEO_TERMINAL_PHASES = new Set([
+  "completed",
+  "failed",
+  "expired",
+  "outcome_unknown",
+]);
 
 function timestampMs(...values: unknown[]) {
   for (const value of values) {
@@ -68,14 +87,92 @@ function asRecord(value: unknown): JsonRecord {
 
 function readDispatchJob(row: AsyncEventRow): AsyncDispatchJob {
   const payload = asRecord(row.payload);
+  const persistedTiktokCheckpoint = asRecord(
+    payload.tiktokUploadCheckpoint,
+  );
+  const persistedInstagramVideoCheckpoint = asRecord(
+    payload.instagramVideoCheckpoint,
+  );
+  const rawYoutubeUploadCheckpoint = payload.youtubeUploadCheckpoint;
+  const hasYoutubeUploadCheckpoint =
+    rawYoutubeUploadCheckpoint !== null &&
+    rawYoutubeUploadCheckpoint !== undefined;
+  const rawPinterestVideoCheckpoint = payload.pinterestVideoCheckpoint;
+  const hasPinterestVideoCheckpoint =
+    rawPinterestVideoCheckpoint !== null &&
+    rawPinterestVideoCheckpoint !== undefined;
+  const persistedPinterestVideoCheckpoint = asRecord(
+    rawPinterestVideoCheckpoint,
+  );
+  const channel = String(payload.channel || "");
+  const instagramVideoContinuation =
+    channel === "instagram" &&
+    Object.keys(persistedInstagramVideoCheckpoint).length > 0;
+  const youtubeUploadContinuation =
+    channel === "youtube_shorts" && hasYoutubeUploadCheckpoint;
+  const pinterestVideoTerminal =
+    channel === "pinterest" &&
+    hasPinterestVideoCheckpoint &&
+    PINTEREST_VIDEO_TERMINAL_PHASES.has(
+      String(persistedPinterestVideoCheckpoint.phase || "")
+        .trim()
+        .toLowerCase(),
+    );
+  const pinterestVideoContinuation =
+    channel === "pinterest" &&
+    hasPinterestVideoCheckpoint &&
+    !pinterestVideoTerminal;
   return {
     id: String(row.id || ""),
     userId: String(row.user_id || "").trim(),
     status: String(payload.status || "queued").trim(),
-    channel: String(payload.channel || ""),
+    channel,
     publicationId: String(payload.publication_id || ""),
-    dispatchRequest: asRecord(payload.dispatchRequest),
+    dispatchRequest: {
+      ...asRecord(payload.dispatchRequest),
+      ...(Object.keys(persistedTiktokCheckpoint).length
+        ? { _tiktokUploadCheckpoint: persistedTiktokCheckpoint }
+        : {}),
+      ...(Object.keys(persistedInstagramVideoCheckpoint).length
+        ? {
+            _instagramVideoCheckpoint:
+              persistedInstagramVideoCheckpoint,
+          }
+        : {}),
+      ...(hasYoutubeUploadCheckpoint
+        ? {
+            _youtubeUploadCheckpoint: rawYoutubeUploadCheckpoint,
+          }
+        : {}),
+      ...(hasPinterestVideoCheckpoint
+        ? {
+            _pinterestVideoCheckpoint: rawPinterestVideoCheckpoint,
+          }
+        : {}),
+    },
     attempt: Math.max(0, Number(payload.attempt || 0)),
+    instagramVideoContinuation,
+    instagramContinuationAttempt: Math.max(
+      0,
+      Number(payload.instagramContinuationAttempt || 0),
+    ),
+    instagramVideoNextPollAt: timestampMs(payload.instagramVideoNextPollAt),
+    youtubeUploadContinuation,
+    youtubeContinuationAttempt: Math.max(
+      0,
+      Number(payload.youtubeContinuationAttempt || 0),
+    ),
+    youtubeUploadNextRunAt: timestampMs(payload.youtubeUploadNextRunAt),
+    pinterestVideoContinuation,
+    pinterestContinuationAttempt: Math.max(
+      0,
+      Number(payload.pinterestContinuationAttempt || 0),
+    ),
+    pinterestVideoNextPollAt: timestampMs(
+      payload.pinterestVideoNextPollAt,
+      persistedPinterestVideoCheckpoint.nextPollAt,
+    ),
+    pinterestVideoTerminal,
     lastActivityAt: timestampMs(
       payload.updatedAt,
       payload.startedAt,
@@ -192,7 +289,27 @@ async function dispatchPreparationJob(job: AsyncPreparationJob, appOrigin: strin
 }
 
 async function dispatchChannelJob(job: AsyncDispatchJob, appOrigin: string) {
-  if (job.attempt >= MAX_ASYNC_DISPATCH_ATTEMPTS) {
+  if (
+    (job.instagramVideoContinuation &&
+      job.instagramVideoNextPollAt > Date.now()) ||
+    (job.youtubeUploadContinuation &&
+      job.youtubeUploadNextRunAt > Date.now()) ||
+    (job.pinterestVideoContinuation &&
+      job.pinterestVideoNextPollAt > Date.now())
+  ) {
+    return;
+  }
+  const attemptsExhausted = job.instagramVideoContinuation
+    ? job.instagramContinuationAttempt >=
+      MAX_INSTAGRAM_VIDEO_CONTINUATION_ATTEMPTS
+    : job.youtubeUploadContinuation
+      ? job.youtubeContinuationAttempt >=
+        MAX_YOUTUBE_UPLOAD_CONTINUATION_ATTEMPTS
+      : job.pinterestVideoContinuation
+        ? job.pinterestContinuationAttempt >=
+          MAX_PINTEREST_VIDEO_CONTINUATION_ATTEMPTS
+        : job.attempt >= MAX_ASYNC_DISPATCH_ATTEMPTS;
+  if (attemptsExhausted) {
     const errorMessage =
       "Le canal n'a pas pu être relancé automatiquement après plusieurs tentatives.";
     await updateAsyncChannelEvent({
@@ -202,8 +319,14 @@ async function dispatchChannelJob(job: AsyncDispatchJob, appOrigin: string) {
         status: "failed",
         result: {
           ok: false,
-          code: "async_dispatch_exhausted",
-          retryable: true,
+          code: job.instagramVideoContinuation
+            ? "instagram_video_continuation_exhausted"
+            : job.youtubeUploadContinuation
+              ? "youtube_upload_continuation_exhausted"
+              : job.pinterestVideoContinuation
+                ? "pinterest_video_continuation_exhausted"
+                : "async_dispatch_exhausted",
+          retryable: false,
           error: errorMessage,
         },
         completedAt: new Date().toISOString(),
@@ -227,14 +350,49 @@ async function dispatchChannelJob(job: AsyncDispatchJob, appOrigin: string) {
       userId: job.userId,
       eventId: job.id,
       patch: {
-        attempt: job.attempt + 1,
+        ...(job.instagramVideoContinuation
+          ? {
+              instagramContinuationAttempt:
+                job.instagramContinuationAttempt + 1,
+            }
+          : job.youtubeUploadContinuation
+            ? {
+                youtubeContinuationAttempt:
+                  job.youtubeContinuationAttempt + 1,
+              }
+            : job.pinterestVideoContinuation
+              ? {
+                  pinterestContinuationAttempt:
+                    job.pinterestContinuationAttempt + 1,
+                }
+              : { attempt: job.attempt + 1 }),
         lastDispatchAt: new Date().toISOString(),
       },
     });
     await fetch(`${appOrigin}/api/booster/publish-now`, {
       method: "POST",
       headers: buildInternalCronHeaders(job.userId),
-      body: JSON.stringify(job.dispatchRequest),
+      body: JSON.stringify({
+        ...job.dispatchRequest,
+        ...(job.instagramVideoContinuation
+          ? {
+              _instagramVideoContinuationAttempt:
+                job.instagramContinuationAttempt + 1,
+            }
+          : {}),
+        ...(job.youtubeUploadContinuation
+          ? {
+              _youtubeUploadContinuationAttempt:
+                job.youtubeContinuationAttempt + 1,
+            }
+          : {}),
+        ...(job.pinterestVideoContinuation
+          ? {
+              _pinterestVideoContinuationAttempt:
+                job.pinterestContinuationAttempt + 1,
+            }
+          : {}),
+      }),
       cache: "no-store",
     });
   } catch (dispatchError) {
@@ -354,7 +512,8 @@ export async function GET(request: Request) {
       (job) =>
         job.id &&
         job.userId &&
-        Object.keys(job.dispatchRequest).length > 0,
+        Object.keys(job.dispatchRequest).length > 0 &&
+        !job.pinterestVideoTerminal,
     );
   const recoveredDispatchJobs = (
     (processingChannelQuery.data || []) as AsyncEventRow[]
@@ -365,6 +524,7 @@ export async function GET(request: Request) {
         job.id &&
         job.userId &&
         Object.keys(job.dispatchRequest).length > 0 &&
+        !job.pinterestVideoTerminal &&
         Date.now() - job.lastActivityAt >=
           BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS + PROCESSING_RECOVERY_GRACE_MS,
     );

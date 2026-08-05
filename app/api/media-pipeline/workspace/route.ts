@@ -329,23 +329,37 @@ export async function POST(request: Request) {
     if (!workspace) return jsonError("Espace média introuvable.", 404);
 
     if (body.action === "clear_media") {
+      const requestedMediaType =
+        body.mediaType === "image" || body.mediaType === "video"
+          ? body.mediaType
+          : null;
       const linked = await supabaseAdmin
         .from("publication_workspace_media")
-        .select("media_id")
+        .select("media_id,pro_media_library!inner(media_type)")
         .eq("workspace_id", workspaceId);
       if (linked.error) throw linked.error;
       const detachedMediaIds = Array.from(
         new Set(
           (linked.data || [])
+            .filter((row: any) => {
+              if (!requestedMediaType) return true;
+              const media = Array.isArray(row.pro_media_library)
+                ? row.pro_media_library[0]
+                : row.pro_media_library;
+              return String(media?.media_type || "") === requestedMediaType;
+            })
             .map((row: any) => String(row.media_id || ""))
             .filter(Boolean),
         ),
       );
-      const deleted = await supabaseAdmin
-        .from("publication_workspace_media")
-        .delete()
-        .eq("workspace_id", workspaceId);
-      if (deleted.error) throw deleted.error;
+      if (detachedMediaIds.length) {
+        const deleted = await supabaseAdmin
+          .from("publication_workspace_media")
+          .delete()
+          .eq("workspace_id", workspaceId)
+          .in("media_id", detachedMediaIds);
+        if (deleted.error) throw deleted.error;
+      }
       const retentionUntil = new Date(
         Date.now() + 24 * 60 * 60 * 1_000,
       ).toISOString();
@@ -374,6 +388,7 @@ export async function POST(request: Request) {
             ...(workspace.workspace_metadata || {}),
             last_media_clear_reason: cleanText(body.reason, "workspace_sync", 120),
             last_media_clear_at: new Date().toISOString(),
+            last_media_clear_type: requestedMediaType || "all",
           },
         })
         .eq("id", workspaceId)

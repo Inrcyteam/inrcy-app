@@ -925,7 +925,9 @@ function mapEventItems(rows: any[]): OutboxItem[] {
       const isAsyncPublication = t === "publish_async_job";
       // Avant la conversion terminale du parent, le contenu lisible vit dans
       // ces deux sous-objets. On projette uniquement ce dont iNr'Send a besoin
-      // et on garde le statut technique du parent comme `processing`.
+      // et on garde le statut technique du parent comme `processing`. Si une
+      // finalisation interrompue a déjà écrit un bilan terminal avant de
+      // convertir le type, ce bilan reste néanmoins visible immédiatement.
       const payload = isAsyncPublication
         ? {
             ...((durablePayload.preparationRequest || {}) as any),
@@ -975,7 +977,13 @@ function mapEventItems(rows: any[]): OutboxItem[] {
       const eventStatus: Status = isDraft
         ? "draft"
         : isAsyncPublication
-          ? "processing"
+          ? payloadStatus === "failed" || payloadStatus === "error"
+            ? "failed"
+            : payloadStatus === "partial"
+              ? "partial"
+              : payloadStatus === "completed" || payloadStatus === "done" || payloadStatus === "sent"
+                ? "completed"
+                : "processing"
         : payloadStatus === "failed"
           ? "failed"
           : payloadStatus === "partial"
@@ -1186,6 +1194,7 @@ function mapAgentScheduledPublicationFallbacks(
     ]));
     const summary = asRecord(execution.summary);
     const results = asRecord(execution.results);
+    const executionStatus = cleanString(execution.status).toLowerCase();
     const successChannels = stringArray(summary.successChannels);
     const visibleChannels = successChannels.length
       ? successChannels
@@ -1225,9 +1234,11 @@ function mapAgentScheduledPublicationFallbacks(
         status:
           status === "failed"
             ? "failed"
-            : failureCount > 0
-              ? "partial"
-              : "completed",
+            : executionStatus === "processing" || execution.entrusted === true
+              ? "processing"
+              : failureCount > 0
+                ? "partial"
+                : "completed",
         completedAt: executedAt,
         reconciledFromAgentAction: true,
         scheduledActionId: row.id,

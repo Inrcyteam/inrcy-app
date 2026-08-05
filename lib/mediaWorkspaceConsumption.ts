@@ -25,6 +25,19 @@ import {
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
 } from "@/lib/mediaRules";
+import {
+  VIDEO_CANONICAL_MIN_SAVINGS_RATIO,
+  VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
+} from "@/lib/mediaVideoNormalizationPolicy";
+import {
+  buildWorkspaceAiFamilyDiagnostic,
+  getWorkspaceAiMediaType,
+  resolveWorkspaceAiFamilyWithinBudget,
+  workspaceAiFamilyBudget,
+  workspaceAiFamilyFailure,
+  type WorkspaceAiConsumptionDiagnostics,
+  type WorkspaceAiFamilyDiagnostic,
+} from "@/lib/workspaceAiMixedConsumption";
 
 const PRIVATE_MEDIA_BUCKET = "inrcy-pro-media";
 const MAX_AI_IMAGE_BYTES = 2_500_000;
@@ -149,7 +162,7 @@ export type WorkspacePublicationConsumption = {
   workspaceId: string;
   workspaceRevision: number;
   workspaceStatus: string;
-  mediaType: "images" | "video" | "none";
+  mediaType: "images" | "video" | "mixed" | "none";
   images: WorkspacePublicationImage[];
   video: WorkspacePublicationVideo | null;
 };
@@ -159,7 +172,7 @@ export type WorkspaceAiConsumption = {
   workspaceId: string;
   workspaceRevision: number;
   workspaceStatus: string;
-  mediaType: "images" | "video" | "none";
+  mediaType: "images" | "video" | "mixed" | "none";
   imagesForAI: Array<{
     name: string;
     type: string;
@@ -185,6 +198,7 @@ export type WorkspaceAiConsumption = {
     audioTrackFile: File | null;
     audioAvailable: boolean;
   };
+  diagnostics: WorkspaceAiConsumptionDiagnostics;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -433,6 +447,7 @@ async function readWorkspaceGraph(params: {
   allowUploadedImageSourceForAi?: boolean;
   allowUploadedImageSourceForPublication?: boolean;
   allowUploadedVideoSource?: boolean;
+  allowPartialMediaForAi?: boolean;
 }) {
   if (!isUnifiedMediaConsumptionEnabled()) {
     throw new MediaWorkspaceConsumptionError(
@@ -543,7 +558,7 @@ async function readWorkspaceGraph(params: {
       !["ready", "legacy_ready"].includes(item.publicationStatus)
     );
   });
-  if (invalid) {
+  if (invalid && !params.allowPartialMediaForAi) {
     throw new MediaWorkspaceConsumptionError(
       "Les médias sont encore en cours de préparation.",
       "workspace_media_not_ready",
@@ -584,7 +599,7 @@ async function readWorkspaceGraph(params: {
           : null,
       durationSeconds:
         Number.isFinite(Number(row.duration_seconds)) &&
-        Number(row.duration_seconds) >= 0
+        Number(row.duration_seconds) > 0
           ? Number(row.duration_seconds)
           : null,
       metadata: asObject(row.variant_metadata),
@@ -1124,154 +1139,152 @@ export async function resolveWorkspacePublicationConsumption(params: {
     };
   }
 
-  const mediaType = media[0]?.mediaType === "video" ? "video" : "images";
-  if (mediaType === "images") {
-    const images = await mapWithConcurrency(
-      media.slice(0, MAX_AI_IMAGE_COUNT),
+  // Un même Booster peut envoyer les images sur certains canaux et la vidéo
+  // sur d'autres. La position du premier média ne doit donc jamais masquer
+  // l'autre famille. On résout les deux branches du graphe indépendamment.
+  const imageItems = media
+    .filter((item) => item.mediaType === "image")
+    .slice(0, MAX_AI_IMAGE_COUNT);
+  const videoItem = media.find((item) => item.mediaType === "video") || null;
+
+  const images = imageItems.length
+    ? await mapWithConcurrency(
+      imageItems,
       AI_PROVIDER_SAFE_CONCURRENCY,
       async (item) => {
-      const sourceMetadata = sourceMetadataForMedia(item);
-      const sourceWidth = positiveMetadataNumber(sourceMetadata.width);
-      const sourceHeight = positiveMetadataNumber(sourceMetadata.height);
-      if (
-        canUseDirectWorkspaceImageSource(item) &&
-        sourceWidth !== null &&
-        sourceHeight !== null
-      ) {
+        const sourceMetadata = sourceMetadataForMedia(item);
+        const sourceWidth = positiveMetadataNumber(sourceMetadata.width);
+        const sourceHeight = positiveMetadataNumber(sourceMetadata.height);
+        if (
+          canUseDirectWorkspaceImageSource(item) &&
+          sourceWidth !== null &&
+          sourceHeight !== null
+        ) {
+          return {
+            mediaId: item.mediaId,
+            imageKey: editorImageKeyFromClientMediaKey(
+              item.clientMediaKey,
+              `workspace:${item.mediaId}`,
+            ),
+            name: item.originalFileName,
+            type: normalizeMime(
+              item.detectedMimeType || item.sourceMimeType,
+              "image/jpeg",
+            ),
+            size: item.sourceSizeBytes,
+            bucket: item.sourceBucket,
+            storagePath: item.sourceStoragePath,
+            workspacePosition: item.position,
+            imageMeta: {
+              width: sourceWidth,
+              height: sourceHeight,
+              ratio: sourceWidth / sourceHeight,
+            },
+          };
+        }
+
+        const canonical = pickReadyVariant(
+          variants,
+          item.mediaId,
+          "canonical",
+        );
+        if (!canonical) {
+          throw new MediaWorkspaceConsumptionError(
+            "La version canonique d'une image n'est pas prête.",
+            "workspace_canonical_missing",
+            409,
+          );
+        }
+        const canonicalMimeType = normalizeMime(
+          canonical.mimeType,
+          "image/jpeg",
+        );
         return {
           mediaId: item.mediaId,
           imageKey: editorImageKeyFromClientMediaKey(
             item.clientMediaKey,
             `workspace:${item.mediaId}`,
           ),
-          name: item.originalFileName,
-          type: normalizeMime(
-            item.detectedMimeType || item.sourceMimeType,
-            "image/jpeg",
+          name: canonicalImageName(
+            item.originalFileName,
+            canonicalMimeType,
+            item.position,
           ),
-          size: item.sourceSizeBytes,
-          bucket: item.sourceBucket,
-          storagePath: item.sourceStoragePath,
+          type: canonicalMimeType,
+          size: canonical.sizeBytes || item.sourceSizeBytes,
+          bucket: canonical.bucket,
+          storagePath: canonical.storagePath,
           workspacePosition: item.position,
-          imageMeta: {
-            width: sourceWidth,
-            height: sourceHeight,
-            ratio: sourceWidth / sourceHeight,
-          },
+          ...(canonical.width && canonical.height
+            ? {
+                imageMeta: {
+                  width: canonical.width,
+                  height: canonical.height,
+                  ratio: canonical.width / canonical.height,
+                },
+              }
+            : {}),
         };
-      }
-
-      const canonical = pickReadyVariant(
-        variants,
-        item.mediaId,
-        "canonical",
-      );
-      if (!canonical) {
-        throw new MediaWorkspaceConsumptionError(
-          "La version canonique d'une image n'est pas prête.",
-          "workspace_canonical_missing",
-          409,
-        );
-      }
-      const canonicalMimeType = normalizeMime(
-        canonical.mimeType,
-        "image/jpeg",
-      );
-      return {
-        mediaId: item.mediaId,
-        imageKey: editorImageKeyFromClientMediaKey(
-          item.clientMediaKey,
-          `workspace:${item.mediaId}`,
-        ),
-        name: canonicalImageName(
-          item.originalFileName,
-          canonicalMimeType,
-          item.position,
-        ),
-        type: canonicalMimeType,
-        size: canonical.sizeBytes || item.sourceSizeBytes,
-        bucket: canonical.bucket,
-        storagePath: canonical.storagePath,
-        workspacePosition: item.position,
-        ...(canonical.width && canonical.height
-          ? {
-              imageMeta: {
-                width: canonical.width,
-                height: canonical.height,
-                ratio: canonical.width / canonical.height,
-              },
-            }
-          : {}),
-      };
       },
+    )
+    : [];
+
+  let video: WorkspacePublicationVideo | null = null;
+  if (videoItem) {
+    const item = videoItem;
+    const canonical = pickReadyVariant(variants, item.mediaId, "canonical");
+    const directSourceReady = canUseDirectWorkspaceVideoSource(item);
+    if (!canonical && !directSourceReady) {
+      throw new MediaWorkspaceConsumptionError(
+        "La version canonique de la vidéo n'est pas prête.",
+        "workspace_canonical_missing",
+        409,
+      );
+    }
+    const canonicalIsMateriallySmaller = Boolean(
+      canonical &&
+        canonical.sizeBytes > 0 &&
+        canonical.sizeBytes <=
+          item.sourceSizeBytes * (1 - VIDEO_CANONICAL_MIN_SAVINGS_RATIO),
     );
-
-    return {
-      source: "media_workspace_v1",
-      purpose: params.purpose,
-      workspaceId: workspace.id,
-      workspaceRevision: Number(workspace.revision || 1),
-      workspaceStatus: workspace.status,
-      mediaType: "images",
-      images,
-      video: null,
-    };
-  }
-
-  const item = media[0];
-  const canonical = pickReadyVariant(variants, item.mediaId, "canonical");
-  const directSourceReady = canUseDirectWorkspaceVideoSource(item);
-  if (!canonical && !directSourceReady) {
-    throw new MediaWorkspaceConsumptionError(
-      "La version canonique de la vidéo n'est pas prête.",
-      "workspace_canonical_missing",
-      409,
+    const preferSharedCanonical = Boolean(
+      directSourceReady &&
+        item.sourceSizeBytes > VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES &&
+        canonicalIsMateriallySmaller,
     );
-  }
-  // "Original" must remain the binary uploaded by the professional. The
-  // canonical derivative is only a compatibility fallback for an unsuitable
-  // source; merely having a canonical row must not replace a valid original.
-  const publicationVariant = directSourceReady ? null : canonical;
-  const thumbnail = pickReadyVariant(variants, item.mediaId, "thumbnail");
+    // Up to 70 MB, a compatible source remains byte-for-byte original. Above
+    // that threshold, a materially smaller canonical prepared in background
+    // becomes the shared distribution master: the original is preserved, but
+    // ten provider transfers no longer repeat avoidable bytes.
+    const publicationVariant =
+      directSourceReady && !preferSharedCanonical ? null : canonical;
+    const thumbnail = pickReadyVariant(variants, item.mediaId, "thumbnail");
 
-  const videoMimeType = normalizeMime(
-    publicationVariant?.mimeType || item.detectedMimeType || item.sourceMimeType,
-    "video/mp4",
-  );
-  const sourceMetadata = sourceMetadataForMedia(item);
-  const directVideoProof = directVideoProofForMedia(item);
-  const canonicalMetadata = asObject(publicationVariant?.metadata);
-  const sourceWidth =
-    Number.isFinite(Number(sourceMetadata.width)) &&
-    Number(sourceMetadata.width) > 0
-      ? Number(sourceMetadata.width)
-      : null;
-  const sourceHeight =
-    Number.isFinite(Number(sourceMetadata.height)) &&
-    Number(sourceMetadata.height) > 0
-      ? Number(sourceMetadata.height)
-      : null;
-  const videoWidth = publicationVariant?.width ?? sourceWidth;
-  const videoHeight = publicationVariant?.height ?? sourceHeight;
-  const sourceDuration =
-    Number.isFinite(
-      Number(sourceMetadata.duration ?? sourceMetadata.durationSeconds),
-    ) &&
-    Number(sourceMetadata.duration ?? sourceMetadata.durationSeconds) > 0
-      ? Number(sourceMetadata.duration ?? sourceMetadata.durationSeconds)
-      : null;
-  const videoDuration =
-    publicationVariant?.durationSeconds ?? sourceDuration ?? item.durationSeconds;
+    const videoMimeType = normalizeMime(
+      publicationVariant?.mimeType || item.detectedMimeType || item.sourceMimeType,
+      "video/mp4",
+    );
+    const sourceMetadata = sourceMetadataForMedia(item);
+    const serverProbedMetadata = serverProbedVideoMetadataForMedia(item);
+    const directVideoProof = directVideoProofForMedia(item);
+    const canonicalMetadata = asObject(publicationVariant?.metadata);
+    const sourceWidth = positiveMetadataNumber(sourceMetadata.width);
+    const sourceHeight = positiveMetadataNumber(sourceMetadata.height);
+    const videoWidth = publicationVariant?.width ?? sourceWidth;
+    const videoHeight = publicationVariant?.height ?? sourceHeight;
+    const sourceDuration = positiveMetadataNumber(
+      serverProbedMetadata.duration ??
+        serverProbedMetadata.durationSeconds ??
+        serverProbedMetadata.duration_seconds,
+    );
+    // A NULL/zero duration on an old canonical row must not erase the positive
+    // FFmpeg source probe. Browser/registry metadata is never used as the
+    // trusted duration that authorizes or blocks a provider dispatch.
+    const videoDuration =
+      positiveMetadataNumber(publicationVariant?.durationSeconds) ??
+      sourceDuration;
 
-  return {
-    source: "media_workspace_v1",
-    purpose: params.purpose,
-    workspaceId: workspace.id,
-    workspaceRevision: Number(workspace.revision || 1),
-    workspaceStatus: workspace.status,
-    mediaType: "video",
-    images: [],
-    video: {
+    video = {
       mediaId: item.mediaId,
       name: publicationVariant
         ? canonicalVideoName(item.originalFileName)
@@ -1316,71 +1329,135 @@ export async function resolveWorkspacePublicationConsumption(params: {
           ? "canonical_derivative"
           : "server_ffmpeg",
       },
-    },
+    };
+  }
+
+  const mediaType: WorkspacePublicationConsumption["mediaType"] =
+    images.length && video
+      ? "mixed"
+      : video
+        ? "video"
+        : images.length
+          ? "images"
+          : "none";
+
+  return {
+    source: "media_workspace_v1",
+    purpose: params.purpose,
+    workspaceId: workspace.id,
+    workspaceRevision: Number(workspace.revision || 1),
+    workspaceStatus: workspace.status,
+    mediaType,
+    images,
+    video,
   };
 }
 
-export async function resolveWorkspaceAiConsumption(params: {
+type WorkspaceAiImageFamilyResult = {
+  imagesForAI: WorkspaceAiConsumption["imagesForAI"];
+  diagnostic: WorkspaceAiFamilyDiagnostic;
+};
+
+type WorkspaceAiVideoFamilyResult = {
+  videoForAI: WorkspaceAiConsumption["videoForAI"];
+  diagnostic: WorkspaceAiFamilyDiagnostic;
+};
+
+async function resolveWorkspaceAiImageFamily(params: {
   accountId: string;
-  workspaceId: string;
-}): Promise<WorkspaceAiConsumption> {
-  const graph = await readWorkspaceGraph({
-    ...params,
-    allowProcessingVideoForAi: true,
-    allowUploadedImageSourceForAi: true,
-  });
-  const { workspace, media, variants } = graph;
-
-  if (!media.length) {
+  items: WorkspaceMediaRow[];
+  variants: ReadyVariant[];
+}): Promise<WorkspaceAiImageFamilyResult> {
+  if (!params.items.length) {
     return {
-      source: "media_workspace_v1",
-      workspaceId: workspace.id,
-      workspaceRevision: Number(workspace.revision || 1),
-      workspaceStatus: workspace.status,
-      mediaType: "none",
       imagesForAI: [],
-      videoForAI: null,
+      diagnostic: buildWorkspaceAiFamilyDiagnostic({
+        requestedCount: 0,
+        resolvedCount: 0,
+      }),
     };
   }
 
-  if (media[0]?.mediaType === "image") {
-    const selectedMedia = media.slice(0, MAX_AI_IMAGE_COUNT);
-    const imagesForAI = await mapWithConcurrency(
-      selectedMedia,
-      AI_PROVIDER_SAFE_CONCURRENCY,
-      async (item) => {
+  const resolved = await mapWithConcurrency(
+    params.items,
+    AI_PROVIDER_SAFE_CONCURRENCY,
+    async (item) => {
+      try {
+        if (item.uploadStatus !== "uploaded" || !item.sourceStoragePath) {
+          throw new MediaWorkspaceConsumptionError(
+            "L'image est encore en cours d'upload.",
+            "workspace_ai_image_upload_pending",
+            409,
+          );
+        }
         return {
-          name: item.originalFileName || `image-${item.position + 1}.jpg`,
-          type: "image/jpeg",
-          dataUrl: await resolveProviderSafeImageDataUrl({
-            accountId: params.accountId,
-            media: item,
-            variants,
-          }),
-          mediaId: item.mediaId,
-          position: item.position,
+          image: {
+            name: item.originalFileName || `image-${item.position + 1}.jpg`,
+            type: "image/jpeg",
+            dataUrl: await resolveProviderSafeImageDataUrl({
+              accountId: params.accountId,
+              media: item,
+              variants: params.variants,
+            }),
+            mediaId: item.mediaId,
+            position: item.position,
+          },
+          failure: null,
         };
-      },
-    );
+      } catch (error) {
+        return {
+          image: null,
+          failure: {
+            ...workspaceAiFamilyFailure("images", error),
+            mediaId: item.mediaId,
+          },
+        };
+      }
+    },
+  );
+  const imagesForAI = resolved.flatMap((result) =>
+    result.image ? [result.image] : [],
+  );
+  const failures = resolved.flatMap((result) =>
+    result.failure ? [result.failure] : [],
+  );
+  return {
+    imagesForAI,
+    diagnostic: buildWorkspaceAiFamilyDiagnostic({
+      requestedCount: params.items.length,
+      resolvedCount: imagesForAI.length,
+      failures,
+    }),
+  };
+}
 
+async function resolveWorkspaceAiVideoFamily(params: {
+  item: WorkspaceMediaRow | null;
+  variants: ReadyVariant[];
+}): Promise<WorkspaceAiVideoFamilyResult> {
+  if (!params.item) {
     return {
-      source: "media_workspace_v1",
-      workspaceId: workspace.id,
-      workspaceRevision: Number(workspace.revision || 1),
-      workspaceStatus: workspace.status,
-      mediaType: "images",
-      imagesForAI,
       videoForAI: null,
+      diagnostic: buildWorkspaceAiFamilyDiagnostic({
+        requestedCount: 0,
+        resolvedCount: 0,
+      }),
     };
   }
+  const item = params.item;
+  if (item.uploadStatus !== "uploaded" || !item.sourceStoragePath) {
+    throw new MediaWorkspaceConsumptionError(
+      "La vidéo est encore en cours d'upload.",
+      "workspace_ai_video_upload_pending",
+      409,
+    );
+  }
 
-  const item = media[0];
-  // La génération de texte n'a pas besoin d'attendre une variante vidéo
-  // ai_preview/canonical : elle consomme les captures et, si disponible,
-  // la piste audio. L'original déjà uploadé reste une référence valide.
+  // Le texte n'attend ni ai_preview ni canonical : l'original reste la
+  // référence, tandis que les captures et l'audio enrichissent le prompt.
   const preview =
-    pickReadyVariant(variants, item.mediaId, "ai_preview") ||
-    pickReadyVariant(variants, item.mediaId, "canonical");
+    pickReadyVariant(params.variants, item.mediaId, "ai_preview") ||
+    pickReadyVariant(params.variants, item.mediaId, "canonical");
   const videoReference = preview || {
     bucket: item.sourceBucket,
     storagePath: item.sourceStoragePath,
@@ -1390,7 +1467,7 @@ export async function resolveWorkspaceAiConsumption(params: {
   };
 
   const frameVariants = pickAllReadyVariants(
-    variants,
+    params.variants,
     item.mediaId,
     "video_frame",
   )
@@ -1434,12 +1511,13 @@ export async function resolveWorkspaceAiConsumption(params: {
   }
 
   const audioVariant = pickAllReadyVariants(
-    variants,
+    params.variants,
     item.mediaId,
     "audio_track",
   )[0];
   const audioAvailable =
-    Boolean(audioVariant?.storagePath) && audioVariant?.metadata.available !== false;
+    Boolean(audioVariant?.storagePath) &&
+    audioVariant?.metadata.available !== false;
   let audioTrackFile: File | null = null;
   if (audioVariant && audioAvailable) {
     const audio = await downloadVariant(audioVariant);
@@ -1455,12 +1533,6 @@ export async function resolveWorkspaceAiConsumption(params: {
   }
 
   return {
-    source: "media_workspace_v1",
-    workspaceId: workspace.id,
-    workspaceRevision: Number(workspace.revision || 1),
-    workspaceStatus: workspace.status,
-    mediaType: "video",
-    imagesForAI: [],
     videoForAI: {
       name: item.originalFileName || "video-inrcy.mp4",
       type: normalizeMime(videoReference.mimeType, "video/mp4"),
@@ -1472,6 +1544,106 @@ export async function resolveWorkspaceAiConsumption(params: {
       visualFrames,
       audioTrackFile,
       audioAvailable,
+    },
+    diagnostic: buildWorkspaceAiFamilyDiagnostic({
+      requestedCount: 1,
+      resolvedCount: 1,
+    }),
+  };
+}
+
+export async function resolveWorkspaceAiConsumption(params: {
+  accountId: string;
+  workspaceId: string;
+  preferredMediaType?: "images" | "video";
+  /**
+   * Reserved for a future generation mode. Booster currently generates from
+   * exactly one media family (images OR video); mixed assignments only belong
+   * to the publication editor.
+   */
+  allowMixedMedia?: boolean;
+  deadlineAt?: number;
+}): Promise<WorkspaceAiConsumption> {
+  const graph = await readWorkspaceGraph({
+    accountId: params.accountId,
+    workspaceId: params.workspaceId,
+    allowProcessingVideoForAi: true,
+    allowUploadedImageSourceForAi: true,
+    allowPartialMediaForAi: true,
+  });
+  const { workspace, media, variants } = graph;
+  const resolveImages =
+    params.allowMixedMedia === true || params.preferredMediaType !== "video";
+  const resolveVideo =
+    params.allowMixedMedia === true || params.preferredMediaType !== "images";
+  const imageItems = resolveImages
+    ? media
+        .filter((item) => item.mediaType === "image")
+        .slice(0, MAX_AI_IMAGE_COUNT)
+    : [];
+  const videoItem = resolveVideo
+    ? media.find((item) => item.mediaType === "video") || null
+    : null;
+
+  const remainingMs = params.deadlineAt
+    ? params.deadlineAt - Date.now()
+    : null;
+  const [imageFamily, videoFamily] = await Promise.all([
+    resolveWorkspaceAiFamilyWithinBudget({
+      family: "images",
+      task: resolveWorkspaceAiImageFamily({
+        accountId: params.accountId,
+        items: imageItems,
+        variants,
+      }),
+      budgetMs: workspaceAiFamilyBudget({
+        family: "images",
+        preferredFamily: params.preferredMediaType,
+        remainingMs,
+      }),
+    }),
+    resolveWorkspaceAiFamilyWithinBudget({
+      family: "video",
+      task: resolveWorkspaceAiVideoFamily({ item: videoItem, variants }),
+      budgetMs: workspaceAiFamilyBudget({
+        family: "video",
+        preferredFamily: params.preferredMediaType,
+        remainingMs,
+      }),
+    }),
+  ]);
+
+  const imagesForAI = imageFamily.ok ? imageFamily.value.imagesForAI : [];
+  const imageDiagnostic = imageFamily.ok
+    ? imageFamily.value.diagnostic
+    : buildWorkspaceAiFamilyDiagnostic({
+        requestedCount: imageItems.length,
+        resolvedCount: 0,
+        failures: imageItems.length ? [imageFamily.failure] : [],
+      });
+  const videoForAI = videoFamily.ok ? videoFamily.value.videoForAI : null;
+  const videoDiagnostic = videoFamily.ok
+    ? videoFamily.value.diagnostic
+    : buildWorkspaceAiFamilyDiagnostic({
+        requestedCount: videoItem ? 1 : 0,
+        resolvedCount: 0,
+        failures: videoItem ? [videoFamily.failure] : [],
+      });
+
+  return {
+    source: "media_workspace_v1",
+    workspaceId: workspace.id,
+    workspaceRevision: Number(workspace.revision || 1),
+    workspaceStatus: workspace.status,
+    mediaType: getWorkspaceAiMediaType({
+      imageCount: imagesForAI.length,
+      hasVideo: Boolean(videoForAI),
+    }),
+    imagesForAI,
+    videoForAI,
+    diagnostics: {
+      images: imageDiagnostic,
+      video: videoDiagnostic,
     },
   };
 }

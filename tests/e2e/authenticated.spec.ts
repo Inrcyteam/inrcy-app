@@ -11,7 +11,7 @@ test.describe('authenticated flows', () => {
   test('user can sign in and reach dashboard', async ({ page }) => {
     const runtime = attachRuntimeErrorTracking(page);
 
-    await login(page);
+    await login(page, { forceUi: true });
 
     await expect(page).toHaveURL(/\/dashboard/);
 
@@ -25,7 +25,7 @@ test.describe('authenticated flows', () => {
   test('session survives refresh on dashboard', async ({ page }) => {
     const runtime = attachRuntimeErrorTracking(page);
 
-    await login(page);
+    await login(page, { forceUi: true });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
 
@@ -43,7 +43,7 @@ test.describe('authenticated flows', () => {
   test('main dashboard modules render', async ({ page }) => {
     const runtime = attachRuntimeErrorTracking(page);
 
-    await login(page);
+    await login(page, { forceUi: true });
 
     await expect(page.getByText(/CRM/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/STATS/i).first()).toBeVisible({ timeout: 15_000 });

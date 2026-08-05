@@ -19,13 +19,17 @@ import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "
 import {
   GENERATION_PROGRESS_PHASES,
   PUBLICATION_PROGRESS_PHASES,
+  PUBLICATION_PROGRESS_STAGES,
   getProgressPhase,
   getProgressPhaseIndex,
+  getPublicationProgressStage,
   mapProgressRange,
   resolvePublicationBilanProgress,
   type GenerationProgressPhaseKey,
   type PublicationProgressPhaseKey,
 } from "@/lib/boosterProgressPhases";
+import type { BoosterPublishProgressUpdate } from "@/lib/boosterPublishClient";
+import type { PublishExecutionChannelProgress } from "@/app/dashboard/_components/PublishExecutionProgress";
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
   getAiEngineOption,
@@ -167,7 +171,9 @@ import PublishPreviewPanel from "./components/PublishPreviewPanel";
 import PublishHelpModal from "./components/PublishHelpModal";
 import PublishWarningModals from "./components/PublishWarningModals";
 import usePublishImageController from "./usePublishImageController";
-import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
+import usePersistentMediaWorkspace, {
+  type PersistentWorkspaceMediaState,
+} from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
@@ -195,6 +201,11 @@ import usePublishVideoController, {
   normalizeRestoredVideoVariants,
   type VideoVariantPreparationState,
 } from "./usePublishVideoController";
+import { assignVideoSourceToChannel } from "./videoChannelAssignment";
+import {
+  getGenerationMediaSelectionError,
+  getGenerationMediaSelectionPolicy,
+} from "./generationMediaSelection";
 
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
 import MediaLibraryPickerModal, {
@@ -208,6 +219,70 @@ const BOOSTER_GENERATION_SAFETY_BUDGET_MS =
   BOOSTER_GENERATION_TARGET_MS + 15_000;
 const BOOSTER_PUBLISH_VISIBLE_CAP_MS = 60_000;
 const BOOSTER_PUBLISH_WITH_MEDIA_FINALIZATION_VISIBLE_CAP_MS = 90_000;
+
+function getPublicationMediaModeLabel(mode: ChannelMediaMode) {
+  if (mode === "video") return "Vidéo";
+  if (mode === "images") return "Photos";
+  return "Texte";
+}
+
+function resolvePublicationChannelProgress(
+  channel: ChannelKey,
+  mode: ChannelMediaMode,
+  entry: Record<string, any> | null,
+  fallback?: PublishExecutionChannelProgress,
+): PublishExecutionChannelProgress {
+  const base = {
+    channel,
+    label: CHANNEL_LABELS[channel] || channel,
+    mediaLabel: getPublicationMediaModeLabel(mode),
+  };
+  if (!entry) {
+    return (
+      fallback || {
+        ...base,
+        statusLabel: "Prêt",
+        tone: "waiting" as const,
+      }
+    );
+  }
+
+  const technicalStatus = String(
+    entry.technicalStatus || entry.status || "",
+  ).toLowerCase();
+  if (
+    entry.ok === false ||
+    technicalStatus === "failed" ||
+    technicalStatus === "error"
+  ) {
+    return { ...base, statusLabel: "Échec", tone: "error" };
+  }
+  if (
+    technicalStatus === "published_with_warning" ||
+    entry.warning ||
+    entry.warning_kind
+  ) {
+    return { ...base, statusLabel: "Publié · alerte", tone: "warning" };
+  }
+  if (
+    entry.ok === true ||
+    ["published", "completed", "success", "succeeded"].includes(
+      technicalStatus,
+    )
+  ) {
+    return { ...base, statusLabel: "Publié", tone: "success" };
+  }
+  if (technicalStatus === "preparing") {
+    return { ...base, statusLabel: "Finalisation média", tone: "active" };
+  }
+  if (technicalStatus === "processing") {
+    return { ...base, statusLabel: "Envoi en cours", tone: "active" };
+  }
+  if (technicalStatus === "queued") {
+    return { ...base, statusLabel: "En file", tone: "active" };
+  }
+  return { ...base, statusLabel: "Pris en charge", tone: "active" };
+}
 
 export default function PublishModal({
   styles,
@@ -303,9 +378,14 @@ export default function PublishModal({
   const [publishProgressLabel, setPublishProgressLabel] = useState("");
   const [publishProgressPhaseIndex, setPublishProgressPhaseIndex] = useState(0);
   const [publishProgressPhaseLabel, setPublishProgressPhaseLabel] = useState("");
+  const [publishChannelProgress, setPublishChannelProgress] = useState<
+    PublishExecutionChannelProgress[]
+  >([]);
   const publishProgressTargetRef = useRef(0);
   const publishProgressPhaseIndexRef = useRef(0);
   const phasedPublicationProgressRef = useRef(false);
+  const publishStartGuardRef = useRef(false);
+  const scheduleStartGuardRef = useRef(false);
   const [postsByChannel, setPostsByChannel] = useState<
     Partial<Record<ChannelKey, ChannelPost>>
   >({});
@@ -397,10 +477,17 @@ export default function PublishModal({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const videoPickerTargetChannelRef = useRef<ChannelKey | null>(null);
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
+  const [cameraCaptureScope, setCameraCaptureScope] = useState<
+    "generation" | "publication"
+  >("generation");
   const [cameraCaptureTargetChannel, setCameraCaptureTargetChannel] =
     useState<ChannelKey | null>(null);
   const [mediaLibraryPickerOpen, setMediaLibraryPickerOpen] = useState(false);
+  const [mediaLibraryPickerScope, setMediaLibraryPickerScope] = useState<
+    "generation" | "publication"
+  >("generation");
   const [publicationMediaType, setPublicationMediaType] =
     useState<PublicationMediaType>("images");
   const [channelMediaModes, setChannelMediaModes] = useState<
@@ -631,8 +718,9 @@ export default function PublishModal({
 
       if (phaseIndex > publishProgressPhaseIndexRef.current) {
         publishProgressPhaseIndexRef.current = phaseIndex;
-        setPublishProgressPhaseIndex(phaseIndex);
-        setPublishProgressPhaseLabel(phase.label);
+        const visibleStage = getPublicationProgressStage(key);
+        setPublishProgressPhaseIndex(visibleStage.index);
+        setPublishProgressPhaseLabel(visibleStage.label);
         setPublishProgress((current) => Math.max(current, phase.start));
       }
 
@@ -657,8 +745,9 @@ export default function PublishModal({
     );
     publishProgressPhaseIndexRef.current = phaseIndex;
     publishProgressTargetRef.current = 100;
-    setPublishProgressPhaseIndex(phaseIndex);
-    setPublishProgressPhaseLabel(phase.label);
+    const visibleStage = getPublicationProgressStage("complete");
+    setPublishProgressPhaseIndex(visibleStage.index);
+    setPublishProgressPhaseLabel(visibleStage.label);
     setPublishProgressLabel(detail || phase.label);
     setPublishProgress(100);
   }, []);
@@ -1368,6 +1457,12 @@ export default function PublishModal({
     setPublishProgressLabel: setContextualPublishProgressLabel,
   });
 
+  const generationMediaSelectionPolicy = getGenerationMediaSelectionPolicy({
+    imageCount: images.length,
+    hasVideo: Boolean(videoFile || videoPreviewUrl),
+    maxImageCount: BOOSTER_MAX_IMAGE_COUNT,
+  });
+
   const [tiktokMaxVideoDurationSeconds, setTiktokMaxVideoDurationSeconds] =
     useState<number | null>(null);
   const [tiktokDurationLimitVerified, setTiktokDurationLimitVerified] =
@@ -1450,19 +1545,36 @@ export default function PublishModal({
     async (
       purpose: "generate" | "publish" | "schedule",
       onProgress?: (progress: number, label: string) => void,
+      requiredMediaTypes?: readonly ("image" | "video")[],
     ): Promise<string | null> => {
       if (!persistentMediaWorkspaceEnabled) return null;
 
-      const expectedCount =
-        publicationMediaType === "video" && videoFile ? 1 : images.length;
+      const requiredMediaTypeSet = new Set(
+        requiredMediaTypes || (["image", "video"] as const),
+      );
+      const sourceExpectations = [
+        ...(images.length && requiredMediaTypeSet.has("image")
+          ? [{ mediaType: "image" as const, count: images.length }]
+          : []),
+        ...(videoFile && requiredMediaTypeSet.has("video")
+          ? [{ mediaType: "video" as const, count: 1 }]
+          : []),
+      ];
+      const expectedCount = sourceExpectations.reduce(
+        (total, expectation) => total + expectation.count,
+        0,
+      );
       if (!expectedCount) return null;
 
-      await waitForPersistentWorkspaceIdle((progress, label) => {
-        onProgress?.(
-          Math.max(6, Math.min(42, Math.round(progress * 0.36) + 6)),
-          label || "Envoi sécurisé du média en cours...",
-        );
-      });
+      await waitForPersistentWorkspaceIdle(
+        (progress, label) => {
+          onProgress?.(
+            Math.max(6, Math.min(42, Math.round(progress * 0.36) + 6)),
+            label || "Envoi sécurisé du média en cours...",
+          );
+        },
+        { mediaTypes: sourceExpectations.map((item) => item.mediaType) },
+      );
 
       const ensuredWorkspace = mediaWorkspaceId
         ? null
@@ -1473,11 +1585,7 @@ export default function PublishModal({
         throw new Error("Impossible de préparer l'espace média.");
       }
 
-      await verifyPersistentWorkspaceSources({
-        mediaType:
-          publicationMediaType === "video" && videoFile ? "video" : "image",
-        count: expectedCount,
-      });
+      await verifyPersistentWorkspaceSources(sourceExpectations);
 
       const mediaLabel =
         expectedCount > 1 ? "Médias sécurisés" : "Média sécurisé";
@@ -1494,7 +1602,6 @@ export default function PublishModal({
       images.length,
       mediaWorkspaceId,
       persistentMediaWorkspaceEnabled,
-      publicationMediaType,
       videoFile,
       verifyPersistentWorkspaceSources,
       waitForPersistentWorkspaceIdle,
@@ -1514,7 +1621,9 @@ export default function PublishModal({
   const resolveChannelMediaMode = (channel: ChannelKey): ChannelMediaMode => {
     const explicit = channelMediaModes[channel];
     const hasVideo = Boolean(videoFile || videoPreviewUrl);
-    const hasImages = images.length > 0;
+    const hasImages =
+      images.length > 0 &&
+      (channelImageEditors[channel]?.imageKeys?.length || 0) > 0;
 
     // A scoped removal must keep the channel selected while explicitly
     // leaving it without media. Readiness then explains what is missing.
@@ -1541,7 +1650,11 @@ export default function PublishModal({
   const setChannelMediaMode = (channel: ChannelKey, mode: ChannelMediaMode) => {
     if (mode === "images" && !channelSupportsImages(channel)) return;
     if (mode === "none" && !channelSupportsTextOnly(channel)) return;
-    setChannelMediaModes((prev) => ({ ...prev, [channel]: mode }));
+    setChannelMediaModes((prev) =>
+      mode === "video"
+        ? assignVideoSourceToChannel(prev, channel)
+        : { ...prev, [channel]: mode },
+    );
     clearVideoVariantPreparationForChannel(channel);
     clearPreparedVideoVariantsForChannel(channel);
   };
@@ -1616,7 +1729,9 @@ export default function PublishModal({
       };
     }
 
-    await waitForPersistentWorkspaceIdle();
+    await waitForPersistentWorkspaceIdle(undefined, {
+      mediaTypes: ["video"],
+    });
     const workspace = await ensurePersistentMediaWorkspace();
     if (!workspace) {
       throw new Error("L’espace média de cette publication est indisponible.");
@@ -1624,6 +1739,7 @@ export default function PublishModal({
 
     let result = await prewarmPersistentMediaWorkspace({
       selectedChannels: channels,
+      requestedMediaType: "video",
       videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
       generateMissingVideoVariants:
         options?.generateMissingVideoVariants !== false,
@@ -1760,28 +1876,11 @@ export default function PublishModal({
       metadataByIndex?: readonly Record<string, unknown>[],
     ) => {
       if (!persistentMediaWorkspaceEnabled) return;
-      if (publicationMediaType === "video" && videoFile) {
-        await syncPersistentWorkspaceVideo(videoFile, {
-          duration: videoDurationSeconds,
-          source_metadata: videoSourceMetadata,
-        });
-        return;
-      }
-      if (nextImages.length) {
-        await syncPersistentWorkspaceImages(nextImages, metadataByIndex);
-      } else {
-        await clearPersistentWorkspaceMedia();
-      }
+      await syncPersistentWorkspaceImages(nextImages, metadataByIndex);
     },
     [
-      clearPersistentWorkspaceMedia,
       persistentMediaWorkspaceEnabled,
-      publicationMediaType,
       syncPersistentWorkspaceImages,
-      syncPersistentWorkspaceVideo,
-      videoDurationSeconds,
-      videoFile,
-      videoSourceMetadata,
     ],
   );
 
@@ -1801,8 +1900,11 @@ export default function PublishModal({
     previewLayout,
     clearImagesMedia,
     onPickImagesClick,
+    onPickImagesForChannel,
     addImageFiles,
     onImagesChange,
+    assignExistingImagesToChannel,
+    removeImagesFromChannel,
     removeImage,
     getDraftImageSettingsByChannel,
     uploadPublicationDraftImages,
@@ -2654,6 +2756,7 @@ export default function PublishModal({
     setIsImageEditorOpen(false);
     clearImagesMedia();
     clearVideoMedia({ cleanupStorage: true, reason: "reset-publication" });
+    void clearPersistentWorkspaceMedia();
     setPublicationMediaType("images");
     setChannelMediaModes({});
     setImgError("");
@@ -2773,7 +2876,6 @@ export default function PublishModal({
       if (!confirmed) return;
     }
 
-    const shouldUseImagesForAI = images.length > 0 && useImagesForAI;
     const videoGenerationContext = buildBoosterVideoGenerationContext({
       mediaType: videoFile || videoPreviewUrl ? "video" : "images",
       videoFile,
@@ -2781,6 +2883,8 @@ export default function PublishModal({
       storage: videoStorageContext,
     });
     const hasVideoForGeneration = !!videoGenerationContext?.enabled;
+    const shouldUseImagesForAI =
+      !hasVideoForGeneration && images.length > 0 && useImagesForAI;
     const shouldPrepareMediaForAi = shouldPrepareBoosterMediaForAi({
       mode: creationMode,
       mediaType: hasVideoForGeneration ? "video" : "images",
@@ -2801,7 +2905,7 @@ export default function PublishModal({
 
     try {
       const readyMediaWorkspaceId = shouldPrepareMediaForAi
-        ? await waitForPersistentWorkspaceReadiness(
+          ? await waitForPersistentWorkspaceReadiness(
             "generate",
             (progress) => {
               if (progress <= 24) {
@@ -2824,6 +2928,7 @@ export default function PublishModal({
                 mapProgressRange(progress, 25, 42, 23, 39),
               );
             },
+            hasVideoForGeneration ? ["video"] : ["image"],
           )
         : mediaWorkspaceId;
 
@@ -3192,6 +3297,13 @@ export default function PublishModal({
   };
 
   const onPickVideoClick = () => {
+    videoPickerTargetChannelRef.current = null;
+    setImgError("");
+    videoInputRef.current?.click();
+  };
+
+  const onPickVideoForChannel = (channel: ChannelKey) => {
+    videoPickerTargetChannelRef.current = channel;
     setImgError("");
     videoInputRef.current?.click();
   };
@@ -3199,17 +3311,8 @@ export default function PublishModal({
   const removeVideo = () => {
     setImgError("");
     clearVideoMedia({ cleanupStorage: true, reason: "remove-video" });
+    void syncPersistentWorkspaceVideo(null);
     setPublicationMediaType("images");
-    if (images.length) {
-      void syncPersistentWorkspaceImages(
-        images,
-        images.map((file) => ({
-          source_metadata: imageMetaByKey[makeImageKey(file)] || null,
-        })),
-      );
-    } else {
-      void clearPersistentWorkspaceMedia();
-    }
     setChannelMediaModes((prev) => {
       const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
       for (const key of Object.keys(next) as ChannelKey[]) {
@@ -3220,8 +3323,25 @@ export default function PublishModal({
     });
   };
 
-  const addVideoFile = async (file: File | null) => {
+  const addVideoFile = async (
+    file: File | null,
+    options?: { hasImages?: boolean; targetChannel?: ChannelKey },
+  ) => {
     if (!file) return;
+    const channelModesBeforeVideo = options?.targetChannel
+      ? Array.from(
+          new Set<ChannelKey>([
+            ...selectedChannels,
+            options.targetChannel,
+          ]),
+        ).reduce<Partial<Record<ChannelKey, ChannelMediaMode>>>(
+          (modes, channel) => {
+            modes[channel] = resolveChannelMediaMode(channel);
+            return modes;
+          },
+          {},
+        )
+      : null;
     setImgError("");
     setVideoVariantPreparationByChannel({});
     setVideoTransformedVariants([]);
@@ -3286,7 +3406,14 @@ export default function PublishModal({
     setUseImagesForAI(true);
     setChannelMediaModes((prev) => {
       const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
-      const hadImagesBeforeVideo = images.length > 0;
+      if (options?.targetChannel) {
+        for (const channel of selectedChannels) {
+          if (channel === options.targetChannel) continue;
+          next[channel] = channelModesBeforeVideo?.[channel] || "none";
+        }
+        return assignVideoSourceToChannel(next, options.targetChannel);
+      }
+      const hadImagesBeforeVideo = options?.hasImages ?? images.length > 0;
       for (const channel of selectedChannels) {
         const current = next[channel];
         const channelHasImages =
@@ -3298,7 +3425,11 @@ export default function PublishModal({
           continue;
         }
 
-        if (hadImagesBeforeVideo && current === "images" && channelHasImages) {
+        if (
+          hadImagesBeforeVideo &&
+          current === "images" &&
+          channelSupportsImages(channel)
+        ) {
           next[channel] = "images";
           continue;
         }
@@ -3325,7 +3456,11 @@ export default function PublishModal({
 
   const onVideoChange = async (files: FileList | null) => {
     const file = files?.[0] || null;
-    await addVideoFile(file);
+    const targetChannel = videoPickerTargetChannelRef.current;
+    videoPickerTargetChannelRef.current = null;
+    await addVideoFile(file, {
+      targetChannel: targetChannel || undefined,
+    });
   };
 
   async function mediaLibraryItemToFile(item: MediaLibraryPickerItem) {
@@ -3358,36 +3493,45 @@ export default function PublishModal({
       (item) => item.media_type === "image",
     );
 
-    if (videos.length && imagesFromLibrary.length) {
-      throw new Error(
-        "Choisissez soit des images, soit une vidéo depuis la Médiathèque.",
-      );
+    if (mediaLibraryPickerScope === "generation") {
+      const exclusiveSelectionError = getGenerationMediaSelectionError({
+        existingImageCount: images.length,
+        hasExistingVideo: Boolean(videoFile || videoPreviewUrl),
+        selectedImageCount: imagesFromLibrary.length,
+        selectedVideoCount: videos.length,
+      });
+      if (exclusiveSelectionError) throw new Error(exclusiveSelectionError);
     }
 
-    if (videos.length) {
-      if (videos.length > 1) {
-        throw new Error("Une seule vidéo peut être ajoutée à une publication.");
-      }
-      const file = await mediaLibraryItemToFile(videos[0]);
-      await addVideoFile(file);
-      return;
+    if (videos.length > 1) {
+      throw new Error("Une seule vidéo peut être ajoutée à une publication.");
     }
 
-    if (imagesFromLibrary.length) {
-      const remaining = BOOSTER_MAX_IMAGE_COUNT - images.length;
-      if (remaining <= 0) {
-        throw new Error(`${BOOSTER_MAX_IMAGE_COUNT} images maximum.`);
-      }
-      const selectedImages = imagesFromLibrary.slice(0, remaining);
-      const files = await Promise.all(
+    const remaining = Math.max(0, BOOSTER_MAX_IMAGE_COUNT - images.length);
+    const selectedImages = imagesFromLibrary.slice(0, remaining);
+    if (!selectedImages.length && !videos.length) {
+      throw new Error(`${BOOSTER_MAX_IMAGE_COUNT} images maximum.`);
+    }
+
+    const [files, selectedVideo] = await Promise.all([
+      Promise.all(
         selectedImages.map((item) => mediaLibraryItemToFile(item)),
-      );
+      ),
+      videos[0] ? mediaLibraryItemToFile(videos[0]) : Promise.resolve(null),
+    ]);
+
+    if (files.length) {
       await addImageFiles(files);
-      if (imagesFromLibrary.length > selectedImages.length) {
-        setImgError(
-          `${selectedImages.length} image(s) ajoutée(s). Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`,
-        );
-      }
+    }
+    if (selectedVideo) {
+      await addVideoFile(selectedVideo, {
+        hasImages: images.length + files.length > 0,
+      });
+    }
+    if (imagesFromLibrary.length > selectedImages.length) {
+      setImgError(
+        `${selectedImages.length} image(s) ajoutée(s). Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`,
+      );
     }
   };
 
@@ -3398,6 +3542,7 @@ export default function PublishModal({
       return;
     }
     preservePublishScroll();
+    setCameraCaptureScope(targetChannel ? "publication" : "generation");
     setCameraCaptureTargetChannel(targetChannel ?? null);
     setCameraCaptureOpen(true);
   };
@@ -3408,6 +3553,20 @@ export default function PublishModal({
   };
 
   const onCameraCapture = async (file: File) => {
+    if (cameraCaptureScope === "generation") {
+      const isVideoCapture = isBoosterVideoFile(file);
+      const exclusiveSelectionError = getGenerationMediaSelectionError({
+        existingImageCount: images.length,
+        hasExistingVideo: Boolean(videoFile || videoPreviewUrl),
+        selectedImageCount: isVideoCapture ? 0 : 1,
+        selectedVideoCount: isVideoCapture ? 1 : 0,
+      });
+      if (exclusiveSelectionError) {
+        setImgError(exclusiveSelectionError);
+        closeCameraCapture();
+        return;
+      }
+    }
     if (isBoosterVideoFile(file) && cameraCaptureTargetChannel === null) {
       await addVideoFile(file);
     } else {
@@ -3712,7 +3871,7 @@ export default function PublishModal({
     suppressPublishSuccess?: boolean;
     throwOnError?: boolean;
   }) => {
-    if (saving || draftSaving) return;
+    if (saving || draftSaving || publishStartGuardRef.current) return;
     const publishStartedAt = Date.now();
     const preparedPostsByChannel =
       options?.preparedPostsByChannel || buildPreparedPostsByChannel();
@@ -3735,10 +3894,49 @@ export default function PublishModal({
       return;
     }
 
-    const reviewItems = buildFinalReviewItems(
-      preparedPostsByChannel,
-      publishTargetChannels,
+    publishStartGuardRef.current = true;
+    phasedPublicationProgressRef.current = true;
+    setSaving(true);
+    setPublicationProgressPhase(
+      "verification",
+      "Demande prise en charge",
+      7,
     );
+    let publishDispatchStarted = false;
+
+    try {
+      const requestedWorkspaceMediaTypes = [
+        ...(publishTargetChannels.some(
+          (channel) => resolveChannelMediaMode(channel) === "images",
+        )
+          ? (["image"] as const)
+          : []),
+        ...(publishTargetChannels.some(
+          (channel) => resolveChannelMediaMode(channel) === "video",
+        )
+          ? (["video"] as const)
+          : []),
+      ];
+      const settledWorkspaceStates = persistentMediaWorkspaceEnabled
+        ? await waitForPersistentWorkspaceIdle(
+            (progress, label) => {
+              setPublicationProgressPhase(
+                "media_preparation",
+                label || "Finalisation des médias",
+                mapProgressRange(progress, 0, 100, 9, 27),
+              );
+            },
+            {
+              mediaTypes: requestedWorkspaceMediaTypes,
+              tolerateFailures: true,
+            },
+          )
+        : undefined;
+      const reviewItems = buildFinalReviewItems(
+        preparedPostsByChannel,
+        publishTargetChannels,
+        settledWorkspaceStates,
+      );
     const preflightFailedChannels = reviewItems
       .filter((item) => item.blockers.length > 0)
       .map((item) => ({
@@ -3792,18 +3990,16 @@ export default function PublishModal({
     const hasAnyImagePublish = publishableChannels.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
-    // Le workspace persistant contient le dernier type de média activé.
-    // Une publication peut toutefois utiliser des images sur certains canaux
-    // et une vidéo sur d'autres. Dans ce cas, le type absent du workspace est
-    // envoyé via le payload de secours déjà stocké, sans bloquer les canaux.
+    const requiredPublishMediaTypes = [
+      ...(hasAnyImagePublish ? (["image"] as const) : []),
+      ...(hasAnyVideoPublish ? (["video"] as const) : []),
+    ];
+    // Les deux familles coexistent dans le workspace. Leur présence réelle,
+    // et non le dernier onglet média activé, décide si un fallback est requis.
     const workspaceCarriesImagesForPublish =
-      mediaPipelineCutoverEnabled &&
-      publicationMediaType === "images" &&
-      images.length > 0;
+      mediaPipelineCutoverEnabled && images.length > 0;
     const workspaceCarriesVideoForPublish =
-      mediaPipelineCutoverEnabled &&
-      publicationMediaType === "video" &&
-      Boolean(videoFile);
+      mediaPipelineCutoverEnabled && Boolean(videoFile);
     const shouldBuildImageFallbackPayload =
       hasAnyImagePublish && !workspaceCarriesImagesForPublish;
     const shouldBuildVideoFallbackPayload =
@@ -3910,27 +4106,182 @@ export default function PublishModal({
       }
     }
 
-    phasedPublicationProgressRef.current = true;
-    setSaving(true);
-    setPublicationProgressPhase(
-      "verification",
-      "Finalisation des médias",
-      7,
+    const preflightFailureChannels = new Set(
+      preflightFailedChannels.map((failure) => failure.channel),
+    );
+    setPublishChannelProgress(
+      publishTargetChannels.map((channel) => {
+        const mode = publishTargetMediaModeByChannel[channel] || "none";
+        if (preflightFailureChannels.has(channel)) {
+          return resolvePublicationChannelProgress(channel, mode, {
+            status: "failed",
+            ok: false,
+          });
+        }
+        return resolvePublicationChannelProgress(channel, mode, null);
+      }),
     );
 
-    let publishDispatchStarted = false;
+    const onPublicationProgress = (update: BoosterPublishProgressUpdate) => {
+      const payload =
+        update.payload && typeof update.payload === "object"
+          ? update.payload
+          : {};
+      const summary =
+        payload.summary && typeof payload.summary === "object"
+          ? (payload.summary as Record<string, any>)
+          : {};
+      const entries = Array.isArray(summary.entries)
+        ? (summary.entries.filter(
+            (entry): entry is Record<string, any> =>
+              Boolean(entry && typeof entry === "object"),
+          ) as Record<string, any>[])
+        : [];
+      const entryByChannel = new Map(
+        entries.map((entry) => [String(entry.channel || ""), entry]),
+      );
 
-    try {
-      const readyMediaWorkspaceId =
-        await waitForPersistentWorkspaceReadiness("publish", (progress) => {
-          setPublicationProgressPhase(
-            "media_preparation",
-            "Finalisation des médias",
-            progress <= 24
-              ? mapProgressRange(progress, 6, 24, 9, 26)
-              : 27,
-          );
+      setPublishChannelProgress((current) => {
+        const currentByChannel = new Map(
+          current.map((channel) => [channel.channel, channel]),
+        );
+        return publishTargetChannels.map((channel) => {
+          const mode = publishTargetMediaModeByChannel[channel] || "none";
+          const previous = currentByChannel.get(channel);
+          const entry = entryByChannel.get(channel);
+          if (entry) {
+            return resolvePublicationChannelProgress(
+              channel,
+              mode,
+              entry,
+              previous,
+            );
+          }
+          if (preflightFailureChannels.has(channel)) {
+            return resolvePublicationChannelProgress(channel, mode, {
+              status: "failed",
+              ok: false,
+            });
+          }
+          if (update.stage === "released_to_background") {
+            if (
+              previous?.tone === "success" ||
+              previous?.tone === "warning" ||
+              previous?.tone === "error"
+            ) {
+              return previous;
+            }
+            return {
+              channel,
+              label: CHANNEL_LABELS[channel] || channel,
+              mediaLabel: getPublicationMediaModeLabel(mode),
+              statusLabel: "En arrière-plan",
+              tone: "active",
+            };
+          }
+          if (update.stage === "request_accepted") {
+            return resolvePublicationChannelProgress(channel, mode, {
+              status:
+                String(payload.status || "") === "preparing" && mode !== "none"
+                  ? "preparing"
+                  : "queued",
+            });
+          }
+          return previous || resolvePublicationChannelProgress(channel, mode, null);
         });
+      });
+
+      const terminalChannels = new Set<string>(preflightFailureChannels);
+      let preparingCount = 0;
+      let activeCount = 0;
+      entries.forEach((entry) => {
+        const channel = String(entry.channel || "");
+        const status = String(
+          entry.technicalStatus || entry.status || "",
+        ).toLowerCase();
+        const terminal =
+          typeof entry.ok === "boolean" ||
+          [
+            "failed",
+            "error",
+            "published",
+            "published_with_warning",
+            "completed",
+            "success",
+            "succeeded",
+          ].includes(status);
+        if (terminal) terminalChannels.add(channel);
+        else activeCount += 1;
+        if (status === "preparing") preparingCount += 1;
+      });
+
+      const totalCount = Math.max(1, publishTargetChannels.length);
+      const terminalCount = Math.min(totalCount, terminalChannels.size);
+      if (update.stage === "request_accepted") {
+        setPublicationProgressPhase(
+          "channel_dispatch",
+          `Demande acceptée · Publication parallèle sur ${publishableChannels.length} canal${publishableChannels.length > 1 ? "aux" : ""}`,
+          66,
+        );
+        return;
+      }
+      if (update.stage === "released_to_background") {
+        setPublicationProgressPhase(
+          "status_collection",
+          `${Math.max(0, totalCount - terminalCount)} canal${totalCount - terminalCount > 1 ? "aux" : ""} poursuit${totalCount - terminalCount > 1 ? "vent" : ""} en arrière-plan · préparation du bilan`,
+          95,
+        );
+        return;
+      }
+      if (update.stage === "completed") {
+        setPublicationProgressPhase(
+          "inrsend_recording",
+          "Confirmations reçues · préparation du bilan iNr’Send",
+          99,
+        );
+        return;
+      }
+      if (terminalCount >= totalCount) {
+        setPublicationProgressPhase(
+          "status_collection",
+          `Confirmations reçues sur ${totalCount}/${totalCount} canaux`,
+          95,
+        );
+      } else if (terminalCount > 0) {
+        setPublicationProgressPhase(
+          "publication_finalization",
+          `${terminalCount}/${totalCount} canaux confirmés · les autres poursuivent leur envoi`,
+          mapProgressRange(terminalCount, 0, totalCount, 79, 91),
+        );
+      } else {
+        const activeRatio = Math.min(
+          1,
+          Math.max(0, activeCount / Math.max(1, publishableChannels.length)),
+        );
+        setPublicationProgressPhase(
+          "channel_dispatch",
+          preparingCount > 0
+            ? `Finalisation média sur ${preparingCount} canal${preparingCount > 1 ? "aux" : ""} · les autres envois avancent en parallèle`
+            : `Publication parallèle en cours sur ${publishableChannels.length} canal${publishableChannels.length > 1 ? "aux" : ""}`,
+          mapProgressRange(activeRatio, 0, 1, 66, 77),
+        );
+      }
+    };
+
+      const readyMediaWorkspaceId =
+        await waitForPersistentWorkspaceReadiness(
+          "publish",
+          (progress) => {
+            setPublicationProgressPhase(
+              "media_preparation",
+              "Finalisation des médias",
+              progress <= 24
+                ? mapProgressRange(progress, 6, 24, 9, 26)
+                : 27,
+            );
+          },
+          requiredPublishMediaTypes,
+        );
 
       setPublicationProgressPhase(
         "channel_compatibility",
@@ -4098,20 +4449,14 @@ export default function PublishModal({
       setPublicationProgressPhase(
         "channel_dispatch",
         publishableChannels.length > 1
-          ? `Publication sur ${publishableChannels.length} canaux`
-          : `Publication sur ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
+          ? `Transmission sécurisée de ${publishableChannels.length} canaux`
+          : `Transmission sécurisée vers ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
         60,
-      );
-      setPublicationProgressPhase(
-        "channel_dispatch",
-        publishableChannels.length > 1
-          ? `Publication parallèle sur ${publishableChannels.length} canaux`
-          : `Publication sur ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
-        72,
       );
 
       publishDispatchStarted = true;
       const result = await trackEvent("publish", {
+        _onPublicationProgress: onPublicationProgress,
         _clientVisibleWaitMs: Math.max(
           0,
           visiblePublicationCapMs - (Date.now() - publishStartedAt),
@@ -4291,6 +4636,7 @@ export default function PublishModal({
         throw new Error(message);
       }
     } finally {
+      publishStartGuardRef.current = false;
       phasedPublicationProgressRef.current = false;
       setSaving(false);
     }
@@ -4524,7 +4870,14 @@ export default function PublishModal({
     tiktokSettingsForSchedule: TiktokPublicationSettings | null,
     immediateChannels: ChannelKey[] = [],
   ): Promise<PendingImmediatePublishAfterSchedule | null | undefined> => {
-    if (saving || draftSaving || scheduleSaving) return;
+    if (
+      saving ||
+      draftSaving ||
+      scheduleSaving ||
+      scheduleStartGuardRef.current
+    ) {
+      return;
+    }
 
     const requestedChannelsToSchedule = Array.from(
       new Set(selections.map((selection) => selection.channel)),
@@ -4543,10 +4896,48 @@ export default function PublishModal({
       )
       .filter((channel) => !requestedChannelsToSchedule.includes(channel));
 
-    const reviewItems = buildFinalReviewItems(
-      preparedPostsByChannel,
-      requestedChannelsToSchedule,
-    );
+    scheduleStartGuardRef.current = true;
+    setScheduleSaving(true);
+    setPublishError("");
+    setScheduleError("");
+    setDraftMessage("");
+    setImgError("");
+    setPublishProgress(5);
+    setPublishProgressLabel("Préparation de la programmation...");
+    scrollToPublishArea("smooth");
+
+    try {
+      const requestedWorkspaceMediaTypes = [
+        ...(requestedChannelsToSchedule.some(
+          (channel) => resolveChannelMediaMode(channel) === "images",
+        )
+          ? (["image"] as const)
+          : []),
+        ...(requestedChannelsToSchedule.some(
+          (channel) => resolveChannelMediaMode(channel) === "video",
+        )
+          ? (["video"] as const)
+          : []),
+      ];
+      const settledWorkspaceStates = persistentMediaWorkspaceEnabled
+        ? await waitForPersistentWorkspaceIdle(
+            (progress, label) => {
+              setPublishProgress((current) => Math.max(current, progress));
+              setPublishProgressLabel(
+                label || "Vérification des médias...",
+              );
+            },
+            {
+              mediaTypes: requestedWorkspaceMediaTypes,
+              tolerateFailures: true,
+            },
+          )
+        : undefined;
+      const reviewItems = buildFinalReviewItems(
+        preparedPostsByChannel,
+        requestedChannelsToSchedule,
+        settledWorkspaceStates,
+      );
     const blocked = reviewItems.filter((item) => item.blockers.length > 0);
     const channelsToSchedule = reviewItems
       .filter((item) => item.blockers.length === 0)
@@ -4575,14 +4966,14 @@ export default function PublishModal({
     const hasAnyImagePublish = channelsToSchedule.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
+    const requiredScheduleMediaTypes = [
+      ...(hasAnyImagePublish ? (["image"] as const) : []),
+      ...(hasAnyVideoPublish ? (["video"] as const) : []),
+    ];
     const workspaceCarriesImagesForSchedule =
-      mediaPipelineCutoverEnabled &&
-      publicationMediaType === "images" &&
-      images.length > 0;
+      mediaPipelineCutoverEnabled && images.length > 0;
     const workspaceCarriesVideoForSchedule =
-      mediaPipelineCutoverEnabled &&
-      publicationMediaType === "video" &&
-      Boolean(videoFile);
+      mediaPipelineCutoverEnabled && Boolean(videoFile);
     const shouldBuildScheduleImageFallback =
       hasAnyImagePublish && !workspaceCarriesImagesForSchedule;
     const shouldBuildScheduleVideoFallback =
@@ -4609,21 +5000,15 @@ export default function PublishModal({
       return;
     }
 
-    setScheduleSaving(true);
-    setPublishError("");
-    setScheduleError("");
-    setDraftMessage("");
-    setImgError("");
-    setPublishProgress(5);
-    setPublishProgressLabel("Préparation de la programmation...");
-    scrollToPublishArea("smooth");
-
-    try {
       const readyMediaWorkspaceId =
-        await waitForPersistentWorkspaceReadiness("schedule", (progress, label) => {
-          setPublishProgress((current) => Math.max(current, progress));
-          setPublishProgressLabel(label || "Vérification des médias...");
-        });
+        await waitForPersistentWorkspaceReadiness(
+          "schedule",
+          (progress, label) => {
+            setPublishProgress((current) => Math.max(current, progress));
+            setPublishProgressLabel(label || "Vérification des médias...");
+          },
+          requiredScheduleMediaTypes,
+        );
 
       if (hasAnyVideoPublish && workspaceCarriesVideoForSchedule) {
         const videoChannels = channelsToSchedule.filter(
@@ -4970,6 +5355,7 @@ export default function PublishModal({
       setPublishError(message);
       throw new Error(message);
     } finally {
+      scheduleStartGuardRef.current = false;
       setScheduleSaving(false);
     }
   };
@@ -5087,6 +5473,7 @@ export default function PublishModal({
   const buildFinalReviewItems = (
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>,
     channelsToReview: ChannelKey[] = selectedChannels,
+    workspaceStatesOverride?: readonly PersistentWorkspaceMediaState[],
   ) => {
     return channelsToReview.map((channel) => {
       const post = getReviewPostForChannel(channel, preparedPostsByChannel);
@@ -5134,12 +5521,10 @@ export default function PublishModal({
 
       const workspaceSourceExpected =
         persistentMediaWorkspaceEnabled &&
-        ((mode === "video" && publicationMediaType === "video" && videoFile) ||
-          (mode === "images" &&
-            publicationMediaType === "images" &&
-            images.length > 0));
+        ((mode === "video" && Boolean(videoFile)) ||
+          (mode === "images" && images.length > 0));
       const relevantWorkspaceStates = Object.values(
-        persistentMediaStates,
+        workspaceStatesOverride || persistentMediaStates,
       ).filter((state) => state.mediaType === (mode === "video" ? "video" : "image"));
       const failedWorkspaceState = relevantWorkspaceStates.find(
         (state) => state.status === "failed",
@@ -5524,7 +5909,10 @@ export default function PublishModal({
         onClose={closeCameraCapture}
         onCapture={onCameraCapture}
         allowVideo={
-          cameraCaptureTargetChannel === null && !(videoFile || videoPreviewUrl)
+          cameraCaptureScope === "generation"
+            ? generationMediaSelectionPolicy.allowCameraVideo
+            : cameraCaptureTargetChannel === null &&
+              !(videoFile || videoPreviewUrl)
         }
         maxVideoBytes={BOOSTER_MAX_VIDEO_BYTES}
       />
@@ -5532,11 +5920,31 @@ export default function PublishModal({
       <MediaLibraryPickerModal
         open={mediaLibraryPickerOpen}
         title="Ajouter depuis la Médiathèque"
-        subtitle="Choisissez une image ou une vidéo déjà stockée dans iNrCy."
-        accept="all"
-        multiple
-        maxSelection={BOOSTER_MAX_IMAGE_COUNT}
-        confirmLabel="Ajouter à la publication"
+        subtitle={
+          mediaLibraryPickerScope === "generation"
+            ? "Pour la génération, choisissez jusqu’à 5 images OU une vidéo. Le mixage reste disponible dans les Médias de la publication."
+            : "Choisissez jusqu’à 5 images et une vidéo déjà stockées dans iNrCy."
+        }
+        accept={
+          mediaLibraryPickerScope === "generation"
+            ? generationMediaSelectionPolicy.libraryAccept
+            : "all"
+        }
+        multiple={
+          mediaLibraryPickerScope === "generation"
+            ? generationMediaSelectionPolicy.libraryMultiple
+            : true
+        }
+        maxSelection={
+          mediaLibraryPickerScope === "generation"
+            ? generationMediaSelectionPolicy.libraryMaxSelection
+            : BOOSTER_MAX_IMAGE_COUNT + 1
+        }
+        confirmLabel={
+          mediaLibraryPickerScope === "generation"
+            ? "Ajouter à la génération"
+            : "Ajouter à la publication"
+        }
         onClose={() => setMediaLibraryPickerOpen(false)}
         onConfirm={(items) => addMediaLibrarySelection(items)}
       />
@@ -5614,7 +6022,10 @@ export default function PublishModal({
             onPickImagesClick={onPickImagesClick}
             onPickVideoClick={onPickVideoClick}
             onTakePhotoClick={() => onTakePhotoClick()}
-            onOpenMediaLibrary={() => setMediaLibraryPickerOpen(true)}
+            onOpenMediaLibrary={() => {
+              setMediaLibraryPickerScope("generation");
+              setMediaLibraryPickerOpen(true);
+            }}
             images={images}
             imagePreviews={imagePreviews}
             videoFile={videoFile}
@@ -5730,7 +6141,13 @@ export default function PublishModal({
               getImageAdapterLabel={getImageAdapterLabel}
               setSynchronizedActiveChannel={setSynchronizedActiveChannel}
               onPickImagesClick={onPickImagesClick}
+              onPickImagesForChannel={onPickImagesForChannel}
+              onUseExistingImagesForChannel={
+                assignExistingImagesToChannel
+              }
+              onRemoveImagesFromChannel={removeImagesFromChannel}
               onPickVideoClick={onPickVideoClick}
+              onPickVideoForChannel={onPickVideoForChannel}
               onTakePhotoClick={onTakePhotoClick}
               toggleChannelImage={toggleChannelImage}
               openImageEditor={openImageEditor}
@@ -5896,8 +6313,9 @@ export default function PublishModal({
             publishProgress={publishProgress}
             publishProgressLabel={publishProgressLabel}
             publishProgressPhaseIndex={publishProgressPhaseIndex}
-            publishProgressPhaseTotal={PUBLICATION_PROGRESS_PHASES.length}
+            publishProgressPhaseTotal={PUBLICATION_PROGRESS_STAGES.length}
             publishProgressPhaseLabel={publishProgressPhaseLabel}
+            publishChannelProgress={publishChannelProgress}
             publishError={publishError}
             onPublish={onPublish}
             onSchedule={openSchedulePublicationModal}

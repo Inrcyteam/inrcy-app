@@ -101,12 +101,14 @@ test("les quatre briques de données du pipeline sont présentes", () => {
   }
 });
 
-test("la base impose 5 images ou 1 vidéo avec cohérence de compte", () => {
-  assertSql(/position\s+between\s+0\s+and\s+4/i, "Les cinq positions image ne sont pas bornées");
+test("la base impose un pool mixte de 5 images et 1 vidéo avec cohérence de compte", () => {
+  assertSql(/position\s+between\s+0\s+and\s+5/i, "Les six positions du pool mixte ne sont pas bornées");
   assertSql(/pg_advisory_xact_lock/i, "La concurrence d'ajout média n'est pas sérialisée");
-  assertSql(/v_existing_count\s*>=\s*5/i, "La limite de cinq images n'est pas imposée");
+  assertSql(/v_existing_image_count\s*>=\s*5/i, "La limite de cinq images n'est pas imposée");
   assertSql(/v_media_type\s*=\s*'video'/i, "Le contrat vidéo n'est pas contrôlé");
-  assertSql(/v_existing_count\s*>\s*0/i, "La vidéo unique n'est pas imposée");
+  assertSql(/new\.position\s*<>\s*5/i, "La vidéo unique doit occuper la position 5");
+  assertSql(/if\s+v_has_video\s+then/i, "La vidéo unique n'est pas imposée");
+  assertSql(/new\.position\s*<\s*0\s+or\s+new\.position\s*>\s*4/i, "Les images doivent rester dans les positions 0 à 4");
   assertSql(/INRCY_MEDIA_CROSS_ACCOUNT_LINK_DENIED/i, "Le lien cross-account n'est pas bloqué");
 });
 

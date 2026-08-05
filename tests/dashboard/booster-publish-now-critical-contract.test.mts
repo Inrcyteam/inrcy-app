@@ -185,7 +185,9 @@ test("async fan-out creates one technical event per channel and strips workspace
 
 test("each async channel worker owns an independent lock and durable delivery state", () => {
   assert.match(route, /scope:\s*BOOSTER_ASYNC_CHANNEL_SCOPE/);
-  assert.match(route, /idempotencyKey:\s*`\$\{publicationId\}:\$\{channel\}`/);
+  assert.match(route, /const channelIdempotencyKey =/);
+  assert.match(route, /idempotencyKey:\s*channelIdempotencyKey/);
+  assert.match(route, /`\$\{publicationId\}:\$\{channel\}`/);
   assert.match(route, /BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS/);
   assert.match(route, /status:\s*"processing"/);
   assert.match(route, /updateAsyncChannelEvent\(/);

@@ -1,4 +1,5 @@
 import { getGoogleTokenForAnyGoogle } from "@/lib/googleStats";
+import { postGoogleBusinessLocalPost } from "@/lib/googleBusinessPostTransport";
 
 type GMBAccount = { name: string; accountName?: string; type?: string };
 type GMBLocation = { name: string; title?: string; storefrontAddress?: any };
@@ -449,19 +450,11 @@ export async function gmbCreateLocalPost(args: {
     };
   }
 
-  const r = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
+  return await postGoogleBusinessLocalPost({
+    endpoint,
+    accessToken,
+    payload,
   });
-
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.error?.message || j?.error_description || "Impossible de publier sur Google Business pour le moment.");
-
-  return j;
 }
 
 export async function gmbFetchDailyMetricsNormalizedWithRecovery(args: {

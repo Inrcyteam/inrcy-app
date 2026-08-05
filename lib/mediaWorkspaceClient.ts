@@ -176,6 +176,7 @@ export async function ensureMediaPublicationWorkspace(params: {
 
 export async function clearMediaPublicationWorkspace(params: {
   workspaceId: string;
+  mediaType?: "image" | "video";
   reason?: string;
   signal?: AbortSignal;
 }) {
@@ -185,6 +186,7 @@ export async function clearMediaPublicationWorkspace(params: {
     body: JSON.stringify({
       action: "clear_media",
       workspaceId: params.workspaceId,
+      mediaType: params.mediaType,
       reason: params.reason || "workspace_sync",
     }),
     signal: params.signal,
@@ -298,6 +300,7 @@ export async function prepareMediaPublicationWorkspace(params: {
 export async function prewarmMediaPublicationWorkspace(params: {
   workspaceId: string;
   selectedChannels?: readonly string[];
+  requestedMediaType?: "images" | "video";
   imageSettingsByChannel?: Record<string, unknown>;
   videoSettingsByChannel?: Record<string, unknown>;
   generateMissingVideoVariants?: boolean;
@@ -310,6 +313,7 @@ export async function prewarmMediaPublicationWorkspace(params: {
     body: JSON.stringify({
       workspaceId: params.workspaceId,
       selectedChannels: params.selectedChannels || [],
+      requestedMediaType: params.requestedMediaType,
       imageSettingsByChannel: params.imageSettingsByChannel || {},
       videoSettingsByChannel: params.videoSettingsByChannel || {},
       generateMissingVideoVariants:

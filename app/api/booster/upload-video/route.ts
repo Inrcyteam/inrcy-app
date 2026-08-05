@@ -13,6 +13,7 @@ import {
 
 const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
 const MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
+const LEGACY_MULTIPART_VIDEO_MAX_BYTES = 6 * 1024 * 1024;
 const DEFAULT_UPLOAD_FOLDER = "booster-videos";
 
 const MIME_EXTENSION: Record<string, string> = {
@@ -236,6 +237,22 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error: `Vidéo trop lourde. Taille maximale : ${MAX_VIDEO_MB_LABEL}.`,
+        },
+        { status: 413 },
+      );
+    }
+
+    // This compatibility endpoint materializes multipart/form-data and the
+    // file bytes in the server heap. Large sources must use the signed/TUS
+    // storage ingress instead; accepting 300 MB here could require several
+    // simultaneous full-size copies in a Vercel function.
+    if (file.size > LEGACY_MULTIPART_VIDEO_MAX_BYTES) {
+      return NextResponse.json(
+        {
+          error:
+            "Pour cette vidéo, utilisez l'upload direct et reprenable Supabase.",
+          code: "direct_resumable_upload_required",
+          retryable: true,
         },
         { status: 413 },
       );

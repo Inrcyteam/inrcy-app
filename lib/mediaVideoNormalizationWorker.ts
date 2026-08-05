@@ -303,9 +303,19 @@ async function markVariantsProcessing(
 
 async function downloadSourceToTemp(media: MediaRow, jobId: string) {
   const expectedPrefix = `users/${media.user_id}/workspace-source/`;
+  const boosterAccount = String(media.user_id || "").replace(/\./g, "-");
+  const boosterPath = String(media.storage_path || "");
+  const ownedBoosterSource =
+    media.bucket_name === "booster" &&
+    ["booster-videos", "booster-drafts", "booster-video-source"].some(
+      (folder) => boosterPath.startsWith(`${boosterAccount}/${folder}/`),
+    );
   if (
-    media.bucket_name !== "inrcy-pro-media" ||
-    !String(media.storage_path || "").startsWith(expectedPrefix)
+    !(
+      (media.bucket_name === "inrcy-pro-media" &&
+        String(media.storage_path || "").startsWith(expectedPrefix)) ||
+      ownedBoosterSource
+    )
   ) {
     throw new VideoNormalizationError(
       "video_source_scope_invalid",

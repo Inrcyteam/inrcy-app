@@ -37,7 +37,7 @@ function read(relativePath: string) {
 
 test("Google Business owns a dedicated safety policy without reducing the 300 MB source limit globally", () => {
   assert.equal(GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES, 75_000_000);
-  assert.equal(GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES, 72_000_000);
+  assert.equal(GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES, 70_000_000);
   assert.equal(GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS, 30);
   assert.equal(GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE, 720);
   assert.equal(GOOGLE_BUSINESS_IMAGE_MIN_BYTES, 10 * 1024);
@@ -231,7 +231,7 @@ test("Google media URL probing rejects inaccessible, mistyped and oversized file
 
   const sources = read("lib/googleBusinessMediaProbe.ts");
   assert.match(sources, /GOOGLE_BUSINESS_IMAGE_MIN_BYTES/);
-  assert.match(sources, /GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES/);
+  assert.match(sources, /GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES/);
   assert.match(sources, /content_type_invalid/);
   assert.match(sources, /file_too_small/);
   assert.match(sources, /file_too_large/);

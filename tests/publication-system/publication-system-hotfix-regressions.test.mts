@@ -200,13 +200,20 @@ test("la désélection d'image survit aux synchronisations de métadonnées", ()
   });
   assert.deepEqual(emptyStillEmpty, []);
 
-  const newFileAutoSelected = mergeBoosterChannelImageSelection({
+  const restoredOrderedSubset = mergeBoosterChannelImageSelection({
+    availableKeys: ["a", "b", "c", "d", "e"],
+    previousSelectedKeys: ["c", "a", "e"],
+    supportsImages: true,
+  });
+  assert.deepEqual(restoredOrderedSubset, ["c", "a", "e"]);
+
+  const newFileStaysUnassigned = mergeBoosterChannelImageSelection({
     availableKeys: ["a", "b", "c"],
     previousAvailableKeys: ["a", "b"],
     previousSelectedKeys: ["a"],
     supportsImages: true,
   });
-  assert.deepEqual(newFileAutoSelected, ["a", "c"]);
+  assert.deepEqual(newFileStaysUnassigned, ["a"]);
 });
 
 test("les variantes fond clair et fond sombre ne dépendent plus de l'ordre des canaux", () => {

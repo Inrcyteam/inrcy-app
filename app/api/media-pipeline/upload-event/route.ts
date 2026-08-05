@@ -19,7 +19,9 @@ import {
   hasServerVideoProbeProvenance,
 } from "@/lib/mediaVideoSourceCompatibility";
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
+import { VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES } from "@/lib/mediaVideoNormalizationPolicy";
 import { sanitizeClientMediaMetadata } from "@/lib/mediaClientMetadata";
+import { probeStoredBoosterVideoForPublication } from "@/lib/boosterVideoVariantServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -193,6 +195,14 @@ export async function POST(request: Request) {
           "",
           80,
         ) === "source_only");
+    const boosterPublicationSource =
+      cleanText(current.data.media_metadata?.upload_target, "", 80) ===
+        "booster_video_source" &&
+      current.data.media_type === "video";
+    const boosterPublicationNeedsCanonical =
+      boosterPublicationSource &&
+      Number(current.data.size_bytes || 0) >
+        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
 
     if (event === "uploaded") {
       const verified = await verifyStoredUpload({
@@ -328,20 +338,54 @@ export async function POST(request: Request) {
         "",
         80,
       );
-      try {
-        videoNormalization = await enqueueVideoNormalization({
+      if (boosterPublicationSource && !boosterPublicationNeedsCanonical) {
+        const boosterProbeBucket = String(current.data.bucket_name || "");
+        const boosterProbeStoragePath = String(
+          current.data.storage_path || "",
+        );
+        // Confirmation upload immédiate. L'attestation serveur range-aware se
+        // fait pendant que le pro relit son contenu ; elle ne télécharge jamais
+        // les 300 Mo dans cette requête et sera relue par publish-now.
+        videoNormalization = {
+          enabled: true,
+          queued: true,
+          reason: "source_probe_queued",
+        };
+        after(async () => {
+          try {
+            await probeStoredBoosterVideoForPublication({
+              accountId: activeUserId,
+              bucket: boosterProbeBucket,
+              storagePath: boosterProbeStoragePath,
+            });
+          } catch (processingError) {
+            console.warn(
+              "[media-pipeline] booster video source probe deferred to publication worker",
+              {
+                mediaId,
+                accountId: activeUserId,
+                error: processingError,
+              },
+            );
+          }
+        });
+      } else {
+        try {
+          videoNormalization = await enqueueVideoNormalization({
           mediaId,
           accountId: activeUserId,
           workspaceId: workspaceId || null,
           mission: sourceMetadataOnly
             ? "publication_preparation"
-            : undefined,
+            : boosterPublicationNeedsCanonical
+              ? "publication_preparation"
+              : undefined,
         });
-        if (videoNormalization.enabled && videoNormalization.jobId) {
+          if (videoNormalization.enabled && videoNormalization.jobId) {
           // Le navigateur reÃ§oit sa confirmation d'upload immÃ©diatement. Le
           // canonical chauffe ensuite cÃ´tÃ© serveur pendant que le pro relit ses
           // contenus ; le cron reste le filet de rÃ©cupÃ©ration durable.
-          after(async () => {
+            after(async () => {
             try {
               await processVideoNormalizationJobsForMedia({
                 accountId: activeUserId,
@@ -357,19 +401,20 @@ export async function POST(request: Request) {
                 },
               );
             }
+            });
+          }
+        } catch (queueError) {
+          console.error("[media-pipeline] video normalization enqueue failed", {
+            mediaId,
+            accountId: activeUserId,
+            error: queueError,
           });
+          videoNormalization = {
+            enabled: true,
+            queued: false,
+            reason: "enqueue_failed",
+          };
         }
-      } catch (queueError) {
-        console.error("[media-pipeline] video normalization enqueue failed", {
-          mediaId,
-          accountId: activeUserId,
-          error: queueError,
-        });
-        videoNormalization = {
-          enabled: true,
-          queued: false,
-          reason: "enqueue_failed",
-        };
       }
     } else if (event === "uploaded" && directVideoSource) {
       videoNormalization = {

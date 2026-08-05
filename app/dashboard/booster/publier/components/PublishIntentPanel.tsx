@@ -29,6 +29,7 @@ import {
   type ThemeKey,
 } from "../publishModal.shared";
 import { textAreaStyle } from "../publishModal.styles";
+import { getGenerationMediaSelectionPolicy } from "../generationMediaSelection";
 import PublishStepTitle from "./PublishStepTitle";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
@@ -963,9 +964,15 @@ export default function PublishIntentPanel({
   const hasImages = images.length > 0;
   const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
   const imagesLimitReached = images.length >= BOOSTER_MAX_IMAGE_COUNT;
-  const pickImagesDisabled = imagesLimitReached;
-  const pickVideoDisabled = hasVideoMedia;
-  const cameraDisabled = !isMobile || imagesLimitReached;
+  const generationMediaPolicy = getGenerationMediaSelectionPolicy({
+    imageCount: images.length,
+    hasVideo: hasVideoMedia,
+    maxImageCount: BOOSTER_MAX_IMAGE_COUNT,
+  });
+  const pickImagesDisabled = generationMediaPolicy.imagePickerDisabled;
+  const pickVideoDisabled = generationMediaPolicy.videoPickerDisabled;
+  const cameraDisabled =
+    !isMobile || generationMediaPolicy.cameraCaptureDisabled;
 
   return (
     <div
@@ -998,12 +1005,13 @@ export default function PublishIntentPanel({
         consigne ponctuelle prioritaire. Le média est facultatif pour la
         génération. {" "}
         <strong>
-          Jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
+          Pour la génération : jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
           {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
-          total) ou 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}.
+          total) OU 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}.
         </strong>{" "}
-        Le même original sera réutilisé ensuite dans les Médias de la
-        publication, sans nouvel upload.
+        L’original choisi sera réutilisé sans nouvel upload. Dans les Médias de
+        la publication, vous pourrez ensuite ajouter l’autre famille et répartir
+        images et vidéo indépendamment selon les canaux.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
         <div
@@ -1134,7 +1142,9 @@ export default function PublishIntentPanel({
               onClick={onPickImagesClick}
               disabled={pickImagesDisabled}
               title={
-                imagesLimitReached
+                hasVideoMedia
+                  ? "La génération utilise soit des images, soit une vidéo. Supprimez la vidéo pour choisir des images."
+                  : imagesLimitReached
                   ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
                   : `${BOOSTER_IMAGE_LIMITS_LABEL} · ${BOOSTER_IMAGE_FORMATS_LABEL}`
               }
@@ -1157,7 +1167,9 @@ export default function PublishIntentPanel({
               onClick={onPickVideoClick}
               disabled={pickVideoDisabled}
               title={
-                pickVideoDisabled
+                hasImages
+                  ? "La génération utilise soit des images, soit une vidéo. Supprimez les images pour choisir une vidéo."
+                  : pickVideoDisabled
                   ? "1 vidéo maximum. Supprimez la vidéo actuelle pour la remplacer."
                   : `${BOOSTER_VIDEO_LIMITS_LABEL} · ${BOOSTER_VIDEO_FORMATS_LABEL} · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
               }
@@ -1375,8 +1387,8 @@ export default function PublishIntentPanel({
                 </strong>
                 <button
                   type="button"
-                  aria-label="Supprimer la vidéo"
-                  title="Supprimer la vidéo"
+                  aria-label="Supprimer la vidéo pour tous les canaux"
+                  title="Supprimer la vidéo pour tous les canaux"
                   onClick={removeVideo}
                   style={{
                     flex: "0 0 auto",
@@ -1438,7 +1450,8 @@ export default function PublishIntentPanel({
                   />
                   <button
                     type="button"
-                    aria-label={`Supprimer l’image ${index + 1}`}
+                    aria-label={`Supprimer l’image ${index + 1} pour tous les canaux`}
+                    title={`Supprimer l’image ${index + 1} pour tous les canaux`}
                     onClick={() => removeImage(index)}
                     style={{
                       position: "absolute",

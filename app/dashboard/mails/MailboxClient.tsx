@@ -225,43 +225,62 @@ export default function MailboxClient() {
     return () => mq.removeEventListener?.("change", update);
   }, []);
 
-  const [initialHistorySnapshot] = useState<InrSendDefaultSnapshot | null>(() =>
-    readModuleSnapshot<InrSendDefaultSnapshot>(MODULE_SNAPSHOT_KEYS.inrSendDefault)?.data ?? null,
-  );
+  // Keep the server render and the first browser render identical. Reading
+  // sessionStorage inside a state initializer made the server display `0`
+  // while the hydrating client displayed `…`, forcing React to rebuild iNrSend.
+  const [initialHistorySnapshot, setInitialHistorySnapshot] =
+    useState<InrSendDefaultSnapshot | null>(null);
+  const [historyCacheHydrated, setHistoryCacheHydrated] = useState(false);
   const [folder, setFolder] = useState<Folder>("publications");
   const [boxView, setBoxView] = useState<BoxView>("sent");
-  const [items, setItems] = useState<OutboxItem[]>(() =>
-    Array.isArray(initialHistorySnapshot?.items) ? initialHistorySnapshot.items : [],
-  );
-  const [loading, setLoading] = useState(() => !initialHistorySnapshot);
-  const [historyLoadedOnce, setHistoryLoadedOnce] = useState(() => Boolean(initialHistorySnapshot));
-  const [selectedId, setSelectedId] = useState<string | null>(() => initialHistorySnapshot?.items?.[0]?.id ?? null);
-  const [historyPage, setHistoryPage] = useState(() => Math.max(1, initialHistorySnapshot?.page ?? 1));
-  const historyPageRef = useRef(Math.max(1, initialHistorySnapshot?.page ?? 1));
-  const [historyHasMorePotential, setHistoryHasMorePotential] = useState(() => Boolean(initialHistorySnapshot?.hasMore));
-  const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(
-    () => initialHistorySnapshot?.total ?? null,
-  );
+  const [items, setItems] = useState<OutboxItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [historyLoadedOnce, setHistoryLoadedOnce] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageRef = useRef(1);
+  const [historyHasMorePotential, setHistoryHasMorePotential] = useState(false);
+  const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(null);
   const [folderCounts, setFolderCounts] = useState<FolderCounts>(() =>
-    initialHistorySnapshot?.folderCounts ?? emptyFolderCounts(),
+    emptyFolderCounts(),
   );
   const [draftFolderCounts, setDraftFolderCounts] = useState<FolderCounts>(() =>
-    initialHistorySnapshot?.draftFolderCounts ?? emptyFolderCounts(),
+    emptyFolderCounts(),
   );
   const historyCacheRef = useRef<Map<string, MailboxHistorySnapshot<OutboxItem>>>(new Map());
   const historyInFlightRef = useRef<Map<string, Promise<MailboxHistorySnapshot<OutboxItem> | null>>>(new Map());
-  const historyDisplayedContextKeyRef = useRef(
-    initialHistorySnapshot
-      ? mailboxHistoryContextKey({
-          folder: "publications",
-          boxView: "sent",
-          filterAccountId: "",
-          query: "",
-        })
-      : "",
-  );
+  const historyDisplayedContextKeyRef = useRef("");
   const historyPreloadGenerationRef = useRef(0);
   const historyPreloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const snapshot =
+      readModuleSnapshot<InrSendDefaultSnapshot>(
+        MODULE_SNAPSHOT_KEYS.inrSendDefault,
+      )?.data ?? null;
+    setInitialHistorySnapshot(snapshot);
+    if (snapshot) {
+      const restoredItems = Array.isArray(snapshot.items) ? snapshot.items : [];
+      const restoredPage = Math.max(1, snapshot.page || 1);
+      setItems(restoredItems);
+      setLoading(false);
+      setHistoryLoadedOnce(true);
+      setSelectedId(restoredItems[0]?.id ?? null);
+      setHistoryPage(restoredPage);
+      historyPageRef.current = restoredPage;
+      setHistoryHasMorePotential(Boolean(snapshot.hasMore));
+      setHistoryTotalCount(snapshot.total ?? null);
+      setFolderCounts(snapshot.folderCounts ?? emptyFolderCounts());
+      setDraftFolderCounts(snapshot.draftFolderCounts ?? emptyFolderCounts());
+      historyDisplayedContextKeyRef.current = mailboxHistoryContextKey({
+        folder: "publications",
+        boxView: "sent",
+        filterAccountId: "",
+        query: "",
+      });
+    }
+    setHistoryCacheHydrated(true);
+  }, []);
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -2090,6 +2109,7 @@ export default function MailboxClient() {
 
   // refresh des changements de filtres / recherche
   useEffect(() => {
+    if (!historyCacheHydrated) return;
     void loadHistory({
       page: 1,
       silent: Boolean(initialHistorySnapshot),
@@ -2097,7 +2117,7 @@ export default function MailboxClient() {
       // Reusing it avoids issuing the same expensive request again on mount.
       force: false,
     });
-  }, [initialHistorySnapshot, loadHistory]);
+  }, [historyCacheHydrated, initialHistorySnapshot, loadHistory]);
 
   useEffect(() => {
     const handleMailAccountsUpdated = async () => {

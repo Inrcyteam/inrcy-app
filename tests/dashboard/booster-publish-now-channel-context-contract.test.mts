@@ -90,7 +90,9 @@ test("the channel context stays deterministic and side-effect free", () => {
 test("network dispatch, durable delivery and token refresh stay in the route", () => {
   const routeOnlyMarkers = [
     "setDelivery",
-    "loadStorageVideoForTikTok",
+    // The former whole-file loader was intentionally replaced by the bounded
+    // range probe used by TikTok's resumable 300 MiB transport.
+    "probeTikTokRangeSource",
     "getTiktokAccessToken",
     "getYoutubeShortsAccessToken",
     "facebookPublishToPage",

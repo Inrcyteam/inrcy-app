@@ -1,6 +1,8 @@
 import type { MutableRefObject } from "react";
 import StatusMessage from "../../../_components/StatusMessage";
-import PublishExecutionProgress from "../../../_components/PublishExecutionProgress";
+import PublishExecutionProgress, {
+  type PublishExecutionChannelProgress,
+} from "../../../_components/PublishExecutionProgress";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
 
@@ -15,6 +17,7 @@ type PublishFooterActionsProps = {
   publishProgressPhaseIndex?: number;
   publishProgressPhaseTotal?: number;
   publishProgressPhaseLabel?: string;
+  publishChannelProgress?: readonly PublishExecutionChannelProgress[];
   publishError: string;
   onPublish: () => void;
   onSchedule: () => void;
@@ -31,6 +34,7 @@ export default function PublishFooterActions({
   publishProgressPhaseIndex,
   publishProgressPhaseTotal,
   publishProgressPhaseLabel,
+  publishChannelProgress = [],
   publishError,
   onPublish,
   onSchedule,
@@ -48,6 +52,7 @@ export default function PublishFooterActions({
             phaseIndex={scheduling ? undefined : publishProgressPhaseIndex}
             phaseTotal={scheduling ? undefined : publishProgressPhaseTotal}
             phaseLabel={scheduling ? undefined : publishProgressPhaseLabel}
+            channels={scheduling ? [] : publishChannelProgress}
           />
         ) : (
           <div className={styles.publishFooterActionsGroup}>

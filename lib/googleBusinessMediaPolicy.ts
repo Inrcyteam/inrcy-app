@@ -8,7 +8,9 @@ export const GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE = 250;
 
 export const GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES = 75_000_000;
 // Marge volontaire sous la limite Google afin d'éviter les rejets à la frontière.
-export const GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES = 72_000_000;
+// 70 MB decimal leaves operational headroom below Google's 75 MB limit for
+// transport/provider overhead. This threshold is GMB-only.
+export const GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES = 70_000_000;
 export const GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS = 30;
 export const GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE = 720;
 

@@ -2,6 +2,17 @@ import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:3000';
 const isCI = !!process.env.CI;
+const hasE2ECredentials = Boolean(
+  process.env.E2E_EMAIL && process.env.E2E_PASSWORD,
+);
+const authStatePath = 'playwright/.auth/e2e-user.json';
+
+// These specs require a session but do not test the password form itself.
+// They share the single state created by auth.setup.ts. authenticated.spec.ts
+// deliberately stays in the public project so its three login scenarios still
+// exercise the real form and refresh behavior.
+const preauthenticatedSpecPattern =
+  /(?:account-export|billing-account|billing-checkout|booster-actions|booster-api|booster-fideliser-pages|calendar-api|calendar-events-write|crm-api|crm-contacts-write|dashboard-modules|dashboard-panels|devis-create|documents-new-pages|facture-create|fideliser-actions|fideliser-api|generator-kpis|integrations|mails-api|mails-mocked|notifications-api|onboarding-flow|settings-pages|stripe-checkout)\.spec\.ts/;
 
 // Si E2E_BASE_URL est fourni, on vise un environnement déjà déployé.
 // Sinon, on démarre le serveur local.
@@ -48,10 +59,28 @@ export default defineConfig({
     : undefined,
 
   projects: [
+    ...(hasE2ECredentials
+      ? [
+          {
+            name: 'auth-setup',
+            testMatch: /auth\.setup\.ts/,
+          },
+        ]
+      : []),
     {
       name: 'chromium',
+      testIgnore: [/auth\.setup\.ts/, preauthenticatedSpecPattern],
       use: {
         ...devices['Desktop Chrome'],
+      },
+    },
+    {
+      name: 'chromium-authenticated',
+      testMatch: preauthenticatedSpecPattern,
+      dependencies: hasE2ECredentials ? ['auth-setup'] : [],
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(hasE2ECredentials ? { storageState: authStatePath } : {}),
       },
     },
   ],

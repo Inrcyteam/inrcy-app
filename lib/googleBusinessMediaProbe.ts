@@ -1,7 +1,7 @@
 import {
   GOOGLE_BUSINESS_IMAGE_OFFICIAL_MAX_BYTES,
   GOOGLE_BUSINESS_IMAGE_MIN_BYTES,
-  GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES,
+  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
 } from "./googleBusinessMediaPolicy.ts";
 
 export type GoogleBusinessMediaKind = "image" | "video";
@@ -18,6 +18,9 @@ export type GoogleBusinessMediaProbeResult = {
     | "url_invalid"
     | "http_error"
     | "content_type_invalid"
+    | "size_unknown"
+    | "range_not_supported"
+    | "range_invalid"
     | "file_too_small"
     | "file_too_large"
     | "network_error";
@@ -49,8 +52,9 @@ function validateHeaders(params: {
   url: string;
   kind: GoogleBusinessMediaKind;
   response: Response;
+  method: "HEAD" | "GET";
 }): GoogleBusinessMediaProbeResult {
-  const { url, kind, response } = params;
+  const { url, kind, response, method } = params;
   const contentType = normalizedContentType(response.headers.get("content-type"));
   const contentLength = parseGoogleBusinessMediaContentLength(response);
   const typeOk =
@@ -68,6 +72,50 @@ function validateHeaders(params: {
       contentLength,
       reason: "content_type_invalid",
     };
+  }
+
+  if (kind === "video" && contentLength === null) {
+    return {
+      ok: false,
+      url,
+      kind,
+      status: response.status,
+      contentType,
+      contentLength,
+      reason: "size_unknown",
+    };
+  }
+
+  if (kind === "video" && method === "GET") {
+    if (response.status !== 206) {
+      return {
+        ok: false,
+        url,
+        kind,
+        status: response.status,
+        contentType,
+        contentLength,
+        reason: "range_not_supported",
+      };
+    }
+    const contentRange = String(response.headers.get("content-range") || "").trim();
+    const rangeLength = Number(response.headers.get("content-length") || 0);
+    const range = /^bytes\s+0-0\/(\d+)$/i.exec(contentRange);
+    if (
+      !range ||
+      rangeLength !== 1 ||
+      Number(range[1]) !== contentLength
+    ) {
+      return {
+        ok: false,
+        url,
+        kind,
+        status: response.status,
+        contentType,
+        contentLength,
+        reason: "range_invalid",
+      };
+    }
   }
 
   if (
@@ -89,7 +137,7 @@ function validateHeaders(params: {
   const maxBytes =
     kind === "image"
       ? GOOGLE_BUSINESS_IMAGE_OFFICIAL_MAX_BYTES
-      : GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES;
+      : GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES;
   if (contentLength !== null && contentLength > maxBytes) {
     return {
       ok: false,
@@ -117,13 +165,14 @@ async function fetchHeaders(
   url: string,
   kind: GoogleBusinessMediaKind,
   method: "HEAD" | "GET",
+  fetchImpl: typeof fetch,
 ): Promise<GoogleBusinessMediaProbeResult> {
   const controller = new AbortController();
   // Keep the provider dispatch inside a predictable budget. HEAD and the
   // one-byte GET fallback together must not consume most of the API route.
   const timeout = setTimeout(() => controller.abort(), 3_000);
   try {
-    const response = await fetch(url, {
+    const response = await fetchImpl(url, {
       method,
       redirect: "follow",
       cache: "no-store",
@@ -142,7 +191,7 @@ async function fetchHeaders(
         reason: "http_error",
       };
     }
-    const result = validateHeaders({ url, kind, response });
+    const result = validateHeaders({ url, kind, response, method });
     await response.body?.cancel().catch(() => undefined);
     return result;
   } catch {
@@ -164,6 +213,7 @@ export async function probeGoogleBusinessMediaUrl(params: {
   url: string;
   kind: GoogleBusinessMediaKind;
   attempts?: number;
+  fetchImpl?: typeof fetch;
 }): Promise<GoogleBusinessMediaProbeResult> {
   const url = String(params.url || "").trim();
   if (!/^https:\/\//i.test(url)) {
@@ -181,10 +231,25 @@ export async function probeGoogleBusinessMediaUrl(params: {
   const attempts = Math.max(1, Math.min(2, Math.round(params.attempts || 1)));
   let lastResult: GoogleBusinessMediaProbeResult | null = null;
   for (let index = 0; index < attempts; index += 1) {
-    const head = await fetchHeaders(url, params.kind, "HEAD");
+    const head = await fetchHeaders(
+      url,
+      params.kind,
+      "HEAD",
+      params.fetchImpl || fetch,
+    );
     if (head.ok) return head;
+    // A known out-of-bounds length cannot be repaired by a second request.
+    // Avoid even the one-byte fallback for an already rejected 300 MB source.
+    if (head.reason === "file_too_large" || head.reason === "file_too_small") {
+      return head;
+    }
 
-    const get = await fetchHeaders(url, params.kind, "GET");
+    const get = await fetchHeaders(
+      url,
+      params.kind,
+      "GET",
+      params.fetchImpl || fetch,
+    );
     if (get.ok) return get;
     lastResult = get.reason === "network_error" ? head : get;
 

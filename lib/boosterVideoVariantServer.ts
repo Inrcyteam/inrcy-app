@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { access, chmod, mkdir, readFile, rm, writeFile } from "fs/promises";
+import { createReadStream, createWriteStream } from "fs";
+import { access, chmod, mkdir, rm, stat } from "fs/promises";
 import os from "os";
 import path from "path";
+import { Readable, Transform } from "stream";
+import { pipeline } from "stream/promises";
 import ffmpegStaticPath from "ffmpeg-static";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import {
   buildVideoTransformPlan,
   getVideoTransformQualityProfile,
@@ -21,6 +23,7 @@ import {
 } from "@/lib/mediaRules";
 import {
   canPublishVideoSourceDirectly,
+  hasServerVideoProbeProvenance,
   normalizeVideoFrameRate,
 } from "@/lib/mediaVideoSourceCompatibility";
 import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
@@ -36,6 +39,12 @@ import {
   GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
   GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
 } from "@/lib/googleBusinessMediaPolicy";
+import {
+  BOOSTER_REMOTE_VIDEO_RANGE_REQUIRED_BYTES,
+  BOOSTER_REMOTE_VIDEO_PROBE_TIMEOUT_MS,
+  BOOSTER_REMOTE_VIDEO_TRANSPORT_TIMEOUT_MS,
+  validateBoosterRemoteVideoProbeTransport,
+} from "@/lib/boosterVideoRemoteProbePolicy";
 
 const execFileAsync = promisify(execFile);
 const BOOSTER_BUCKET = "booster";
@@ -137,23 +146,34 @@ function compactFfmpegError(error: any, fallback: string) {
   return (lines.slice(-12).join(" | ") || raw).slice(-1_200);
 }
 
-async function downloadSourceVideo(source: BoosterVideoTransformSource) {
+async function resolveSourceDownloadUrl(source: BoosterVideoTransformSource) {
   const storagePath = sanitizeStoragePath(source.storagePath);
   const bucket = sanitizeBucketName(source.bucket);
   if (storagePath) {
-    const { data, error } = await supabaseAdmin.storage
+    if (bucket === BOOSTER_BUCKET) {
+      const publicUrl =
+        supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath).data
+          .publicUrl || "";
+      if (!publicUrl) {
+        throw new Error("URL publique de la vidéo source indisponible.");
+      }
+      return { bucket, storagePath, publicUrl, downloadUrl: publicUrl };
+    }
+
+    const signed = await supabaseAdmin.storage
       .from(bucket)
-      .download(storagePath);
-    if (error || !data) {
+      .createSignedUrl(storagePath, 15 * 60);
+    if (signed.error || !signed.data?.signedUrl) {
       throw new Error(
-        error?.message || "Impossible de lire la vidéo source depuis le stockage.",
+        signed.error?.message ||
+          "Impossible de signer la vidéo source depuis le stockage.",
       );
     }
     return {
       bucket,
       storagePath,
       publicUrl: String(source.publicUrl || source.url || "").trim() || null,
-      buffer: Buffer.from(await data.arrayBuffer()),
+      downloadUrl: signed.data.signedUrl,
     };
   }
 
@@ -161,16 +181,64 @@ async function downloadSourceVideo(source: BoosterVideoTransformSource) {
   if (!publicUrl || !/^https?:\/\//i.test(publicUrl)) {
     throw new Error("Vidéo source manquante : storagePath ou URL publique requis.");
   }
-  const res = await fetch(publicUrl);
-  if (!res.ok) {
-    throw new Error(`Impossible de télécharger la vidéo source (${res.status}).`);
-  }
   return {
     bucket,
     storagePath: "",
     publicUrl,
-    buffer: Buffer.from(await res.arrayBuffer()),
+    downloadUrl: publicUrl,
   };
+}
+
+async function downloadSourceVideoToFile(
+  source: BoosterVideoTransformSource,
+  inputPath: string,
+) {
+  const resolved = await resolveSourceDownloadUrl(source);
+  const declaredSize = Number(source.size || 0);
+  if (
+    Number.isFinite(declaredSize) &&
+    declaredSize > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES
+  ) {
+    throw new Error("Vidéo source trop lourde pour la transformation serveur.");
+  }
+
+  const response = await fetch(resolved.downloadUrl, { cache: "no-store" });
+  if (!response.ok || !response.body) {
+    throw new Error(
+      `Impossible de télécharger la vidéo source (${response.status}).`,
+    );
+  }
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES
+  ) {
+    await response.body.cancel().catch(() => undefined);
+    throw new Error("Vidéo source trop lourde pour la transformation serveur.");
+  }
+
+  let size = 0;
+  const meter = new Transform({
+    transform(chunk, _encoding, callback) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.byteLength;
+      if (size > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES) {
+        callback(
+          new Error("Vidéo source trop lourde pour la transformation serveur."),
+        );
+        return;
+      }
+      callback(null, buffer);
+    },
+  });
+  await pipeline(
+    Readable.fromWeb(response.body as any),
+    meter,
+    createWriteStream(inputPath, { flags: "wx" }),
+  );
+  if (!size) throw new Error("Vidéo source vide.");
+
+  return { ...resolved, size };
 }
 
 function getBundledFfmpegCandidate() {
@@ -232,24 +300,282 @@ type ProbedVideoMetadata = {
   pixelFormat: string | null;
 };
 
-async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata> {
-  const candidates = [process.env.FFPROBE_PATH, "ffprobe"]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
+function emptyProbedVideoMetadata(): ProbedVideoMetadata {
+  return {
+    duration: null,
+    width: null,
+    height: null,
+    videoCodec: null,
+    audioCodec: null,
+    frameRate: null,
+    hasAudio: false,
+    containerFormats: [],
+    pixelFormat: null,
+  };
+}
+
+type BoosterVideoProbeRegistryRow = {
+  id: string;
+  size_bytes: number | null;
+  duration_seconds: number | null;
+  width: number | null;
+  height: number | null;
+  mime_type: string | null;
+  media_metadata: Record<string, unknown> | null;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function positiveProbeNumber(value: unknown) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+async function loadBoosterVideoProbeRegistryRow(params: {
+  accountId: string;
+  bucket: string;
+  storagePath: string;
+}) {
+  const result = await supabaseAdmin
+    .from("pro_media_library")
+    .select(
+      "id,size_bytes,duration_seconds,width,height,mime_type,media_metadata",
+    )
+    .eq("user_id", params.accountId)
+    .eq("bucket_name", params.bucket)
+    .eq("storage_path", params.storagePath)
+    .eq("media_type", "video")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return (result.data as BoosterVideoProbeRegistryRow | null) || null;
+}
+
+function readPersistedBoosterVideoProbe(
+  row: BoosterVideoProbeRegistryRow | null,
+): ProbedVideoMetadata | null {
+  const normalization = asRecord(row?.media_metadata?.video_normalization);
+  const source = asRecord(normalization.source);
+  if (!hasServerVideoProbeProvenance(source)) return null;
+  const probe: ProbedVideoMetadata = {
+    duration: positiveProbeNumber(
+      source.durationSeconds ?? source.duration_seconds,
+    ),
+    width: positiveProbeNumber(source.orientedWidth ?? source.width),
+    height: positiveProbeNumber(source.orientedHeight ?? source.height),
+    videoCodec:
+      String(source.videoCodec ?? source.video_codec ?? "")
+        .trim()
+        .toLowerCase() || null,
+    audioCodec:
+      String(source.audioCodec ?? source.audio_codec ?? "none")
+        .trim()
+        .toLowerCase() || "none",
+    frameRate: normalizeVideoFrameRate(
+      source.frameRate ?? source.frame_rate ?? source.fps,
+    ),
+    hasAudio:
+      typeof source.hasAudio === "boolean"
+        ? source.hasAudio
+        : source.has_audio === true,
+    containerFormats: (Array.isArray(source.containerFormats)
+      ? source.containerFormats
+      : Array.isArray(source.container_formats)
+        ? source.container_formats
+        : String(source.containerFormats ?? source.container_formats ?? "").split(",")
+    )
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean),
+    pixelFormat:
+      String(source.pixelFormat ?? source.pixel_format ?? "")
+        .trim()
+        .toLowerCase() || null,
+  };
+  return isCompleteVideoProbe(probe) ? probe : null;
+}
+
+async function persistBoosterVideoProbe(params: {
+  accountId: string;
+  row: BoosterVideoProbeRegistryRow | null;
+  probe: ProbedVideoMetadata;
+}) {
+  if (!params.row) return;
+  const metadata = asRecord(params.row.media_metadata);
+  const normalization = asRecord(metadata.video_normalization);
+  const source = {
+    probeProvenance: "server_ffmpeg",
+    durationSeconds: params.probe.duration,
+    width: params.probe.width,
+    height: params.probe.height,
+    orientedWidth: params.probe.width,
+    orientedHeight: params.probe.height,
+    videoCodec: params.probe.videoCodec,
+    audioCodec: params.probe.audioCodec,
+    frameRate: params.probe.frameRate,
+    hasAudio: params.probe.hasAudio,
+    containerFormats: params.probe.containerFormats,
+    pixelFormat: params.probe.pixelFormat,
+    probedAt: new Date().toISOString(),
+    probeTransport: "storage_http_byte_ranges",
+  };
+  const updated = await supabaseAdmin
+    .from("pro_media_library")
+    .update({
+      duration_seconds: params.probe.duration,
+      width: params.probe.width,
+      height: params.probe.height,
+      processing_status: "ready",
+      processing_progress: 100,
+      publication_status: "ready",
+      processing_error_code: null,
+      processing_error_message: null,
+      processing_completed_at: new Date().toISOString(),
+      media_metadata: {
+        ...metadata,
+        video_normalization: { ...normalization, source },
+        publication_probe_status: "ready",
+      },
+    })
+    .eq("id", params.row.id)
+    .eq("user_id", params.accountId);
+  if (updated.error) throw updated.error;
+}
+
+async function fetchWithBoundedTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = BOOSTER_REMOTE_VIDEO_TRANSPORT_TIMEOUT_MS,
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function verifyRemoteBoosterVideoProbeTransport(params: {
+  publicUrl: string;
+  expectedSizeBytes: number;
+}) {
+  let headContentLength: string | null = null;
+  let headAcceptRanges: string | null = null;
+  try {
+    const head = await fetchWithBoundedTimeout(params.publicUrl, {
+      method: "HEAD",
+      cache: "no-store",
+    });
+    if (head.ok) {
+      headContentLength = head.headers.get("content-length");
+      headAcceptRanges = head.headers.get("accept-ranges");
+    }
+  } catch {
+    // Le GET range ci-dessous reste la preuve autoritaire pour les gros objets.
+  }
+
+  let rangeStatus = 0;
+  let rangeContentRange: string | null = null;
+  if (params.expectedSizeBytes > BOOSTER_REMOTE_VIDEO_RANGE_REQUIRED_BYTES) {
+    const range = await fetchWithBoundedTimeout(params.publicUrl, {
+      method: "GET",
+      headers: { Range: "bytes=-1" },
+      cache: "no-store",
+    });
+    rangeStatus = range.status;
+    rangeContentRange = range.headers.get("content-range");
+    await range.body?.cancel().catch(() => undefined);
+  }
+
+  return validateBoosterRemoteVideoProbeTransport({
+    expectedSizeBytes: params.expectedSizeBytes,
+    headContentLength,
+    headAcceptRanges,
+    rangeStatus,
+    rangeContentRange,
+  });
+}
+
+async function readStoredBoosterVideoSize(bucket: string, storagePath: string) {
+  const segments = storagePath.split("/").filter(Boolean);
+  const objectName = segments.pop() || "";
+  const folder = segments.join("/");
+  if (!objectName) return null;
+  const listed = await supabaseAdmin.storage.from(bucket).list(folder, {
+    limit: 20,
+    search: objectName,
+  });
+  if (listed.error) throw listed.error;
+  const object = (listed.data || []).find(
+    (candidate: any) => String(candidate?.name || "") === objectName,
+  ) as any;
+  const metadata = asRecord(object?.metadata);
+  return positiveProbeNumber(
+    metadata.size ??
+      metadata.contentLength ??
+      metadata.content_length ??
+      object?.size,
+  );
+}
+
+function isCompleteVideoProbe(probe: ProbedVideoMetadata) {
+  return Boolean(
+    probe.duration &&
+      probe.width &&
+      probe.height &&
+      probe.videoCodec &&
+      probe.containerFormats.length,
+  );
+}
+
+async function probeVideoMetadata(
+  filePath: string,
+  options?: { remote?: boolean; timeoutMs?: number },
+): Promise<ProbedVideoMetadata> {
+  const remote = options?.remote === true;
+  const deadline = remote
+    ? Date.now() +
+      Math.max(
+        1_000,
+        Number(options?.timeoutMs || BOOSTER_REMOTE_VIDEO_PROBE_TIMEOUT_MS),
+      )
+    : null;
+  const remainingTimeout = (fallback: number) =>
+    deadline === null ? fallback : Math.max(0, deadline - Date.now());
+  const remoteInputOptions = remote
+    ? [
+        "-rw_timeout",
+        "8000000",
+        "-probesize",
+        "5000000",
+        "-analyzeduration",
+        "5000000",
+      ]
+    : [];
+  const configuredFfprobe = String(process.env.FFPROBE_PATH || "").trim();
+  const candidates = [configuredFfprobe || "ffprobe"];
   for (const candidate of candidates) {
+    const timeout = remainingTimeout(12_000);
+    if (timeout < 1_000) break;
     try {
       const { stdout } = await execFileAsync(
         candidate,
         [
           "-v",
           "error",
+          ...remoteInputOptions,
           "-show_entries",
           "stream=codec_type,codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate:format=duration,format_name",
           "-of",
           "json",
           filePath,
         ],
-        { timeout: 12000, maxBuffer: 1024 * 1024 },
+        { timeout, maxBuffer: 1024 * 1024 },
       );
       const parsed = JSON.parse(String(stdout || "{}")) as {
         streams?: Array<{
@@ -271,7 +597,7 @@ async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata
       const duration = Number(parsed.format?.duration || 0);
       const width = Number(videoStream.width || 0);
       const height = Number(videoStream.height || 0);
-      return {
+      const probe: ProbedVideoMetadata = {
         duration: Number.isFinite(duration) && duration > 0 ? duration : null,
         width: Number.isFinite(width) && width > 0 ? width : null,
         height: Number.isFinite(height) && height > 0 ? height : null,
@@ -290,6 +616,7 @@ async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata
         pixelFormat:
           String(videoStream.pix_fmt || "").trim().toLowerCase() || null,
       };
+      if (!remote || isCompleteVideoProbe(probe)) return probe;
     } catch {
       // On essaie le candidat suivant.
     }
@@ -298,8 +625,16 @@ async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata
   // binaire ffprobe sÃ©parÃ©. Le mÃªme probe que le normaliseur garantit alors les
   // mÃ©tadonnÃ©es codec/FPS au lieu de transformer un succÃ¨s en "unknown".
   try {
+    if (remainingTimeout(30_000) < 1_000) return emptyProbedVideoMetadata();
     const ffmpegPath = await resolveVideoNormalizationFfmpegPath();
-    const probed = await probeVideoSource({ ffmpegPath, inputPath: filePath });
+    const timeout = remainingTimeout(30_000);
+    if (timeout < 1_000) return emptyProbedVideoMetadata();
+    const probed = await probeVideoSource({
+      ffmpegPath,
+      inputPath: filePath,
+      timeoutMs: timeout,
+      inputOptions: remoteInputOptions,
+    });
     return {
       duration: probed.durationSeconds,
       width: probed.orientedWidth,
@@ -314,16 +649,90 @@ async function probeVideoMetadata(filePath: string): Promise<ProbedVideoMetadata
   } catch {
     // L'appelant conserve une erreur de prÃ©paration isolÃ©e au canal.
   }
+  return emptyProbedVideoMetadata();
+}
+
+/**
+ * Atteste un fallback vidéo déjà uploadé dans le bucket Booster.
+ *
+ * Les workspaces historiques ne conservent parfois que le dernier type de
+ * média sélectionné. Dans une publication mixte, la vidéo arrive alors comme
+ * référence Storage durable à côté d'un workspace d'images. On sonde l'objet
+ * appartenant au compte directement depuis son URL Storage serveur : aucune
+ * durée/compatibilité fournie par le navigateur n'est utilisée comme preuve.
+ */
+export async function probeStoredBoosterVideoForPublication(params: {
+  accountId: string;
+  bucket?: string | null;
+  storagePath?: string | null;
+}) {
+  const bucket = sanitizeBucketName(params.bucket);
+  const storagePath = sanitizeStoragePath(params.storagePath);
+  const accountPrefix = `${sanitizeUserId(params.accountId)}/`;
+  if (
+    bucket !== BOOSTER_BUCKET ||
+    !storagePath ||
+    !storagePath.startsWith(accountPrefix)
+  ) {
+    throw new Error("video_fallback_storage_reference_untrusted");
+  }
+
+  const publicUrl =
+    supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath)?.data
+      ?.publicUrl || "";
+  if (!/^https:\/\//i.test(publicUrl)) {
+    throw new Error("video_fallback_public_url_unavailable");
+  }
+
+  const registryRow = await loadBoosterVideoProbeRegistryRow({
+    accountId: params.accountId,
+    bucket,
+    storagePath,
+  });
+  const persisted = readPersistedBoosterVideoProbe(registryRow);
+  if (persisted) {
+    return {
+      ...persisted,
+      bucket,
+      storagePath,
+      publicUrl,
+      compatibilityProof: "server_ffmpeg" as const,
+      attestationSource: "registry" as const,
+    };
+  }
+
+  const expectedSizeBytes =
+    positiveProbeNumber(registryRow?.size_bytes) ??
+    (await readStoredBoosterVideoSize(bucket, storagePath));
+  if (!expectedSizeBytes) throw new Error("video_fallback_size_unavailable");
+  await verifyRemoteBoosterVideoProbeTransport({
+    publicUrl,
+    expectedSizeBytes,
+  });
+
+  // FFprobe/FFmpeg lit l'URL Storage avec des seeks HTTP. Pour un MP4 de
+  // 300 Mo dont `moov` est en fin de fichier, seuls l'en-tête et la queue sont
+  // lus ; aucun Buffer/fichier temporaire de 300 Mo n'est créé dans ce worker.
+  const probed = await probeVideoMetadata(publicUrl, {
+    remote: true,
+    timeoutMs: BOOSTER_REMOTE_VIDEO_PROBE_TIMEOUT_MS,
+  });
+  if (!isCompleteVideoProbe(probed)) {
+    throw new Error("video_fallback_probe_incomplete");
+  }
+  await persistBoosterVideoProbe({
+    accountId: params.accountId,
+    row: registryRow,
+    probe: probed,
+  });
+
   return {
-    duration: null,
-    width: null,
-    height: null,
-    videoCodec: null,
-    audioCodec: null,
-    frameRate: null,
-    hasAudio: false,
-    containerFormats: [],
-    pixelFormat: null,
+    ...probed,
+    bucket,
+    storagePath,
+    publicUrl,
+    compatibilityProof: "server_ffmpeg" as const,
+    attestationSource: "storage_range_probe" as const,
   };
 }
 
@@ -818,19 +1227,16 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
 
   try {
     const ffmpegPath = await ensureFfmpegAvailable();
-    const downloaded = await downloadSourceVideo(params.source);
-    if (!downloaded.buffer.length) throw new Error("Vidéo source vide.");
-    if (downloaded.buffer.length > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES) {
-      throw new Error("Vidéo source trop lourde pour la transformation serveur.");
-    }
-
     tempDir = path.join(os.tmpdir(), `inrcy-video-${randomUUID()}`);
     await mkdir(tempDir, { recursive: true });
     const inputPath = path.join(
       tempDir,
       `source.${getSourceExtension(params.source)}`,
     );
-    await writeFile(inputPath, downloaded.buffer);
+    // Le fichier peut atteindre 300 Mo. Il est transféré en flux vers /tmp avec
+    // un compteur strict : aucun Blob.arrayBuffer()/Buffer de la source ne
+    // double la mémoire du worker.
+    const downloaded = await downloadSourceVideoToFile(params.source, inputPath);
     const probedSource = await probeVideoMetadata(inputPath);
     const duration =
       probedSource.duration ??
@@ -845,7 +1251,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       name: params.source.name,
       type: params.source.type,
       storagePath: downloaded.storagePath,
-      sizeBytes: downloaded.buffer.length,
+      sizeBytes: downloaded.size,
       maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
       videoCodec: probedSource.videoCodec,
       audioCodec: probedSource.audioCodec,
@@ -880,7 +1286,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
                 name: params.source.name,
                 type: params.source.type,
                 storagePath: downloaded.storagePath,
-                sizeBytes: downloaded.buffer.length,
+                sizeBytes: downloaded.size,
                 durationSeconds: duration,
                 width: sourceWidth,
                 height: sourceHeight,
@@ -892,7 +1298,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
               storagePath: downloaded.storagePath || "",
               publicUrl: downloaded.publicUrl || "",
               contentType: OUTPUT_CONTENT_TYPE,
-              size: downloaded.buffer.length,
+              size: downloaded.size,
               duration,
               width: sourceWidth,
               height: sourceHeight,
@@ -911,14 +1317,14 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
           outputPath,
           variant,
           duration,
-          downloaded.buffer.length,
+          downloaded.size,
         );
-        const outputBuffer = await readFile(outputPath);
+        const outputSize = (await stat(outputPath)).size;
         const quality = getVideoTransformQualityProfile(variant.format, variant.publicationProfile);
         const outputMetadata = await probeVideoMetadata(outputPath);
-        if (outputBuffer.length > quality.maxOutputBytes) {
+        if (outputSize > quality.maxOutputBytes) {
           throw new Error(
-            `La variante ${variant.target.label} reste trop lourde après compression (${Math.ceil(outputBuffer.length / 1024 / 1024)} Mo).`,
+            `La variante ${variant.target.label} reste trop lourde après compression (${Math.ceil(outputSize / 1024 / 1024)} Mo).`,
           );
         }
         if (
@@ -930,7 +1336,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
             name: `${variant.key}.mp4`,
             type: OUTPUT_CONTENT_TYPE,
             storagePath: `${variant.key}.mp4`,
-            sizeBytes: outputBuffer.length,
+            sizeBytes: outputSize,
             durationSeconds: outputMetadata.duration || duration,
             width: outputMetadata.width,
             height: outputMetadata.height,
@@ -944,10 +1350,12 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         );
         const upload = await supabaseAdmin.storage
           .from(BOOSTER_BUCKET)
-          .upload(storagePath, toExactStorageArrayBuffer(outputBuffer), {
+          .upload(storagePath, createReadStream(outputPath), {
             contentType: OUTPUT_CONTENT_TYPE,
             cacheControl: "31536000",
             upsert: true,
+            duplex: "half",
+            headers: { "content-length": String(outputSize) },
           });
         if (upload.error) {
           throw new Error(
@@ -964,7 +1372,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
             mediaId: params.mediaId,
             plan: variant,
             storagePath,
-            outputSize: outputBuffer.length,
+            outputSize,
             duration: outputMetadata.duration || duration,
             width: outputMetadata.width,
             height: outputMetadata.height,
@@ -977,7 +1385,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
           storagePath,
           publicUrl,
           contentType: OUTPUT_CONTENT_TYPE,
-          size: outputBuffer.length,
+          size: outputSize,
           duration: outputMetadata.duration || duration,
           width: outputMetadata.width,
           height: outputMetadata.height,
@@ -1006,7 +1414,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         bucket: downloaded.bucket,
         storagePath: downloaded.storagePath || null,
         publicUrl: downloaded.publicUrl,
-        size: downloaded.buffer.length,
+        size: downloaded.size,
         duration,
         width: sourceWidth,
         height: sourceHeight,

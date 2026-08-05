@@ -25,6 +25,16 @@ import {
   type MediaWorkspaceReference,
 } from "@/lib/mediaWorkspaceClient";
 import { uploadUniversalMediaFile } from "@/lib/universalMediaUploadClient";
+import {
+  beginWorkspaceFamilyMutation,
+  beginWorkspaceGlobalClear,
+  createWorkspaceMediaMutationClock,
+  getWorkspaceMediaFamilyFailure,
+  getWorkspaceSourcePosition,
+  isWorkspaceMediaMutationCurrent,
+  replaceWorkspaceMediaFamilyStates,
+  type WorkspaceMediaFamily,
+} from "./persistentMediaWorkspaceMutations";
 
 export type PersistentWorkspaceMediaState = {
   localKey: string;
@@ -50,6 +60,7 @@ type PublicationPreparationSettings = {
   imageSettingsByChannel?: Record<string, unknown>;
   videoSettingsByChannel?: Record<string, unknown>;
   selectedChannels?: readonly string[];
+  requestedMediaType?: "images" | "video";
   deferUntilReady?: boolean;
   generateMissingVideoVariants?: boolean;
   allowOriginalVideoFallback?: boolean;
@@ -94,9 +105,16 @@ export default function usePersistentMediaWorkspace({
   const referenceRef = useRef<MediaWorkspaceReference | null>(null);
   const ensurePromiseRef = useRef<Promise<MediaWorkspaceReference> | null>(null);
   const clientWorkspaceKeyRef = useRef("");
+  const operationClockRef = useRef(createWorkspaceMediaMutationClock());
   const operationVersionRef = useRef(0);
-  const operationAbortRef = useRef<AbortController | null>(null);
+  const operationAbortRef = useRef<
+    Partial<Record<WorkspaceMediaFamily, AbortController>>
+  >({});
+  const globalClearAbortRef = useRef<AbortController | null>(null);
   const activeTaskRef = useRef<Promise<void>>(Promise.resolve());
+  const activeFamilyTaskRef = useRef<
+    Partial<Record<WorkspaceMediaFamily, Promise<void>>>
+  >({});
   const activePreparationRef = useRef<
     Partial<
       Record<
@@ -109,7 +127,10 @@ export default function usePersistentMediaWorkspace({
     ai_preparation: false,
     publication_preparation: false,
   });
-  const activeUploadFailureRef = useRef("");
+  const activeUploadFailureRef = useRef<Record<WorkspaceMediaFamily, string>>({
+    image: "",
+    video: "",
+  });
   const selectedChannelsRef = useRef(selectedChannels);
   const imageSettingsByChannelRef = useRef(imageSettingsByChannel);
   const videoSettingsByChannelRef = useRef<
@@ -122,6 +143,15 @@ export default function usePersistentMediaWorkspace({
     missionReadyRef.current.ai_preparation = false;
     missionReadyRef.current.publication_preparation = false;
     activePreparationRef.current = {};
+  }, []);
+
+  const refreshActiveTaskAggregate = useCallback(() => {
+    const tasks = Array.from(
+      new Set(Object.values(activeFamilyTaskRef.current)),
+    );
+    activeTaskRef.current = tasks.length
+      ? Promise.all(tasks).then(() => undefined)
+      : Promise.resolve();
   }, []);
 
   const resolveClientWorkspaceKey = useCallback(() => {
@@ -167,13 +197,20 @@ export default function usePersistentMediaWorkspace({
         workspaceId: cleanWorkspaceId,
         clientWorkspaceKey: cleanClientKey || resolveClientWorkspaceKey(),
       };
-      operationVersionRef.current += 1;
+      const invalidation = beginWorkspaceGlobalClear(operationClockRef.current);
+      operationClockRef.current = invalidation.clock;
+      operationVersionRef.current = invalidation.clock.revision;
       resetMissionReadiness();
-      operationAbortRef.current?.abort();
-      operationAbortRef.current = null;
+      Object.values(operationAbortRef.current).forEach((controller) =>
+        controller?.abort(),
+      );
+      operationAbortRef.current = {};
+      globalClearAbortRef.current?.abort();
+      globalClearAbortRef.current = null;
       ensurePromiseRef.current = null;
+      activeFamilyTaskRef.current = {};
       activeTaskRef.current = Promise.resolve();
-      activeUploadFailureRef.current = "";
+      activeUploadFailureRef.current = { image: "", video: "" };
       mediaStatesRef.current = {};
       setMediaStates({});
       setSynchronizing(false);
@@ -216,68 +253,91 @@ export default function usePersistentMediaWorkspace({
     ) => {
       if (!enabled) return;
 
-      const operationVersion = operationVersionRef.current + 1;
+      const transition = beginWorkspaceFamilyMutation(
+        operationClockRef.current,
+        mediaType,
+      );
+      operationClockRef.current = transition.clock;
+      const operationVersion = transition.token.revision;
       operationVersionRef.current = operationVersion;
+      const isCurrentOperation = () =>
+        isWorkspaceMediaMutationCurrent(
+          operationClockRef.current,
+          transition.token,
+        );
       setSynchronizing(true);
       resetMissionReadiness();
-      activeUploadFailureRef.current = "";
-      operationAbortRef.current?.abort();
+      activeUploadFailureRef.current[mediaType] = "";
+      operationAbortRef.current[mediaType]?.abort();
       const controller = new AbortController();
-      operationAbortRef.current = controller;
-      const previousTask = activeTaskRef.current;
+      operationAbortRef.current[mediaType] = controller;
+      const previousTask =
+        activeFamilyTaskRef.current[mediaType] || Promise.resolve();
 
       const task = (async () => {
         await previousTask.catch(() => undefined);
-        if (operationVersion !== operationVersionRef.current) return;
+        if (!isCurrentOperation()) return;
 
         const workspace = await ensureWorkspace();
-        if (!workspace || operationVersion !== operationVersionRef.current) return;
+        if (!workspace || !isCurrentOperation()) return;
 
         await clearMediaPublicationWorkspace({
           workspaceId: workspace.workspaceId,
+          mediaType,
           reason: files.length
             ? `activate_${mediaType}_media`
-            : "remove_all_media",
+            : `remove_${mediaType}_media`,
           signal: controller.signal,
         });
-        if (operationVersion !== operationVersionRef.current) return;
-        setMediaStates({});
-        if (!files.length) return;
+        if (!isCurrentOperation()) return;
 
-        const entries = files.map((file, position) => ({
+        const entries = files.map((file, metadataIndex) => ({
           file,
-          position,
+          metadataIndex,
+          // Positions 0..4 are reserved for images; the optional video lives
+          // at 5 so both families can coexist durably in one workspace.
+          position: getWorkspaceSourcePosition(mediaType, metadataIndex),
           localKey: buildWorkspaceMediaClientKey(
             workspace.clientWorkspaceKey,
             file,
           ),
         }));
-        setMediaStates(
-          Object.fromEntries(
-            entries.map(({ localKey, position }) => [
+        const queuedStates = Object.fromEntries(
+          entries.map(({ localKey, position }) => [
+            localKey,
+            {
               localKey,
-              {
-                localKey,
-                mediaId: null,
-                mediaType,
-                position,
-                status: "queued" as const,
-                progress: 0,
-                storagePath: "",
-                error: "",
-              },
-            ]),
-          ),
-        );
+              mediaId: null,
+              mediaType,
+              position,
+              status: "queued" as const,
+              progress: 0,
+              storagePath: "",
+              error: "",
+            },
+          ]),
+        ) as Record<string, PersistentWorkspaceMediaState>;
+        setMediaStates((current) => {
+          if (!isCurrentOperation()) return current;
+          const next = replaceWorkspaceMediaFamilyStates(
+            current,
+            mediaType,
+            queuedStates,
+          );
+          mediaStatesRef.current = next;
+          return next;
+        });
+        if (!files.length) return;
 
         let nextPosition = 0;
         const uploadNext = async () => {
           while (nextPosition < entries.length) {
             const entryIndex = nextPosition;
             nextPosition += 1;
-            if (operationVersion !== operationVersionRef.current) return;
-            const { file, position, localKey } = entries[entryIndex];
-            const rawSettings = asRecord(metadataByIndex?.[position]);
+            if (!isCurrentOperation()) return;
+            const { file, position, metadataIndex, localKey } =
+              entries[entryIndex];
+            const rawSettings = asRecord(metadataByIndex?.[metadataIndex]);
             const nestedSource = asRecord(rawSettings.source_metadata);
             const sourceMetadata = buildBoosterSourceMediaMetadata({
               file,
@@ -310,42 +370,52 @@ export default function usePersistentMediaWorkspace({
                   inserted_at: new Date().toISOString(),
                 },
                 onProgress: (progress) => {
-                  if (operationVersion !== operationVersionRef.current) return;
-                  setMediaStates((current) => ({
-                    ...current,
-                    [localKey]: {
-                      ...(current[localKey] || {
-                        localKey,
-                        mediaId: null,
-                        mediaType,
-                        position,
-                        storagePath: "",
-                        error: "",
-                      }),
-                      status: "uploading",
-                      progress: progress.percent,
-                    },
-                  }));
+                  if (!isCurrentOperation()) return;
+                  setMediaStates((current) => {
+                    if (!isCurrentOperation()) return current;
+                    const next = {
+                      ...current,
+                      [localKey]: {
+                        ...(current[localKey] || {
+                          localKey,
+                          mediaId: null,
+                          mediaType,
+                          position,
+                          storagePath: "",
+                          error: "",
+                        }),
+                        status: "uploading" as const,
+                        progress: progress.percent,
+                      },
+                    };
+                    mediaStatesRef.current = next;
+                    return next;
+                  });
                 },
               });
-              if (operationVersion !== operationVersionRef.current) return;
-              setMediaStates((current) => ({
-                ...current,
-                [localKey]: {
-                  localKey,
-                  mediaId: result.mediaId,
-                  mediaType,
-                  position,
-                  status: "ready",
-                  progress: 100,
-                  storagePath: result.storagePath,
-                  error: "",
-                },
-              }));
+              if (!isCurrentOperation()) return;
+              setMediaStates((current) => {
+                if (!isCurrentOperation()) return current;
+                const next = {
+                  ...current,
+                  [localKey]: {
+                    localKey,
+                    mediaId: result.mediaId,
+                    mediaType,
+                    position,
+                    status: "ready" as const,
+                    progress: 100,
+                    storagePath: result.storagePath,
+                    error: "",
+                  },
+                };
+                mediaStatesRef.current = next;
+                return next;
+              });
             } catch (error) {
               if (
                 isAbortError(error) ||
-                operationVersion !== operationVersionRef.current
+                !isCurrentOperation()
               ) {
                 return;
               }
@@ -353,22 +423,27 @@ export default function usePersistentMediaWorkspace({
                 error instanceof Error
                   ? error.message
                   : "L’envoi immédiat du média a échoué.";
-              activeUploadFailureRef.current = message;
-              setMediaStates((current) => ({
-                ...current,
-                [localKey]: {
-                  ...(current[localKey] || {
-                    localKey,
-                    mediaId: null,
-                    mediaType,
-                    position,
-                    storagePath: "",
-                  }),
-                  status: "failed",
-                  progress: 0,
-                  error: message,
-                },
-              }));
+              activeUploadFailureRef.current[mediaType] = message;
+              setMediaStates((current) => {
+                if (!isCurrentOperation()) return current;
+                const next = {
+                  ...current,
+                  [localKey]: {
+                    ...(current[localKey] || {
+                      localKey,
+                      mediaId: null,
+                      mediaType,
+                      position,
+                      storagePath: "",
+                    }),
+                    status: "failed" as const,
+                    progress: 0,
+                    error: message,
+                  },
+                };
+                mediaStatesRef.current = next;
+                return next;
+              });
               onError?.(message);
             }
           }
@@ -383,8 +458,8 @@ export default function usePersistentMediaWorkspace({
         );
 
         if (
-          operationVersion === operationVersionRef.current &&
-          !activeUploadFailureRef.current
+          isCurrentOperation() &&
+          !activeUploadFailureRef.current[mediaType]
         ) {
           if (
             mediaType === "image" &&
@@ -427,15 +502,33 @@ export default function usePersistentMediaWorkspace({
           }
         })
         .finally(() => {
-          if (operationVersion === operationVersionRef.current) {
+          if (operationAbortRef.current[mediaType] === controller) {
+            delete operationAbortRef.current[mediaType];
+          }
+          if (activeFamilyTaskRef.current[mediaType] === task) {
+            delete activeFamilyTaskRef.current[mediaType];
+            refreshActiveTaskAggregate();
+          }
+          if (
+            !Object.keys(operationAbortRef.current).length &&
+            !globalClearAbortRef.current
+          ) {
             setSynchronizing(false);
           }
         });
 
-      activeTaskRef.current = task;
+      activeFamilyTaskRef.current[mediaType] = task;
+      refreshActiveTaskAggregate();
       await task;
     },
-    [enabled, ensureWorkspace, onError, refreshPreparedMedia, resetMissionReadiness],
+    [
+      enabled,
+      ensureWorkspace,
+      onError,
+      refreshActiveTaskAggregate,
+      refreshPreparedMedia,
+      resetMissionReadiness,
+    ],
   );
 
   const syncImages = useCallback(
@@ -460,8 +553,11 @@ export default function usePersistentMediaWorkspace({
         throw new Error("Le workspace média persistant n’est pas activé.");
       }
       await activeTaskRef.current;
-      if (activeUploadFailureRef.current) {
-        throw new Error(activeUploadFailureRef.current);
+      const uploadFailure = getWorkspaceMediaFamilyFailure(
+        activeUploadFailureRef.current,
+      );
+      if (uploadFailure) {
+        throw new Error(uploadFailure);
       }
       const workspace = await ensureWorkspace();
       if (!workspace) {
@@ -534,6 +630,7 @@ export default function usePersistentMediaWorkspace({
         workspaceId,
         selectedChannels:
           settings?.selectedChannels || selectedChannelsRef.current,
+        requestedMediaType: settings?.requestedMediaType,
         imageSettingsByChannel: imageSettingsByChannelRef.current,
         videoSettingsByChannel: videoSettingsByChannelRef.current,
         generateMissingVideoVariants:
@@ -544,10 +641,88 @@ export default function usePersistentMediaWorkspace({
     [enabled],
   );
 
-  const clearWorkspaceMedia = useCallback(
-    async () => await scheduleSync([], "image"),
-    [scheduleSync],
-  );
+  const clearWorkspaceMedia = useCallback(async () => {
+    if (!enabled) return;
+
+    const transition = beginWorkspaceGlobalClear(operationClockRef.current);
+    operationClockRef.current = transition.clock;
+    operationVersionRef.current = transition.token.revision;
+    const isCurrentOperation = () =>
+      isWorkspaceMediaMutationCurrent(
+        operationClockRef.current,
+        transition.token,
+      );
+
+    setSynchronizing(true);
+    resetMissionReadiness();
+    activeUploadFailureRef.current = { image: "", video: "" };
+    Object.values(operationAbortRef.current).forEach((controller) =>
+      controller?.abort(),
+    );
+    operationAbortRef.current = {};
+    globalClearAbortRef.current?.abort();
+    mediaStatesRef.current = {};
+    setMediaStates({});
+    const controller = new AbortController();
+    globalClearAbortRef.current = controller;
+    const previousTasks = Array.from(
+      new Set(Object.values(activeFamilyTaskRef.current)),
+    );
+
+    const task = (async () => {
+      await Promise.all(
+        previousTasks.map((previous) => previous.catch(() => undefined)),
+      );
+      if (!isCurrentOperation()) return;
+
+      const workspace = await ensureWorkspace();
+      if (!workspace || !isCurrentOperation()) return;
+
+      await clearMediaPublicationWorkspace({
+        workspaceId: workspace.workspaceId,
+        mediaType: undefined,
+        reason: "remove_all_media",
+        signal: controller.signal,
+      });
+      if (!isCurrentOperation()) return;
+    })()
+      .catch((error) => {
+        if (!isAbortError(error)) {
+          onError?.(
+            error instanceof Error
+              ? error.message
+              : "Impossible de vider l'espace média.",
+          );
+        }
+      })
+      .finally(() => {
+        if (globalClearAbortRef.current === controller) {
+          globalClearAbortRef.current = null;
+        }
+        for (const mediaType of ["image", "video"] as const) {
+          if (activeFamilyTaskRef.current[mediaType] === task) {
+            delete activeFamilyTaskRef.current[mediaType];
+          }
+        }
+        refreshActiveTaskAggregate();
+        if (
+          !Object.keys(operationAbortRef.current).length &&
+          !globalClearAbortRef.current
+        ) {
+          setSynchronizing(false);
+        }
+      });
+
+    activeFamilyTaskRef.current = { image: task, video: task };
+    refreshActiveTaskAggregate();
+    await task;
+  }, [
+    enabled,
+    ensureWorkspace,
+    onError,
+    refreshActiveTaskAggregate,
+    resetMissionReadiness,
+  ]);
 
   const linkDraft = useCallback(
     async (nextDraftId: string) => {
@@ -563,14 +738,39 @@ export default function usePersistentMediaWorkspace({
   );
 
   const waitForIdle = useCallback(
-    async (onProgress?: (progress: number, label: string) => void) => {
-      while (true) {
-        if (activeUploadFailureRef.current) {
-          throw new Error(activeUploadFailureRef.current);
-        }
-        const states = Object.values(mediaStatesRef.current).sort(
-          (a, b) => a.position - b.position,
+    async (
+      onProgress?: (progress: number, label: string) => void,
+      options?: {
+        mediaTypes?: readonly WorkspaceMediaFamily[];
+        tolerateFailures?: boolean;
+      },
+    ) => {
+      const includesFamily = (mediaType: WorkspaceMediaFamily) =>
+        !options?.mediaTypes || options.mediaTypes.includes(mediaType);
+      const getRelevantTask = () => {
+        const tasks = options?.mediaTypes
+          ? options.mediaTypes.map(
+              (mediaType) => activeFamilyTaskRef.current[mediaType],
+            )
+          : Object.values(activeFamilyTaskRef.current);
+        const activeTasks = Array.from(
+          new Set(tasks.filter((task): task is Promise<void> => Boolean(task))),
         );
+        return activeTasks.length
+          ? Promise.all(activeTasks).then(() => undefined)
+          : Promise.resolve();
+      };
+      while (true) {
+        const uploadFailure = getWorkspaceMediaFamilyFailure(
+          activeUploadFailureRef.current,
+          options?.mediaTypes,
+        );
+        if (uploadFailure && !options?.tolerateFailures) {
+          throw new Error(uploadFailure);
+        }
+        const states = Object.values(mediaStatesRef.current)
+          .filter((state) => includesFamily(state.mediaType))
+          .sort((a, b) => a.position - b.position);
         const total = states.length;
         const averageProgress = total
           ? Math.round(
@@ -622,7 +822,7 @@ export default function usePersistentMediaWorkspace({
         }
 
         const settled = await Promise.race<"done" | "tick">([
-          activeTaskRef.current
+          getRelevantTask()
             .then(() => "done" as const)
             .catch(() => "done" as const),
           new Promise<"tick">((resolve) =>
@@ -632,25 +832,45 @@ export default function usePersistentMediaWorkspace({
         if (settled === "done") break;
       }
 
-      await activeTaskRef.current.catch(() => undefined);
-      if (activeUploadFailureRef.current) {
-        throw new Error(activeUploadFailureRef.current);
-      }
-      const failedMedia = Object.values(mediaStatesRef.current).find(
-        (item) => item.status === "failed",
+      await getRelevantTask().catch(() => undefined);
+      const uploadFailure = getWorkspaceMediaFamilyFailure(
+        activeUploadFailureRef.current,
+        options?.mediaTypes,
       );
-      if (failedMedia) {
+      if (uploadFailure && !options?.tolerateFailures) {
+        throw new Error(uploadFailure);
+      }
+      const settledStates = Object.values(mediaStatesRef.current);
+      const failedMedia = settledStates.find(
+        (item) =>
+          includesFamily(item.mediaType) && item.status === "failed",
+      );
+      if (failedMedia && !options?.tolerateFailures) {
         throw new Error(failedMedia.error || "L’envoi du média a échoué.");
       }
+      return settledStates;
     },
     [],
   );
 
   const verifyReadySources = useCallback(
-    async (expectation: PersistentWorkspaceSourceExpectation) => {
+    async (
+      expectationOrExpectations:
+        | PersistentWorkspaceSourceExpectation
+        | readonly PersistentWorkspaceSourceExpectation[],
+    ) => {
       if (!enabled) return null;
-      const expectedCount = Math.max(0, Math.floor(expectation.count || 0));
-      if (!expectedCount) return null;
+      const expectations = (
+        Array.isArray(expectationOrExpectations)
+          ? expectationOrExpectations
+          : [expectationOrExpectations]
+      )
+        .map((expectation) => ({
+          mediaType: expectation.mediaType,
+          count: Math.max(0, Math.floor(expectation.count || 0)),
+        }))
+        .filter((expectation) => expectation.count > 0);
+      if (!expectations.length) return null;
 
       const operationVersion = operationVersionRef.current;
       const workspace = await ensureWorkspace();
@@ -673,39 +893,45 @@ export default function usePersistentMediaWorkspace({
         );
       }
 
-      const sources = snapshot.media.filter(
-        (media) => media.mediaType === expectation.mediaType,
-      );
-      const failedSource = sources.find(
-        (media) => media.uploadStatus === "failed",
-      );
-      if (failedSource) {
-        throw new Error(
-          failedSource.processingErrorMessage ||
-            "L'envoi d'un média a échoué.",
+      for (const expectation of expectations) {
+        const sources = snapshot.media.filter(
+          (media) => media.mediaType === expectation.mediaType,
         );
-      }
-
-      const readyPositions = new Set(
-        sources
-          .filter(
-            (media) =>
-              media.uploadStatus === "uploaded" &&
-              Boolean(String(media.storagePath || "").trim()),
-          )
-          .map((media) => media.position),
-      );
-      const everyExpectedSourceIsReady = Array.from(
-        { length: expectedCount },
-        (_, position) => position,
-      ).every((position) => readyPositions.has(position));
-
-      if (!everyExpectedSourceIsReady) {
-        throw new Error(
-          expectedCount > 1
-            ? "Les médias ne sont pas encore tous disponibles sur le serveur."
-            : "Le média n'est pas encore disponible sur le serveur.",
+        const failedSource = sources.find(
+          (media) => media.uploadStatus === "failed",
         );
+        if (failedSource) {
+          throw new Error(
+            failedSource.processingErrorMessage ||
+              "L'envoi d'un média a échoué.",
+          );
+        }
+
+        const readyPositions = new Set(
+          sources
+            .filter(
+              (media) =>
+                media.uploadStatus === "uploaded" &&
+                Boolean(String(media.storagePath || "").trim()),
+            )
+            .map((media) => media.position),
+        );
+        const everyExpectedSourceIsReady = Array.from(
+          { length: expectation.count },
+          (_, familyPosition) =>
+            getWorkspaceSourcePosition(
+              expectation.mediaType,
+              familyPosition,
+            ),
+        ).every((position) => readyPositions.has(position));
+
+        if (!everyExpectedSourceIsReady) {
+          throw new Error(
+            expectation.count > 1
+              ? "Les médias ne sont pas encore tous disponibles sur le serveur."
+              : "Le média n'est pas encore disponible sur le serveur.",
+          );
+        }
       }
 
       return snapshot;
@@ -717,12 +943,19 @@ export default function usePersistentMediaWorkspace({
     if (!enabled) return;
     const workspace = referenceRef.current;
     const taskToStop = activeTaskRef.current;
-    operationVersionRef.current += 1;
+    const invalidation = beginWorkspaceGlobalClear(operationClockRef.current);
+    operationClockRef.current = invalidation.clock;
+    operationVersionRef.current = invalidation.clock.revision;
     resetMissionReadiness();
-    operationAbortRef.current?.abort();
-    operationAbortRef.current = null;
+    Object.values(operationAbortRef.current).forEach((controller) =>
+      controller?.abort(),
+    );
+    operationAbortRef.current = {};
+    globalClearAbortRef.current?.abort();
+    globalClearAbortRef.current = null;
+    activeFamilyTaskRef.current = {};
     activeTaskRef.current = Promise.resolve();
-    activeUploadFailureRef.current = "";
+    activeUploadFailureRef.current = { image: "", video: "" };
     mediaStatesRef.current = {};
     setMediaStates({});
     setSynchronizing(false);
@@ -765,8 +998,15 @@ export default function usePersistentMediaWorkspace({
 
   useEffect(() => {
     return () => {
-      operationVersionRef.current += 1;
-      operationAbortRef.current?.abort();
+      const invalidation = beginWorkspaceGlobalClear(operationClockRef.current);
+      operationClockRef.current = invalidation.clock;
+      operationVersionRef.current = invalidation.clock.revision;
+      Object.values(operationAbortRef.current).forEach((controller) =>
+        controller?.abort(),
+      );
+      operationAbortRef.current = {};
+      globalClearAbortRef.current?.abort();
+      globalClearAbortRef.current = null;
     };
   }, []);
 

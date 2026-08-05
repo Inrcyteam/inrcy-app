@@ -19,7 +19,7 @@ const migration = read(
 );
 const propulserMetrics = read("app/api/propulser/metrics/route.ts");
 
-test("generation targets 30 seconds with one shared 45 second safety deadline", () => {
+test("generation targets 30 seconds and the strict workspace path avoids local media work", () => {
   assert.match(modal, /BOOSTER_GENERATION_TARGET_MS = 30_000/);
   assert.match(
     modal,
@@ -27,10 +27,18 @@ test("generation targets 30 seconds with one shared 45 second safety deadline", 
   );
   assert.match(modal, /generationDeadlineAt/);
   assert.match(modal, /controller\.abort\(\)/);
-  assert.doesNotMatch(
+  // The old browser extraction remains a rolling-deployment fallback only.
+  // With the production cutover enabled, generation sends the workspace
+  // reference and no image/video bytes or local frame extraction.
+  assert.match(
     modal,
     /hasVideoForGeneration\s*&&\s*videoFile\s*&&\s*!videoAiContextRef\s*&&\s*!mediaPipelineCutoverEnabled/,
   );
+  assert.match(
+    modal,
+    /useWorkspaceMediaForAI:[\s\S]*?unifiedMediaConsumptionClientAvailable[\s\S]*?Boolean\(readyMediaWorkspaceId\)/,
+  );
+  assert.match(modal, /imagesForAI:\s*mediaPipelineCutoverEnabled \? \[\] : imagesForAI/);
   assert.match(
     generationRoute,
     /routeStartedAt \+ BOOSTER_GENERATION_SAFETY_BUDGET_MS/,

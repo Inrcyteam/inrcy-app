@@ -52,7 +52,10 @@ const TARGET_CONFIG: Record<
   booster_video_source: {
     bucket: "booster",
     folder: "booster-videos",
-    registerSource: false,
+    // The browser still uploads bytes directly to Storage. The lightweight
+    // registry row lets the server persist its FFmpeg attestation during the
+    // user's review time, including for mixed image-workspace + video payloads.
+    registerSource: true,
     publicObject: true,
   },
   media_library_source: {
@@ -347,6 +350,7 @@ async function createOrReuseRegistryRow(params: {
   fileName: string;
   protocol: "signed" | "tus";
   source: string;
+  uploadTarget: UniversalMediaUploadTarget;
   metadata: Record<string, unknown>;
 }) {
   const existing = await getExistingRegisteredMedia(
@@ -357,6 +361,7 @@ async function createOrReuseRegistryRow(params: {
     params.metadata,
     params.mediaType,
   );
+  const registryVisibleInMediaLibrary = params.uploadTarget === "workspace_source";
 
   if (existing) {
     const uploaded = existing.upload_status === "uploaded";
@@ -368,7 +373,7 @@ async function createOrReuseRegistryRow(params: {
         upload_progress: uploaded ? 100 : 0,
         upload_error_code: null,
         upload_error_message: null,
-        is_active: true,
+        is_active: registryVisibleInMediaLibrary,
         original_retention_until: null,
         original_deleted_at: null,
         upload_started_at: uploaded ? undefined : new Date().toISOString(),
@@ -380,7 +385,7 @@ async function createOrReuseRegistryRow(params: {
           ...cleanJsonObject(existing.media_metadata),
           ...sourceRegistry.metadata,
           workspace_id: params.workspaceId || null,
-          upload_target: "workspace_source",
+          upload_target: params.uploadTarget,
         },
       })
       .eq("id", existing.id)
@@ -406,7 +411,7 @@ async function createOrReuseRegistryRow(params: {
       title: params.fileName.replace(/\.[^.]+$/, "") || "Média iNrCy",
       tags: [],
       source: params.source || "booster_workspace",
-      is_active: true,
+      is_active: registryVisibleInMediaLibrary,
       original_file_name: params.fileName,
       client_media_key: params.clientMediaKey,
       upload_protocol: params.protocol,
@@ -423,7 +428,7 @@ async function createOrReuseRegistryRow(params: {
       media_metadata: {
         ...sourceRegistry.metadata,
         workspace_id: params.workspaceId || null,
-        upload_target: "workspace_source",
+        upload_target: params.uploadTarget,
       },
     })
     .select(
@@ -564,7 +569,9 @@ export async function POST(request: Request) {
       if (
         !Number.isInteger(workspacePosition) ||
         workspacePosition < 0 ||
-        workspacePosition > 4
+        workspacePosition > 5 ||
+        (mediaType === "image" && workspacePosition > 4) ||
+        (mediaType === "video" && workspacePosition !== 5)
       ) {
         return jsonError(
           "Position média invalide dans le workspace.",
@@ -609,6 +616,7 @@ export async function POST(request: Request) {
         fileName,
         protocol,
         source,
+        uploadTarget: target,
         metadata: {
           ...metadata,
           last_modified: Number.isFinite(lastModified) ? lastModified : null,

@@ -89,6 +89,10 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null);
     const workspaceId = cleanText(body?.workspaceId, 80);
     const selectedChannels = cleanChannels(body?.selectedChannels);
+    const requestedMediaType =
+      body?.requestedMediaType === "images" || body?.requestedMediaType === "video"
+        ? body.requestedMediaType
+        : null;
     if (!workspaceId) {
       return NextResponse.json(
         { ok: false, code: "workspace_required", error: "Espace média manquant." },
@@ -110,7 +114,10 @@ export async function POST(request: Request) {
       purpose: "publish",
     });
 
-    if (consumption.mediaType === "images") {
+    if (
+      consumption.images.length > 0 &&
+      requestedMediaType !== "video"
+    ) {
       const prepared = await prepareBoosterImagesByChannelOnServer({
         accountId: activeUserId,
         workspaceId,
@@ -128,7 +135,7 @@ export async function POST(request: Request) {
       });
     }
 
-    if (consumption.mediaType === "video" && consumption.video) {
+    if (consumption.video && requestedMediaType !== "images") {
       const video = consumption.video;
       const generateMissingVideoVariants =
         body?.generateMissingVideoVariants !== false;

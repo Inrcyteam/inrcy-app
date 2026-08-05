@@ -5,8 +5,9 @@ function unique(values: readonly string[]) {
 }
 
 /**
- * Keeps explicit per-channel deselections stable while automatically selecting
- * files that were genuinely added after the previous synchronization.
+ * Keeps every explicit per-channel selection stable when the global image pool
+ * changes. A newly added physical source remains unassigned until the user
+ * chooses it for a channel.
  */
 export function mergeBoosterChannelImageSelection(params: {
   availableKeys: readonly string[];
@@ -23,11 +24,12 @@ export function mergeBoosterChannelImageSelection(params: {
     available.includes(key),
   );
 
-  // Legacy/new state has no synchronization marker: initialize with all media.
-  if (previousAvailable === null) return available;
+  // A restored draft can carry an ordered subset without the transient
+  // synchronization marker. Preserve that explicit mapping. Only a genuinely
+  // new channel (no selected-key field at all) starts with the complete pool.
+  if (previousAvailable === null) {
+    return Array.isArray(params.previousSelectedKeys) ? retained : available;
+  }
 
-  const genuinelyAdded = available.filter(
-    (key) => !previousAvailable.includes(key),
-  );
-  return unique([...retained, ...genuinelyAdded]);
+  return retained;
 }

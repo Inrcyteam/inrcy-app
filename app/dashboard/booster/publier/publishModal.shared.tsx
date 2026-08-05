@@ -42,6 +42,7 @@ import {
   isUniversalMediaUploadEnabled,
   uploadUniversalMediaFile,
 } from "@/lib/universalMediaUploadClient";
+import { UNIVERSAL_MEDIA_STANDARD_UPLOAD_MAX_BYTES } from "@/lib/mediaUploadPolicy";
 export type { BoosterCtaMode } from "@/lib/boosterCta";
 
 export type ChannelKey =
@@ -600,7 +601,7 @@ export function getBoosterSelectedMediaSummary(params: {
   }
   return parts.length
     ? parts.join(" · ")
-    : `Aucun média ajouté · jusqu’à ${BOOSTER_MAX_IMAGE_COUNT} images (${BOOSTER_MAX_IMAGE_MB_LABEL} chacune, ${BOOSTER_MAX_MEDIA_MB_LABEL} au total) ou 1 vidéo source (${BOOSTER_MAX_VIDEO_MB_LABEL} maximum)`;
+    : `Aucun média ajouté · jusqu’à ${BOOSTER_MAX_IMAGE_COUNT} images (${BOOSTER_MAX_IMAGE_MB_LABEL} chacune, ${BOOSTER_MAX_MEDIA_MB_LABEL} au total) + 1 vidéo source (${BOOSTER_MAX_VIDEO_MB_LABEL} maximum)`;
 }
 export type ChannelPublicationRequirementInput = {
   channel: ChannelKey;
@@ -2109,9 +2110,18 @@ export async function uploadBoosterVideo(
         url: result.publicUrl || undefined,
       };
     } catch (error) {
-      // Filet de sécurité Étape 3 : le pipeline historique reste disponible
-      // jusqu'à la certification finale du transport universel.
       console.warn("[media-pipeline] universal video upload fallback", error);
+      // A large TUS upload is resumable. Falling back to one monolithic PUT
+      // after a transient failure would restart up to 300 MB from byte zero
+      // and make the UI appear frozen. Keep the legacy direct upload only for
+      // small files where restarting is cheap.
+      if (file.size > UNIVERSAL_MEDIA_STANDARD_UPLOAD_MAX_BYTES) {
+        throw error instanceof Error
+          ? error
+          : new Error(
+              "L'upload vidéo a été interrompu. Relancez-le pour reprendre le transfert.",
+            );
+      }
     }
   }
 

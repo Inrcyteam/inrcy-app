@@ -36,6 +36,6 @@ test("l'analyse IA utilise les captures et l'audio sans fabriquer un second film
   assert.match(normalizer, /inputPath:\s*params\.inputPath/);
   assert.match(
     consumption,
-    /pickReadyVariant\(variants, item\.mediaId, "ai_preview"\) \|\|[\s\S]*pickReadyVariant\(variants, item\.mediaId, "canonical"\)/,
+    /pickReadyVariant\(params\.variants, item\.mediaId, "ai_preview"\) \|\|[\s\S]*pickReadyVariant\(params\.variants, item\.mediaId, "canonical"\)/,
   );
 });

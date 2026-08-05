@@ -5,12 +5,26 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+export type BoosterPublishProgressStage =
+  | "request_accepted"
+  | "status_update"
+  | "completed"
+  | "released_to_background";
+
+export type BoosterPublishProgressUpdate = {
+  stage: BoosterPublishProgressStage;
+  publicationId: string | null;
+  payload: JsonRecord;
+  pollAttempt: number;
+};
+
 type BoosterPublishRequestOptions = {
   fetchImpl?: FetchLike;
   sleepImpl?: (ms: number) => Promise<void>;
   maxAttempts?: number;
   maxPollingMs?: number;
   nowImpl?: () => number;
+  onProgress?: (update: BoosterPublishProgressUpdate) => void;
 };
 
 export class BoosterPublishError extends Error {
@@ -85,6 +99,18 @@ function buildConnectionInterruptedError() {
   );
 }
 
+function notifyProgress(
+  callback: BoosterPublishRequestOptions["onProgress"],
+  update: BoosterPublishProgressUpdate,
+) {
+  try {
+    callback?.(update);
+  } catch {
+    // L'affichage de progression est secondaire : une erreur React/UI ne doit
+    // jamais interrompre une publication déjà acceptée par le serveur.
+  }
+}
+
 async function pollQueuedPublication(
   publicationId: string,
   initialPayload: JsonRecord,
@@ -92,6 +118,7 @@ async function pollQueuedPublication(
     Pick<BoosterPublishRequestOptions, "fetchImpl" | "sleepImpl" | "nowImpl">
   > & {
     maxPollingMs: number;
+    onProgress?: BoosterPublishRequestOptions["onProgress"];
   },
 ) {
   const startedAt = options.nowImpl();
@@ -122,10 +149,24 @@ async function pollQueuedPublication(
         { method: "GET", cache: "no-store" },
       );
       const payload = asRecord(await response.json().catch(() => ({})));
-      if (response.ok && payload.done === true) return payload;
+      if (response.ok && payload.done === true) {
+        notifyProgress(options.onProgress, {
+          stage: "completed",
+          publicationId,
+          payload,
+          pollAttempt,
+        });
+        return payload;
+      }
       if (response.ok && payload.queued === true) {
         latestPayload = { ...latestPayload, ...payload };
         consecutiveNetworkErrors = 0;
+        notifyProgress(options.onProgress, {
+          stage: "status_update",
+          publicationId,
+          payload: latestPayload,
+          pollAttempt,
+        });
         continue;
       }
       if (response.status === 404 && elapsedAfterSleep < 12_000) continue;
@@ -149,7 +190,7 @@ async function pollQueuedPublication(
     }
   }
 
-  return {
+  const releasedPayload: JsonRecord = {
     ...latestPayload,
     ok: true,
     done: false,
@@ -158,6 +199,13 @@ async function pollQueuedPublication(
     publication_id: publicationId,
     releasedToBackground: true,
   };
+  notifyProgress(options.onProgress, {
+    stage: "released_to_background",
+    publicationId,
+    payload: releasedPayload,
+    pollAttempt,
+  });
+  return releasedPayload;
 }
 
 export async function postBoosterPublication(
@@ -208,6 +256,12 @@ export async function postBoosterPublication(
     const json = asRecord(await response.json().catch(() => ({})));
     if (response.ok) {
       if (json.queued === true && typeof json.publication_id === "string") {
+        notifyProgress(options.onProgress, {
+          stage: "request_accepted",
+          publicationId: String(json.publication_id),
+          payload: json,
+          pollAttempt: 0,
+        });
         const elapsedBeforePollingMs = Math.max(
           0,
           nowImpl() - requestStartedAt,
@@ -223,8 +277,18 @@ export async function postBoosterPublication(
             resultGraceMs - elapsedBeforePollingMs,
           ),
           nowImpl,
+          onProgress: options.onProgress,
         });
       }
+      notifyProgress(options.onProgress, {
+        stage: "completed",
+        publicationId:
+          typeof json.publication_id === "string"
+            ? String(json.publication_id)
+            : null,
+        payload: json,
+        pollAttempt: 0,
+      });
       return json;
     }
 

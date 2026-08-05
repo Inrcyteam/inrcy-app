@@ -36,6 +36,8 @@ import {
   type VideoFormat,
 } from "../publishModal.shared";
 import { pillBtn, pillBtnActive } from "../publishModal.styles";
+import { getImageChannelAction } from "../imageChannelAssignment";
+import { getVideoChannelAction } from "../videoChannelAssignment";
 import PublishStepTitle from "./PublishStepTitle";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
@@ -115,7 +117,11 @@ type PublishImagesPanelProps = {
   getImageAdapterLabel: (channel: ChannelKey) => string;
   setSynchronizedActiveChannel: (channel: ChannelKey) => void;
   onPickImagesClick: () => void;
+  onPickImagesForChannel: (channel: ChannelKey) => void;
+  onUseExistingImagesForChannel: (channel: ChannelKey) => void;
+  onRemoveImagesFromChannel: (channel: ChannelKey) => void;
   onPickVideoClick: () => void;
+  onPickVideoForChannel: (channel: ChannelKey) => void;
   onTakePhotoClick: (preferredChannel?: ChannelKey) => void;
   toggleChannelImage: (channel: ChannelKey, imageKey: string) => void;
   openImageEditor: (channel: ChannelKey, imageKey: string) => void;
@@ -163,7 +169,11 @@ export default function PublishImagesPanel({
   getImageAdapterLabel,
   setSynchronizedActiveChannel,
   onPickImagesClick,
+  onPickImagesForChannel,
+  onUseExistingImagesForChannel,
+  onRemoveImagesFromChannel,
   onPickVideoClick,
+  onPickVideoForChannel,
   onTakePhotoClick,
   toggleChannelImage,
   openImageEditor,
@@ -179,6 +189,9 @@ export default function PublishImagesPanel({
   const cameraDisabled = !isMobile || imagesLimitReached;
   const getModeForChannel = (channel: ChannelKey): ChannelMediaMode => {
     const explicit = channelMediaModes[channel];
+    const channelHasImages =
+      hasImages &&
+      (channelImageEditors[channel]?.imageKeys?.length || 0) > 0;
 
     // A deliberate per-channel removal must always win, including TikTok and
     // YouTube. The channel remains selected and its readiness explains whether
@@ -189,23 +202,52 @@ export default function PublishImagesPanel({
 
     if (channel === "tiktok") {
       if (explicit === "video" && hasVideoMedia) return "video";
-      if (explicit === "images" && hasImages) return "images";
-      if (hasImages) return "images";
+      if (explicit === "images" && channelHasImages) return "images";
+      if (channelHasImages) return "images";
       if (hasVideoMedia) return "video";
       return "none";
     }
 
     if (explicit === "video" && hasVideoMedia) return "video";
-    if (explicit === "images" && hasImages && channelSupportsImages(channel)) return "images";
+    if (explicit === "images" && channelHasImages && channelSupportsImages(channel)) return "images";
     // Keep a selected channel visible after its media is removed. Required
     // media channels stay active and are blocked only until a replacement is
     // chosen.
-    if (hasImages && channelSupportsImages(channel)) return "images";
+    if (channelHasImages && channelSupportsImages(channel)) return "images";
     if (hasVideoMedia) return "video";
     return "none";
   };
 
+  const mediaAllocation = selectedChannels.reduce(
+    (summary, channel) => {
+      summary[getModeForChannel(channel)] += 1;
+      return summary;
+    },
+    { images: 0, video: 0, none: 0 } as Record<ChannelMediaMode, number>,
+  );
+  const allocationParts = [
+    mediaAllocation.images
+      ? `${mediaAllocation.images} canal${mediaAllocation.images > 1 ? "aux" : ""} avec photos`
+      : "",
+    mediaAllocation.video
+      ? `${mediaAllocation.video} canal${mediaAllocation.video > 1 ? "aux" : ""} avec vidéo`
+      : "",
+    mediaAllocation.none
+      ? `${mediaAllocation.none} canal${mediaAllocation.none > 1 ? "aux" : ""} sans média`
+      : "",
+  ].filter(Boolean);
+
   const activeMode: ChannelMediaMode = getModeForChannel(activeImageChannel);
+  const videoChannelAction = getVideoChannelAction({
+    hasVideoSource: hasVideoMedia,
+    mode: activeMode,
+  });
+  const imageChannelAction = getImageChannelAction({
+    hasImagePool: hasImages,
+    assignedImageCount:
+      channelImageEditors[activeImageChannel]?.imageKeys?.length || 0,
+    mode: activeMode,
+  });
   const activeMediaTab = imageAdapterTabs.find(
     (tab) => tab.key === activeImageChannel,
   );
@@ -257,17 +299,32 @@ export default function PublishImagesPanel({
     return mode;
   };
 
-  const mediaModeButton = (mode: ChannelMediaMode, label: string, disabled = false) => {
+  const mediaModeButton = (
+    mode: ChannelMediaMode,
+    label: string,
+    disabled = false,
+    onActivate?: () => void,
+  ) => {
     const active = activeMode === mode;
     const unsupportedMessage = getUnavailableMediaModeMessage(activeImageChannel, mode);
     const unavailable = Boolean(unsupportedMessage);
     const effectiveDisabled = disabled || unavailable;
+    const accessibleLabel = `${label} pour ${getImageAdapterLabel(activeImageChannel)}`;
     return (
       <button
         type="button"
         disabled={effectiveDisabled}
-        title={unsupportedMessage || undefined}
-        onClick={() => !effectiveDisabled && setChannelMediaMode(activeImageChannel, mode)}
+        aria-label={accessibleLabel}
+        aria-pressed={active}
+        title={unsupportedMessage || accessibleLabel}
+        onClick={() => {
+          if (effectiveDisabled) return;
+          if (onActivate) {
+            onActivate();
+            return;
+          }
+          setChannelMediaMode(activeImageChannel, mode);
+        }}
         style={{
           border: active
             ? "2px solid rgba(76,195,255,0.88)"
@@ -284,7 +341,7 @@ export default function PublishImagesPanel({
           fontWeight: 900,
           cursor: effectiveDisabled ? "not-allowed" : "pointer",
           opacity: effectiveDisabled ? 0.45 : 1,
-          whiteSpace: "nowrap",
+          whiteSpace: isMobile ? "normal" : "nowrap",
           flex: isMobile ? "1 1 0" : "0 0 auto",
           minWidth: 0,
           display: "inline-flex",
@@ -324,9 +381,10 @@ export default function PublishImagesPanel({
       >
         Ajoutez jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
         {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
-        total) ou 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}. Le média
-        déjà utilisé pour la génération est réutilisé ici. Les contrôles et
-        conversions restent limités aux canaux qui en ont réellement besoin.
+        total) + 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}. Chaque
+        canal choisit ensuite Photos, Vidéo ou Aucun indépendamment. Le média déjà
+        utilisé pour la génération est réutilisé ici. Les contrôles et conversions
+        restent limités aux canaux qui en ont réellement besoin.
       </div>
       <div
         style={{
@@ -342,10 +400,11 @@ export default function PublishImagesPanel({
           className={styles.secondaryBtn}
           onClick={onPickImagesClick}
           disabled={pickImagesDisabled}
+          aria-label="Ajouter des images au lot global partagé par les canaux"
           title={
             imagesLimitReached
               ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-              : `${BOOSTER_IMAGE_LIMITS_LABEL} · ${BOOSTER_IMAGE_FORMATS_LABEL}`
+              : `Ajouter au lot global partagé par les canaux · ${BOOSTER_IMAGE_LIMITS_LABEL} · ${BOOSTER_IMAGE_FORMATS_LABEL}`
           }
           style={{
             opacity: pickImagesDisabled ? 0.48 : 1,
@@ -353,7 +412,7 @@ export default function PublishImagesPanel({
             cursor: pickImagesDisabled ? "not-allowed" : "pointer",
           }}
         >
-          + Ajouter des images
+          + Ajouter au lot global
         </button>
         <button
           type="button"
@@ -564,6 +623,33 @@ export default function PublishImagesPanel({
           </div>
 
           <div
+            role="status"
+            aria-label="Répartition actuelle des médias par canal"
+            style={{
+              display: "flex",
+              alignItems: isMobile ? "flex-start" : "center",
+              justifyContent: "space-between",
+              gap: 8,
+              flexDirection: isMobile ? "column" : "row",
+              minWidth: 0,
+              borderRadius: 13,
+              padding: "9px 11px",
+              border: "1px solid rgba(76,195,255,0.2)",
+              background: "rgba(76,195,255,0.07)",
+              color: "rgba(226,245,255,0.9)",
+              fontSize: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            <strong style={{ minWidth: 0 }}>
+              Répartition actuelle · {allocationParts.join(" · ") || "aucun média"}
+            </strong>
+            <span style={{ opacity: 0.7 }}>
+              Cliquez sur un canal, puis choisissez Photos, Vidéo ou Aucun.
+            </span>
+          </div>
+
+          <div
             style={{
               display: "flex",
               gap: isMobile ? 6 : 8,
@@ -573,8 +659,34 @@ export default function PublishImagesPanel({
               minWidth: 0,
             }}
           >
-            {mediaModeButton("video", "Vidéo", !hasVideoMedia)}
-            {mediaModeButton("images", "Photos", !hasImages || !channelSupportsImages(activeImageChannel))}
+            {mediaModeButton(
+              "video",
+              videoChannelAction.label,
+              false,
+              () => {
+                if (videoChannelAction.kind === "pick") {
+                  onPickVideoForChannel(activeImageChannel);
+                  return;
+                }
+                setChannelMediaMode(activeImageChannel, "video");
+              },
+            )}
+            {mediaModeButton(
+              "images",
+              imageChannelAction.label,
+              !channelSupportsImages(activeImageChannel),
+              () => {
+                if (imageChannelAction.kind === "pick") {
+                  onPickImagesForChannel(activeImageChannel);
+                  return;
+                }
+                if (imageChannelAction.kind === "reuse") {
+                  onUseExistingImagesForChannel(activeImageChannel);
+                  return;
+                }
+                setChannelMediaMode(activeImageChannel, "images");
+              },
+            )}
             {mediaModeButton("none", "Aucun", !channelSupportsTextOnly(activeImageChannel))}
           </div>
 
@@ -660,6 +772,31 @@ export default function PublishImagesPanel({
             </div>
           ) : (
             <>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginBottom: 2,
+                }}
+              >
+                <button
+                  type="button"
+                  className={styles.secondaryBtn}
+                  onClick={() =>
+                    onRemoveImagesFromChannel(activeImageChannel)
+                  }
+                  title={`Retirer les images de ${getImageAdapterLabel(activeImageChannel)} sans toucher aux autres canaux`}
+                  aria-label={`Retirer les images de ce canal : ${getImageAdapterLabel(activeImageChannel)}`}
+                  style={{
+                    minHeight: 30,
+                    padding: "4px 10px",
+                    fontSize: 11,
+                    opacity: 0.82,
+                  }}
+                >
+                  Retirer les images de ce canal
+                </button>
+              </div>
               <ChannelImageAdapterCardsPanel
                 tabs={imageAdapterTabs}
                 activeChannel={activeImageChannel}
@@ -776,7 +913,10 @@ export default function PublishImagesPanel({
                     onRemove: included
                       ? () => toggleChannelImage(activeImageChannel, key)
                       : undefined,
+                    removeLabel: "Retirer de ce canal",
                     onRemoveEverywhere: () => removeImage(index),
+                    removeEverywhereLabel:
+                      "Supprimer pour tous les canaux",
                     onMovePrevious:
                       included && selectedKeysForActiveChannel.indexOf(key) > 0
                         ? () => moveChannelImage(activeImageChannel, key, -1)

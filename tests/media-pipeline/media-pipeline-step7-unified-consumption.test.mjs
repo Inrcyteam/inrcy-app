@@ -88,12 +88,14 @@ test("Booster joint le workspace aux trois actions sans retirer l'ancien filet",
 test("Programmer persiste le cycle scheduled et l'exécution repasse par publish-now", () => {
   const scheduled = read("app/api/agent/scheduled-actions/route.ts");
   const cron = read("app/api/cron/inr-agent-scheduled-actions/route.ts");
+  const durableRequest = read("lib/inrAgentScheduledPublication.ts");
   assert.match(scheduled, /publishPayload\.mediaWorkspaceId/);
   assert.match(scheduled, /syncPublicationWorkspaceContext\(/);
   assert.match(scheduled, /operation: "schedule"/);
   assert.match(scheduled, /status: "scheduled"/);
   assert.match(scheduled, /scheduledFor: scheduledAt/);
-  assert.match(cron, /\.\.\.publishPayload/);
+  assert.match(cron, /buildScheduledPublicationRequest\(row\)/);
+  assert.match(durableRequest, /body:\s*\{[\s\S]{0,80}\.\.\.publishPayload/);
   assert.match(cron, /\/api\/booster\/publish-now/);
 });
 
@@ -112,12 +114,20 @@ test("le workspace suit generate, publishing, published et failed", () => {
 
 test("TikTok relit les vidéos dans leur bucket réel et garde le proxy booster", () => {
   const publish = read("app/api/booster/publish-now/route.ts");
-  assert.match(publish, /loadStorageVideoForTikTok\(/);
-  assert.match(publish, /\.from\(cleanBucket\)/);
+  assert.match(publish, /function createTikTokStorageRangeSource\(/);
+  assert.match(publish, /const bucket = String\(video\.bucket \|\| "booster"\)/);
+  assert.match(publish, /\.from\(bucket\)\.getPublicUrl\(storagePath\)/);
+  assert.match(
+    publish,
+    /\.from\(bucket\)\s*\.createSignedUrl\(storagePath,\s*15 \* 60\)/,
+  );
   assert.match(publish, /channelVideo\.bucket === "booster"/);
-  assert.match(publish, /const cleanBucket = String\(bucket \|\| "booster"\)\.trim\(\) \|\| "booster"/);
   assert.match(publish, /String\(candidate\.video\?\.bucket \|\| "booster"\)/);
-  assert.match(publish, /loadStorageVideoForTikTok\(storagePath, bucket\)/);
+  assert.match(publish, /loadFirstAvailableTikTokVideo\(\[/);
+  assert.match(publish, /probeTikTokRangeSource\(\{ source \}\)/);
+  assert.match(publish, /tiktokDirectPostVideoFileUpload\(\{/);
+  assert.match(publish, /rangeSource:\s*tiktokVideoSource!/);
+  assert.match(publish, /onCheckpoint:\s*persistTikTokUploadCheckpoint/);
   assert.match(publish, /buildTiktokMediaProxyUrl\(/);
 });
 

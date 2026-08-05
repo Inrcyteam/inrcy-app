@@ -1,7 +1,10 @@
 import { getPinterestApiBaseUrl } from "@/lib/pinterestOAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { asRecord, asString } from "@/lib/tsSafe";
-import { publishPinterestVideoWithProtocol } from "@/lib/pinterestVideoProtocol";
+import {
+  isPinterestVideoOutcomeUnknown,
+  publishPinterestVideoWithProtocol,
+} from "@/lib/pinterestVideoProtocol";
 import { buildPinterestImageMediaSource } from "@/lib/pinterestImagePinPayload";
 import { preparePinterestCarouselImages } from "@/lib/pinterestCarouselImages";
 import {
@@ -13,7 +16,10 @@ import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { access, chmod, mkdir, readFile, rm, writeFile } from "fs/promises";
+import { createWriteStream, openAsBlob } from "fs";
+import { access, chmod, mkdir, readFile, rm, stat } from "fs/promises";
+import { Readable, Transform } from "stream";
+import { pipeline } from "stream/promises";
 import os from "os";
 import path from "path";
 import ffmpegStaticPath from "ffmpeg-static";
@@ -162,6 +168,7 @@ const execFileAsync = promisify(execFile);
 const PINTEREST_VIDEO_POLICY = getVideoPublicationPolicy("pinterest");
 const PINTEREST_COVER_BUCKET = "booster";
 const PINTEREST_VIDEO_TIMEOUT_MS = 120000;
+const PINTEREST_SOURCE_DOWNLOAD_TIMEOUT_MS = 150000;
 
 function sanitizeStoragePath(value: unknown) {
   const clean = String(value || "")
@@ -212,16 +219,10 @@ function inferPinterestVideoFormat(params: {
   return { extension: "mp4", contentType: "video/mp4", supported: true };
 }
 
-function getBundledFfmpegCandidate() {
-  const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
-  return path.join(process.cwd(), "node_modules", "ffmpeg-static", binaryName);
-}
-
 function getFfmpegCandidates() {
   return [
     process.env.FFMPEG_PATH,
     ffmpegStaticPath,
-    getBundledFfmpegCandidate(),
     "ffmpeg",
   ]
     .map((candidate) => String(candidate || "").trim())
@@ -234,7 +235,7 @@ async function ensureFfmpegAvailable() {
     try {
       if (candidate !== "ffmpeg" && process.platform !== "win32") {
         try {
-          await access(candidate);
+          await access(/* turbopackIgnore: true */ candidate);
           await chmod(candidate, 0o755);
         } catch {
           // Le test -version ci-dessous donnera l'erreur exacte.
@@ -259,35 +260,75 @@ async function ensureFfmpegAvailable() {
 async function downloadPinterestVideoSource(params: {
   videoUrl: string;
   storagePath?: string | null;
+  destinationPath: string;
 }) {
   const storagePath = sanitizeStoragePath(params.storagePath);
+  let videoUrl = normalizePublicUrl(params.videoUrl);
   if (storagePath) {
     const { data, error } = await supabaseAdmin.storage
       .from(PINTEREST_COVER_BUCKET)
-      .download(storagePath);
-    if (!error && data) {
-      const buffer = Buffer.from(await data.arrayBuffer());
-      if (buffer.length) return buffer;
+      .createSignedUrl(storagePath, 60 * 60);
+    const signedUrl = normalizePublicUrl(data?.signedUrl);
+    if (!error && signedUrl) {
+      videoUrl = signedUrl;
     }
   }
 
-  const videoUrl = normalizePublicUrl(params.videoUrl);
   if (!videoUrl) {
     throw new Error("Pinterest nécessite une URL vidéo publique valide.");
   }
-  const response = await fetch(videoUrl, {
-    method: "GET",
-    redirect: "follow",
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Impossible de télécharger la vidéo pour Pinterest (${response.status}).`,
+  const abortController = new AbortController();
+  const timeout = setTimeout(
+    () => abortController.abort(),
+    PINTEREST_SOURCE_DOWNLOAD_TIMEOUT_MS,
+  );
+  try {
+    const response = await fetch(videoUrl, {
+      method: "GET",
+      redirect: "follow",
+      cache: "no-store",
+      signal: abortController.signal,
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(
+        `Impossible de télécharger la vidéo pour Pinterest (${response.status}).`,
+      );
+    }
+    const announcedSize = Number(response.headers.get("content-length") || 0);
+    if (
+      Number.isFinite(announcedSize) &&
+      announcedSize > PINTEREST_VIDEO_POLICY.maxBytes
+    ) {
+      throw new Error(
+        `La vidéo Pinterest dépasse ${PINTEREST_VIDEO_POLICY.maxBytesLabel}, limite source iNrCy.`,
+      );
+    }
+
+    let receivedBytes = 0;
+    const limit = new Transform({
+      transform(chunk, _encoding, callback) {
+        receivedBytes += Buffer.byteLength(chunk);
+        if (receivedBytes > PINTEREST_VIDEO_POLICY.maxBytes) {
+          callback(
+            new Error(
+              `La vidéo Pinterest dépasse ${PINTEREST_VIDEO_POLICY.maxBytesLabel}, limite source iNrCy.`,
+            ),
+          );
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+    await pipeline(
+      Readable.fromWeb(response.body as never),
+      limit,
+      createWriteStream(params.destinationPath, { flags: "wx" }),
     );
+    if (!receivedBytes) throw new Error("La vidéo Pinterest est vide.");
+    return { path: params.destinationPath, size: receivedBytes };
+  } finally {
+    clearTimeout(timeout);
   }
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (!buffer.length) throw new Error("La vidéo Pinterest est vide.");
-  return buffer;
 }
 
 async function uploadPinterestCover(params: {
@@ -322,7 +363,9 @@ async function uploadPinterestCover(params: {
 
 async function preparePinterestVideoAsset(params: {
   userId: string;
-  videoBuffer: Buffer;
+  sourcePath: string;
+  sourceSize: number;
+  tempDir: string;
   videoUrl: string;
   videoContentType?: string | null;
   videoFileName?: string | null;
@@ -338,7 +381,8 @@ async function preparePinterestVideoAsset(params: {
 
   if (!needsFfmpeg) {
     return {
-      videoBuffer: params.videoBuffer,
+      videoPath: params.sourcePath,
+      videoSize: params.sourceSize,
       videoContentType: sourceFormat.contentType,
       videoFileName: sanitizePathSegment(
         params.videoFileName,
@@ -350,12 +394,8 @@ async function preparePinterestVideoAsset(params: {
   }
 
   const ffmpegPath = await ensureFfmpegAvailable();
-  const tempDir = path.join(os.tmpdir(), `inrcy-pinterest-${randomUUID()}`);
-  await mkdir(tempDir, { recursive: true });
-
-  try {
-    const sourcePath = path.join(tempDir, `source.${sourceFormat.extension}`);
-    await writeFile(sourcePath, params.videoBuffer);
+  {
+    const sourcePath = params.sourcePath;
     let finalPath = sourcePath;
     let finalContentType = sourceFormat.contentType;
     let finalFileName = sanitizePathSegment(
@@ -364,7 +404,7 @@ async function preparePinterestVideoAsset(params: {
     );
 
     if (!sourceFormat.supported) {
-      finalPath = path.join(tempDir, "pinterest-video.mp4");
+      finalPath = path.join(params.tempDir, "pinterest-video.mp4");
       await execFileAsync(
         ffmpegPath,
         [
@@ -399,11 +439,11 @@ async function preparePinterestVideoAsset(params: {
       finalFileName = `${path.parse(finalFileName).name || "video-inrcy"}.mp4`;
     }
 
-    const finalBuffer = await readFile(finalPath);
-    if (!finalBuffer.length) {
+    const finalFile = await stat(/* turbopackIgnore: true */ finalPath);
+    if (!finalFile.size) {
       throw new Error("La préparation vidéo Pinterest a produit un fichier vide.");
     }
-    if (finalBuffer.length > PINTEREST_VIDEO_POLICY.maxBytes) {
+    if (finalFile.size > PINTEREST_VIDEO_POLICY.maxBytes) {
       throw new Error(
         `La vidéo préparée pour Pinterest dépasse ${PINTEREST_VIDEO_POLICY.maxBytesLabel}, limite source iNrCy.`,
       );
@@ -412,7 +452,7 @@ async function preparePinterestVideoAsset(params: {
     let coverImageUrl = directCover;
     let coverStoragePath: string | null = null;
     if (!coverImageUrl) {
-      const coverPath = path.join(tempDir, "pinterest-cover.jpg");
+      const coverPath = path.join(params.tempDir, "pinterest-cover.jpg");
       try {
         await execFileAsync(
           ffmpegPath,
@@ -437,7 +477,9 @@ async function preparePinterestVideoAsset(params: {
           { timeout: 30000, maxBuffer: 8 * 1024 * 1024 },
         );
       }
-      const coverBuffer = await readFile(coverPath);
+      const coverBuffer = await readFile(
+        /* turbopackIgnore: true */ coverPath,
+      );
       if (!coverBuffer.length) {
         throw new Error("Pinterest n'a pas pu générer l'image de couverture.");
       }
@@ -450,14 +492,13 @@ async function preparePinterestVideoAsset(params: {
     }
 
     return {
-      videoBuffer: finalBuffer,
+      videoPath: finalPath,
+      videoSize: finalFile.size,
       videoContentType: finalContentType,
       videoFileName: finalFileName,
       coverImageUrl,
       coverStoragePath,
     };
-  } finally {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -539,6 +580,83 @@ export async function createPinterestImagePin({
   };
 }
 
+export function resolvePinterestVideoCoverImageUrl(params: {
+  coverImageUrl?: string | null;
+  coverStoragePath?: string | null;
+}) {
+  // Prefer the public URL rebuilt from the durable storage path. A signed URL
+  // captured in a dispatch payload may expire while Pinterest processes media.
+  return (
+    getBoosterPublicUrl(params.coverStoragePath) ||
+    normalizePublicUrl(params.coverImageUrl)
+  );
+}
+
+export async function withPinterestVideoProtocolAsset<T>(
+  params: {
+    userId: string;
+    videoUrl: string;
+    videoStoragePath?: string | null;
+    videoContentType?: string | null;
+    videoFileName?: string | null;
+    coverImageUrl: string;
+  },
+  consumeAsset: (asset: {
+    videoFile: Blob;
+    videoSize: number;
+    videoContentType: string;
+    videoFileName: string;
+    coverImageUrl: string;
+  }) => Promise<T>,
+) {
+  const cleanVideoUrl = normalizePublicUrl(params.videoUrl);
+  const storagePath = sanitizeStoragePath(params.videoStoragePath);
+  if (!cleanVideoUrl && !storagePath) {
+    throw new Error("Pinterest nécessite une vidéo publique valide.");
+  }
+  const sourceFormat = inferPinterestVideoFormat({
+    contentType: params.videoContentType,
+    fileName: params.videoFileName,
+    videoUrl: cleanVideoUrl,
+  });
+  const tempDir = path.join(os.tmpdir(), `inrcy-pinterest-${randomUUID()}`);
+  await mkdir(tempDir, { recursive: true });
+  try {
+    const source = await downloadPinterestVideoSource({
+      videoUrl: cleanVideoUrl,
+      storagePath,
+      destinationPath: path.join(tempDir, `source.${sourceFormat.extension}`),
+    });
+    const prepared = await preparePinterestVideoAsset({
+      userId: String(params.userId || "").trim(),
+      sourcePath: source.path,
+      sourceSize: source.size,
+      tempDir,
+      videoUrl: cleanVideoUrl,
+      videoContentType: params.videoContentType,
+      videoFileName: params.videoFileName,
+      // The durable route resolves this from thumbnailStoragePath before
+      // registration, so preparation never creates a random replacement cover.
+      coverImageUrl: params.coverImageUrl,
+    });
+    const videoFile = await openAsBlob(
+      /* turbopackIgnore: true */ prepared.videoPath,
+      {
+      type: prepared.videoContentType,
+      },
+    );
+    return await consumeAsset({
+      videoFile,
+      videoSize: prepared.videoSize,
+      videoContentType: prepared.videoContentType,
+      videoFileName: prepared.videoFileName,
+      coverImageUrl: prepared.coverImageUrl,
+    });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 export async function createPinterestVideoPin({
   accessToken,
   userId,
@@ -568,30 +686,37 @@ export async function createPinterestVideoPin({
     throw new Error("Pinterest nécessite une vidéo publique valide.");
   }
 
-  const sourceBuffer = await downloadPinterestVideoSource({
+  const sourceFormat = inferPinterestVideoFormat({
+    contentType: videoContentType,
+    fileName: videoFileName,
     videoUrl: cleanVideoUrl,
-    storagePath: videoStoragePath,
   });
-  if (sourceBuffer.length > PINTEREST_VIDEO_POLICY.maxBytes) {
-    throw new Error(
-      `La vidéo Pinterest dépasse ${PINTEREST_VIDEO_POLICY.maxBytesLabel}, limite source iNrCy.`,
-    );
-  }
+  const tempDir = path.join(os.tmpdir(), `inrcy-pinterest-${randomUUID()}`);
+  await mkdir(tempDir, { recursive: true });
 
-  const prepared = await preparePinterestVideoAsset({
-    userId: cleanUserId,
-    videoBuffer: sourceBuffer,
-    videoUrl: cleanVideoUrl,
-    videoContentType,
-    videoFileName,
-    coverImageUrl: cleanCoverUrl,
-  });
-
-  let protocolResult: Awaited<
-    ReturnType<typeof publishPinterestVideoWithProtocol>
-  >;
   try {
-    protocolResult = await publishPinterestVideoWithProtocol({
+    const source = await downloadPinterestVideoSource({
+      videoUrl: cleanVideoUrl,
+      storagePath: videoStoragePath,
+      destinationPath: path.join(tempDir, `source.${sourceFormat.extension}`),
+    });
+    const prepared = await preparePinterestVideoAsset({
+      userId: cleanUserId,
+      sourcePath: source.path,
+      sourceSize: source.size,
+      tempDir,
+      videoUrl: cleanVideoUrl,
+      videoContentType,
+      videoFileName,
+      coverImageUrl: cleanCoverUrl,
+    });
+    const videoFile = await openAsBlob(
+      /* turbopackIgnore: true */ prepared.videoPath,
+      {
+        type: prepared.videoContentType,
+      },
+    );
+    const protocolResult = await publishPinterestVideoWithProtocol({
       apiBaseUrl: getPinterestApiBaseUrl(),
       accessToken: token,
       boardId: cleanBoardId,
@@ -599,11 +724,30 @@ export async function createPinterestVideoPin({
       description: cleanMultilineText(description || "", 500),
       link: normalizePublicUrl(link) || null,
       coverImageUrl: prepared.coverImageUrl,
-      videoBytes: new Uint8Array(prepared.videoBuffer),
+      videoFile,
+      videoSize: prepared.videoSize,
       videoContentType: prepared.videoContentType,
       videoFileName: prepared.videoFileName,
     });
+
+    const json = asRecord(protocolResult.pin);
+    const id = asString(json.id) || asString(json.pin_id) || null;
+
+    return {
+      ok: true,
+      id,
+      url: asString(json.url) || asString(json.link) || buildPinterestPinUrl(id),
+      board_id: asString(json.board_id) || cleanBoardId,
+      media_id: protocolResult.mediaId,
+      media_status: protocolResult.mediaStatus,
+      media_type: "video",
+      cover_image_url: prepared.coverImageUrl,
+    };
   } catch (protocolError) {
+    // Pinterest does not expose an idempotency key for Create Pin. Preserve the
+    // durable protocol error so the worker can checkpoint/reconcile it instead
+    // of wrapping it as a generic error that a cron might replay blindly.
+    if (isPinterestVideoOutcomeUnknown(protocolError)) throw protocolError;
     const source =
       protocolError instanceof Error
         ? protocolError.message
@@ -627,21 +771,9 @@ export async function createPinterestVideoPin({
     wrapped.pinterestCode = asString(sourceRecord.pinterestCode) || null;
     wrapped.pinterestRawMessage = source || null;
     throw wrapped;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
-
-  const json = asRecord(protocolResult.pin);
-  const id = asString(json.id) || asString(json.pin_id) || null;
-
-  return {
-    ok: true,
-    id,
-    url: asString(json.url) || asString(json.link) || buildPinterestPinUrl(id),
-    board_id: asString(json.board_id) || cleanBoardId,
-    media_id: protocolResult.mediaId,
-    media_status: protocolResult.mediaStatus,
-    media_type: "video",
-    cover_image_url: prepared.coverImageUrl,
-  };
 }
 
 export type PinterestUpdatePinArgs = {

@@ -34,6 +34,32 @@ export type GenerationProgressPhaseKey =
 export type PublicationProgressPhaseKey =
   (typeof PUBLICATION_PROGRESS_PHASES)[number]["key"];
 
+// Les phases techniques ci-dessus gardent des plafonds précis. L'interface
+// les regroupe en quatre étapes compréhensibles par le pro.
+export const PUBLICATION_PROGRESS_STAGES = [
+  { index: 1, label: "Demande prise en charge" },
+  { index: 2, label: "Finalisation des médias" },
+  { index: 3, label: "Envoi parallèle" },
+  { index: 4, label: "Confirmations et bilan" },
+] as const;
+
+export function getPublicationProgressStage(
+  key: PublicationProgressPhaseKey,
+) {
+  if (key === "verification") return PUBLICATION_PROGRESS_STAGES[0];
+  if (
+    key === "media_preparation" ||
+    key === "channel_compatibility" ||
+    key === "file_preparation"
+  ) {
+    return PUBLICATION_PROGRESS_STAGES[1];
+  }
+  if (key === "channel_dispatch" || key === "publication_finalization") {
+    return PUBLICATION_PROGRESS_STAGES[2];
+  }
+  return PUBLICATION_PROGRESS_STAGES[3];
+}
+
 export function clampProgress(value: number, minimum = 0, maximum = 100) {
   const safeMinimum = Math.min(minimum, maximum);
   const safeMaximum = Math.max(minimum, maximum);

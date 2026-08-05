@@ -8,6 +8,7 @@ import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/faceboo
 import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, instagramPublishVideoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText, linkedinPublishVideo, linkedinResharePost } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
+import { isGoogleBusinessPostOutcomeUnknown } from "@/lib/googleBusinessPostTransport";
 import { filterGoogleBusinessMediaUrls } from "@/lib/googleBusinessMediaProbe";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { createHash, randomUUID } from "crypto";
@@ -1616,6 +1617,12 @@ async function replaceChannelDelivery(params: {
       try {
         resp = await publishGmb();
       } catch (gmbFirstError: unknown) {
+        // La création Local Post n'a pas de clé d'idempotence provider. Si le
+        // POST a pu atteindre Google mais que sa réponse a été perdue, un
+        // fallback immédiat sans média/CTA pourrait créer un second post.
+        if (isGoogleBusinessPostOutcomeUnknown(gmbFirstError)) {
+          throw gmbFirstError;
+        }
         const retryWarnings: Array<{ code: string; message: string; publish: () => Promise<unknown> }> = [];
 
         if (hasMedia && !isVideoPublication) {
@@ -1655,6 +1662,9 @@ async function replaceChannelDelivery(params: {
             lastRetryError = null;
             break;
           } catch (retryError: unknown) {
+            if (isGoogleBusinessPostOutcomeUnknown(retryError)) {
+              throw retryError;
+            }
             lastRetryError = retryError;
           }
         }

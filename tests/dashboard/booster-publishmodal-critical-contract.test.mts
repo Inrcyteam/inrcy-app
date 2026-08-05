@@ -43,11 +43,11 @@ test("generation waits only for selected AI media while publication and scheduli
   );
   assert.match(
     publishModal,
-    /waitForPersistentWorkspaceReadiness\("publish"/,
+    /waitForPersistentWorkspaceReadiness\(\s*"publish"/,
   );
   assert.match(
     publishModal,
-    /waitForPersistentWorkspaceReadiness\("schedule"/,
+    /waitForPersistentWorkspaceReadiness\(\s*"schedule"/,
   );
   assert.match(publishModal, /loadMediaPublicationWorkspace\(/);
   assert.match(persistentWorkspace, /prepareMediaPublicationWorkspace\(/);
@@ -134,7 +134,13 @@ test("cutover records the format choice and defers every technical adaptation un
 
 test("workspace uploads are serialized, abortable and bounded", () => {
   assert.match(persistentWorkspace, /operationVersionRef/);
-  assert.match(persistentWorkspace, /operationAbortRef\.current\?\.abort\(\)/);
+  assert.match(
+    persistentWorkspace,
+    /operationAbortRef\.current\[mediaType\]\?\.abort\(\)/,
+  );
+  assert.match(persistentWorkspace, /beginWorkspaceFamilyMutation/);
+  assert.match(persistentWorkspace, /beginWorkspaceGlobalClear/);
+  assert.match(persistentWorkspace, /replaceWorkspaceMediaFamilyStates/);
   assert.match(persistentWorkspace, /await previousTask\.catch/);
   assert.match(
     persistentWorkspace,

@@ -11,7 +11,10 @@ import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
-import { postBoosterPublication } from "@/lib/boosterPublishClient";
+import {
+  postBoosterPublication,
+  type BoosterPublishProgressUpdate,
+} from "@/lib/boosterPublishClient";
 import { mergePreflightFailuresIntoPublicationSummary } from "@/lib/boosterPublicationOutcome";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import PublishModal from "../booster/publier/PublishModal";
@@ -259,8 +262,17 @@ export default function DashboardBoosterModalLayer({
         const maxPollingMs = Number.isFinite(requestedVisibleWaitMs)
           ? Math.max(0, Math.min(90_000, requestedVisibleWaitMs))
           : undefined;
+        const onPublicationProgress =
+          typeof payload._onPublicationProgress === "function"
+            ? (payload._onPublicationProgress as (
+                update: BoosterPublishProgressUpdate,
+              ) => void)
+            : undefined;
         const publishPayload = { ...payload };
         delete publishPayload._clientVisibleWaitMs;
+        // Callback strictement local : ne jamais le sérialiser ni l'envoyer à
+        // l'API de publication.
+        delete publishPayload._onPublicationProgress;
         const json = await postBoosterPublication(
           {
           ...publishPayload,
@@ -273,7 +285,7 @@ export default function DashboardBoosterModalLayer({
             workflowAction: payload.origin?.workflowAction || "publier",
           },
           },
-          { maxPollingMs },
+          { maxPollingMs, onProgress: onPublicationProgress },
         );
 
         const summary = (json?.summary || null) as Record<string, any> | null;

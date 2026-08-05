@@ -100,6 +100,8 @@ test("idempotency keys stay scoped to manual Booster publishing", () => {
 test("queued publication returns immediately when every channel finishes before the grace window", async () => {
   let now = 0;
   let statusCalls = 0;
+  const progressStages: string[] = [];
+  const progressPendingCounts: number[] = [];
   const result = await postBoosterPublication(
     { channels: ["facebook", "linkedin"] },
     {
@@ -107,6 +109,15 @@ test("queued publication returns immediately when every channel finishes before 
       nowImpl: () => now,
       sleepImpl: async (ms) => {
         now += ms;
+      },
+      onProgress: (update) => {
+        progressStages.push(update.stage);
+        const summary = update.payload.summary as
+          | Record<string, unknown>
+          | undefined;
+        if (summary && Number.isFinite(Number(summary.pendingCount))) {
+          progressPendingCounts.push(Number(summary.pendingCount));
+        }
       },
       fetchImpl: async (input, init) => {
         if (String(input) === "/api/booster/publish-now") {
@@ -149,11 +160,18 @@ test("queued publication returns immediately when every channel finishes before 
   assert.equal(result.done, true);
   assert.equal(result.releasedToBackground, undefined);
   assert.equal(now, 4_500);
+  assert.deepEqual(progressStages, [
+    "request_accepted",
+    "status_update",
+    "completed",
+  ]);
+  assert.deepEqual(progressPendingCounts, [1, 0]);
 });
 
 test("queued publication caps the normal visible wait at 60 seconds and preserves the partial balance", async () => {
   let now = 0;
   let statusCalls = 0;
+  const progressStages: string[] = [];
   const result = await postBoosterPublication(
     { channels: ["site", "inr_search", "facebook", "linkedin", "instagram", "gmb", "pinterest", "youtube_shorts", "tiktok", "wordpress"] },
     {
@@ -162,6 +180,7 @@ test("queued publication caps the normal visible wait at 60 seconds and preserve
       sleepImpl: async (ms) => {
         now += ms;
       },
+      onProgress: (update) => progressStages.push(update.stage),
       fetchImpl: async (input) => {
         if (String(input) === "/api/booster/publish-now") {
           return new Response(
@@ -200,6 +219,12 @@ test("queued publication caps the normal visible wait at 60 seconds and preserve
   assert.equal(result.releasedToBackground, true);
   assert.equal((result.summary as Record<string, unknown>)?.successCount, 8);
   assert.equal((result.summary as Record<string, unknown>)?.pendingCount, 2);
+  assert.equal(progressStages[0], "request_accepted");
+  assert.equal(progressStages.at(-1), "released_to_background");
+  assert.equal(
+    progressStages.filter((stage) => stage === "status_update").length,
+    statusCalls,
+  );
 });
 
 test("the initial queued acknowledgement is included in the visible balance window", async () => {

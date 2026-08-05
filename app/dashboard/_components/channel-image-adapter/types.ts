@@ -71,6 +71,7 @@ export type CardItem = {
   onRemove?: () => void;
   removeLabel?: string;
   onRemoveEverywhere?: () => void;
+  removeEverywhereLabel?: string;
   onReset?: () => void;
   onMovePrevious?: () => void;
   onMoveNext?: () => void;

@@ -171,6 +171,8 @@ export async function probeVideoSource(params: {
   fallbackWidth?: number | null;
   fallbackHeight?: number | null;
   fallbackDurationSeconds?: number | null;
+  timeoutMs?: number;
+  inputOptions?: readonly string[];
 }): Promise<VideoSourceProbe> {
   let stderr = "";
   try {
@@ -179,6 +181,7 @@ export async function probeVideoSource(params: {
       [
         "-hide_banner",
         "-nostdin",
+        ...(params.inputOptions || []),
         "-i",
         params.inputPath,
         "-map",
@@ -189,7 +192,10 @@ export async function probeVideoSource(params: {
         "null",
         "-",
       ],
-      { timeout: FFMPEG_PROBE_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+      {
+        timeout: Math.max(1_000, Number(params.timeoutMs || FFMPEG_PROBE_TIMEOUT_MS)),
+        maxBuffer: 4 * 1024 * 1024,
+      },
     );
     stderr = String(result.stderr || "");
   } catch (error) {

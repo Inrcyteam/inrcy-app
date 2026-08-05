@@ -24,7 +24,9 @@ test("publication creates one durable technical task per channel and returns 202
 
 test("each channel has its own idempotent worker and final aggregate", () => {
   assert.match(publishRoute, /BOOSTER_ASYNC_CHANNEL_SCOPE/);
-  assert.match(publishRoute, /idempotencyKey: `\$\{publicationId\}:\$\{channel\}`/);
+  assert.match(publishRoute, /const channelIdempotencyKey =/);
+  assert.match(publishRoute, /idempotencyKey: channelIdempotencyKey/);
+  assert.match(publishRoute, /`\$\{publicationId\}:\$\{channel\}`/);
   assert.match(publishRoute, /updateAsyncChannelEvent/);
   assert.match(publishRoute, /finalizeAsyncPublicationIfReady/);
   assert.match(asyncLib, /channelEventIds/);
@@ -68,9 +70,11 @@ test("a one-minute cron recovers queued jobs and only stale processing workers",
   assert.match(vercel, /\*\/1 \* \* \* \*/);
 });
 
-test("technical async events stay hidden from iNrSend until finalization", () => {
+test("the durable async parent is visible as processing until its terminal aggregate", () => {
   assert.match(history, /"publish_async_job"/);
   assert.match(history, /"publish_async_channel"/);
+  assert.match(history, /String\(e\.type \|\| ""\) === "publish_async_job"/);
+  assert.match(history, /isAsyncPublication[\s\S]{0,1200}: "processing"/);
   assert.match(history, /payloadStatus === "partial"/);
   assert.match(history, /payloadStatus === "failed"/);
 });

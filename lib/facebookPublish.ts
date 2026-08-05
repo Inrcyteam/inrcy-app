@@ -188,20 +188,14 @@ export async function facebookPublishToPage(params: {
   }
 }
 
-async function fetchMediaBlob(mediaUrl: string, fallbackType = "application/octet-stream"): Promise<Blob> {
-  if (mediaUrl.startsWith("data:")) {
-    const m = mediaUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!m) throw new Error("Média invalide.");
-    return new Blob([Buffer.from(m[2] || "", "base64")], { type: m[1] || fallbackType });
+function normalizeHostedFacebookVideoUrl(value: string) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.toString();
+  } catch {
+    return null;
   }
-
-  const mediaRes = await fetch(mediaUrl, { cache: "no-store" });
-  if (!mediaRes.ok) {
-    throw new Error(`Impossible de récupérer la vidéo pour Facebook (${mediaRes.status}).`);
-  }
-  const ab = await mediaRes.arrayBuffer();
-  const contentType = mediaRes.headers.get("content-type") || fallbackType;
-  return new Blob([ab], { type: contentType });
 }
 
 export async function facebookPublishVideoToPage(params: {
@@ -228,13 +222,12 @@ export async function facebookPublishVideoToPage(params: {
     };
   }
 
-  let videoBlob: Blob;
-  try {
-    videoBlob = await fetchMediaBlob(videoUrl, "video/mp4");
-  } catch (e: any) {
+  const hostedVideoUrl = normalizeHostedFacebookVideoUrl(videoUrl);
+  if (!hostedVideoUrl) {
     return {
       ok: false,
-      error: e?.message || "Impossible de récupérer la vidéo pour Facebook.",
+      error:
+        "La vidéo Facebook doit d'abord être enregistrée dans l'espace média.",
       safeTextFallback: true,
     };
   }
@@ -244,7 +237,10 @@ export async function facebookPublishVideoToPage(params: {
     form.append("access_token", pageAccessToken);
     form.append("description", description || "");
     if (title?.trim()) form.append("title", title.trim().slice(0, 120));
-    form.append("source", videoBlob, "video-inrcy.mp4");
+    // Meta ingests the object directly from the signed Supabase URL. A 300 MB
+    // source therefore never crosses the Vercel heap and is not downloaded a
+    // second time before the provider upload.
+    form.append("file_url", hostedVideoUrl);
 
     const uploadRes = await fetch(
       buildMetaGraphUrl(`${encodeURIComponent(pageId)}/videos`),

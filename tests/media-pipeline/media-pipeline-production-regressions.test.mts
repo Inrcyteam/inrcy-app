@@ -81,7 +81,7 @@ test("la consommation IA répare les anciennes variantes et charge les cinq imag
   assert.match(source, /AI_PROVIDER_SAFE_CONCURRENCY\s*=\s*3/);
   assert.match(
     source,
-    /mapWithConcurrency\(\s*selectedMedia,\s*AI_PROVIDER_SAFE_CONCURRENCY/,
+    /mapWithConcurrency\(\s*params\.items,\s*AI_PROVIDER_SAFE_CONCURRENCY/,
   );
   assert.match(source, /type:\s*"image\/jpeg"/);
 });

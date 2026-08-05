@@ -97,8 +97,14 @@ test("publier finalise après le clic tandis que la programmation garde sa récu
     "app/api/booster/publish-now/route.ts",
   );
 
-  assert.match(modal, /waitForPersistentWorkspaceReadiness\("publish"/);
-  assert.match(modal, /waitForPersistentWorkspaceReadiness\("schedule"/);
+  assert.match(
+    modal,
+    /waitForPersistentWorkspaceReadiness\(\s*"publish"/,
+  );
+  assert.match(
+    modal,
+    /waitForPersistentWorkspaceReadiness\(\s*"schedule"/,
+  );
   assert.match(modal, /async function ensureCutoverVideoVariantsReady/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);

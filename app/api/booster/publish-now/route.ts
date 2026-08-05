@@ -18,9 +18,17 @@ import {
 import {
   instagramPublishCarouselWithTokenFallback,
   instagramPublishPhotoWithTokenFallback,
-  instagramPublishVideoWithTokenFallback,
   isInstagramAuthorizationErrorResult,
 } from "@/lib/instagramPublish";
+import {
+  buildInstagramVideoRequestFingerprint,
+  instagramCreateVideoCheckpointWithTokenFallback,
+  instagramPollVideoCheckpointWithTokenFallback,
+  instagramPublishVideoCheckpointWithTokenFallback,
+  parseInstagramVideoPublishCheckpoint,
+  type InstagramVideoPhaseResult,
+  type InstagramVideoPublishCheckpoint,
+} from "@/lib/instagramVideoPublishPhases";
 import {
   linkedinPublishImage,
   linkedinPublishMultiImage,
@@ -29,6 +37,8 @@ import {
   linkedinResharePost,
 } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
+import { isGoogleBusinessPostOutcomeUnknown } from "@/lib/googleBusinessPostTransport";
+import { buildDeterministicPublicationChildId } from "@/lib/deterministicPublicationId";
 import { findSimilarUpcomingScheduledPublication } from "@/lib/scheduledPublicationDedupe";
 import {
   acquireExecutionIdempotencyLock,
@@ -75,16 +85,41 @@ import {
   type TiktokPublicationSettings,
 } from "@/lib/tiktokPublish";
 import {
+  probeTikTokRangeSource,
+  type TikTokRangeSource,
+  type TikTokVideoUploadCheckpoint,
+} from "@/lib/tiktokRangeUpload";
+import {
   fetchYoutubeMineChannel,
   isYoutubeShortsIntegrationActive,
   refreshYoutubeShortsAccessToken,
 } from "@/lib/youtubeShortsOAuth";
-import { uploadYoutubeShort } from "@/lib/youtubeShortsPublish";
-import { getPinterestAccessToken } from "@/lib/pinterestOAuth";
+import {
+  createYoutubeResumableUploadCheckpoint,
+  parseYoutubeResumableUploadCheckpoint,
+  resumeYoutubeResumableUploadCheckpoint,
+  uploadYoutubeShort,
+  type YoutubeResumableUploadCheckpoint,
+  type YoutubeResumableUploadPhaseResult,
+  type YoutubeShortsUploadInput,
+  type YoutubeShortsUploadResult,
+} from "@/lib/youtubeShortsPublish";
+import {
+  getPinterestAccessToken,
+  getPinterestApiBaseUrl,
+} from "@/lib/pinterestOAuth";
 import {
   createPinterestImagePin,
   createPinterestVideoPin,
+  resolvePinterestVideoCoverImageUrl,
+  withPinterestVideoProtocolAsset,
 } from "@/lib/pinterestPublish";
+import {
+  advancePinterestVideoProtocol,
+  type PinterestVideoDurableProtocolArgs,
+  type PinterestVideoDurableStepResult,
+  type PinterestVideoProtocolCheckpoint,
+} from "@/lib/pinterestVideoProtocol";
 import {
   buildVideoSettingsByChannel,
   getAutomaticVideoSettingsForPublication,
@@ -105,8 +140,12 @@ import {
 import { prepareWorkspaceMediaForPublication } from "@/lib/mediaWorkspacePublicationPreparation";
 import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import { prepareBoosterImagesByChannelOnServer } from "@/lib/boosterImageServerPreparation";
-import { prepareBoosterVideoVariantsOnServer } from "@/lib/boosterVideoVariantServer";
+import {
+  prepareBoosterVideoVariantsOnServer,
+  probeStoredBoosterVideoForPublication,
+} from "@/lib/boosterVideoVariantServer";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { applyServerVideoFallbackAttestation } from "@/lib/boosterVideoFallbackAttestation";
 import {
   YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS,
   getYoutubePublicationTypeForDuration,
@@ -498,6 +537,18 @@ async function publishNowHandler(req: Request) {
       ).trim();
       return mode === "images" || mode === "video";
     });
+    const requestedImageChannels = dispatchableSelected.filter((channel) => {
+      const mode = String(
+        rawRequestedModes[channel] || requestedMediaType,
+      ).trim();
+      return mode === "images";
+    });
+    const requestedVideoChannels = dispatchableSelected.filter((channel) => {
+      const mode = String(
+        rawRequestedModes[channel] || requestedMediaType,
+      ).trim();
+      return mode === "video";
+    });
     let workspaceConsumption: WorkspacePublicationConsumption | null = null;
     let workspaceFallbackCode = "";
     let workspacePreparationState: Awaited<
@@ -519,9 +570,23 @@ async function publishNowHandler(req: Request) {
       requestedMediaChannels.forEach((channel) =>
         deferredPreparationChannels.add(channel),
       );
+    } else if (
+      internalAsyncPreparationDispatch &&
+      Number(body._asyncPreparationAttempt || 1) <= 2 &&
+      requestedImageChannels.length > 0 &&
+      requestedVideoChannels.length > 0
+    ) {
+      // A remote video attestation/transcode must never hold image channels.
+      // Attempt 1 materializes images; the durable next attempt owns video.
+      requestedVideoChannels.forEach((channel) =>
+        deferredPreparationChannels.add(channel),
+      );
     }
 
-    if (mediaWorkspaceId && deferredPreparationChannels.size === 0) {
+    const hasActiveRequestedMedia = requestedMediaChannels.some(
+      (channel) => !deferredPreparationChannels.has(channel),
+    );
+    if (mediaWorkspaceId && hasActiveRequestedMedia) {
       try {
         if (
           internalAsyncPreparationDispatch &&
@@ -627,10 +692,12 @@ async function publishNowHandler(req: Request) {
         !deferredPreparationChannels.has(channel) &&
         !terminalWorkspaceMediaChannels.has(channel),
     );
+    const workspaceHasImages = Boolean(workspaceConsumption?.images.length);
+    const workspaceHasVideo = Boolean(workspaceConsumption?.video);
 
     let mediaType = requestedMediaType;
-    if (workspaceConsumption?.mediaType === "video") mediaType = "video";
-    if (workspaceConsumption?.mediaType === "images") mediaType = "images";
+    if (workspaceHasVideo && !workspaceHasImages) mediaType = "video";
+    if (workspaceHasImages && !workspaceHasVideo) mediaType = "images";
 
     const bubbleAccess = await getAppBubbleAccessMapForUser(
       supabaseAdmin as any,
@@ -747,7 +814,8 @@ async function publishNowHandler(req: Request) {
           });
           return;
         }
-        if (workspaceConsumption?.mediaType === expectedMode) return;
+        if (expectedMode === "images" && workspaceHasImages) return;
+        if (expectedMode === "video" && workspaceHasVideo) return;
         if (expectedMode === "images" && hasImageFallbackForChannel(channel)) {
           return;
         }
@@ -769,7 +837,8 @@ async function publishNowHandler(req: Request) {
       : [];
     if (
       hasAnyImageChannel &&
-      workspaceConsumption?.mediaType === "images" &&
+      workspaceHasImages &&
+      workspaceConsumption &&
       workspaceConsumption.images.length
     ) {
       images = workspaceConsumption.images;
@@ -785,7 +854,8 @@ async function publishNowHandler(req: Request) {
     if (
       strictMediaCutover &&
       hasAnyImageChannel &&
-      workspaceConsumption?.mediaType === "images"
+      workspaceHasImages &&
+      workspaceConsumption
     ) {
       const imageChannels = activePreparationSelected.filter(
         (channel) =>
@@ -850,10 +920,12 @@ async function publishNowHandler(req: Request) {
         };
     let publicationVideo = legacyVideoResult.video;
     let videoPayloadError = legacyVideoResult.error;
+    let fallbackVideoCompatibilityProbedByServer = false;
 
     if (
       hasAnyVideoChannel &&
-      workspaceConsumption?.mediaType === "video" &&
+      workspaceHasVideo &&
+      workspaceConsumption &&
       workspaceConsumption.video
     ) {
       const workspaceVideoResult = await normalizeVideoPayload(
@@ -885,6 +957,44 @@ async function publishNowHandler(req: Request) {
     }
 
     if (
+      internalAsyncPreparationDispatch &&
+      hasAnyVideoChannel &&
+      publicationVideo &&
+      !workspaceHasVideo
+    ) {
+      try {
+        const fallbackProbe = await probeStoredBoosterVideoForPublication({
+          accountId: userId,
+          bucket: publicationVideo.bucket,
+          storagePath: publicationVideo.storagePath,
+        });
+        publicationVideo = applyServerVideoFallbackAttestation(
+          publicationVideo,
+          fallbackProbe,
+        );
+        fallbackVideoCompatibilityProbedByServer = true;
+        videoPayloadError = undefined;
+      } catch (fallbackProbeError) {
+        console.warn("[booster-publish] durable fallback video probe failed", {
+          publicationId: asyncPublicationId,
+          storagePath: publicationVideo.storagePath,
+          message:
+            fallbackProbeError instanceof Error
+              ? fallbackProbeError.message
+              : String(fallbackProbeError || ""),
+        });
+        // Keep only video channels in the durable preparation phase. Images
+        // and text already leave independently; the cron retries the bounded
+        // Storage probe and eventually reports a per-channel failure.
+        if (internalAsyncPreparationDispatch) {
+          activePreparationSelected
+            .filter((channel) => mediaModeByChannel[channel] === "video")
+            .forEach((channel) => deferredPreparationChannels.add(channel));
+        }
+      }
+    }
+
+    if (
       publicationVideo &&
       activePreparationSelected.includes("youtube_shorts") &&
       mediaModeByChannel.youtube_shorts === "video"
@@ -894,7 +1004,7 @@ async function publishNowHandler(req: Request) {
           channel: "youtube_shorts",
           settings: videoSettingsByChannel.youtube_shorts,
           durationSeconds:
-            workspaceConsumption?.mediaType === "video" &&
+            workspaceHasVideo &&
             (publicationVideo.sourceMetadata?.compatibilityProof ===
               "server_ffmpeg" ||
               publicationVideo.sourceMetadata?.compatibilityProof ===
@@ -909,7 +1019,10 @@ async function publishNowHandler(req: Request) {
     // derivative produced by our pipeline). Never let client codec/FPS,
     // dimensions or duration authorize _or block_ the final dispatch.
     const hasTrustedPublicationVideoCompatibilityProof = Boolean(
-      workspaceConsumption?.mediaType === "video" &&
+      (workspaceHasVideo ||
+        fallbackVideoCompatibilityProbedByServer ||
+        (internalAsyncDispatch &&
+          body._asyncTrustedVideoCompatibilityProof === true)) &&
         (publicationVideo?.sourceMetadata?.compatibilityProof ===
           "server_ffmpeg" ||
           publicationVideo?.sourceMetadata?.compatibilityProof ===
@@ -931,6 +1044,7 @@ async function publishNowHandler(req: Request) {
         .filter(
           (channel) =>
             mediaModeByChannel[channel] === "video" &&
+            !deferredPreparationChannels.has(channel) &&
             !preflightFailuresByChannel[channel],
         )
         .flatMap((channel) => {
@@ -1112,6 +1226,7 @@ async function publishNowHandler(req: Request) {
         .filter(
           (channel) =>
             mediaModeByChannel[channel] === "video" &&
+            !deferredPreparationChannels.has(channel) &&
             !preflightFailuresByChannel[channel],
         )
         .flatMap((channel) => {
@@ -1501,7 +1616,7 @@ async function publishNowHandler(req: Request) {
     const hadAnyImageInput =
       hasAnyImageChannel &&
       (images.length > 0 ||
-        workspaceConsumption?.mediaType === "images" ||
+        workspaceHasImages ||
         Object.values(imagesByChannel).some(
           (value) => Array.isArray(value) && value.length > 0,
         ));
@@ -1513,11 +1628,38 @@ async function publishNowHandler(req: Request) {
 
     if (internalAsyncDispatch) {
       const channel = selected[0];
+      const instagramVideoContinuationAttempt = Math.max(
+        0,
+        Math.floor(Number(body._instagramVideoContinuationAttempt || 0)),
+      );
+      const youtubeUploadContinuationAttempt = Math.max(
+        0,
+        Math.floor(Number(body._youtubeUploadContinuationAttempt || 0)),
+      );
+      const pinterestVideoContinuationAttempt = Math.max(
+        0,
+        Math.floor(Number(body._pinterestVideoContinuationAttempt || 0)),
+      );
+      const channelIdempotencyKey =
+        channel === "instagram" &&
+        Object.keys(asRecord(body._instagramVideoCheckpoint)).length > 0 &&
+        instagramVideoContinuationAttempt > 0
+          ? `${publicationId}:${channel}:video:${instagramVideoContinuationAttempt}`
+          : channel === "youtube_shorts" &&
+              Object.keys(asRecord(body._youtubeUploadCheckpoint)).length > 0 &&
+              youtubeUploadContinuationAttempt > 0
+            ? `${publicationId}:${channel}:video:${youtubeUploadContinuationAttempt}`
+            : channel === "pinterest" &&
+                body._pinterestVideoCheckpoint !== null &&
+                body._pinterestVideoCheckpoint !== undefined &&
+                pinterestVideoContinuationAttempt > 0
+              ? `${publicationId}:${channel}:video:${pinterestVideoContinuationAttempt}`
+              : `${publicationId}:${channel}`;
       const channelExecution = await acquireExecutionIdempotencyLock({
         supabase: supabaseAdmin,
         userId,
         scope: BOOSTER_ASYNC_CHANNEL_SCOPE,
-        idempotencyKey: `${publicationId}:${channel}`,
+        idempotencyKey: channelIdempotencyKey,
         ttlMs: BOOSTER_ASYNC_CHANNEL_LOCK_TTL_MS,
         metadata: {
           publicationId,
@@ -1977,6 +2119,11 @@ async function publishNowHandler(req: Request) {
             _asyncParentIdempotencyLockId: publishIdempotencyLockId || null,
             _asyncParentIdempotencyKey: publishIdempotencyKey || null,
             _asyncWorkspacePurpose: workspacePurpose,
+            // Ce bit n'est honoré que par une requête cron authentifiée. Il
+            // transporte jusqu'au worker canal la preuve FFmpeg/canonique déjà
+            // matérialisée par ce worker de préparation, sans relire le workspace.
+            _asyncTrustedVideoCompatibilityProof:
+              hasTrustedPublicationVideoCompatibilityProof,
           };
           return {
             id: channelEventIds[channel],
@@ -2372,23 +2519,51 @@ async function publishNowHandler(req: Request) {
       }
     }
 
-    async function loadStorageVideoForTikTok(
-      storagePath: string,
-      bucket = "booster",
+    function getTikTokStorageContentType(
+      video: PersistedVideoAttachment,
     ) {
-      const cleanPath = String(storagePath || "").trim();
-      const cleanBucket = String(bucket || "booster").trim() || "booster";
-      if (!cleanPath) return null;
-      const { data, error } = await supabaseAdmin.storage
-        .from(cleanBucket)
-        .download(cleanPath);
-      if (error || !data) return null;
-      const buffer = Buffer.from(await data.arrayBuffer());
-      if (!buffer.length) return null;
+      const declared = String(video.type || "")
+        .split(";", 1)[0]
+        .trim()
+        .toLowerCase();
+      if (["video/mp4", "video/quicktime", "video/webm"].includes(declared)) {
+        return declared;
+      }
+      const name = String(video.name || video.storagePath || "").toLowerCase();
+      if (name.endsWith(".webm")) return "video/webm";
+      if (name.endsWith(".mov")) return "video/quicktime";
+      return "video/mp4";
+    }
+
+    function createTikTokStorageRangeSource(
+      video: PersistedVideoAttachment,
+    ): TikTokRangeSource | null {
+      const storagePath = String(video.storagePath || "").trim();
+      const bucket = String(video.bucket || "booster").trim() || "booster";
+      if (!storagePath) return null;
       return {
-        buffer,
-        contentType: data.type || "application/octet-stream",
-        size: buffer.length,
+        sourceKey: `supabase:${bucket}:${storagePath}`,
+        declaredContentType: getTikTokStorageContentType(video),
+        getUrl: async () => {
+          if (bucket === "booster") {
+            const publicUrl =
+              supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath).data
+                .publicUrl || "";
+            if (!publicUrl) {
+              throw new Error("tiktok_storage_public_url_missing");
+            }
+            return publicUrl;
+          }
+          const signed = await supabaseAdmin.storage
+            .from(bucket)
+            .createSignedUrl(storagePath, 15 * 60);
+          if (signed.error || !signed.data?.signedUrl) {
+            throw new Error(
+              signed.error?.message || "tiktok_storage_signed_url_failed",
+            );
+          }
+          return signed.data.signedUrl;
+        },
       };
     }
 
@@ -2411,11 +2586,380 @@ async function publishNowHandler(req: Request) {
         seen.add(key);
         attempted.push({ path: storagePath, bucket, kind: candidate.kind });
 
-        const loaded = await loadStorageVideoForTikTok(storagePath, bucket);
-        if (loaded) return { file: loaded, kind: candidate.kind, attempted };
+        const source = createTikTokStorageRangeSource(candidate.video!);
+        if (!source) continue;
+        try {
+          // Un seul octet suffit pour vérifier côté serveur la présence, la
+          // longueur totale et le support strict de Range avant l'init TikTok.
+          const probe = await probeTikTokRangeSource({ source });
+          return { source, probe, kind: candidate.kind, attempted };
+        } catch (error) {
+          console.warn("[Booster] TikTok range source candidate rejected", {
+            bucket,
+            storagePath,
+            kind: candidate.kind,
+            message:
+              error instanceof Error ? error.message : String(error || ""),
+          });
+        }
       }
 
-      return { file: null, kind: null, attempted };
+      return { source: null, probe: null, kind: null, attempted };
+    }
+
+    async function persistTikTokUploadCheckpoint(
+      checkpoint: TikTokVideoUploadCheckpoint,
+    ) {
+      if (!internalAsyncDispatch || !asyncChannelEventId) return;
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await updateAsyncChannelEvent({
+            userId,
+            eventId: asyncChannelEventId,
+            patch: { tiktokUploadCheckpoint: checkpoint },
+          });
+          return;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 250 * 2 ** attempt),
+            );
+          }
+        }
+      }
+      throw lastError || new Error("tiktok_checkpoint_persist_failed");
+    }
+
+    async function persistInstagramVideoCheckpoint(
+      checkpoint: InstagramVideoPublishCheckpoint,
+      patch: JsonRecord = {},
+    ) {
+      if (!internalAsyncDispatch || !asyncChannelEventId) {
+        throw new Error("instagram_video_checkpoint_requires_async_worker");
+      }
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await updateAsyncChannelEvent({
+            userId,
+            eventId: asyncChannelEventId,
+            patch: {
+              ...patch,
+              instagramVideoCheckpoint: checkpoint,
+              instagramVideoPhase: checkpoint.state,
+            },
+          });
+          return;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 200 * 2 ** attempt),
+            );
+          }
+        }
+      }
+      throw lastError || new Error("instagram_video_checkpoint_persist_failed");
+    }
+
+    async function queueInstagramVideoContinuation(params: {
+      checkpoint: InstagramVideoPublishCheckpoint;
+      phaseResult: InstagramVideoPhaseResult;
+    }) {
+      const requestedRetryAfterMs =
+        "retryAfterMs" in params.phaseResult
+          ? Number(params.phaseResult.retryAfterMs || 0)
+          : 0;
+      const retryAfterMs = Math.max(
+        1_000,
+        Math.min(60_000, requestedRetryAfterMs || 3_000),
+      );
+      await persistInstagramVideoCheckpoint(params.checkpoint, {
+        status: "queued",
+        instagramVideoContinuation: true,
+        instagramVideoNextPollAt: new Date(
+          Date.now() + retryAfterMs,
+        ).toISOString(),
+        lastInstagramVideoPhaseResult: {
+          ok: params.phaseResult.ok,
+          phase: params.phaseResult.phase,
+          outcome: params.phaseResult.outcome,
+          code: params.phaseResult.ok ? null : params.phaseResult.code,
+        },
+      });
+      await setDelivery("instagram", { status: "processing", error: null });
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: asyncChannelLockId,
+        error: "instagram_video_continuation",
+        result: {
+          ok: true,
+          pending: true,
+          code: "instagram_video_processing",
+          publication_id: publicationId,
+          channel: "instagram",
+          container_id: params.checkpoint.containerId,
+          phase: params.checkpoint.state,
+        },
+        metadata: {
+          publicationId,
+          channel: "instagram",
+          asyncDispatch: true,
+          continuation: true,
+        },
+      });
+      asyncFailureContext = null;
+      const pendingResult = {
+        ok: true,
+        pending: true,
+        status: "processing",
+        code: "instagram_video_processing",
+        container_id: params.checkpoint.containerId,
+        phase: params.checkpoint.state,
+      };
+      return NextResponse.json(
+        {
+          ok: true,
+          done: false,
+          queued: true,
+          asyncDispatch: true,
+          publication_id: publicationId,
+          channel: "instagram",
+          pollAfterMs: retryAfterMs,
+          results: { instagram: pendingResult },
+        },
+        {
+          status: 202,
+          headers: {
+            "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1_000))),
+          },
+        },
+      );
+    }
+
+    async function persistYoutubeUploadCheckpoint(
+      checkpoint: YoutubeResumableUploadCheckpoint,
+      patch: JsonRecord = {},
+    ) {
+      if (!internalAsyncDispatch || !asyncChannelEventId) {
+        throw new Error("youtube_upload_checkpoint_requires_async_worker");
+      }
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await updateAsyncChannelEvent({
+            userId,
+            eventId: asyncChannelEventId,
+            patch: {
+              ...patch,
+              youtubeUploadCheckpoint: checkpoint,
+              youtubeUploadPhase: checkpoint.state,
+              youtubeUploadOffset: checkpoint.offset,
+              youtubeUploadTotalBytes: checkpoint.totalBytes,
+            },
+          });
+          return;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 200 * 2 ** attempt),
+            );
+          }
+        }
+      }
+      throw lastError || new Error("youtube_upload_checkpoint_persist_failed");
+    }
+
+    async function queueYoutubeUploadContinuation(params: {
+      checkpoint: YoutubeResumableUploadCheckpoint;
+      phaseResult: YoutubeResumableUploadPhaseResult;
+    }) {
+      const requestedRetryAfterMs = Number(
+        "retryAfterMs" in params.phaseResult
+          ? params.phaseResult.retryAfterMs || 0
+          : 0,
+      );
+      const retryAfterMs = Math.max(
+        1_000,
+        Math.min(60_000, requestedRetryAfterMs || 2_000),
+      );
+      await persistYoutubeUploadCheckpoint(params.checkpoint, {
+        status: "queued",
+        youtubeUploadContinuation: true,
+        youtubeUploadNextRunAt: new Date(
+          Date.now() + retryAfterMs,
+        ).toISOString(),
+        lastYoutubeUploadPhaseResult: {
+          ok: params.phaseResult.ok,
+          phase: params.phaseResult.phase,
+          outcome: params.phaseResult.outcome,
+          code: params.phaseResult.ok ? null : params.phaseResult.code,
+        },
+      });
+      await setDelivery("youtube_shorts", {
+        status: "processing",
+        error: null,
+      });
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: asyncChannelLockId,
+        error: "youtube_upload_continuation",
+        result: {
+          ok: true,
+          pending: true,
+          code: "youtube_upload_processing",
+          publication_id: publicationId,
+          channel: "youtube_shorts",
+          offset: params.checkpoint.offset,
+          total_bytes: params.checkpoint.totalBytes,
+        },
+        metadata: {
+          publicationId,
+          channel: "youtube_shorts",
+          asyncDispatch: true,
+          continuation: true,
+        },
+      });
+      asyncFailureContext = null;
+      return NextResponse.json(
+        {
+          ok: true,
+          done: false,
+          queued: true,
+          asyncDispatch: true,
+          publication_id: publicationId,
+          channel: "youtube_shorts",
+          pollAfterMs: retryAfterMs,
+          results: {
+            youtube_shorts: {
+              ok: true,
+              pending: true,
+              status: "processing",
+              code: "youtube_upload_processing",
+              offset: params.checkpoint.offset,
+              total_bytes: params.checkpoint.totalBytes,
+            },
+          },
+        },
+        {
+          status: 202,
+          headers: {
+            "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1_000))),
+          },
+        },
+      );
+    }
+
+    async function persistPinterestVideoCheckpoint(
+      checkpoint: PinterestVideoProtocolCheckpoint,
+      patch: JsonRecord = {},
+    ) {
+      if (!internalAsyncDispatch || !asyncChannelEventId) {
+        throw new Error("pinterest_video_checkpoint_requires_async_worker");
+      }
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await updateAsyncChannelEvent({
+            userId,
+            eventId: asyncChannelEventId,
+            patch: {
+              pinterestVideoCheckpoint: checkpoint,
+              pinterestVideoPhase: checkpoint.phase,
+              pinterestVideoNextPollAt: checkpoint.nextPollAt || null,
+              ...patch,
+            },
+          });
+          return;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 200 * 2 ** attempt),
+            );
+          }
+        }
+      }
+      throw lastError || new Error("pinterest_video_checkpoint_persist_failed");
+    }
+
+    async function queuePinterestVideoContinuation(params: {
+      step: PinterestVideoDurableStepResult;
+    }) {
+      const requestedNextRunAt = Date.parse(
+        String(
+          params.step.retryAt ||
+            params.step.checkpoint.nextPollAt ||
+            "",
+        ),
+      );
+      const nextRunAt = new Date(
+        Number.isFinite(requestedNextRunAt) && requestedNextRunAt > Date.now()
+          ? requestedNextRunAt
+          : Date.now() + 1_000,
+      ).toISOString();
+      await persistPinterestVideoCheckpoint(params.step.checkpoint, {
+        status: "queued",
+        pinterestVideoContinuation: true,
+        pinterestVideoNextPollAt: nextRunAt,
+        lastPinterestVideoStepState: params.step.state,
+      });
+      await setDelivery("pinterest", { status: "processing", error: null });
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: asyncChannelLockId,
+        error: "pinterest_video_continuation",
+        result: {
+          ok: true,
+          pending: true,
+          code: "pinterest_video_processing",
+          publication_id: publicationId,
+          channel: "pinterest",
+          phase: params.step.checkpoint.phase,
+          media_id: params.step.checkpoint.mediaId || null,
+        },
+        metadata: {
+          publicationId,
+          channel: "pinterest",
+          asyncDispatch: true,
+          continuation: true,
+        },
+      });
+      asyncFailureContext = null;
+      const retryAfterMs = Math.max(
+        1_000,
+        Date.parse(nextRunAt) - Date.now(),
+      );
+      return NextResponse.json(
+        {
+          ok: true,
+          done: false,
+          queued: true,
+          asyncDispatch: true,
+          publication_id: publicationId,
+          channel: "pinterest",
+          pollAfterMs: retryAfterMs,
+          results: {
+            pinterest: {
+              ok: true,
+              pending: true,
+              status: "processing",
+              code: "pinterest_video_processing",
+              phase: params.step.checkpoint.phase,
+              media_id: params.step.checkpoint.mediaId || null,
+            },
+          },
+        },
+        {
+          status: 202,
+          headers: {
+            "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1_000))),
+          },
+        },
+      );
     }
 
     async function getTiktokAccessToken(rowLike: unknown) {
@@ -2625,7 +3169,13 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const articleId = randomUUID();
+          // A restarted channel worker reuses the same local resource instead
+          // of creating a duplicate article after a lost response.
+          const articleId = buildDeterministicPublicationChildId({
+            publicationId,
+            channel: ch,
+            resource: "site_article",
+          });
           const slug = slugify(channelPost.title) || "actu";
           const externalUrl = targetUrl
             ? `${targetUrl.replace(/\/+$/g, "")}/actu/${slug}-${articleId}`
@@ -2636,7 +3186,7 @@ async function publishNowHandler(req: Request) {
           // (If you later add more columns, you can extend this insert.)
           const { error: artErr } = await supabaseAdmin
             .from("site_articles")
-            .insert({
+            .upsert({
               id: articleId,
               user_id: userId,
               source: ch,
@@ -2661,7 +3211,7 @@ async function publishNowHandler(req: Request) {
                 : {}),
               external_url: externalUrl, // ✅ si tu veux (optionnel)
               site_url: targetUrl || null, // ✅ si tu veux (optionnel)
-            });
+            }, { onConflict: "id" });
 
           if (artErr) {
             const siteUserError = getPublishChannelUserMessage(
@@ -2889,17 +3439,214 @@ async function publishNowHandler(req: Request) {
             ig,
             fbRow,
           );
-          let resp;
           if (mediaModeByChannel[ch] === "video" && channelVideo) {
-            resp = await instagramPublishVideoWithTokenFallback({
-              igUserId,
-              accessToken: igToken,
-              tokenCandidates: instagramTokenCandidates,
-              caption: instagramCaption,
-              videoUrl: channelVideo.publicUrl,
+            const expectedRequestFingerprint =
+              buildInstagramVideoRequestFingerprint({
+                igUserId,
+                videoUrl: channelVideo.publicUrl,
+                caption: instagramCaption,
+                shareToFeed: true,
+              });
+            const rawCheckpoint = internalAsyncDispatch
+              ? asRecord(body._instagramVideoCheckpoint)
+              : {};
+            const persistedCheckpoint =
+              parseInstagramVideoPublishCheckpoint(rawCheckpoint);
+            let videoPhaseResult: InstagramVideoPhaseResult;
+
+            if (!internalAsyncDispatch || !asyncChannelEventId) {
+              videoPhaseResult = {
+                ok: false,
+                phase: "create",
+                outcome: "failed",
+                error:
+                  "La publication video Instagram exige le worker durable.",
+                code: "instagram_video_async_worker_required",
+                retryable: false,
+                requestMayHaveSucceeded: false,
+                authorizationError: false,
+              };
+            } else if (
+              Object.keys(rawCheckpoint).length > 0 &&
+              !persistedCheckpoint
+            ) {
+              // Never recreate when durable state says a previous create may
+              // already have returned a provider container.
+              videoPhaseResult = {
+                ok: false,
+                phase: "create",
+                outcome: "ambiguous",
+                error: "Le checkpoint video Instagram est incoherent.",
+                code: "instagram_video_checkpoint_invalid",
+                retryable: false,
+                requestMayHaveSucceeded: true,
+                authorizationError: false,
+              };
+            } else if (!persistedCheckpoint) {
+              videoPhaseResult =
+                await instagramCreateVideoCheckpointWithTokenFallback({
+                  igUserId,
+                  accessToken: igToken,
+                  tokenCandidates: instagramTokenCandidates,
+                  caption: instagramCaption,
+                  videoUrl: channelVideo.publicUrl,
+                  shareToFeed: true,
+                });
+            } else if (
+              ["ready", "published", "publish_unknown"].includes(
+                persistedCheckpoint.state,
+              )
+            ) {
+              videoPhaseResult =
+                await instagramPublishVideoCheckpointWithTokenFallback({
+                  checkpoint: persistedCheckpoint,
+                  igUserId,
+                  accessToken: igToken,
+                  tokenCandidates: instagramTokenCandidates,
+                  expectedRequestFingerprint,
+                });
+            } else {
+              videoPhaseResult =
+                await instagramPollVideoCheckpointWithTokenFallback({
+                  checkpoint: persistedCheckpoint,
+                  accessToken: igToken,
+                  tokenCandidates: instagramTokenCandidates,
+                  expectedRequestFingerprint,
+                });
+            }
+
+            // Commit the provider container before the first status request.
+            if (
+              videoPhaseResult.ok &&
+              videoPhaseResult.outcome === "checkpoint"
+            ) {
+              await persistInstagramVideoCheckpoint(
+                videoPhaseResult.checkpoint,
+                { status: "processing", instagramVideoContinuation: true },
+              );
+              videoPhaseResult =
+                await instagramPollVideoCheckpointWithTokenFallback({
+                  checkpoint: videoPhaseResult.checkpoint,
+                  accessToken: igToken,
+                  tokenCandidates: instagramTokenCandidates,
+                  expectedRequestFingerprint,
+                });
+            }
+
+            // Commit FINISHED before the only media_publish request.
+            if (
+              videoPhaseResult.ok &&
+              videoPhaseResult.outcome === "ready"
+            ) {
+              await persistInstagramVideoCheckpoint(
+                videoPhaseResult.checkpoint,
+                { status: "processing", instagramVideoContinuation: true },
+              );
+              videoPhaseResult =
+                await instagramPublishVideoCheckpointWithTokenFallback({
+                  checkpoint: videoPhaseResult.checkpoint,
+                  igUserId,
+                  accessToken: igToken,
+                  tokenCandidates: instagramTokenCandidates,
+                  expectedRequestFingerprint,
+                });
+            }
+
+            const shouldContinue =
+              (videoPhaseResult.ok &&
+                ["checkpoint", "processing"].includes(
+                  videoPhaseResult.outcome,
+                )) ||
+              (!videoPhaseResult.ok && videoPhaseResult.retryable);
+            if (shouldContinue && videoPhaseResult.checkpoint) {
+              return queueInstagramVideoContinuation({
+                checkpoint: videoPhaseResult.checkpoint,
+                phaseResult: videoPhaseResult,
+              });
+            }
+
+            if (
+              videoPhaseResult.ok &&
+              videoPhaseResult.outcome === "published" &&
+              videoPhaseResult.mediaId
+            ) {
+              await persistInstagramVideoCheckpoint(
+                videoPhaseResult.checkpoint,
+                {
+                  status: "processing",
+                  instagramVideoContinuation: false,
+                  instagramVideoNextPollAt: null,
+                },
+              );
+              await setDelivery(ch, { status: "delivered", error: null });
+              results[ch] = {
+                ok: true,
+                external_id: videoPhaseResult.mediaId,
+                instagram_media_type: "REELS",
+                instagram_parent_media_id: videoPhaseResult.mediaId,
+                instagram_child_media_ids: [],
+                diagnostics: videoPhaseResult,
+              };
+              continue;
+            }
+
+            // Terminal provider states are durable too. In particular, a
+            // publish_unknown checkpoint must replace the previous `ready`
+            // state before this worker closes as failed; otherwise a later
+            // recovery could issue media_publish a second time.
+            if (!videoPhaseResult.ok && videoPhaseResult.checkpoint) {
+              await persistInstagramVideoCheckpoint(
+                videoPhaseResult.checkpoint,
+                {
+                  instagramVideoContinuation: false,
+                  instagramVideoNextPollAt: null,
+                },
+              );
+            }
+
+            const rawVideoError = videoPhaseResult.ok
+              ? "Instagram n'a retourne aucun resultat video exploitable."
+              : videoPhaseResult.error;
+            const instagramUserError =
+              (!videoPhaseResult.ok && videoPhaseResult.authorizationError) ||
+              isInstagramAuthorizationLikeMessage(
+                `instagram ${rawVideoError}`,
+              )
+                ? INSTAGRAM_RECONNECT_USER_MESSAGE
+                : getSimpleFrenchErrorMessage(
+                    `instagram ${rawVideoError}`,
+                    rawVideoError || "La publication Instagram a echoue.",
+                  );
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "instagram",
+              userId,
+              publicationId,
+              stage: videoPhaseResult.phase,
+              error: rawVideoError,
+              userMessage: instagramUserError,
+              diagnostics: videoPhaseResult,
             });
-          } else {
-            const instagramImages = pickCompleteChannelImageUrls({
+            await setDelivery(ch, {
+              status: "failed",
+              error: instagramUserError,
+            });
+            results[ch] = {
+              ok: false,
+              error: instagramUserError,
+              raw_error: rawVideoError,
+              code: videoPhaseResult.ok
+                ? "instagram_video_missing_result"
+                : videoPhaseResult.code,
+              requestMayHaveSucceeded:
+                !videoPhaseResult.ok &&
+                videoPhaseResult.requestMayHaveSucceeded,
+              diagnostics: videoPhaseResult,
+            };
+            continue;
+          }
+
+          const instagramImages = pickCompleteChannelImageUrls({
               channel: ch,
               candidates: ["instagramPublishableUrls"],
               legacyFallback: instagramImageUrls,
@@ -2916,8 +3663,7 @@ async function publishNowHandler(req: Request) {
               };
               continue;
             }
-            resp =
-              instagramImages.length > 1
+          const resp = instagramImages.length > 1
                 ? await instagramPublishCarouselWithTokenFallback({
                     igUserId,
                     accessToken: igToken,
@@ -2932,7 +3678,6 @@ async function publishNowHandler(req: Request) {
                     caption: instagramCaption,
                     imageUrl: instagramImages[0],
                   });
-          }
 
           if (!resp.ok) {
             const instagramUserError =
@@ -3349,7 +4094,7 @@ async function publishNowHandler(req: Request) {
             .filter(Boolean)
             .join("\n\n");
 
-          const upload = await uploadYoutubeShort({
+          const youtubeUploadInput: YoutubeShortsUploadInput = {
             accessToken: youtubeAccessToken,
             videoUrl: channelVideo.publicUrl || channelVideo.url || "",
             title: channelPost.title || post.title || "Vidéo iNrCy",
@@ -3359,7 +4104,138 @@ async function publishNowHandler(req: Request) {
             mimeType: channelVideo.type,
             tags: youtubeTags,
             publicationType: youtubePublicationType,
-          });
+          };
+          let upload: YoutubeShortsUploadResult;
+
+          if (internalAsyncDispatch && asyncChannelEventId) {
+            const uploadBudgetEndsAt = Date.now() + 35_000;
+            const hasRawYoutubeCheckpoint =
+              body._youtubeUploadCheckpoint !== null &&
+              body._youtubeUploadCheckpoint !== undefined;
+            const rawYoutubeCheckpoint = asRecord(
+              body._youtubeUploadCheckpoint,
+            );
+            const persistedYoutubeCheckpoint =
+              parseYoutubeResumableUploadCheckpoint(rawYoutubeCheckpoint);
+            let uploadPhase: YoutubeResumableUploadPhaseResult;
+
+            if (
+              hasRawYoutubeCheckpoint &&
+              !persistedYoutubeCheckpoint
+            ) {
+              // A corrupt durable record may still represent an existing
+              // provider session. Fail closed instead of creating a second
+              // videos.insert operation.
+              uploadPhase = {
+                ok: false,
+                phase: "upload",
+                outcome: "ambiguous",
+                error: "Le checkpoint d'upload YouTube est incohérent.",
+                code: "youtube_upload_checkpoint_invalid",
+                retryable: false,
+                requestMayHaveSucceeded: true,
+              };
+            } else if (!persistedYoutubeCheckpoint) {
+              uploadPhase =
+                await createYoutubeResumableUploadCheckpoint(
+                  youtubeUploadInput,
+                );
+            } else {
+              uploadPhase =
+                await resumeYoutubeResumableUploadCheckpoint({
+                  ...youtubeUploadInput,
+                  checkpoint: persistedYoutubeCheckpoint,
+                });
+            }
+
+            // Persist Location before sending the first byte. A process restart
+            // can query this exact session instead of issuing videos.insert
+            // again.
+            if (uploadPhase.ok && uploadPhase.outcome === "checkpoint") {
+              await persistYoutubeUploadCheckpoint(uploadPhase.checkpoint, {
+                status: "processing",
+                youtubeUploadContinuation: true,
+              });
+              uploadPhase =
+                await resumeYoutubeResumableUploadCheckpoint({
+                  ...youtubeUploadInput,
+                  checkpoint: uploadPhase.checkpoint,
+                });
+            }
+
+            // Stream several bounded chunks while this worker has budget. Every
+            // acknowledged offset is committed before the following PUT, so a
+            // timeout loses at most one response and never resends blindly.
+            let uploadedChunksThisRun = 0;
+            while (
+              uploadPhase.ok &&
+              uploadPhase.outcome === "processing"
+            ) {
+              await persistYoutubeUploadCheckpoint(uploadPhase.checkpoint, {
+                status: "processing",
+                youtubeUploadContinuation: true,
+              });
+              uploadedChunksThisRun += 1;
+              if (
+                Date.now() >= uploadBudgetEndsAt ||
+                uploadedChunksThisRun >= 24
+              ) {
+                break;
+              }
+              uploadPhase =
+                await resumeYoutubeResumableUploadCheckpoint({
+                  ...youtubeUploadInput,
+                  checkpoint: uploadPhase.checkpoint,
+                });
+            }
+
+            const shouldContinueYoutubeUpload =
+              (uploadPhase.ok &&
+                ["checkpoint", "processing"].includes(
+                  uploadPhase.outcome,
+                )) ||
+              (!uploadPhase.ok && uploadPhase.retryable);
+            if (shouldContinueYoutubeUpload && uploadPhase.checkpoint) {
+              return queueYoutubeUploadContinuation({
+                checkpoint: uploadPhase.checkpoint,
+                phaseResult: uploadPhase,
+              });
+            }
+
+            if (
+              uploadPhase.ok &&
+              uploadPhase.outcome === "published" &&
+              uploadPhase.videoId
+            ) {
+              await persistYoutubeUploadCheckpoint(uploadPhase.checkpoint, {
+                status: "processing",
+                youtubeUploadContinuation: false,
+                youtubeUploadNextRunAt: null,
+              });
+              upload = uploadPhase;
+            } else {
+              if (!uploadPhase.ok && uploadPhase.checkpoint) {
+                await persistYoutubeUploadCheckpoint(
+                  uploadPhase.checkpoint,
+                  {
+                    youtubeUploadContinuation: false,
+                    youtubeUploadNextRunAt: null,
+                  },
+                );
+              }
+              upload = {
+                ok: false,
+                error: uploadPhase.ok
+                  ? "YouTube n'a retourné aucun résultat exploitable."
+                  : uploadPhase.error,
+                status: uploadPhase.ok ? undefined : uploadPhase.status,
+                reason: uploadPhase.ok ? null : uploadPhase.reason,
+                raw: uploadPhase,
+              };
+            }
+          } else {
+            upload = await uploadYoutubeShort(youtubeUploadInput);
+          }
 
           if (!upload.ok) {
             const youtubeUserError = getPublishChannelUserMessage(
@@ -3578,10 +4454,10 @@ async function publishNowHandler(req: Request) {
                 { video: channelVideo?.sourceVideo, kind: "source_video" },
                 { video: publicationVideo, kind: "publication_source" },
               ])
-            : { file: null, kind: null, attempted: [] };
-          const tiktokVideoFile = tiktokVideoLoad.file;
+            : { source: null, probe: null, kind: null, attempted: [] };
+          const tiktokVideoSource = tiktokVideoLoad.source;
 
-          if (isVideo && !tiktokVideoFile) {
+          if (isVideo && !tiktokVideoSource) {
             const tiktokUserError =
               "La vidéo TikTok n'est pas disponible dans le stockage iNrCy. Réimportez-la puis relancez la publication.";
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
@@ -3650,8 +4526,12 @@ async function publishNowHandler(req: Request) {
           const tiktokResult = isVideo
             ? await tiktokDirectPostVideoFileUpload({
                 accessToken: tiktokAccessToken,
-                videoBuffer: tiktokVideoFile!.buffer,
-                contentType: tiktokVideoFile!.contentType,
+                rangeSource: tiktokVideoSource!,
+                verifiedSourceProbe: tiktokVideoLoad.probe,
+                checkpoint: internalAsyncDispatch
+                  ? body._tiktokUploadCheckpoint
+                  : null,
+                onCheckpoint: persistTikTokUploadCheckpoint,
                 title: tiktokTitle,
                 publicationSettings:
                   tiktokPublicationSettings as TiktokPublicationSettings,
@@ -3843,35 +4723,296 @@ async function publishNowHandler(req: Request) {
               continue;
             }
 
-            const pin = await createPinterestVideoPin({
-              accessToken: pinterestAccessToken,
-              userId,
-              boardId,
-              title: channelPost.title || post.title || "Publication iNrCy",
-              description,
-              videoUrl: pinterestVideoUrl,
-              videoStoragePath: channelVideo.storagePath,
-              videoContentType: channelVideo.type,
-              videoFileName: channelVideo.name,
-              coverImageUrl: channelVideo.thumbnailUrl,
-              coverStoragePath: channelVideo.thumbnailStoragePath,
-              link: pinterestLink,
-            });
+            // The public/direct compatibility path remains synchronous. The
+            // async worker uses the durable phase machine below so a Vercel
+            // interruption never re-registers media or creates a second Pin.
+            if (!internalAsyncDispatch || !asyncChannelEventId) {
+              const pin = await createPinterestVideoPin({
+                accessToken: pinterestAccessToken,
+                userId,
+                boardId,
+                title: channelPost.title || post.title || "Publication iNrCy",
+                description,
+                videoUrl: pinterestVideoUrl,
+                videoStoragePath: channelVideo.storagePath,
+                videoContentType: channelVideo.type,
+                videoFileName: channelVideo.name,
+                coverImageUrl: channelVideo.thumbnailUrl,
+                coverStoragePath: channelVideo.thumbnailStoragePath,
+                link: pinterestLink,
+              });
 
+              await setDelivery(ch, {
+                status: "delivered",
+                error: null,
+              });
+              results[ch] = {
+                ok: true,
+                external_id: pin.id || null,
+                external_url: pin.url || null,
+                board_id: boardId,
+                board_name: boardName || null,
+                media_type: "video",
+                media_id: pin.media_id || null,
+                media_status: pin.media_status || null,
+                cover_image_url: pin.cover_image_url || null,
+              };
+              continue;
+            }
+
+            const pinterestVideoStoragePath = String(
+              channelVideo.storagePath || "",
+            ).trim();
+            const pinterestVideoSize = Math.floor(
+              Number(channelVideo.size || 0),
+            );
+            if (
+              !pinterestVideoStoragePath ||
+              !Number.isSafeInteger(pinterestVideoSize) ||
+              pinterestVideoSize <= 0
+            ) {
+              const pinterestUserError =
+                "La vidéo Pinterest n'a pas de source durable exploitable. Remplacez-la dans le bloc Médias.";
+              await setDelivery(ch, {
+                status: "failed",
+                error: pinterestUserError,
+              });
+              results[ch] = {
+                ok: false,
+                error: pinterestUserError,
+                code: "pinterest_video_source_not_durable",
+                retryable: false,
+              };
+              continue;
+            }
+
+            const pinterestCoverImageUrl =
+              resolvePinterestVideoCoverImageUrl({
+                coverImageUrl: channelVideo.thumbnailUrl,
+                coverStoragePath: channelVideo.thumbnailStoragePath,
+              });
+            if (!pinterestCoverImageUrl) {
+              const pinterestUserError =
+                "La vidéo Pinterest nécessite une image de couverture publique. Remplacez-la dans le bloc Médias.";
+              await setDelivery(ch, {
+                status: "failed",
+                error: pinterestUserError,
+              });
+              results[ch] = {
+                ok: false,
+                error: pinterestUserError,
+                code: "pinterest_video_cover_missing",
+                retryable: false,
+              };
+              continue;
+            }
+
+            const pinterestVariant = asRecord(
+              channelVideo.transformedVariant,
+            );
+            const pinterestVideoSettings = videoSettingsByChannel[ch];
+            const pinterestVariantIdentity =
+              String(pinterestVariant.signature || "").trim() ||
+              [
+                String(pinterestVideoSettings?.format || "original"),
+                String(
+                  pinterestVideoSettings?.adaptationMode || "source",
+                ),
+              ].join(":");
+            // Signed URLs are deliberately excluded. The identity survives a
+            // refreshed Supabase URL and distinguishes every adapted variant.
+            const pinterestSourceFingerprint = [
+              pinterestVideoStoragePath,
+              pinterestVideoSize,
+              pinterestVariantIdentity,
+            ].join(":");
+            const pinterestOperationId = `${publicationId}:${asyncChannelEventId}`;
+            const hasRawPinterestCheckpoint =
+              body._pinterestVideoCheckpoint !== null &&
+              body._pinterestVideoCheckpoint !== undefined;
+            const rawPinterestCheckpoint = hasRawPinterestCheckpoint
+              ? body._pinterestVideoCheckpoint
+              : undefined;
+            const pinterestProtocolBase: PinterestVideoDurableProtocolArgs = {
+              apiBaseUrl: getPinterestApiBaseUrl(),
+              accessToken: pinterestAccessToken,
+              operationId: pinterestOperationId,
+              sourceFingerprint: pinterestSourceFingerprint,
+              boardId,
+              title: String(
+                channelPost.title || post.title || "Publication iNrCy",
+              )
+                .trim()
+                .slice(0, 100),
+              description,
+              link: pinterestLink,
+              coverImageUrl: pinterestCoverImageUrl,
+              videoSize: pinterestVideoSize,
+              videoContentType: channelVideo.type || "video/mp4",
+              videoFileName: channelVideo.name || "video-inrcy.mp4",
+              checkpoint: rawPinterestCheckpoint,
+              persistCheckpoint: persistPinterestVideoCheckpoint,
+            };
+
+            const pinterestPhaseDeadline = Date.now() + 35_000;
+            let pinterestPhaseAdvances = 0;
+            let pinterestStep = await advancePinterestVideoProtocol(
+              pinterestProtocolBase,
+            );
+
+            for (;;) {
+              if (pinterestStep.state === "needs_video_file") {
+                if (pinterestPhaseAdvances >= 8) break;
+                pinterestStep = await withPinterestVideoProtocolAsset(
+                  {
+                    userId,
+                    videoUrl: pinterestVideoUrl,
+                    videoStoragePath: pinterestVideoStoragePath,
+                    videoContentType: channelVideo.type,
+                    videoFileName: channelVideo.name,
+                    coverImageUrl: pinterestCoverImageUrl,
+                  },
+                  async (asset) =>
+                    await advancePinterestVideoProtocol({
+                      ...pinterestProtocolBase,
+                      checkpoint: pinterestStep.checkpoint,
+                      videoFile: asset.videoFile,
+                      videoSize: asset.videoSize,
+                      videoContentType: asset.videoContentType,
+                      videoFileName: asset.videoFileName,
+                      coverImageUrl: asset.coverImageUrl,
+                    }),
+                );
+                pinterestPhaseAdvances += 1;
+                continue;
+              }
+
+              if (
+                pinterestStep.state === "continue" &&
+                pinterestPhaseAdvances < 8 &&
+                Date.now() < pinterestPhaseDeadline
+              ) {
+                pinterestStep = await advancePinterestVideoProtocol({
+                  ...pinterestProtocolBase,
+                  checkpoint: pinterestStep.checkpoint,
+                });
+                pinterestPhaseAdvances += 1;
+                continue;
+              }
+              break;
+            }
+
+            if (
+              pinterestStep.state === "continue" ||
+              pinterestStep.state === "waiting"
+            ) {
+              return await queuePinterestVideoContinuation({
+                step: pinterestStep,
+              });
+            }
+
+            if (
+              pinterestStep.state === "completed" &&
+              pinterestStep.result
+            ) {
+              await persistPinterestVideoCheckpoint(
+                pinterestStep.checkpoint,
+                {
+                  pinterestVideoContinuation: false,
+                  pinterestVideoNextPollAt: null,
+                },
+              );
+              const pin = asRecord(pinterestStep.result.pin);
+              const pinId = String(
+                pin.id ||
+                  pin.pin_id ||
+                  pinterestStep.checkpoint.pinId ||
+                  "",
+              ).trim();
+              const pinUrl =
+                normalizePublicHttpUrl(pin.url) ||
+                normalizePublicHttpUrl(pin.link) ||
+                (pinId
+                  ? `https://www.pinterest.com/pin/${encodeURIComponent(pinId)}/`
+                  : null);
+              await setDelivery(ch, {
+                status: "delivered",
+                error: null,
+              });
+              results[ch] = {
+                ok: true,
+                external_id: pinId || null,
+                external_url: pinUrl,
+                board_id: String(pin.board_id || boardId),
+                board_name: boardName || null,
+                media_type: "video",
+                media_id: pinterestStep.result.mediaId,
+                media_status: pinterestStep.result.mediaStatus,
+                cover_image_url: pinterestCoverImageUrl,
+              };
+              continue;
+            }
+
+            if (
+              pinterestStep.state === "failed" ||
+              pinterestStep.state === "expired" ||
+              pinterestStep.state === "outcome_unknown"
+            ) {
+              await persistPinterestVideoCheckpoint(
+                pinterestStep.checkpoint,
+                {
+                  pinterestVideoContinuation: false,
+                  pinterestVideoNextPollAt: null,
+                },
+              );
+              const outcomeUnknown =
+                pinterestStep.state === "outcome_unknown";
+              const protocolFailure = outcomeUnknown
+                ? pinterestStep.checkpoint.outcomeUnknown
+                : pinterestStep.checkpoint.failure;
+              const pinterestUserError =
+                protocolFailure?.message ||
+                (outcomeUnknown
+                  ? "Pinterest a peut-être reçu la publication. Vérifiez le canal avant toute nouvelle tentative."
+                  : "Pinterest n'a pas pu finaliser la publication vidéo.");
+              await setDelivery(ch, {
+                status: "failed",
+                error: pinterestUserError,
+              });
+              results[ch] = {
+                ok: false,
+                error: pinterestUserError,
+                code: outcomeUnknown
+                  ? "pinterest_video_outcome_unknown"
+                  : protocolFailure?.code ||
+                    `pinterest_video_${pinterestStep.state}`,
+                retryable: false,
+                ...(outcomeUnknown
+                  ? {
+                      outcome_unknown: true,
+                      requestMayHaveSucceeded: true,
+                    }
+                  : {}),
+                diagnostics: {
+                  state: pinterestStep.state,
+                  phase: pinterestStep.checkpoint.phase,
+                  media_id: pinterestStep.checkpoint.mediaId || null,
+                },
+              };
+              continue;
+            }
+
+            const pinterestUserError =
+              "Pinterest n'a pas pu reprendre la préparation de cette vidéo.";
             await setDelivery(ch, {
-              status: "delivered",
-              error: null,
+              status: "failed",
+              error: pinterestUserError,
             });
             results[ch] = {
-              ok: true,
-              external_id: pin.id || null,
-              external_url: pin.url || null,
-              board_id: boardId,
-              board_name: boardName || null,
-              media_type: "video",
-              media_id: pin.media_id || null,
-              media_status: pin.media_status || null,
-              cover_image_url: pin.cover_image_url || null,
+              ok: false,
+              error: pinterestUserError,
+              code: "pinterest_video_invalid_durable_state",
+              retryable: false,
             };
             continue;
           }
@@ -4100,6 +5241,11 @@ async function publishNowHandler(req: Request) {
               callToAction: gmbCallToAction || undefined,
             });
           } catch (gmbErr: unknown) {
+            // A timed-out POST may already have created the remote post. A
+            // degraded retry would therefore risk publishing it twice.
+            if (isGoogleBusinessPostOutcomeUnknown(gmbErr)) {
+              throw gmbErr;
+            }
             const hasMedia = Boolean(
               gmbChannelImages.length || gmbChannelVideos.length,
             );
@@ -4139,6 +5285,9 @@ async function publishNowHandler(req: Request) {
                   : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
               };
             } catch (retryError: unknown) {
+              if (isGoogleBusinessPostOutcomeUnknown(retryError)) {
+                throw retryError;
+              }
               if (gmbCallToAction) {
                 try {
                   gmbResp = await retryWithoutCta();
@@ -4147,7 +5296,10 @@ async function publishNowHandler(req: Request) {
                     message:
                       "Google Business a publié le texte sans bouton CTA.",
                   };
-                } catch {
+                } catch (ctaError: unknown) {
+                  if (isGoogleBusinessPostOutcomeUnknown(ctaError)) {
+                    throw ctaError;
+                  }
                   throw retryError;
                 }
               } else {
@@ -4188,6 +5340,10 @@ async function publishNowHandler(req: Request) {
           retryable: false,
         };
       } catch (e: unknown) {
+        const exceptionRecord = asRecord(e);
+        const exceptionCode = String(exceptionRecord.code || "").trim();
+        const exceptionRetryable = exceptionRecord.retryable;
+        const outcomeUnknown = isGoogleBusinessPostOutcomeUnknown(e);
         const msg = getPublishChannelUserMessage(
           ch,
           e,
@@ -4207,6 +5363,13 @@ async function publishNowHandler(req: Request) {
           ok: false,
           error: msg,
           raw_error: e instanceof Error ? e.message : String(e || ""),
+          ...(exceptionCode ? { code: exceptionCode } : {}),
+          ...(typeof exceptionRetryable === "boolean"
+            ? { retryable: exceptionRetryable }
+            : {}),
+          ...(outcomeUnknown
+            ? { outcome_unknown: true, retryable: false }
+            : {}),
         };
       }
     }

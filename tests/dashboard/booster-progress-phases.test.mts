@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   GENERATION_PROGRESS_PHASES,
   PUBLICATION_PROGRESS_PHASES,
+  PUBLICATION_PROGRESS_STAGES,
   getProgressPhaseCaps,
+  getPublicationProgressStage,
   mapProgressRange,
   resolvePublicationBilanProgress,
 } from "../../lib/boosterProgressPhases.ts";
@@ -34,6 +36,25 @@ test("publication progress keeps iNr'Send as the final visible phase", () => {
   assert.equal(inrSendPhase?.key, "inrsend_recording");
   assert.equal(inrSendPhase?.start, 96);
   assert.equal(inrSendPhase?.cap, 99);
+});
+
+test("the UI groups technical publication work into four factual stages", () => {
+  assert.deepEqual(
+    PUBLICATION_PROGRESS_STAGES.map((stage) => stage.label),
+    [
+      "Demande prise en charge",
+      "Finalisation des médias",
+      "Envoi parallèle",
+      "Confirmations et bilan",
+    ],
+  );
+  assert.equal(getPublicationProgressStage("verification").index, 1);
+  assert.equal(getPublicationProgressStage("media_preparation").index, 2);
+  assert.equal(getPublicationProgressStage("file_preparation").index, 2);
+  assert.equal(getPublicationProgressStage("channel_dispatch").index, 3);
+  assert.equal(getPublicationProgressStage("publication_finalization").index, 3);
+  assert.equal(getPublicationProgressStage("status_collection").index, 4);
+  assert.equal(getPublicationProgressStage("complete").index, 4);
 });
 
 test("the 30-second bilan reaches 100 even while channels finish in background", () => {

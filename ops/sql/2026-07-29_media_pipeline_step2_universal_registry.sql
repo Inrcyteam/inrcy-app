@@ -369,7 +369,7 @@ create table if not exists public.publication_workspace_media (
   updated_at timestamptz not null default now(),
   primary key (workspace_id, media_id),
   constraint publication_workspace_media_position_unique unique (workspace_id, position),
-  constraint publication_workspace_media_position_check check (position between 0 and 4),
+  constraint publication_workspace_media_position_check check (position between 0 and 5),
   constraint publication_workspace_media_role_check check (media_role in ('primary', 'secondary', 'cover')),
   constraint publication_workspace_media_settings_object_check check (jsonb_typeof(media_settings) = 'object'),
   constraint publication_workspace_channel_settings_object_check check (jsonb_typeof(channel_settings) = 'object')
@@ -379,7 +379,7 @@ create index if not exists publication_workspace_media_media_idx
   on public.publication_workspace_media (media_id, workspace_id);
 
 comment on table public.publication_workspace_media is
-  'Liaison ordonnée. Le trigger impose le contrat produit : maximum 5 images ou exactement 1 vidéo, sans mélange.';
+  'Liaison ordonnée. Le trigger impose le contrat produit : maximum 5 images et 1 vidéo, utilisables indépendamment selon les canaux.';
 
 -- ---------------------------------------------------------------------------
 -- 4) Variantes générées : canonique, IA, miniature et canaux.
@@ -574,11 +574,11 @@ declare
   v_media_type text;
   v_media_active boolean;
   v_upload_status text;
-  v_existing_count integer := 0;
+  v_existing_image_count integer := 0;
   v_has_video boolean := false;
 begin
   -- Sérialise les modifications d'un même workspace pour garantir le maximum
-  -- de 5 images même si plusieurs uploads se terminent en parallèle.
+  -- de 5 images et 1 vidéo même si plusieurs uploads se terminent en parallèle.
   perform pg_advisory_xact_lock(hashtextextended(new.workspace_id::text, 0));
 
   select w.account_id
@@ -609,33 +609,33 @@ begin
 
   if tg_op = 'UPDATE' then
     select
-      count(*)::integer,
+      count(*) filter (where m.media_type = 'image')::integer,
       coalesce(bool_or(m.media_type = 'video'), false)
-    into v_existing_count, v_has_video
+    into v_existing_image_count, v_has_video
     from public.publication_workspace_media wm
     join public.pro_media_library m on m.id = wm.media_id
     where wm.workspace_id = new.workspace_id
       and not (wm.workspace_id = old.workspace_id and wm.media_id = old.media_id);
   else
     select
-      count(*)::integer,
+      count(*) filter (where m.media_type = 'image')::integer,
       coalesce(bool_or(m.media_type = 'video'), false)
-    into v_existing_count, v_has_video
+    into v_existing_image_count, v_has_video
     from public.publication_workspace_media wm
     join public.pro_media_library m on m.id = wm.media_id
     where wm.workspace_id = new.workspace_id;
   end if;
 
   if v_media_type = 'video' then
-    if new.position <> 0 then
-      raise exception 'INRCY_MEDIA_VIDEO_POSITION_MUST_BE_ZERO' using errcode = 'P0001';
+    if new.position <> 5 then
+      raise exception 'INRCY_MEDIA_VIDEO_POSITION_MUST_BE_FIVE' using errcode = 'P0001';
     end if;
-    if v_existing_count > 0 then
-      raise exception 'INRCY_MEDIA_CONTRACT_ONE_VIDEO_OR_FIVE_IMAGES' using errcode = 'P0001';
+    if v_has_video then
+      raise exception 'INRCY_MEDIA_CONTRACT_FIVE_IMAGES_AND_ONE_VIDEO' using errcode = 'P0001';
     end if;
   elsif v_media_type = 'image' then
-    if v_has_video or v_existing_count >= 5 then
-      raise exception 'INRCY_MEDIA_CONTRACT_ONE_VIDEO_OR_FIVE_IMAGES' using errcode = 'P0001';
+    if new.position < 0 or new.position > 4 or v_existing_image_count >= 5 then
+      raise exception 'INRCY_MEDIA_CONTRACT_FIVE_IMAGES_AND_ONE_VIDEO' using errcode = 'P0001';
     end if;
   else
     raise exception 'INRCY_MEDIA_TYPE_UNSUPPORTED' using errcode = 'P0001';

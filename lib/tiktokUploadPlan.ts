@@ -1,3 +1,5 @@
+import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
+
 export const TIKTOK_MAX_SINGLE_CHUNK_BYTES = 64 * 1024 * 1024;
 export const TIKTOK_DEFAULT_CHUNK_BYTES = 32 * 1024 * 1024;
 
@@ -10,6 +12,9 @@ export function buildTikTokVideoUploadPlan(
   videoSize: number,
 ): TikTokVideoUploadPlan {
   const safeSize = Math.max(0, Math.floor(Number(videoSize) || 0));
+  if (safeSize > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES) {
+    throw new RangeError("tiktok_video_source_too_large");
+  }
   if (safeSize <= TIKTOK_MAX_SINGLE_CHUNK_BYTES) {
     return {
       chunkSize: safeSize,

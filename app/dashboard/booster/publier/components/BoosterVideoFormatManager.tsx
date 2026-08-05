@@ -107,7 +107,8 @@ export default function BoosterVideoFormatManager({
   onApplyFormatToAllChannels,
   onRemoveFromChannel,
   onDeleteVideo,
-  deleteVideoLabel = "Retirer la vidéo de tous les canaux",
+  removeFromChannelLabel = "Retirer de ce canal",
+  deleteVideoLabel = "Retirer de tous les canaux",
   onPickVideoClick,
   pickVideoLabel = "Remplacer la vidéo",
   showApplyAll = true,
@@ -133,6 +134,7 @@ export default function BoosterVideoFormatManager({
   onApplyFormatToAllChannels?: () => void;
   onRemoveFromChannel?: () => void;
   onDeleteVideo?: () => void;
+  removeFromChannelLabel?: string;
   deleteVideoLabel?: string;
   onPickVideoClick?: () => void;
   pickVideoLabel?: string;
@@ -373,9 +375,11 @@ export default function BoosterVideoFormatManager({
                   type="button"
                   className={btnClass}
                   onClick={onRemoveFromChannel}
+                  title={removeFromChannelLabel}
+                  aria-label={removeFromChannelLabel}
                   style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
                 >
-                  Retirer la vidéo de ce canal
+                  {removeFromChannelLabel}
                 </button>
               ) : null}
               {onDeleteVideo ? (

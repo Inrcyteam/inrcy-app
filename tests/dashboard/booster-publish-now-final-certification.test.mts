@@ -69,7 +69,9 @@ const branchDefinitions = [
     start: 'if (ch === "instagram")',
     end: 'if (ch === "linkedin")',
     required: [
-      "instagramPublishVideoWithTokenFallback",
+      "instagramCreateVideoCheckpointWithTokenFallback",
+      "instagramPollVideoCheckpointWithTokenFallback",
+      "instagramPublishVideoCheckpointWithTokenFallback",
       "instagramPublishCarouselWithTokenFallback",
       "instagramPublishPhotoWithTokenFallback",
       "buildInstagramPublishTokenCandidates",
@@ -141,7 +143,9 @@ const branchDefinitions = [
 const networkPublisherMarkers = [
   "facebookPublishVideoToPage",
   "facebookPublishToPage",
-  "instagramPublishVideoWithTokenFallback",
+  "instagramCreateVideoCheckpointWithTokenFallback",
+  "instagramPollVideoCheckpointWithTokenFallback",
+  "instagramPublishVideoCheckpointWithTokenFallback",
   "instagramPublishCarouselWithTokenFallback",
   "instagramPublishPhotoWithTokenFallback",
   "linkedinPublishVideo",
@@ -187,7 +191,9 @@ test("network publishers remain isolated inside their own channel branches", () 
   const ownership: Record<string, string[]> = {
     facebook: ["facebookPublishVideoToPage", "facebookPublishToPage"],
     instagram: [
-      "instagramPublishVideoWithTokenFallback",
+      "instagramCreateVideoCheckpointWithTokenFallback",
+      "instagramPollVideoCheckpointWithTokenFallback",
+      "instagramPublishVideoCheckpointWithTokenFallback",
       "instagramPublishCarouselWithTokenFallback",
       "instagramPublishPhotoWithTokenFallback",
     ],

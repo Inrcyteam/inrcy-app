@@ -369,12 +369,19 @@ type LinkedInVideoStatus =
   | "AVAILABLE"
   | string;
 
+const LINKEDIN_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+
+type LinkedInRemoteVideoSource = {
+  size: number;
+  mimeType: string;
+};
+
 function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-function isLinkedInMp4Video(blob: Blob, sourceUrl: string) {
-  const mime = String(blob.type || "").toLowerCase();
+function isLinkedInMp4Video(mimeType: string, sourceUrl: string) {
+  const mime = String(mimeType || "").toLowerCase();
   const urlWithoutQuery = String(sourceUrl || "").split("?")[0].toLowerCase();
   return mime.includes("mp4") || urlWithoutQuery.endsWith(".mp4");
 }
@@ -455,37 +462,210 @@ async function waitForLinkedInVideoAfterFinalize(params: {
 }
 
 
-async function fetchVideoBlob(videoUrl: string): Promise<Blob> {
-  if (videoUrl.startsWith("data:")) {
-    const m = videoUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!m) throw new Error("Vidéo LinkedIn invalide.");
-    return new Blob([Buffer.from(m[2] || "", "base64")], { type: m[1] || "video/mp4" });
-  }
-
-  const videoRes = await fetch(videoUrl, { cache: "no-store" });
-  if (!videoRes.ok) {
-    throw new Error(`Impossible de récupérer la vidéo LinkedIn (${videoRes.status}).`);
-  }
-  const ab = await videoRes.arrayBuffer();
-  const mime = videoRes.headers.get("content-type") || "video/mp4";
-  return new Blob([ab], { type: mime });
+function parsePositiveContentLength(value: string | null) {
+  const raw = String(value || "").trim();
+  if (!/^\d+$/.test(raw)) return 0;
+  const size = Number(raw);
+  return Number.isSafeInteger(size) && size > 0 ? size : 0;
 }
 
-function normalizeLinkedInUploadInstructions(value: any, fallbackUploadUrl: string, fileSize: number): LinkedInVideoUploadInstruction[] {
-  const rawInstructions = Array.isArray(value?.uploadInstructions) ? value.uploadInstructions : [];
+function parseExactContentRange(value: string | null) {
+  const match = String(value || "").match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/i);
+  if (!match) return null;
+  const firstByte = Number(match[1]);
+  const lastByte = Number(match[2]);
+  const total = Number(match[3]);
+  if (
+    !Number.isSafeInteger(firstByte) ||
+    !Number.isSafeInteger(lastByte) ||
+    !Number.isSafeInteger(total) ||
+    firstByte < 0 ||
+    lastByte < firstByte ||
+    total <= lastByte
+  ) {
+    return null;
+  }
+  return { firstByte, lastByte, total };
+}
+
+async function cancelResponseBody(response: Response | null) {
+  try {
+    await response?.body?.cancel();
+  } catch {
+    // Best effort: a cancelled probe must never retain the remote video body.
+  }
+}
+
+async function probeLinkedInVideoSource(
+  videoUrl: string,
+): Promise<LinkedInRemoteVideoSource> {
+  if (videoUrl.startsWith("data:")) {
+    throw new Error(
+      "Les vidéos LinkedIn doivent provenir du stockage sécurisé iNrCy.",
+    );
+  }
+
+  let size = 0;
+  let mimeType = "video/mp4";
+  let headResponse: Response | null = null;
+  try {
+    headResponse = await fetch(videoUrl, {
+      method: "HEAD",
+      headers: { "Accept-Encoding": "identity" },
+      redirect: "follow",
+      cache: "no-store",
+    });
+    if (headResponse.ok) {
+      size = parsePositiveContentLength(
+        headResponse.headers.get("content-length"),
+      );
+      mimeType =
+        String(headResponse.headers.get("content-type") || mimeType)
+          .split(";")[0]
+          .trim() || mimeType;
+    }
+  } catch {
+    // Some signed storage endpoints reject HEAD. The one-byte range probe
+    // below remains bounded and yields the authoritative total.
+  } finally {
+    await cancelResponseBody(headResponse);
+  }
+
+  if (!size) {
+    const probe = await fetch(videoUrl, {
+      method: "GET",
+      headers: {
+        Range: "bytes=0-0",
+        "Accept-Encoding": "identity",
+      },
+      redirect: "follow",
+      cache: "no-store",
+    });
+    const contentRange = parseExactContentRange(
+      probe.headers.get("content-range"),
+    );
+    mimeType =
+      String(probe.headers.get("content-type") || mimeType)
+        .split(";")[0]
+        .trim() || mimeType;
+    await cancelResponseBody(probe);
+    if (
+      probe.status !== 206 ||
+      !contentRange ||
+      contentRange.firstByte !== 0 ||
+      contentRange.lastByte !== 0
+    ) {
+      throw new Error(
+        "Le stockage vidéo ne fournit pas une taille vérifiable pour LinkedIn.",
+      );
+    }
+    size = contentRange.total;
+  }
+
+  if (size > LINKEDIN_VIDEO_MAX_BYTES) {
+    throw new Error("La vidéo LinkedIn dépasse la limite de 300 Mo.");
+  }
+  return { size, mimeType };
+}
+
+function normalizeLinkedInUploadInstructions(
+  value: any,
+  fallbackUploadUrl: string,
+  fileSize: number,
+): LinkedInVideoUploadInstruction[] {
+  const rawInstructions = Array.isArray(value?.uploadInstructions)
+    ? value.uploadInstructions
+    : [];
   const instructions = rawInstructions
     .map((item: any): LinkedInVideoUploadInstruction | null => {
       const uploadUrl = String(item?.uploadUrl || "").trim();
       const firstByte = Number(item?.firstByte ?? 0);
       const lastByte = Number(item?.lastByte ?? fileSize - 1);
-      if (!uploadUrl || !Number.isFinite(firstByte) || !Number.isFinite(lastByte)) return null;
-      return { uploadUrl, firstByte: Math.max(0, firstByte), lastByte: Math.min(fileSize - 1, lastByte) };
+      if (
+        !uploadUrl ||
+        !Number.isSafeInteger(firstByte) ||
+        !Number.isSafeInteger(lastByte) ||
+        firstByte < 0 ||
+        lastByte < firstByte ||
+        lastByte >= fileSize
+      ) {
+        return null;
+      }
+      return { uploadUrl, firstByte, lastByte };
     })
-    .filter(Boolean) as LinkedInVideoUploadInstruction[];
+    .filter(Boolean)
+    .sort(
+      (
+        left: LinkedInVideoUploadInstruction,
+        right: LinkedInVideoUploadInstruction,
+      ) => left.firstByte - right.firstByte,
+    ) as LinkedInVideoUploadInstruction[];
 
-  if (instructions.length) return instructions;
-  if (fallbackUploadUrl) return [{ uploadUrl: fallbackUploadUrl, firstByte: 0, lastByte: fileSize - 1 }];
-  return [];
+  if (instructions.length !== rawInstructions.length) {
+    throw new Error("LinkedIn a renvoyÃ© un dÃ©coupage vidÃ©o invalide.");
+  }
+
+  const normalized = instructions.length
+    ? instructions
+    : fallbackUploadUrl
+      ? [
+          {
+            uploadUrl: fallbackUploadUrl,
+            firstByte: 0,
+            lastByte: fileSize - 1,
+          },
+        ]
+      : [];
+  let expectedFirstByte = 0;
+  for (const instruction of normalized) {
+    if (instruction.firstByte !== expectedFirstByte) {
+      throw new Error("LinkedIn a renvoyé un découpage vidéo incomplet.");
+    }
+    expectedFirstByte = instruction.lastByte + 1;
+  }
+  if (expectedFirstByte !== fileSize) {
+    throw new Error("LinkedIn n'a pas couvert toute la vidéo à envoyer.");
+  }
+  return normalized;
+}
+
+async function fetchLinkedInVideoRange(params: {
+  videoUrl: string;
+  firstByte: number;
+  lastByte: number;
+  total: number;
+}) {
+  const expectedLength = params.lastByte - params.firstByte + 1;
+  const response = await fetch(params.videoUrl, {
+    method: "GET",
+    headers: {
+      Range: `bytes=${params.firstByte}-${params.lastByte}`,
+      "Accept-Encoding": "identity",
+    },
+    redirect: "follow",
+    cache: "no-store",
+  });
+  const contentRange = parseExactContentRange(
+    response.headers.get("content-range"),
+  );
+  const declaredLength = parsePositiveContentLength(
+    response.headers.get("content-length"),
+  );
+  if (
+    response.status !== 206 ||
+    !contentRange ||
+    contentRange.firstByte !== params.firstByte ||
+    contentRange.lastByte !== params.lastByte ||
+    contentRange.total !== params.total ||
+    (declaredLength > 0 && declaredLength !== expectedLength) ||
+    !response.body
+  ) {
+    await cancelResponseBody(response);
+    throw new Error(
+      `Le stockage n'a pas confirmé le segment vidéo ${params.firstByte}-${params.lastByte}.`,
+    );
+  }
+  return { response, expectedLength };
 }
 
 async function uploadLinkedInVideo(params: {
@@ -494,13 +674,11 @@ async function uploadLinkedInVideo(params: {
   videoUrl: string;
 }) {
   const { accessToken, ownerUrn, videoUrl } = params;
-  const videoBlob = await fetchVideoBlob(videoUrl);
-  if (!isLinkedInMp4Video(videoBlob, videoUrl)) {
+  const source = await probeLinkedInVideoSource(videoUrl);
+  if (!isLinkedInMp4Video(source.mimeType, videoUrl)) {
     throw new Error("LinkedIn accepte uniquement les vidéos MP4 pour ce type de publication.");
   }
-
-  const videoBuffer = await videoBlob.arrayBuffer();
-  const fileSizeBytes = videoBlob.size || videoBuffer.byteLength;
+  const fileSizeBytes = source.size;
 
   const initRes = await fetch("https://api.linkedin.com/rest/videos?action=initializeUpload", {
     method: "POST",
@@ -535,15 +713,29 @@ async function uploadLinkedInVideo(params: {
   const uploadResponses: any[] = [];
 
   for (const instruction of instructions) {
-    const part = videoBuffer.slice(instruction.firstByte, instruction.lastByte + 1);
-    const uploadRes = await fetch(instruction.uploadUrl, {
+    const sourceRange = await fetchLinkedInVideoRange({
+      videoUrl,
+      firstByte: instruction.firstByte,
+      lastByte: instruction.lastByte,
+      total: fileSizeBytes,
+    });
+    const uploadRequest: RequestInit & { duplex?: "half" } = {
       method: "PUT",
       headers: {
         "Content-Type": "application/octet-stream",
+        "Content-Length": String(sourceRange.expectedLength),
       },
-      body: part,
+      body: sourceRange.response.body as unknown as BodyInit,
       cache: "no-store",
-    });
+      duplex: "half",
+    };
+    let uploadRes: Response;
+    try {
+      uploadRes = await fetch(instruction.uploadUrl, uploadRequest);
+    } catch (error) {
+      await cancelResponseBody(sourceRange.response);
+      throw error;
+    }
 
     const uploadRaw = await uploadRes.text().catch(() => "");
     const etag = String(uploadRes.headers.get("etag") || "").replace(/^\"|\"$/g, "");
@@ -552,11 +744,10 @@ async function uploadLinkedInVideo(params: {
     if (!uploadRes.ok) {
       throw new Error(uploadRaw || "Impossible d’envoyer la vidéo sur LinkedIn.");
     }
-    if (etag) uploadedPartIds.push(etag);
-  }
-
-  if (uploadedPartIds.length !== instructions.length) {
-    throw new Error("LinkedIn n'a pas renvoyé tous les identifiants d'upload vidéo.");
+    if (!etag) {
+      throw new Error("LinkedIn n'a pas confirmé le segment vidéo envoyé.");
+    }
+    uploadedPartIds.push(etag);
   }
 
   const finalizeRes = await fetch("https://api.linkedin.com/rest/videos?action=finalizeUpload", {

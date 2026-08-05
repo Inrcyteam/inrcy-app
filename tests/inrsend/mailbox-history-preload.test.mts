@@ -125,7 +125,7 @@ test("the publications tab filters every source before downloading history rows"
   );
   assert.match(
     route,
-    /const eventStatus: Status =[\s\S]{0,120}isAsyncPublication[\s\S]{0,40}\? "processing"/,
+    /const eventStatus: Status =[\s\S]{0,500}isAsyncPublication[\s\S]{0,500}: "processing"/,
   );
   const publicationTypeFilter = route.slice(
     route.indexOf('if (folder === "publications")'),

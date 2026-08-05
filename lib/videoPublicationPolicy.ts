@@ -116,7 +116,7 @@ export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
     channel: "gmb",
     ...DEFAULT_POLICY,
     maxBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
-    maxBytesLabel: "72 Mo (marge iNrCy sous la limite Google de 75 Mo)",
+    maxBytesLabel: "70 Mo (marge iNrCy sous la limite Google de 75 Mo)",
     maxDurationSeconds: GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
     minShortEdgePixels: GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
   },

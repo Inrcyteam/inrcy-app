@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { POST as executeAgentAction } from "@/app/api/agent/actions/execute/route";
+import { POST as publishNowBooster } from "@/app/api/booster/publish-now/route";
 import { rowToInrAgentScheduledAction } from "@/lib/inrAgentScheduledActions";
+import {
+  buildScheduledPublicationRequest,
+  interpretScheduledPublicationResponse,
+} from "@/lib/inrAgentScheduledPublication";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -8,7 +13,7 @@ export const runtime = "nodejs";
 export const maxDuration = 180;
 
 const SCHEDULED_ACTION_SELECT =
-  "id, automation_key, action_type, target_tool, source, title, summary, scheduled_at, timezone, channels, payload, status, attempt_count, last_error, executed_at, created_at, updated_at";
+  "id, user_id, automation_key, action_type, target_tool, source, title, summary, scheduled_at, timezone, channels, payload, status, attempt_count, last_error, executed_at, created_at, updated_at";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -46,6 +51,48 @@ function firstMediaFromPosts(postByChannel: Record<string, unknown>) {
     }
   }
   return null;
+}
+
+function isBoosterPublicationSchedule(row: any) {
+  const payload = asRecord(row?.payload);
+  const kind = cleanText(payload.kind, 120).toLowerCase();
+  return (
+    cleanText(row?.target_tool, 80).toLowerCase() === "booster" ||
+    cleanText(row?.action_type, 80).toLowerCase() === "publication" ||
+    kind === "manual_publish_schedule"
+  );
+}
+
+async function updateClaimedScheduledAction(
+  row: any,
+  userId: string,
+  patch: Record<string, unknown>,
+) {
+  let builder: any = supabaseAdmin
+    .from("inr_agent_scheduled_actions")
+    .update(patch)
+    .eq("id", row.id)
+    .eq("user_id", userId)
+    .eq("status", "running");
+  if (row.updated_at) builder = builder.eq("updated_at", row.updated_at);
+  const { data, error } = await builder
+    .select(SCHEDULED_ACTION_SELECT)
+    .maybeSingle();
+  return { data, error };
+}
+
+function mergeScheduledExecution(
+  row: any,
+  execution: Record<string, unknown>,
+) {
+  return {
+    ...asRecord(row.payload),
+    lastExecution: {
+      ...execution,
+      at: new Date().toISOString(),
+      trigger: "manual_execute_now",
+    },
+  };
 }
 
 function buildActionFromScheduled(row: any, userId: string) {
@@ -179,6 +226,145 @@ function buildActionFromScheduled(row: any, userId: string) {
   };
 }
 
+async function executeBoosterPublicationNow(row: any, userId: string) {
+  const publicationRequest = buildScheduledPublicationRequest(row);
+  if (!publicationRequest) {
+    const now = new Date().toISOString();
+    await updateClaimedScheduledAction(row, userId, {
+      status: "failed",
+      last_error: "Publication programmée incomplète.",
+      payload: mergeScheduledExecution(row, {
+        ok: false,
+        status: "failed",
+        error: "Le payload ne contient pas de bloc publishPayload.",
+      }),
+      updated_at: now,
+    });
+    return NextResponse.json(
+      { error: "Publication programmée incomplète." },
+      { status: 400 },
+    );
+  }
+
+  let publishResponse: Response;
+  let publishPayload: Record<string, unknown> = {};
+  let responseText = "";
+  try {
+    publishResponse = await publishNowBooster(
+      new Request("http://inrcy.local/api/booster/publish-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(publicationRequest.body),
+      }),
+    );
+    responseText = await publishResponse.text().catch(() => "");
+    try {
+      publishPayload = asRecord(JSON.parse(responseText));
+    } catch {
+      publishPayload = {};
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Publication programmée impossible.";
+    const now = new Date().toISOString();
+    await updateClaimedScheduledAction(row, userId, {
+      status: "scheduled",
+      scheduled_at: new Date(Date.now() + 60_000).toISOString(),
+      last_error: message,
+      payload: mergeScheduledExecution(row, {
+        ok: false,
+        status: "scheduled",
+        error: message,
+        retriable: true,
+        idempotencyKey: publicationRequest.idempotencyKey,
+      }),
+      updated_at: now,
+    });
+    return NextResponse.json(
+      { error: message, retryScheduled: true },
+      { status: 503 },
+    );
+  }
+
+  const dispatch = interpretScheduledPublicationResponse({
+    httpStatus: publishResponse.status,
+    httpOk: publishResponse.ok,
+    responsePayload: publishPayload,
+    responseText,
+    retryAfter: publishResponse.headers.get("Retry-After"),
+    idempotencyKey: publicationRequest.idempotencyKey,
+  });
+  const now = new Date().toISOString();
+  const retryScheduledAt = dispatch.retriable
+    ? new Date(
+        Date.now() + Math.max(30, Number(dispatch.retryAfterSeconds || 60)) * 1000,
+      ).toISOString()
+    : null;
+  const persistedStatus = dispatch.ok
+    ? "done"
+    : retryScheduledAt
+      ? "scheduled"
+      : "failed";
+  const executionStatus = dispatch.ok ? dispatch.status : persistedStatus;
+  const { data: updatedScheduledRow, error: updateError } =
+    await updateClaimedScheduledAction(row, userId, {
+      status: persistedStatus,
+      scheduled_at: retryScheduledAt || row.scheduled_at,
+      attempt_count: dispatch.preserveAttemptCount
+        ? Math.max(0, Number(row.attempt_count || 1) - 1)
+        : row.attempt_count,
+      executed_at: dispatch.ok ? now : null,
+      last_error: dispatch.ok ? null : dispatch.error || "Publication impossible.",
+      payload: mergeScheduledExecution(row, {
+        ...dispatch,
+        status: executionStatus,
+        publishResult: publishPayload,
+      }),
+      updated_at: now,
+    });
+
+  if (!dispatch.ok) {
+    return NextResponse.json(
+      {
+        ...publishPayload,
+        ok: false,
+        error: dispatch.error || "Publication programmée impossible.",
+        retryScheduled: Boolean(retryScheduledAt),
+        retryAt: retryScheduledAt,
+        warning: updateError
+          ? "La reprise automatique n’a pas pu être enregistrée."
+          : undefined,
+      },
+      {
+        status:
+          publishResponse.status >= 400 ? publishResponse.status : 400,
+      },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      ...publishPayload,
+      ok: true,
+      accepted: dispatch.status === "processing",
+      processing: dispatch.status === "processing",
+      publicationId: dispatch.publicationId || null,
+      publishResult: publishPayload,
+      scheduledAction: updatedScheduledRow
+        ? rowToInrAgentScheduledAction(updatedScheduledRow)
+        : null,
+      launchedNow: true,
+      warning:
+        updateError || !updatedScheduledRow
+          ? "Publication confiée, mais la programmation n’a pas pu être marquée comme exécutée. La reprise idempotente reste active."
+          : undefined,
+    },
+    { status: dispatch.status === "processing" ? 202 : 200 },
+  );
+}
+
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
@@ -189,7 +375,6 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     .select(SCHEDULED_ACTION_SELECT)
     .eq("id", id)
     .eq("user_id", activeUserId)
-    .in("status", ["scheduled", "failed"])
     .maybeSingle();
 
   if (readError) {
@@ -201,8 +386,59 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
   if (!scheduledRow) {
     return NextResponse.json({ error: "Action programmée introuvable." }, { status: 404 });
   }
+  const currentStatus = cleanText(scheduledRow.status, 40).toLowerCase();
+  if (currentStatus !== "scheduled" && currentStatus !== "failed") {
+    return NextResponse.json(
+      {
+        error:
+          currentStatus === "running"
+            ? "Cette action programmée est déjà en cours de traitement."
+            : "Cette action programmée a déjà été traitée ou annulée.",
+        code:
+          currentStatus === "running"
+            ? "scheduled_action_already_running"
+            : "scheduled_action_not_executable",
+      },
+      { status: 409 },
+    );
+  }
 
-  const actionRow = buildActionFromScheduled(scheduledRow, activeUserId);
+  const claimAt = new Date().toISOString();
+  const { data: claimedRow, error: claimError } = await supabaseAdmin
+    .from("inr_agent_scheduled_actions")
+    .update({
+      status: "running",
+      attempt_count: Math.max(0, Number(scheduledRow.attempt_count || 0)) + 1,
+      last_error: null,
+      updated_at: claimAt,
+    })
+    .eq("id", id)
+    .eq("user_id", activeUserId)
+    .in("status", ["scheduled", "failed"])
+    .select(SCHEDULED_ACTION_SELECT)
+    .maybeSingle();
+
+  if (claimError) {
+    return NextResponse.json(
+      { error: "Verrouillage de l’action programmée impossible." },
+      { status: 500 },
+    );
+  }
+  if (!claimedRow) {
+    return NextResponse.json(
+      {
+        error: "Cette action programmée est déjà en cours de traitement.",
+        code: "scheduled_action_already_running",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (isBoosterPublicationSchedule(claimedRow)) {
+    return executeBoosterPublicationNow(claimedRow, activeUserId);
+  }
+
+  const actionRow = buildActionFromScheduled(claimedRow, activeUserId);
   const { data: insertedAction, error: insertError } = await supabaseAdmin
     .from("inr_agent_actions")
     .insert(actionRow)
@@ -210,6 +446,12 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     .single();
 
   if (insertError || !insertedAction?.id) {
+    const now = new Date().toISOString();
+    await updateClaimedScheduledAction(claimedRow, activeUserId, {
+      status: "failed",
+      last_error: "Préparation du lancement immédiat impossible.",
+      updated_at: now,
+    });
     return NextResponse.json(
       { error: "Préparation du lancement immédiat impossible." },
       { status: 500 },
@@ -226,26 +468,39 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
   const executePayload = (await executeResponse.json().catch(() => null)) as Record<string, unknown> | null;
 
   if (!executeResponse.ok) {
+    const executionError =
+      cleanText(executePayload?.error, 800) ||
+      "Lancement immédiat de l’action programmée impossible.";
+    const now = new Date().toISOString();
+    await updateClaimedScheduledAction(claimedRow, activeUserId, {
+      status: "failed",
+      last_error: executionError,
+      payload: mergeScheduledExecution(claimedRow, {
+        ok: false,
+        status: "failed",
+        error: executionError,
+        temporaryActionId: insertedAction.id,
+        campaignResult: executePayload?.campaignResult || null,
+      }),
+      updated_at: now,
+    });
     return NextResponse.json(
       {
         ...(executePayload || {}),
-        error:
-          cleanText(executePayload?.error, 800) ||
-          "Lancement immédiat de l’action programmée impossible.",
+        error: executionError,
       },
       { status: executeResponse.status || 500 },
     );
   }
 
   const now = new Date().toISOString();
-  const { data: updatedScheduledRow, error: updateError } = await supabaseAdmin
-    .from("inr_agent_scheduled_actions")
-    .update({
+  const { data: updatedScheduledRow, error: updateError } =
+    await updateClaimedScheduledAction(claimedRow, activeUserId, {
       status: "done",
       executed_at: now,
       last_error: null,
       payload: {
-        ...asRecord(scheduledRow.payload),
+        ...asRecord(claimedRow.payload),
         launchedNow: {
           launchedAt: now,
           temporaryActionId: insertedAction.id,
@@ -254,11 +509,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
         },
       },
       updated_at: now,
-    })
-    .eq("id", id)
-    .eq("user_id", activeUserId)
-    .select(SCHEDULED_ACTION_SELECT)
-    .maybeSingle();
+    });
 
   if (updateError || !updatedScheduledRow) {
     return NextResponse.json(

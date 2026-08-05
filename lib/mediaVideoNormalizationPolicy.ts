@@ -34,6 +34,9 @@ export const VIDEO_CANONICAL_QUALITY_CRF = 21;
 export const VIDEO_CANONICAL_ENCODER_PRESET = "veryfast" as const;
 export const VIDEO_CANONICAL_AUDIO_BITRATE_KBPS = 128;
 export const VIDEO_CANONICAL_MIN_SAVINGS_RATIO = 0.08;
+// Above 70 MB, prepare one shared quality-optimized master in background.
+// Channel-specific limits (notably GMB) remain separate policies.
+export const VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES = 70_000_000;
 export const VIDEO_CANONICAL_BITRATE_HEADROOM_RATIO = 1.12;
 export const VIDEO_CANONICAL_UNKNOWN_DURATION_OPTIMIZE_BYTES =
   80 * 1024 * 1024;

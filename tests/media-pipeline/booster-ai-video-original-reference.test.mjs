@@ -9,7 +9,7 @@ const source = readFileSync(
 );
 
 test("la génération IA vidéo ne bloque plus sur l'absence de ai_preview", () => {
-  const start = source.indexOf("export async function resolveWorkspaceAiConsumption");
+  const start = source.indexOf("async function resolveWorkspaceAiVideoFamily");
   const end = source.indexOf("export async function syncPublicationWorkspaceContext", start);
   const resolver = source.slice(start, end);
 

@@ -31,7 +31,7 @@ test("publication consumption uses a compatible uploaded image without click-tim
   assert.doesNotMatch(publicationPath, /assertStoredImageVariantIsValid/);
 });
 
-test("publication consumption preserves a compatible uploaded video over its canonical derivative", async () => {
+test("publication keeps a compatible original up to 70 MB and prefers only a useful larger-source derivative", async () => {
   const source = await read("lib/mediaWorkspaceConsumption.ts");
   const start = source.indexOf(
     "export async function resolveWorkspacePublicationConsumption",
@@ -49,7 +49,15 @@ test("publication consumption preserves a compatible uploaded video over its can
   assert.match(source, /\.\.\.uploadedSource, \.\.\.normalizationSource/);
   assert.match(
     publicationPath,
-    /const publicationVariant = directSourceReady \? null : canonical/,
+    /item\.sourceSizeBytes > VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES/,
+  );
+  assert.match(
+    publicationPath,
+    /canonicalIsMateriallySmaller/,
+  );
+  assert.match(
+    publicationPath,
+    /directSourceReady && !preferSharedCanonical \? null : canonical/,
   );
   assert.match(
     publicationPath,
