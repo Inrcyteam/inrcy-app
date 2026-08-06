@@ -853,7 +853,11 @@ export default function LoginPage() {
             </div>
 
             {error ? (
-              <div className={styles.loginErrorBox} role="alert">
+              <div
+                className={styles.loginErrorBox}
+                role="alert"
+                data-testid="login-error"
+              >
                 <div className={styles.loginErrorBadge}>Erreur</div>
                 <div>
                   <div className={styles.loginErrorTitle}>{error.title}</div>

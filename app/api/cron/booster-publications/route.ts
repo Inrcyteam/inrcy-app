@@ -19,7 +19,6 @@ import {
   updateAsyncPublicationJobEvent,
 } from "@/lib/boosterAsyncPublication";
 import { getBoosterCronSweepPlan } from "@/lib/boosterCronScheduling";
-import { runAsyncTaskPool, type AsyncTask } from "@/lib/asyncTaskPool";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -85,7 +84,6 @@ const MAX_PINTEREST_VIDEO_CONTINUATION_ATTEMPTS = 480;
 const ASYNC_CHANNEL_CANDIDATE_LIMIT = 50;
 const ASYNC_PREPARATION_CANDIDATE_LIMIT = 25;
 const ASYNC_FINALIZATION_CANDIDATE_LIMIT = 25;
-const BOOSTER_CRON_TASK_CONCURRENCY = 6;
 const ASYNC_CHANNEL_EXACT_LOAD_LIMIT = ASYNC_CHANNEL_CANDIDATE_LIMIT * 2;
 const ASYNC_PREPARATION_EXACT_LOAD_LIMIT =
   ASYNC_PREPARATION_CANDIDATE_LIMIT * 2;
@@ -786,53 +784,19 @@ export async function GET(request: Request) {
     finalizationJobs.length
   ) {
     const appOrigin = getAppOriginFromRequest(request);
-    const preparationTasks: AsyncTask<void>[] = preparationJobs.map(
-      (job) => () => dispatchPreparationJob(job, appOrigin),
-    );
-    const dispatchTasks: AsyncTask<void>[] = dispatchJobs.map(
-      (job) => () => dispatchChannelJob(job, appOrigin),
-    );
-    const finalizationTasks: AsyncTask<void>[] = finalizationJobs.map((job) => {
-      return async () => {
-        await finalizeAsyncPublicationIfReady({
-          userId: job.userId,
-          publicationId: job.id,
-        });
-      };
-    });
-    // Interleave the three bounded candidate groups so parent reconciliation
-    // cannot sit behind a large dispatch batch while keeping one global cap.
-    const taskGroups = [
-      preparationTasks,
-      dispatchTasks,
-      finalizationTasks,
-    ];
-    const tasks: AsyncTask<void>[] = [];
-    const longestTaskGroup = Math.max(
-      ...taskGroups.map((group) => group.length),
-    );
-    for (let taskIndex = 0; taskIndex < longestTaskGroup; taskIndex += 1) {
-      for (const taskGroup of taskGroups) {
-        const task = taskGroup[taskIndex];
-        if (task) tasks.push(task);
-      }
-    }
-
     after(async () => {
-      const results = await runAsyncTaskPool(
-        tasks,
-        BOOSTER_CRON_TASK_CONCURRENCY,
-      );
-      const rejectedCount = results.reduce(
-        (count, result) => count + Number(result.status === "rejected"),
-        0,
-      );
-      if (rejectedCount) {
-        console.warn("[booster-async-cron] pooled tasks failed", {
-          rejectedCount,
-          taskCount: tasks.length,
-        });
-      }
+      await Promise.allSettled([
+        ...preparationJobs.map((job) =>
+          dispatchPreparationJob(job, appOrigin),
+        ),
+        ...dispatchJobs.map((job) => dispatchChannelJob(job, appOrigin)),
+        ...finalizationJobs.map((job) =>
+          finalizeAsyncPublicationIfReady({
+            userId: job.userId,
+            publicationId: job.id,
+          }),
+        ),
+      ]);
     });
   }
 

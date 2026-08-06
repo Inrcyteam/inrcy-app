@@ -117,32 +117,24 @@ test("workspace media is consumed by AI only when explicitly requested", () => {
   assert.match(modal, /const shouldPrepareMediaForAi = shouldPrepareBoosterMediaForAi/);
   assert.match(
     modal,
-    /const shouldUsePersistentMediaWorkspaceForAi =\s*shouldPrepareMediaForAi && unifiedMediaConsumptionClientAvailable/,
+    /const shouldUsePersistentMediaWorkspaceForAi =[\s\S]*shouldPrepareMediaForAi[\s\S]*unifiedMediaConsumptionClientAvailable/,
   );
   assert.match(
     modal,
-    /let readyMediaWorkspaceId = shouldUsePersistentMediaWorkspaceForAi\s*\? null\s*:\s*mediaWorkspaceId/,
+    /let readyMediaWorkspaceId = shouldUsePersistentMediaWorkspaceForAi[\s\S]*waitForPersistentWorkspaceReadiness/,
   );
   assert.match(
     modal,
-    /if \(shouldUsePersistentMediaWorkspaceForAi\) \{[\s\S]*?waitForPersistentWorkspaceReadiness/,
+    /useWorkspaceMediaForAI:[\s\S]*shouldUsePersistentMediaWorkspaceForAi/,
   );
   assert.match(
     modal,
-    /useWorkspaceMediaForAI:\s*unifiedMediaConsumptionClientAvailable &&\s*Boolean\(readyMediaWorkspaceId\) &&\s*shouldUsePersistentMediaWorkspaceForAi/,
-  );
-  assert.match(
-    modal,
-    /mediaWorkspaceExpected:\s*shouldUsePersistentMediaWorkspaceForAi &&\s*Boolean\(readyMediaWorkspaceId\)/,
+    /mediaWorkspaceExpected:[\s\S]*shouldUsePersistentMediaWorkspaceForAi[\s\S]*Boolean\(readyMediaWorkspaceId\)/,
   );
   assert.match(generationRoute, /let useWorkspaceMediaForAI =/);
   assert.match(
     generationRoute,
     /if \(mediaWorkspaceId && useWorkspaceMediaForAI\)/,
-  );
-  assert.match(
-    modal,
-    /setPostsByChannel\(sanitizePostsForEditor\(versions\)\);\s*setContentWorkspaceOpen\(true\);[\s\S]*?setGenerationMediaWarning/,
   );
 });
 

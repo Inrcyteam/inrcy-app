@@ -29,24 +29,13 @@ export default function PublishExecutionProgress({
     Number.isFinite(phaseTotal) &&
     Number(phaseIndex) > 0 &&
     Number(phaseTotal) > 0;
-  const isComplete = safeProgress >= 100;
-  const visibleLabel =
-    publishProgressLabel ||
-    (scheduling ? "Programmation en cours..." : "Publication en cours...");
-  const progressTitle = isComplete
-    ? scheduling
-      ? "Programmation finalisée"
-      : "Publication finalisée"
-    : scheduling
-      ? "Programmation en cours"
-      : "Publication en cours";
 
   return (
-    <div className={styles.publishProgressBox}>
+    <div className={styles.publishProgressBox} aria-live="polite">
       <div className={styles.publishProgressHeader}>
         <div className={styles.publishProgressHeadingGroup}>
           <strong className={styles.publishProgressTitle}>
-            {progressTitle}
+            {scheduling ? "Programmation en cours" : "Publication en cours"}
           </strong>
           {hasPhaseDetails ? (
             <span className={styles.publishProgressPhase}>
@@ -57,26 +46,22 @@ export default function PublishExecutionProgress({
         </div>
         <strong className={styles.publishProgressPercent}>{safeProgress}%</strong>
       </div>
-
-      <span className={styles.publishProgressLabel} role="status" aria-live="polite">
-        {visibleLabel}
+      <span className={styles.publishProgressLabel}>
+        {publishProgressLabel ||
+          (scheduling
+            ? "Programmation en cours..."
+            : "Publication en cours...")}
       </span>
-
       <div
         className={styles.publishProgressTrack}
         role="progressbar"
-        aria-label={
-          scheduling
-            ? "Progression de la programmation"
-            : "Progression de la publication"
-        }
-        aria-valuetext={`${safeProgress} %. ${visibleLabel}`}
+        aria-label={publishProgressLabel || "Progression de la publication"}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={safeProgress}
       >
         <div
-          className={styles.publishProgressFill}
+          className={`${styles.publishProgressFill} ${safeProgress < 100 ? styles.publishProgressFillActive : ""}`}
           style={{ width: `${safeProgress}%` }}
         />
       </div>

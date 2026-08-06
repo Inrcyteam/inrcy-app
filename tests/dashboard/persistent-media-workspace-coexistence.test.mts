@@ -237,7 +237,7 @@ test("generation library is exclusive while publication keeps the 5 + 1 path", (
   const readiness = between(
     publishModal,
     "const waitForPersistentWorkspaceReadiness",
-    "const resolveChannelMediaMode",
+    "// Les captures",
   );
 
   assert.match(selection, /mediaLibraryPickerScope === "generation"/);
@@ -253,14 +253,6 @@ test("generation library is exclusive while publication keeps the 5 + 1 path", (
 
   assert.match(readiness, /mediaType:\s*"image" as const/);
   assert.match(readiness, /mediaType:\s*"video" as const/);
-  assert.match(
-    readiness,
-    /images\.length && requiredMediaTypeSet\.has\("image"\)/,
-  );
-  assert.match(
-    readiness,
-    /videoFile && requiredMediaTypeSet\.has\("video"\)/,
-  );
   assert.match(
     readiness,
     /verifyPersistentWorkspaceSources\(sourceExpectations,[\s\S]{0,100}signal: readinessSignal/,

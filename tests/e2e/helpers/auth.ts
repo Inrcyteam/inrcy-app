@@ -17,7 +17,7 @@ type LoginOutcome =
   | { kind: 'timeout' };
 
 async function waitForLoginOutcome(page: Page): Promise<LoginOutcome> {
-  const alert = page.getByRole('alert').first();
+  const alert = page.getByTestId('login-error');
   const deadline = Date.now() + 45_000;
 
   while (Date.now() < deadline) {
@@ -26,7 +26,8 @@ async function waitForLoginOutcome(page: Page): Promise<LoginOutcome> {
     }
 
     if (await alert.isVisible().catch(() => false)) {
-      return { kind: 'alert', message: (await alert.innerText()).trim() };
+      const message = (await alert.innerText()).trim();
+      if (message) return { kind: 'alert', message };
     }
 
     await page.waitForTimeout(250);

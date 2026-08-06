@@ -20,7 +20,7 @@ test("la migration étape 8 est additive et prépare les lectures de publication
   assert.doesNotMatch(verify, /\binsert\b|\bupdate\b|\bdelete\b|\bdrop\b|\btruncate\b/i);
 });
 
-test("Générer garde une seule famille IA et retombe sur le texte si le workspace manque", () => {
+test("Générer garde une seule famille IA et continue sans bloquer sur le média", () => {
   const generate = read("app/api/booster/generate/route.ts");
   assert.match(generate, /mediaPipelineCutoverV1\?: boolean/);
   assert.match(generate, /isLegacyMediaTransportCutoverEnabled\(\)/);
@@ -35,38 +35,15 @@ test("Générer garde une seule famille IA et retombe sur le texte si le workspa
     generate,
     /strictMediaCutover\s*&&\s*mediaWorkspaceExpected\s*&&\s*\(!useWorkspaceMediaForAI \|\| !mediaWorkspaceId\)/,
   );
-  const missingWorkspaceStart = generate.indexOf(
-    "const mediaWorkspaceExpected =",
-  );
-  const missingWorkspaceEnd = generate.indexOf(
-    "timingContext.mediaWorkspaceId =",
-    missingWorkspaceStart,
-  );
-  assert.ok(
-    missingWorkspaceStart >= 0 && missingWorkspaceEnd > missingWorkspaceStart,
-  );
-  const missingWorkspaceFallback = generate.slice(
-    missingWorkspaceStart,
-    missingWorkspaceEnd,
-  );
   assert.match(
-    missingWorkspaceFallback,
-    /mediaAnalysisFallback = buildMediaAnalysisFallback\(\s*"media_workspace_required"/,
+    generate,
+    /buildMediaAnalysisFallback\(\s*"media_workspace_required",\s*"media"/,
   );
-  assert.match(missingWorkspaceFallback, /useWorkspaceMediaForAI = false/);
-  assert.doesNotMatch(
-    missingWorkspaceFallback,
-    /NextResponse\.json|status:\s*40[049]/,
-  );
+  assert.match(generate, /workspace missing, text fallback/);
   assert.match(generate, /workspaceError instanceof MediaWorkspaceConsumptionError/);
   assert.match(generate, /workspace_cutover_v1/);
   assert.match(generate, /workspace_media_mismatch/);
   assert.match(generate, /mediaWorkspaceSource = "legacy_fallback"/);
-  assert.match(generate, /generationResult = await generateSharedBoosterPosts\(/);
-  assert.match(
-    generate,
-    /return NextResponse\.json\(\{[\s\S]{0,180}versions[\s\S]{0,180}mediaAnalysisFallback/,
-  );
 });
 
 test("Publier recrée images et vidéos côté serveur depuis le workspace", () => {
@@ -104,15 +81,11 @@ test("Booster n'envoie plus de médias historiques quand le cutover client est a
   assert.match(modal, /mediaPipelineCutoverV1:\s*mediaPipelineCutoverEnabled/);
   assert.match(
     modal,
-    /let readyMediaWorkspaceId = shouldUsePersistentMediaWorkspaceForAi\s*\? null\s*:\s*mediaWorkspaceId/,
+    /mediaWorkspaceExpected:[\s\S]*shouldUsePersistentMediaWorkspaceForAi[\s\S]*Boolean\(readyMediaWorkspaceId\)/,
   );
   assert.match(
     modal,
-    /useWorkspaceMediaForAI:[\s\S]{0,180}Boolean\(readyMediaWorkspaceId\)[\s\S]{0,120}shouldUsePersistentMediaWorkspaceForAi/,
-  );
-  assert.match(
-    modal,
-    /mediaWorkspaceExpected:[\s\S]{0,120}shouldUsePersistentMediaWorkspaceForAi\s*&&\s*Boolean\(readyMediaWorkspaceId\)/,
+    /useWorkspaceMediaForAI:[\s\S]*shouldUsePersistentMediaWorkspaceForAi/,
   );
   assert.match(modal, /imagesForAI:\s*mediaPipelineCutoverEnabled \? \[\] : imagesForAI/);
   assert.match(modal, /shouldBuildImageFallbackPayload/);

@@ -282,8 +282,7 @@ export async function POST(request: Request) {
     let videoNormalization: VideoNormalizationEnqueueResult | null = null;
     if (
       event === "uploaded" &&
-      current.data.media_type === "image" &&
-      !sourceMetadataOnly
+      current.data.media_type === "image"
     ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
@@ -295,7 +294,9 @@ export async function POST(request: Request) {
           mediaId,
           accountId: activeUserId,
           workspaceId: workspaceId || null,
-          mission: undefined,
+          mission: sourceMetadataOnly
+            ? "publication_preparation"
+            : undefined,
         });
         if (imageNormalization.enabled && imageNormalization.jobId) {
           after(async () => {
@@ -328,19 +329,6 @@ export async function POST(request: Request) {
           reason: "enqueue_failed",
         };
       }
-    } else if (
-      event === "uploaded" &&
-      current.data.media_type === "image" &&
-      sourceMetadataOnly
-    ) {
-      // L'original uploadé suffit au générateur d'images. La variante IA
-      // sera produite à la demande si le fournisseur en a besoin ; surtout ne
-      // pas lancer ici une mission publication pour chaque insertion.
-      imageNormalization = {
-        enabled: true,
-        queued: false,
-        reason: "workspace_source_ready",
-      };
     }
 
     if (
@@ -368,10 +356,6 @@ export async function POST(request: Request) {
             mission: "ai_preparation",
           });
           if (videoNormalization.enabled && videoNormalization.jobId) {
-            // `after` rend l'ACK d'upload immédiat. Les frames et l'audio sont
-            // extraits une seule fois depuis Storage pendant que le pro finit sa
-            // phrase ; le hook et le clic Générer ne font que reprendre ce job
-            // idempotent si le runtime s'est interrompu.
             after(async () => {
               try {
                 await processVideoNormalizationJobsForMedia({
@@ -381,11 +365,7 @@ export async function POST(request: Request) {
               } catch (processingError) {
                 console.warn(
                   "[media-pipeline] video AI prewarm deferred to generate/cron",
-                  {
-                    mediaId,
-                    accountId: activeUserId,
-                    error: processingError,
-                  },
+                  { mediaId, accountId: activeUserId, error: processingError },
                 );
               }
             });
@@ -447,33 +427,33 @@ export async function POST(request: Request) {
       } else {
         try {
           videoNormalization = await enqueueVideoNormalization({
-            mediaId,
-            accountId: activeUserId,
-            workspaceId: workspaceId || null,
-            mission: boosterPublicationNeedsCanonical
+          mediaId,
+          accountId: activeUserId,
+          workspaceId: workspaceId || null,
+          mission: boosterPublicationNeedsCanonical
               ? "publication_preparation"
               : undefined,
-          });
+        });
           if (videoNormalization.enabled && videoNormalization.jobId) {
-            // Le navigateur reçoit sa confirmation d'upload immédiatement. Le
-            // canonical chauffe ensuite côté serveur pendant que le pro relit ses
-            // contenus ; le cron reste le filet de récupération durable.
+          // Le navigateur reÃ§oit sa confirmation d'upload immÃ©diatement. Le
+          // canonical chauffe ensuite cÃ´tÃ© serveur pendant que le pro relit ses
+          // contenus ; le cron reste le filet de rÃ©cupÃ©ration durable.
             after(async () => {
-              try {
-                await processVideoNormalizationJobsForMedia({
+            try {
+              await processVideoNormalizationJobsForMedia({
+                accountId: activeUserId,
+                mediaIds: [mediaId],
+              });
+            } catch (processingError) {
+              console.warn(
+                "[media-pipeline] video publication prewarm deferred to cron",
+                {
+                  mediaId,
                   accountId: activeUserId,
-                  mediaIds: [mediaId],
-                });
-              } catch (processingError) {
-                console.warn(
-                  "[media-pipeline] video publication prewarm deferred to cron",
-                  {
-                    mediaId,
-                    accountId: activeUserId,
-                    error: processingError,
-                  },
-                );
-              }
+                  error: processingError,
+                },
+              );
+            }
             });
           }
         } catch (queueError) {

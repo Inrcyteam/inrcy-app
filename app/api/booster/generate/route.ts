@@ -1100,3 +1100,4 @@ const handler = async (req: Request) => {
 };
 
 export const POST = withApi(handler, { route: "/api/booster/generate" });
+

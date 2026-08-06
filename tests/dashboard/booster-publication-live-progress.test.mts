@@ -46,30 +46,8 @@ test("the execution UI keeps one clean global bar without a horizontal channel s
   assert.doesNotMatch(footer, /publishChannelProgress|channels=/);
   assert.doesNotMatch(execution, /État de publication par canal|channels\.map/);
   assert.match(execution, /role="progressbar"/);
-  assert.match(execution, /aria-valuetext/);
-  assert.match(execution, /role="status"/);
-  assert.doesNotMatch(
-    execution,
-    /<section[\s\S]{0,240}aria-live="polite"/,
-  );
-  assert.match(execution, /Programmation finalisée/);
-  assert.match(execution, /Publication finalisée/);
-  assert.doesNotMatch(
-    execution,
-    /publishProgressSignal|publishProgressBackgroundHint|publishProgressFooter/,
-  );
-  assert.doesNotMatch(execution, /overflowX|overflow-x|scroll/);
-  assert.doesNotMatch(
-    css,
-    /publishProgressSignal|publishProgressBackgroundHint|publishProgressFooter|publishProgressSweep/,
-  );
-  assert.match(css, /\.publishProgressTrack/);
-  assert.match(css, /\.publishProgressFill/);
-  assert.match(
-    css,
-    /@media \(max-width: 640px\)[\s\S]*\.publishProgressPhase[\s\S]*white-space: normal[\s\S]*\.publishProgressLabel[\s\S]*white-space: normal/,
-  );
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /\.publishProgressFillActive::after/);
+  assert.match(css, /@keyframes publishProgressSweep/);
 });
 
 test("mixed photo and video allocation is explicit and persists to draft and publish", () => {

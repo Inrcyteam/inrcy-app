@@ -9,15 +9,15 @@ function read(path: string) {
 const resultModal = read(
   "app/dashboard/_components/PublishExecutionResultModal.tsx",
 );
+const publicationStatuses = read("lib/boosterPublicationStatus.ts");
 const boosterLayer = read(
   "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
 );
-const publicationStatus = read("lib/boosterPublicationStatus.ts");
 
-test("every durable non-terminal channel state is displayed as pending", () => {
+test("queued and processing channels are displayed as pending before the ok flag is evaluated", () => {
   assert.match(
-    publicationStatus,
-    /BOOSTER_PENDING_PUBLICATION_STATUSES[\s\S]*"queued"[\s\S]*"preparing"[\s\S]*"dispatching"[\s\S]*"processing"[\s\S]*"finalizing"[\s\S]*"pending"/,
+    publicationStatuses,
+    /"queued"[\s\S]*"preparing"[\s\S]*"dispatching"[\s\S]*"processing"[\s\S]*"finalizing"[\s\S]*"pending"/,
   );
   assert.match(
     resultModal,

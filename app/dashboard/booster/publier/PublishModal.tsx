@@ -1582,7 +1582,7 @@ export default function PublishModal({
     ],
   );
 
-  // Le navigateur ne décode jamais localement le conteneur lourd à l'ajout.
+  // Les captures ne sont jamais décodées localement depuis le conteneur lourd à l'ajout.
   // La mission serveur IA préchauffée depuis Storage fournit les captures ;
   // ce cache local reste uniquement le filet du pipeline historique.
 

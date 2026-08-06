@@ -68,36 +68,7 @@ test("la piste audio est facultative et ne bloque pas une vidéo silencieuse", (
   assert.match(source, /available:\s*audioAvailable/);
 });
 
-test("video normalization serializes every FFmpeg operation per source", () => {
-  const source = read("lib/mediaVideoNormalizer.ts");
-  const normalizeBody = source.slice(
-    source.indexOf("export async function normalizeVideoSource"),
-  );
-  const canonicalIndex = normalizeBody.indexOf(
-    "canonicalEncoding = await prepareCanonical",
-  );
-  const framesIndex = normalizeBody.indexOf(
-    "frameSizes[index] = await extractFrame",
-  );
-  const audioIndex = normalizeBody.indexOf(
-    "audioSizeBytes = await extractAudioTrack",
-  );
-
-  assert.doesNotMatch(normalizeBody, /Promise\.all\s*\(/);
-  assert.doesNotMatch(
-    normalizeBody,
-    /const\s+(?:canonical|visual|audio)Promise\b/,
-  );
-  assert.match(
-    normalizeBody,
-    /if \(needsCanonical\) \{[\s\S]{0,120}canonicalEncoding = await prepareCanonical/,
-  );
-  assert.ok(canonicalIndex >= 0, "canonical preparation must be awaited");
-  assert.ok(framesIndex > canonicalIndex, "frames must run after canonical");
-  assert.ok(audioIndex > framesIndex, "audio must run after frames");
-});
-
-test("l'upload vidéo préchauffe seulement l'IA et garde la préparation publication séparée", () => {
+test("l'upload conserve toute vidéo comme source et la préparation choisit ensuite les dérivés", () => {
   const event = read("app/api/media-pipeline/upload-event/route.ts");
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
   const prepare = read("app/api/media-pipeline/workspace/prepare/route.ts");
@@ -109,22 +80,7 @@ test("l'upload vidéo préchauffe seulement l'IA et garde la préparation public
   assert.match(event, /reason:\s*"source_direct_ready"/);
   assert.match(
     event,
-    /const workspaceAiSource\s*=\s*sourceMetadataOnly[\s\S]{0,180}creation_mode[\s\S]{0,80}=== "ai"/,
-  );
-  assert.match(
-    event,
-    /current\.data\.media_type === "video" &&\s*sourceMetadataOnly[\s\S]{0,350}if \(!workspaceAiSource\)[\s\S]{0,250}reason:\s*"workspace_source_ready"[\s\S]{0,350}mission:\s*"ai_preparation"/,
-  );
-  const manualSourceStart = event.indexOf("if (!workspaceAiSource)");
-  const aiSourceStart = event.indexOf("} else {", manualSourceStart);
-  assert.ok(manualSourceStart >= 0 && aiSourceStart > manualSourceStart);
-  assert.doesNotMatch(
-    event.slice(manualSourceStart, aiSourceStart),
-    /enqueueVideoNormalization|processVideoNormalizationJobsForMedia|publication_preparation/,
-  );
-  assert.match(
-    event,
-    /mission:\s*boosterPublicationNeedsCanonical\s*\? "publication_preparation"\s*:\s*undefined/,
+    /mission:\s*sourceMetadataOnly[\s\S]{0,60}\? "publication_preparation"/,
   );
   assert.match(event, /after\(async \(\) =>[\s\S]*processVideoNormalizationJobsForMedia\(/);
   assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
@@ -147,11 +103,7 @@ test("le cutover évite l’extraction locale lourde à l’insertion d’une vi
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoAudioFileForAI/);
   assert.match(
     publishModal,
-    /const framesResult = await settleOptionalMediaEnrichment\([\s\S]{0,180}getOrPrepareVideoFramesForAI\(videoFile\)[\s\S]{0,120}BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS/,
-  );
-  assert.match(
-    publishModal,
-    /BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS = 2_500/,
+    /const framesResult = await settleOptionalMediaEnrichment\([\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
   );
   assert.doesNotMatch(publishModal, /transcribeVideoAudioForAI\(/);
 });

@@ -231,7 +231,7 @@ test("les ingress retirent toute preuve pipeline forgÃƒÂ©e image ou vidÃƒ�
   assert.equal("preparation_scope" in sanitized, false);
 });
 
-test("un workspace source-only IA se préchauffe sans confondre la mission de publication", async () => {
+test("un workspace source-only inconnu se prÃ©chauffe puis s'auto-rÃ©pare durablement avant rÃ©solution", async () => {
   const [
     normalizer,
     worker,
@@ -298,11 +298,11 @@ test("un workspace source-only IA se préchauffe sans confondre la mission de pu
   assert.match(normalizer, /output_container_format:\s*"mp4"/);
   assert.match(normalizer, /output_pixel_format:\s*canonicalOutputPixelFormat/);
   assert.match(worker, /source:\s*normalized\.source/);
-  assert.match(worker, /width:\s*(?:params\.)?normalized\.source\.orientedWidth/);
-  assert.match(worker, /height:\s*(?:params\.)?normalized\.source\.orientedHeight/);
+  assert.match(worker, /width:\s*params\.normalized\.source\.orientedWidth/);
+  assert.match(worker, /height:\s*params\.normalized\.source\.orientedHeight/);
   assert.match(
     worker,
-    /duration_seconds:\s*(?:params\.)?normalized\.source\.durationSeconds/,
+    /duration_seconds:\s*params\.normalized\.source\.durationSeconds/,
   );
   assert.match(workspace, /requireCodecProof:\s*true/);
   assert.match(
@@ -328,15 +328,7 @@ test("un workspace source-only IA se préchauffe sans confondre la mission de pu
   );
   assert.match(
     uploadEvent,
-    /const workspaceAiSource\s*=\s*sourceMetadataOnly[\s\S]{0,180}creation_mode[\s\S]{0,80}=== "ai"/,
-  );
-  assert.match(
-    uploadEvent,
-    /current\.data\.media_type === "video" &&\s*sourceMetadataOnly[\s\S]{0,350}if \(!workspaceAiSource\)[\s\S]{0,250}reason:\s*"workspace_source_ready"[\s\S]{0,350}mission:\s*"ai_preparation"/,
-  );
-  assert.match(
-    uploadEvent,
-    /mission:\s*boosterPublicationNeedsCanonical\s*\? "publication_preparation"\s*:\s*undefined/,
+    /mission:\s*sourceMetadataOnly[\s\S]{0,100}"publication_preparation"/,
   );
   assert.match(uploadEvent, /after\(async \(\) =>/);
   assert.match(uploadEvent, /processVideoNormalizationJobsForMedia\(/);
