@@ -32,6 +32,9 @@ export const VIDEO_CANONICAL_MAX_BYTES =
 // réduire fortement le poids sans imposer une taille arbitraire.
 export const VIDEO_CANONICAL_QUALITY_CRF = 21;
 export const VIDEO_CANONICAL_ENCODER_PRESET = "veryfast" as const;
+export const VIDEO_CANONICAL_LONG_TRANSCODE_SECONDS = 300;
+export const VIDEO_CANONICAL_LONG_TRANSCODE_MAX_SIDE = 1280;
+export const VIDEO_CANONICAL_LONG_TRANSCODE_MAX_VIDEO_KBPS = 2200;
 export const VIDEO_CANONICAL_AUDIO_BITRATE_KBPS = 128;
 export const VIDEO_CANONICAL_MIN_SAVINGS_RATIO = 0.08;
 // Above 70 MB, prepare one shared quality-optimized master in background.
@@ -64,6 +67,51 @@ export type VideoNormalizationPurpose =
   | "thumbnail"
   | "video_frame"
   | "audio_track";
+
+export type VideoCanonicalEncoderPreset = "ultrafast" | "veryfast";
+
+export function getVideoCanonicalEncoderPreset(params: {
+  durationSeconds: number;
+  videoCodec?: string | null;
+}): VideoCanonicalEncoderPreset {
+  const durationSeconds = Number(params.durationSeconds || 0);
+  const videoCodec = String(params.videoCodec || "")
+    .trim()
+    .toLowerCase();
+  const sourceAlreadyH264 = ["h264", "avc", "avc1"].includes(videoCodec);
+  const longSource =
+    Number.isFinite(durationSeconds) &&
+    durationSeconds >= VIDEO_CANONICAL_LONG_TRANSCODE_SECONDS;
+
+  // Les sources longues ou AV1/HEVC/VPx exigent un décodage complet. Le preset
+  // ultrafast protège la fenêtre serveur. Le profil 720p borné ne s'active que
+  // pour les vidéos d'au moins 5 minutes ; les petites H.264 gardent veryfast.
+  return longSource || (videoCodec !== "" && !sourceAlreadyH264)
+    ? "ultrafast"
+    : VIDEO_CANONICAL_ENCODER_PRESET;
+}
+
+export function getVideoCanonicalTranscodeProfile(params: {
+  durationSeconds: number;
+  videoCodec?: string | null;
+}) {
+  const durationSeconds = Number(params.durationSeconds || 0);
+  const longSource =
+    Number.isFinite(durationSeconds) &&
+    durationSeconds >= VIDEO_CANONICAL_LONG_TRANSCODE_SECONDS;
+
+  return {
+    encoderPreset: getVideoCanonicalEncoderPreset(params),
+    maxSide: longSource
+      ? VIDEO_CANONICAL_LONG_TRANSCODE_MAX_SIDE
+      : VIDEO_CANONICAL_MAX_SIDE,
+    fps: 30,
+    qualityCrf: VIDEO_CANONICAL_QUALITY_CRF,
+    maxVideoKbps: longSource
+      ? VIDEO_CANONICAL_LONG_TRANSCODE_MAX_VIDEO_KBPS
+      : null,
+  } as const;
+}
 
 const PURPOSE_BY_KEY: Record<
   VideoNormalizationVariantKey,

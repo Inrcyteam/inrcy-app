@@ -49,6 +49,8 @@ test("le normaliseur produit le canonique et tous les dérivés sans recadrage",
   assert.match(source, /`frame_0\$\{index \+ 1\}`/);
   assert.match(source, /key:\s*"audio_track"/);
   assert.match(source, /canFastPrepareCanonical/);
+  assert.match(source, /getVideoCanonicalTranscodeProfile/);
+  assert.match(source, /max_side:\s*canonicalMaxSide/);
   assert.match(source, /mode:\s*copyAudio \? "stream_copy" : "video_copy_audio_transcode"/);
   assert.match(source, /runFfmpegWithProgress/);
   assert.match(source, /video_ffmpeg_stalled/);
@@ -83,6 +85,12 @@ test("l'upload conserve toute vidéo comme source et la préparation choisit ens
     /mission:\s*sourceMetadataOnly[\s\S]{0,60}\? "publication_preparation"/,
   );
   assert.match(event, /after\(async \(\) =>[\s\S]*processVideoNormalizationJobsForMedia\(/);
+  assert.match(event, /workspaceAiNeedsSharedCanonical/);
+  assert.match(
+    event,
+    /mission:\s*"ai_preparation"[\s\S]*mission:\s*"publication_preparation"/,
+  );
+  assert.match(event, /ai_and_publication_preparation_queued/);
   assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
   assert.match(intent, /preparation_scope:\s*"source_only"/);
   assert.doesNotMatch(intent, /enqueueVideoNormalization\(/);
@@ -91,7 +99,7 @@ test("l'upload conserve toute vidéo comme source et la préparation choisit ens
 });
 
 
-test("le cutover évite l’extraction locale lourde à l’insertion d’une vidéo", () => {
+test("le cutover évite le travail dans le handler d'insertion mais préchauffe les grosses vidéos", () => {
   const publishModal = read(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
@@ -101,6 +109,10 @@ test("le cutover évite l’extraction locale lourde à l’insertion d’une vi
   );
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoAudioFileForAI/);
+  assert.match(
+    publishModal,
+    /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
+  );
   assert.match(
     publishModal,
     /const framesResult = await settleOptionalMediaEnrichment\([\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,

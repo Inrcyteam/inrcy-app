@@ -1510,8 +1510,26 @@ export async function GET(req: Request) {
     const filterAccountId = cleanString(url.searchParams.get("filterAccountId"));
     const query = cleanString(url.searchParams.get("q")).toLowerCase();
     // Exact counters are intentionally opt-in. A normal history read only
-    // needs the requested page plus one lookahead item.
+    // needs the requested page plus one lookahead item. The dedicated counts-only
+    // mode lets the client render the list first, then hydrate every tab counter
+    // in the background without downloading the same page twice.
     const includeCounts = url.searchParams.get("includeCounts") === "1";
+    const countsOnly = url.searchParams.get("countsOnly") === "1";
+
+    if (countsOnly) {
+      const [sentCountsResult, draftCountsResult] = await Promise.all([
+        computeFolderCounts(supabase, activeUserId, "sent", filterAccountId, query),
+        computeFolderCounts(supabase, activeUserId, "drafts", filterAccountId, query),
+      ]);
+      const countsIncluded = sentCountsResult.complete && draftCountsResult.complete;
+      return NextResponse.json({
+        countsIncluded,
+        countsComplete: countsIncluded,
+        folderCounts: countsIncluded ? sentCountsResult.counts : null,
+        draftFolderCounts: countsIncluded ? draftCountsResult.counts : null,
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const folderCutoffIso = getInrSendRetentionCutoffIso(folder);
     const eventSourceCutoffIso = getOldestAutoRetentionCutoffIso(["publications", "recoltes", "offres", "propulsions", "informations", "suivis", "enquetes", "fidelisations"]);
     const start = (page - 1) * pageSize;

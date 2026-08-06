@@ -8,9 +8,7 @@ import {
   VIDEO_AI_PREVIEW_MAX_SIDE,
   VIDEO_AUDIO_TRACK_MAX_BYTES,
   VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
-  VIDEO_CANONICAL_ENCODER_PRESET,
   VIDEO_CANONICAL_MIN_SAVINGS_RATIO,
-  VIDEO_CANONICAL_QUALITY_CRF,
   VIDEO_CANONICAL_MAX_BYTES,
   VIDEO_CANONICAL_MAX_SIDE,
   VIDEO_FRAME_MAX_BYTES,
@@ -19,6 +17,7 @@ import {
   buildVideoFrameCaptureTimes,
   fitVideoWithinMaxSide,
   getOrientedVideoDimensions,
+  getVideoCanonicalTranscodeProfile,
   getVideoCanonicalOptimizationProfile,
   getVideoNormalizationPurpose,
   getVideoTargetBitrateKbps,
@@ -559,6 +558,14 @@ async function encodeQualityOptimizedCanonical(params: {
   targetMaxVideoKbps: number;
   onProgress?: (ratio: number) => void;
 }): Promise<CanonicalPreparation> {
+  const transcodeProfile = getVideoCanonicalTranscodeProfile({
+    durationSeconds: params.source.durationSeconds,
+    videoCodec: params.source.videoCodec,
+  });
+  const targetMaxVideoKbps = Math.min(
+    params.targetMaxVideoKbps,
+    transcodeProfile.maxVideoKbps || params.targetMaxVideoKbps,
+  );
   const args = [
     "-y",
     "-hide_banner",
@@ -573,17 +580,17 @@ async function encodeQualityOptimizedCanonical(params: {
   if (params.source.hasAudio) args.push("-map", "0:a:0?");
   args.push(
     "-vf",
-    buildScaleFilter(VIDEO_CANONICAL_MAX_SIDE, 30),
+    buildScaleFilter(transcodeProfile.maxSide, transcodeProfile.fps),
     "-c:v",
     "libx264",
     "-preset",
-    VIDEO_CANONICAL_ENCODER_PRESET,
+    transcodeProfile.encoderPreset,
     "-crf",
-    String(VIDEO_CANONICAL_QUALITY_CRF),
+    String(transcodeProfile.qualityCrf),
     "-maxrate",
-    `${params.targetMaxVideoKbps}k`,
+    `${targetMaxVideoKbps}k`,
     "-bufsize",
-    `${params.targetMaxVideoKbps * 2}k`,
+    `${targetMaxVideoKbps * 2}k`,
     "-pix_fmt",
     "yuv420p",
     "-movflags",
@@ -632,8 +639,8 @@ async function encodeQualityOptimizedCanonical(params: {
     ),
     attempts: 1,
     mode: "quality_transcode",
-    encoderPreset: VIDEO_CANONICAL_ENCODER_PRESET,
-    qualityCrf: VIDEO_CANONICAL_QUALITY_CRF,
+    encoderPreset: transcodeProfile.encoderPreset,
+    qualityCrf: transcodeProfile.qualityCrf,
     optimizationReason: "meaningful_savings",
   };
 }
@@ -697,20 +704,30 @@ async function prepareCanonical(params: {
     params.onProgress?.(0);
   }
 
+  const fallbackProfile = getVideoCanonicalTranscodeProfile({
+    durationSeconds: params.source.durationSeconds,
+    videoCodec: params.source.videoCodec,
+  });
   return await encodeMp4({
     ffmpegPath: params.ffmpegPath,
     inputPath: params.inputPath,
     outputPath: params.outputPath,
-    maxSide: VIDEO_CANONICAL_MAX_SIDE,
+    maxSide: fallbackProfile.maxSide,
     durationSeconds: params.source.durationSeconds,
     maxBytes: VIDEO_CANONICAL_MAX_BYTES,
-    maxVideoKbps: optimization.targetMaxVideoKbps,
+    maxVideoKbps: Math.min(
+      optimization.targetMaxVideoKbps,
+      fallbackProfile.maxVideoKbps || optimization.targetMaxVideoKbps,
+    ),
     minVideoKbps: 250,
     audioBitrateKbps: VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
     includeAudio: params.source.hasAudio,
-    fps: 30,
+    fps: fallbackProfile.fps,
     timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
-    encoderPreset: "superfast",
+    encoderPreset:
+      fallbackProfile.encoderPreset === "ultrafast"
+        ? "ultrafast"
+        : "superfast",
     onProgress: params.onProgress,
   });
 }
@@ -1028,10 +1045,20 @@ export async function normalizeVideoSource(params: {
   canonicalRatio = 1;
   emitProgress(94, "Finalisation des fichiers vidéo");
 
+  const canonicalWasTranscoded =
+    canonicalEncoding?.mode === "quality_transcode" ||
+    canonicalEncoding?.mode === "size_cap_transcode";
+  const canonicalTranscodeProfile = getVideoCanonicalTranscodeProfile({
+    durationSeconds: source.durationSeconds,
+    videoCodec: source.videoCodec,
+  });
+  const canonicalMaxSide = canonicalWasTranscoded
+    ? canonicalTranscodeProfile.maxSide
+    : VIDEO_CANONICAL_MAX_SIDE;
   const canonicalDimensions = fitVideoWithinMaxSide({
     width: source.orientedWidth,
     height: source.orientedHeight,
-    maxSide: VIDEO_CANONICAL_MAX_SIDE,
+    maxSide: canonicalMaxSide,
   });
   const frameDimensions = fitVideoWithinMaxSide({
     width: source.orientedWidth,
@@ -1072,16 +1099,12 @@ export async function normalizeVideoSource(params: {
         : null,
     metadata_stripped: true,
   };
-  const canonicalOutputFrameRate =
-    canonicalEncoding?.mode === "quality_transcode" ||
-    canonicalEncoding?.mode === "size_cap_transcode"
-      ? 30
-      : source.frameRate;
-  const canonicalOutputPixelFormat =
-    canonicalEncoding?.mode === "quality_transcode" ||
-    canonicalEncoding?.mode === "size_cap_transcode"
-      ? "yuv420p"
-      : source.pixelFormat;
+  const canonicalOutputFrameRate = canonicalWasTranscoded
+    ? canonicalTranscodeProfile.fps
+    : source.frameRate;
+  const canonicalOutputPixelFormat = canonicalWasTranscoded
+    ? "yuv420p"
+    : source.pixelFormat;
 
   const variants: Partial<
     Record<VideoNormalizationVariantKey, NormalizedVideoVariant>
@@ -1104,7 +1127,7 @@ export async function normalizeVideoSource(params: {
         video_codec: "h264",
         audio_codec: source.hasAudio ? "aac" : null,
         frame_rate: canonicalOutputFrameRate,
-        max_side: VIDEO_CANONICAL_MAX_SIDE,
+        max_side: canonicalMaxSide,
         crop: false,
         preserve_ratio: true,
         without_enlargement: true,

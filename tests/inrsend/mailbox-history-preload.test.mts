@@ -94,7 +94,11 @@ test("client and API keep history reads bounded and count-free by default", () =
   assert.match(client, /currentHasMore:\s*snapshot\.hasMore/);
   assert.match(client, /MAILBOX_HISTORY_PREFETCH_CONCURRENCY/);
   assert.match(client, /params\.set\("includeCounts", "0"\)/);
+  assert.match(client, /params\.set\("countsOnly", "1"\)/);
+  assert.match(client, /void loadHistoryCounts\(context, \{ force \}\)/);
   assert.match(route, /const includeCounts = url\.searchParams\.get\("includeCounts"\) === "1"/);
+  assert.match(route, /const countsOnly = url\.searchParams\.get\("countsOnly"\) === "1"/);
+  assert.match(route, /if \(countsOnly\)/);
   assert.match(route, /MAX_SOURCE_BATCHES_PER_REQUEST = 40/);
   assert.match(route, /const targetVisibleCount = end \+ 1/);
   assert.doesNotMatch(route, /MAX_ITERATIONS = 5000|fetchAllRows/);
@@ -150,6 +154,8 @@ test("pagination footer is compact and keeps the list visible during page refres
   assert.match(list, /\{historyPage\} \/ \{historyPageTotalLabel\}/);
   assert.match(list, /historyRangeLabel/);
   assert.match(list, /listFooterRefreshButton/);
+  assert.match(styles, /\.listFooter \{[\s\S]*display:\s*flex[\s\S]*justify-content:\s*center/);
+  assert.match(styles, /@media \(max-width: 640px\) \{[\s\S]*\.listFooter \{[\s\S]*display:\s*grid/);
   assert.match(styles, /\.listFooterPagerRow[\s\S]*grid-template-columns:\s*42px minmax\(64px, 1fr\) 42px/);
   assert.match(styles, /inrsendFooterRefreshSpin/);
 });

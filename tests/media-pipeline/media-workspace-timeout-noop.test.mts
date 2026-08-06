@@ -77,6 +77,18 @@ test("ensure, clear, read et readiness utilisent tous le coupe-circuit composabl
     modal,
     /waitForPersistentWorkspaceReadiness[\s\S]*timeoutMs = MEDIA_WORKSPACE_READINESS_TIMEOUT_MS[\s\S]*withMediaWorkspaceDeadline\([\s\S]*timeoutMs/,
   );
+  assert.match(
+    modal,
+    /BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 90_000/,
+  );
+  assert.match(
+    modal,
+    /publishWorkspaceReadinessTimeoutMs[\s\S]*videoFile\.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"publish"[\s\S]*publishWorkspaceReadinessTimeoutMs/,
+  );
+  assert.match(
+    modal,
+    /scheduleWorkspaceReadinessTimeoutMs[\s\S]*videoFile\.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"schedule"[\s\S]*scheduleWorkspaceReadinessTimeoutMs/,
+  );
 });
 
 test("un statut workspace identique est un vrai no-op SQL et les refresh redondants sont supprimés", () => {

@@ -5,7 +5,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  getVideoCanonicalEncoderPreset,
   getVideoCanonicalOptimizationProfile,
+  getVideoCanonicalTranscodeProfile,
   VIDEO_CANONICAL_QUALITY_CRF,
 } from "../../lib/mediaVideoNormalizationPolicy.ts";
 
@@ -43,9 +45,53 @@ test("la compression vidéo est pilotée par la qualité et non par 40 Mo", () =
   assert.equal(VIDEO_CANONICAL_QUALITY_CRF, 21);
   const normalizer = read("lib/mediaVideoNormalizer.ts");
   assert.match(normalizer, /"-crf"/);
-  assert.match(normalizer, /VIDEO_CANONICAL_ENCODER_PRESET/);
+  assert.match(normalizer, /getVideoCanonicalTranscodeProfile/);
   assert.match(normalizer, /canonical_transcode_skipped_low_gain/);
   assert.doesNotMatch(normalizer, /VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES/);
+});
+
+
+test("les sources longues ou AV1 utilisent le preset serveur rapide sans toucher aux petites H.264", () => {
+  assert.equal(
+    getVideoCanonicalEncoderPreset({
+      durationSeconds: 636.8,
+      videoCodec: "av1",
+    }),
+    "ultrafast",
+  );
+  assert.equal(
+    getVideoCanonicalEncoderPreset({
+      durationSeconds: 45,
+      videoCodec: "h264",
+    }),
+    "veryfast",
+  );
+  assert.deepEqual(
+    getVideoCanonicalTranscodeProfile({
+      durationSeconds: 636.8,
+      videoCodec: "av1",
+    }),
+    {
+      encoderPreset: "ultrafast",
+      maxSide: 1280,
+      fps: 30,
+      qualityCrf: 21,
+      maxVideoKbps: 2200,
+    },
+  );
+  assert.deepEqual(
+    getVideoCanonicalTranscodeProfile({
+      durationSeconds: 45,
+      videoCodec: "h264",
+    }),
+    {
+      encoderPreset: "veryfast",
+      maxSide: 1920,
+      fps: 30,
+      qualityCrf: 21,
+      maxVideoKbps: null,
+    },
+  );
 });
 
 test("l'original compatible reste original et les adaptations explicites restent normalisées", () => {

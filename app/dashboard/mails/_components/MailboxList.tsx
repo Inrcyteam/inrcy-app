@@ -250,6 +250,12 @@ export default function MailboxList(props: Props) {
               const workflowActionLabel = workflowActionLabelForItem(it);
               const isVideoPublication = folder === "publications" && it.source === "app_events" && isPublicationVideoItem(it);
               const isInrAgentOrigin = it.originSource === "inr_agent";
+              const isScheduledOrigin = !isInrAgentOrigin && [
+                "booster_scheduled",
+                "inrsend_scheduled",
+                "propulser_scheduled",
+                "fideliser_scheduled",
+              ].includes(String(it.originSource || ""));
 
               return (
                 <div
@@ -304,6 +310,15 @@ export default function MailboxList(props: Props) {
                           role="img"
                         >
                           <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
+                        </span>
+                      ) : isScheduledOrigin ? (
+                        <span
+                          className={styles.scheduledOriginIcon}
+                          title={it.originLabel || "Action programmée"}
+                          aria-label={it.originLabel || "Action programmée"}
+                          role="img"
+                        >
+                          <span aria-hidden="true">🕒</span>
                         </span>
                       ) : null}
                       <button

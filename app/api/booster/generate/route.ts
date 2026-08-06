@@ -765,6 +765,7 @@ const handler = async (req: Request) => {
           const expectedDiagnostic = workspaceMedia.diagnostics[expectedFamily];
           if (
             !mediaAnalysisFallback &&
+            !useVerifiedLocalVideoPreview &&
             (expectedDiagnostic.state === "partial" ||
               expectedDiagnostic.state === "unavailable")
           ) {
@@ -922,12 +923,14 @@ const handler = async (req: Request) => {
               "workspace_video_frames_missing",
               "workspace_variant_download_failed",
               "workspace_variant_binary_invalid",
+              "workspace_ai_video_deadline_exceeded",
             ].includes(String(fallbackCode || "")) &&
             (localFrames.length > 0 || Boolean(localTranscript));
 
           if (canUseVerifiedLocalVideoPreview) {
             timingContext.mediaWorkspaceSource =
               "workspace_verified_client_ai_preview";
+            mediaAnalysisFallback = null;
           }
         }
       }

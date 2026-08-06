@@ -30,7 +30,7 @@ const transcribeRoute = await readFile(
   "utf8",
 );
 
-test("les captures vidéo restent mises en cache, sont absentes de l'insertion et ne déclenchent aucune mission lourde", () => {
+test("les captures vidéo lourdes restent mises en cache et préchauffent hors du bloc d'insertion", () => {
   assert.match(foundations, /type VideoFramesPreparationCache = \{/);
   assert.match(source, /const getOrPrepareVideoFramesForAI = useCallback/);
   assert.match(source, /videoFramesForAiCacheRef\.current = null/);
@@ -39,6 +39,10 @@ test("les captures vidéo restent mises en cache, sont absentes de l'insertion e
     source.indexOf("const onVideoChange"),
   );
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
+  assert.match(
+    source,
+    /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
+  );
   assert.doesNotMatch(source, /preparePersistentAiMedia/);
   assert.doesNotMatch(source, /preparePersistentPublicationMedia/);
   assert.match(source, /await waitForPersistentWorkspaceIdle/);
@@ -64,7 +68,11 @@ test("la génération rapide utilise les captures locales sans attendre de trans
   assert.match(generationBlock, /videoAudioTranscriptStatus = "unavailable"/);
   assert.match(
     generationBlock,
-    /Promise\.allSettled\(\[\s*getOrPrepareVideoFramesForAI\(videoFile\),?\s*\]\)/,
+    /settleOptionalMediaEnrichment\([\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)[\s\S]*BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS/,
+  );
+  assert.doesNotMatch(
+    generationBlock,
+    /hasVideoForGeneration\s*&&\s*videoFile\s*&&\s*!videoAiContextRef\s*&&\s*!mediaPipelineCutoverEnabled/,
   );
 });
 

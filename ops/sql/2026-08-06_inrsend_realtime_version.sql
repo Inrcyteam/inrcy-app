@@ -181,8 +181,8 @@ end;
 $$;
 
 -- app_events contains technical locks and channel-worker rows. Only events that
--- can appear in iNr'Send are allowed to notify it. Final social publication
--- progress remains handled by the optimized publications_version migration.
+-- can appear in iNr'Send are allowed to notify it. Final publish rows bump the
+-- dedicated counter; publications_version remains an additional optimized signal.
 create or replace function public.inrcy_app_event_is_inrsend_visible(p_row jsonb)
 returns boolean
 language sql
@@ -199,8 +199,7 @@ as $$
       'execution_idempotency_lock',
       'idempotency_lock',
       'publish_async_job',
-      'publish_async_channel',
-      'publish'
+      'publish_async_channel'
     ]::text[]
   );
 $$;

@@ -15,6 +15,10 @@ function read(path: string) {
 const migration = read("ops/sql/2026-08-06_inrsend_realtime_version.sql");
 const mailbox = read("app/dashboard/mails/MailboxClient.tsx");
 const versionsRoute = read("app/api/profile/versions/route.ts");
+const repairMigration = read("ops/sql/2026-08-06_inrsend_final_publication_refresh_repair.sql");
+const historyRoute = read("app/api/inrsend/history/route.ts");
+const list = read("app/dashboard/mails/_components/MailboxList.tsx");
+const styles = read("app/dashboard/mails/mails.module.css");
 
 test("inrsend_version appartient au pont realtime de profil", () => {
   assert.ok(PROFILE_VERSION_FIELDS.includes("inrsend_version"));
@@ -58,16 +62,40 @@ test("les campagnes ignorent les heartbeats techniques mais gardent le suivi vis
   assert.doesNotMatch(campaignFunction, /'last_activity_at'/);
 });
 
-test("les événements techniques de publication ne provoquent pas de rafraîchissement en rafale", () => {
-  assert.match(migration, /'publish_async_job'/);
-  assert.match(migration, /'publish_async_channel'/);
-  assert.match(migration, /'publish_idempotency_lock'/);
-  assert.match(migration, /'publish'/);
-  assert.match(migration, /array\['booster', 'propulser', 'fideliser'\]::text\[\]/);
+test("les publications finales rafraîchissent iNrSend sans réveiller les lignes techniques", () => {
+  const visibilityFunction = migration.match(
+    /create or replace function public\.inrcy_app_event_is_inrsend_visible\(p_row jsonb\)[\s\S]*?\n\$\$;/,
+  )?.[0] || "";
+  assert.match(visibilityFunction, /'publish_async_job'/);
+  assert.match(visibilityFunction, /'publish_async_channel'/);
+  assert.match(visibilityFunction, /'publish_idempotency_lock'/);
+  assert.doesNotMatch(visibilityFunction, /'publish'\s*[,\]]/);
+  assert.match(visibilityFunction, /array\['booster', 'propulser', 'fideliser'\]::text\[\]/);
+  assert.match(repairMigration, /final `publish` rows/i);
+  assert.match(repairMigration, /add column if not exists inrsend_version/);
+  assert.match(repairMigration, /create or replace function public\.inrcy_bump_inrsend_version/);
+  assert.match(repairMigration, /trg_app_events_bump_inrsend_version/);
 });
 
 test("le déploiement reste compatible si le SQL arrive juste après le code", () => {
   assert.match(versionsRoute, /includes\("inrsend_version"\)/);
   assert.match(versionsRoute, /field !== "inrsend_version"/);
   assert.match(versionsRoute, /toProfileVersionsSnapshot\(data \|\| \{\}\)/);
+});
+
+
+test("iNrSend garde un filet de sécurité visible même si le realtime SQL manque un signal", () => {
+  assert.match(mailbox, /INRSEND_HISTORY_RECOVERY_REFRESH_MS = 60_000/);
+  assert.match(mailbox, /window\.setTimeout\([\s\S]*refreshVisibleHistory/);
+  assert.match(mailbox, /document\.visibilityState === "hidden"/);
+  assert.match(mailbox, /setHistoryCountsLoadedOnce\(true\)/);
+  assert.match(historyRoute, /countsOnly/);
+});
+
+test("les origines programmées et iNrAgent sont marquées sans ambiguïté", () => {
+  assert.match(list, /isInrAgentOrigin/);
+  assert.match(list, /isScheduledOrigin/);
+  assert.match(list, /scheduledOriginIcon/);
+  assert.match(list, /inr-agent\.png/);
+  assert.match(styles, /\.scheduledOriginIcon/);
 });

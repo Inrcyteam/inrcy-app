@@ -88,18 +88,28 @@ test("iNrAgent transmet la référence persistante au brouillon iNrSend", () => 
   assert.match(actions, /videoAiContextReferenceAliases\(args\.videoAiContextRef\)/);
 });
 
-test("la génération cutover saute l'extraction locale et transmet la référence au serveur", () => {
+test("la génération cutover conserve la référence et un fallback local borné", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
-  // L'ancien préchauffage à l'ouverture a disparu : la garantie utile est
-  // désormais que le clic Générer n'attend aucune extraction locale en cutover.
   assert.match(
     modal,
-    /hasVideoForGeneration &&[\s\S]*videoFile &&[\s\S]*!videoAiContextRef &&[\s\S]*!mediaPipelineCutoverEnabled/,
+    /hasVideoForGeneration &&[\s\S]*videoFile &&[\s\S]*!videoAiContextRef[\s\S]*settleOptionalMediaEnrichment/,
+  );
+  assert.doesNotMatch(
+    modal,
+    /hasVideoForGeneration &&[\s\S]{0,180}!videoAiContextRef &&[\s\S]{0,80}!mediaPipelineCutoverEnabled/,
   );
   assert.match(modal, /contextRef: videoAiContextRef/);
   assert.match(modal, /Réutilisation de l’analyse vidéo iNrAgent/);
   assert.match(modal, /videoAiContextReferenceAliases\(videoAiContextRef\)/);
+
+  const generate = read("app/api/booster/generate/route.ts");
+  assert.match(generate, /workspace_ai_video_deadline_exceeded/);
+  assert.match(
+    generate,
+    /canUseVerifiedLocalVideoPreview[\s\S]*mediaAnalysisFallback = null/,
+  );
+  assert.match(generate, /!useVerifiedLocalVideoPreview/);
 });
 
 test("la route Booster lit uniquement le cache persistant sans préparer à nouveau la vidéo", () => {

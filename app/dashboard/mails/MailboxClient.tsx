@@ -206,6 +206,14 @@ type InrSendDefaultSnapshot = {
   draftFolderCounts: FolderCounts;
 };
 
+const INRSEND_HISTORY_RECOVERY_REFRESH_MS = 60_000;
+const INRSEND_HISTORY_RECOVERY_THROTTLE_MS = 10_000;
+const INRSEND_COUNTS_CACHE_MS = 30_000;
+
+function mailboxHistoryCountsKey(context: MailboxHistoryContext) {
+  return `account=${encodeURIComponent(context.filterAccountId)}|q=${encodeURIComponent(context.query)}`;
+}
+
 export default function MailboxClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const router = useRouter();
@@ -236,6 +244,7 @@ export default function MailboxClient() {
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [historyLoadedOnce, setHistoryLoadedOnce] = useState(false);
+  const [historyCountsLoadedOnce, setHistoryCountsLoadedOnce] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageRef = useRef(1);
@@ -249,6 +258,9 @@ export default function MailboxClient() {
   );
   const historyCacheRef = useRef<Map<string, MailboxHistorySnapshot<OutboxItem>>>(new Map());
   const historyInFlightRef = useRef<Map<string, Promise<MailboxHistorySnapshot<OutboxItem> | null>>>(new Map());
+  const historyCountsInFlightRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  const historyCountsFetchedAtRef = useRef<Map<string, number>>(new Map());
+  const historyCountsDisplayKeyRef = useRef("");
   const historyDisplayedContextKeyRef = useRef("");
   const historyPreloadGenerationRef = useRef(0);
   const historyPreloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -605,10 +617,12 @@ export default function MailboxClient() {
     [activeHistoryContext],
   );
   const activeHistoryContextKeyRef = useRef(activeHistoryContextKey);
+  const activeHistoryContextRef = useRef(activeHistoryContext);
 
   useLayoutEffect(() => {
     activeHistoryContextKeyRef.current = activeHistoryContextKey;
-  }, [activeHistoryContextKey]);
+    activeHistoryContextRef.current = activeHistoryContext;
+  }, [activeHistoryContext, activeHistoryContextKey]);
 
   useEffect(() => {
     if (!initialHistorySnapshot) return;
@@ -1279,6 +1293,108 @@ export default function MailboxClient() {
     return request;
   }, []);
 
+  const loadHistoryCounts = useCallback(async (
+    context: MailboxHistoryContext,
+    options?: { force?: boolean },
+  ) => {
+    const countsKey = mailboxHistoryCountsKey(context);
+    const now = Date.now();
+    const lastFetchedAt = historyCountsFetchedAtRef.current.get(countsKey) || 0;
+    if (
+      !options?.force &&
+      historyCountsDisplayKeyRef.current === countsKey &&
+      now - lastFetchedAt < INRSEND_COUNTS_CACHE_MS
+    ) {
+      return true;
+    }
+
+    const existingRequest = historyCountsInFlightRef.current.get(countsKey);
+    if (existingRequest) return existingRequest;
+
+    const request = (async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("countsOnly", "1");
+        if (context.filterAccountId) {
+          params.set("filterAccountId", context.filterAccountId);
+        }
+        if (context.query) params.set("q", context.query);
+
+        const response = await fetch(`/api/inrsend/history?${params.toString()}`, {
+          method: "GET",
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || payload?.countsIncluded !== true) return false;
+
+        const nextFolderCounts = normalizeFolderCounts(payload.folderCounts);
+        const nextDraftFolderCounts = normalizeFolderCounts(payload.draftFolderCounts);
+        historyCountsFetchedAtRef.current.set(countsKey, Date.now());
+
+        const currentContext = activeHistoryContextRef.current;
+        if (mailboxHistoryCountsKey(currentContext) !== countsKey) return true;
+
+        const activeCounts = currentContext.boxView === "drafts"
+          ? nextDraftFolderCounts
+          : nextFolderCounts;
+        const nextTotal = Math.max(0, Number(activeCounts[currentContext.folder] || 0));
+        setFolderCounts(nextFolderCounts);
+        setDraftFolderCounts(nextDraftFolderCounts);
+        setHistoryTotalCount(nextTotal);
+        setHistoryHasMorePotential(
+          historyPageRef.current < mailboxHistoryPageCount(nextTotal, MAILBOX_PAGE_SIZE),
+        );
+        setHistoryCountsLoadedOnce(true);
+        historyCountsDisplayKeyRef.current = countsKey;
+
+        const currentSnapshot = historyCacheRef.current.get(
+          mailboxHistoryPageKey(currentContext, historyPageRef.current),
+        );
+        if (currentSnapshot) {
+          const enrichedSnapshot = {
+            ...currentSnapshot,
+            total: nextTotal,
+            hasMore:
+              historyPageRef.current < mailboxHistoryPageCount(nextTotal, MAILBOX_PAGE_SIZE),
+            folderCounts: nextFolderCounts,
+            draftFolderCounts: nextDraftFolderCounts,
+          };
+          historyCacheRef.current.set(
+            mailboxHistoryPageKey(currentContext, historyPageRef.current),
+            enrichedSnapshot,
+          );
+
+          const isDefaultSnapshot =
+            enrichedSnapshot.page === 1 &&
+            currentContext.folder === "publications" &&
+            currentContext.boxView === "sent" &&
+            !currentContext.filterAccountId &&
+            !currentContext.query;
+          if (isDefaultSnapshot) {
+            writeModuleSnapshot<InrSendDefaultSnapshot>(MODULE_SNAPSHOT_KEYS.inrSendDefault, {
+              items: enrichedSnapshot.items,
+              page: enrichedSnapshot.page,
+              total: enrichedSnapshot.total,
+              hasMore: enrichedSnapshot.hasMore,
+              folderCounts: nextFolderCounts,
+              draftFolderCounts: nextDraftFolderCounts,
+            });
+          }
+        }
+
+        return true;
+      } catch (error) {
+        console.error(error);
+        return false;
+      } finally {
+        historyCountsInFlightRef.current.delete(countsKey);
+      }
+    })();
+
+    historyCountsInFlightRef.current.set(countsKey, request);
+    return request;
+  }, []);
+
   const scheduleHistoryPreload = useCallback((
     context: MailboxHistoryContext,
     snapshot: MailboxHistorySnapshot<OutboxItem>,
@@ -1342,6 +1458,10 @@ export default function MailboxClient() {
     async (options?: { page?: number; silent?: boolean; force?: boolean }) => {
       const context = activeHistoryContext;
       const contextKey = mailboxHistoryContextKey(context);
+      const countsKey = mailboxHistoryCountsKey(context);
+      if (historyCountsDisplayKeyRef.current !== countsKey) {
+        setHistoryCountsLoadedOnce(false);
+      }
       const targetPage = Math.max(
         1,
         options?.page ?? historyPageRef.current ?? 1,
@@ -1365,6 +1485,7 @@ export default function MailboxClient() {
         setHistoryLoadedOnce(true);
         setLoading(false);
         scheduleHistoryPreload(context, cached);
+        void loadHistoryCounts(context, { force });
         return cached;
       }
 
@@ -1385,14 +1506,15 @@ export default function MailboxClient() {
       if (snapshot) {
         applyHistorySnapshot(context, snapshot);
         scheduleHistoryPreload(context, snapshot);
+        void loadHistoryCounts(context, { force });
       } else if (activeHistoryContextKeyRef.current === contextKey) {
-        if (contextChanged || !initialHistorySnapshot) {
-          setItems([]);
+        // A transient API error must never erase a previously visible history or
+        // replace valid counters with zeros. Keep the last known UI state and let
+        // the recovery refresh retry silently.
+        if (!historyLoadedOnce && !initialHistorySnapshot) {
           setHistoryPage(targetPage);
           setHistoryHasMorePotential(false);
-          setHistoryTotalCount(0);
-          setFolderCounts(emptyFolderCounts());
-          setDraftFolderCounts(emptyFolderCounts());
+          setHistoryTotalCount(null);
           setSelectedId(null);
         }
       }
@@ -1407,7 +1529,9 @@ export default function MailboxClient() {
       activeHistoryContext,
       applyHistorySnapshot,
       fetchHistoryPage,
+      historyLoadedOnce,
       initialHistorySnapshot,
+      loadHistoryCounts,
       scheduleHistoryPreload,
     ],
   );
@@ -2268,6 +2392,44 @@ export default function MailboxClient() {
         PROFILE_VERSION_EVENT,
         handleProfileVersionChange as EventListener,
       );
+    };
+  }, [loadHistory]);
+
+  useEffect(() => {
+    let lastRefreshAt = 0;
+    let stopped = false;
+    let recoveryTimer: number | null = null;
+
+    const refreshVisibleHistory = () => {
+      if (document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - lastRefreshAt < INRSEND_HISTORY_RECOVERY_THROTTLE_MS) return;
+      lastRefreshAt = now;
+      void loadHistory({ silent: true, force: true });
+    };
+
+    const scheduleRecovery = () => {
+      if (stopped) return;
+      recoveryTimer = window.setTimeout(() => {
+        recoveryTimer = null;
+        refreshVisibleHistory();
+        scheduleRecovery();
+      }, INRSEND_HISTORY_RECOVERY_REFRESH_MS);
+    };
+
+    scheduleRecovery();
+    const handleFocus = () => refreshVisibleHistory();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshVisibleHistory();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      stopped = true;
+      if (recoveryTimer != null) window.clearTimeout(recoveryTimer);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [loadHistory]);
 
@@ -4632,7 +4794,7 @@ export default function MailboxClient() {
           open={mobileFoldersOpen}
           folder={folder}
           counts={counts}
-          countsLoading={!historyLoadedOnce}
+          countsLoading={!historyCountsLoadedOnce}
           onClose={() => setMobileFoldersOpen(false)}
           onSelectFolder={updateFolder}
         />
@@ -4642,7 +4804,7 @@ export default function MailboxClient() {
             <FolderTabs
               folder={folder}
               counts={counts}
-              countsLoading={!historyLoadedOnce}
+              countsLoading={!historyCountsLoadedOnce}
               onSelectFolder={updateFolder}
             />
 

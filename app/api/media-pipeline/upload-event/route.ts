@@ -206,6 +206,10 @@ export async function POST(request: Request) {
       boosterPublicationSource &&
       Number(current.data.size_bytes || 0) >
         VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
+    const workspaceAiNeedsSharedCanonical =
+      workspaceAiSource &&
+      Number(current.data.size_bytes || 0) >
+        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
 
     if (event === "uploaded") {
       const verified = await verifyStoredUpload({
@@ -349,12 +353,37 @@ export async function POST(request: Request) {
         };
       } else {
         try {
-          videoNormalization = await enqueueVideoNormalization({
+          const aiNormalization = await enqueueVideoNormalization({
             mediaId,
             accountId: activeUserId,
             workspaceId: workspaceId || null,
             mission: "ai_preparation",
           });
+          let publicationNormalization: VideoNormalizationEnqueueResult | null =
+            null;
+          if (workspaceAiNeedsSharedCanonical) {
+            // Fusion idempotente sur le même job : captures d'abord, puis un
+            // canonique H.264 prêt avant le clic Publier. Aucun second upload.
+            publicationNormalization = await enqueueVideoNormalization({
+              mediaId,
+              accountId: activeUserId,
+              workspaceId: workspaceId || null,
+              mission: "publication_preparation",
+            });
+          }
+          videoNormalization = {
+            enabled:
+              aiNormalization.enabled ||
+              Boolean(publicationNormalization?.enabled),
+            queued:
+              aiNormalization.queued ||
+              Boolean(publicationNormalization?.queued),
+            reason: publicationNormalization
+              ? "ai_and_publication_preparation_queued"
+              : aiNormalization.reason,
+            jobId:
+              publicationNormalization?.jobId || aiNormalization.jobId || null,
+          };
           if (videoNormalization.enabled && videoNormalization.jobId) {
             after(async () => {
               try {
@@ -364,7 +393,7 @@ export async function POST(request: Request) {
                 });
               } catch (processingError) {
                 console.warn(
-                  "[media-pipeline] video AI prewarm deferred to generate/cron",
+                  "[media-pipeline] video AI/publication prewarm deferred to generate/cron",
                   { mediaId, accountId: activeUserId, error: processingError },
                 );
               }

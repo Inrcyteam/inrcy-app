@@ -229,9 +229,15 @@ const BOOSTER_GENERATION_SAFETY_BUDGET_MS =
 // dernière course éventuelle d'une grosse vidéo sans rogner le budget de l'IA.
 // Au-delà, la génération continue avec le contexte sûr déjà disponible.
 const BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000;
-// Le fallback historique navigateur (cutover OFF) est un bonus court. Aucun
-// FileReader, canvas ou décodeur vidéo ne peut retenir la rédaction IA au-delà.
+// Le fallback navigateur reste un bonus court : aucun FileReader, canvas ou
+// décodeur vidéo ne peut retenir la rédaction IA au-delà. Pour une vidéo lourde,
+// les captures commencent dès l'insertion et sont seulement relues au clic.
 const BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS = 2_500;
+const BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES = 70_000_000;
+// Une grosse vidéo peut nécessiter davantage de temps pour que son workspace
+// confirme l'upload et la préparation H.264. Ce plafond ne s'applique qu'aux
+// actions Publier / Programmer qui utilisent réellement cette vidéo.
+const BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 90_000;
 const BOOSTER_PUBLISH_VISIBLE_CAP_MS = 60_000;
 const BOOSTER_PUBLISH_WITH_MEDIA_FINALIZATION_VISIBLE_CAP_MS = 90_000;
 
@@ -1414,6 +1420,32 @@ export default function PublishModal({
     setPublishProgress: setContextualPublishProgress,
     setPublishProgressLabel: setContextualPublishProgressLabel,
   });
+
+  useEffect(() => {
+    if (
+      creationMode !== "ai" ||
+      !videoFile ||
+      videoAiContextRef ||
+      videoFile.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
+    ) {
+      return;
+    }
+
+    // Une grosse vidéo peut encore être en cours d'upload côté serveur. Les trois
+    // JPEG sont donc préparés en parallèle depuis le File local, sans second upload
+    // et sans bloquer l'interface. Le cache est réutilisé au clic Générer.
+    void getOrPrepareVideoFramesForAI(videoFile).catch((error) => {
+      console.warn(
+        "[booster-generate] local video frame prewarm unavailable",
+        error,
+      );
+    });
+  }, [
+    creationMode,
+    getOrPrepareVideoFramesForAI,
+    videoAiContextRef,
+    videoFile,
+  ]);
 
   const generationMediaSelectionPolicy = getGenerationMediaSelectionPolicy({
     imageCount: images.length,
@@ -3051,8 +3083,7 @@ export default function PublishModal({
       if (
         hasVideoForGeneration &&
         videoFile &&
-        !videoAiContextRef &&
-        !mediaPipelineCutoverEnabled
+        !videoAiContextRef
       ) {
         setGenerationProgressPhase(
           "media_analysis",
@@ -4097,6 +4128,12 @@ export default function PublishModal({
       ...(hasAnyImagePublish ? (["image"] as const) : []),
       ...(hasAnyVideoPublish ? (["video"] as const) : []),
     ];
+    const publishWorkspaceReadinessTimeoutMs =
+      hasAnyVideoPublish &&
+      videoFile &&
+      videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
+        ? BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS
+        : MEDIA_WORKSPACE_READINESS_TIMEOUT_MS;
     // Les deux familles coexistent dans le workspace. Leur présence réelle,
     // et non le dernier onglet média activé, décide si un fallback est requis.
     const workspaceCarriesImagesForPublish =
@@ -4318,6 +4355,7 @@ export default function PublishModal({
             );
           },
           requiredPublishMediaTypes,
+          publishWorkspaceReadinessTimeoutMs,
         );
 
       setPublicationProgressPhase(
@@ -5014,6 +5052,12 @@ export default function PublishModal({
       ...(hasAnyImagePublish ? (["image"] as const) : []),
       ...(hasAnyVideoPublish ? (["video"] as const) : []),
     ];
+    const scheduleWorkspaceReadinessTimeoutMs =
+      hasAnyVideoPublish &&
+      videoFile &&
+      videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
+        ? BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS
+        : MEDIA_WORKSPACE_READINESS_TIMEOUT_MS;
     const workspaceCarriesImagesForSchedule =
       mediaPipelineCutoverEnabled && images.length > 0;
     const workspaceCarriesVideoForSchedule =
@@ -5052,6 +5096,7 @@ export default function PublishModal({
             setPublishProgressLabel(label || "Vérification des médias...");
           },
           requiredScheduleMediaTypes,
+          scheduleWorkspaceReadinessTimeoutMs,
         );
 
       if (hasAnyVideoPublish && workspaceCarriesVideoForSchedule) {

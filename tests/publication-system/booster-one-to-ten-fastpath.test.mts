@@ -23,7 +23,7 @@ const migrationVerification = read(
 const boosterMetrics = read("app/api/booster/metrics/route.ts");
 const propulserMetrics = read("app/api/propulser/metrics/route.ts");
 
-test("generation targets 30 seconds and the strict workspace path avoids local media work", () => {
+test("generation targets 30 seconds and keeps a cached local fallback for heavy videos", () => {
   assert.match(modal, /BOOSTER_GENERATION_TARGET_MS = 30_000/);
   assert.match(
     modal,
@@ -31,12 +31,16 @@ test("generation targets 30 seconds and the strict workspace path avoids local m
   );
   assert.match(modal, /generationDeadlineAt/);
   assert.match(modal, /controller\.abort\(\)/);
-  // The old browser extraction remains a rolling-deployment fallback only.
-  // With the production cutover enabled, generation sends the workspace
-  // reference and no image/video bytes or local frame extraction.
+  // Le workspace reste prioritaire. Pour les grosses vidéos uniquement, trois
+  // JPEG locaux préchauffés servent de filet de sécurité sans second upload.
+  assert.match(modal, /BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES = 70_000_000/);
   assert.match(
     modal,
-    /hasVideoForGeneration\s*&&\s*videoFile\s*&&\s*!videoAiContextRef\s*&&\s*!mediaPipelineCutoverEnabled/,
+    /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
+  );
+  assert.match(
+    modal,
+    /hasVideoForGeneration\s*&&\s*videoFile\s*&&\s*!videoAiContextRef\s*\)/,
   );
   assert.match(
     modal,
