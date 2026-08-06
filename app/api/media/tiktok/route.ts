@@ -8,13 +8,14 @@ import { verifyTiktokMediaSignature } from "@/lib/tiktokMediaUrl";
 
 export const runtime = "nodejs";
 
-const TIKTOK_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+const TIKTOK_PHOTO_MAX_BYTES = 20_000_000;
 const TIKTOK_LANDSCAPE_MAX_WIDTH = 1920;
 const TIKTOK_LANDSCAPE_MAX_HEIGHT = 1080;
 const TIKTOK_PORTRAIT_MAX_WIDTH = 1080;
 const TIKTOK_PORTRAIT_MAX_HEIGHT = 1920;
 const TIKTOK_FALLBACK_WIDTH = 1080;
 const TIKTOK_FALLBACK_HEIGHT = 1920;
+const TIKTOK_READY_CACHE_VERSION = 3;
 
 function safeStoragePath(input: string) {
   const path = String(input || "").trim();
@@ -26,7 +27,7 @@ function safeStoragePath(input: string) {
 
 function cachedVariantPath(sourcePath: string, variant: string) {
   const digest = createHash("sha256")
-    .update(`${sourcePath}:${variant}:v2`)
+    .update(`${sourcePath}:${variant}:v${TIKTOK_READY_CACHE_VERSION}`)
     .digest("hex")
     .slice(0, 40);
   return `tiktok-ready/${digest}.jpg`;
@@ -84,7 +85,13 @@ async function renderTikTokRatioPreservingJpeg(input: Buffer) {
         withoutEnlargement: true,
       })
       .flatten({ background: { r: 255, g: 255, b: 255, alpha: 1 } })
-      .jpeg({ quality: q, mozjpeg: true, progressive: true })
+      .toColourspace("srgb")
+      .jpeg({
+        quality: q,
+        mozjpeg: false,
+        progressive: false,
+        chromaSubsampling: "4:2:0",
+      })
       .toBuffer();
 
   let output = await render(quality);
@@ -108,16 +115,29 @@ async function renderTikTokSafetyFrame(input: Buffer) {
       background: { r: 8, g: 12, b: 22, alpha: 1 },
       withoutEnlargement: false,
     })
-    .jpeg({ quality: 90, mozjpeg: true, progressive: true })
+    .flatten({ background: { r: 8, g: 12, b: 22, alpha: 1 } })
+    .toColourspace("srgb")
+    .jpeg({
+      quality: 90,
+      mozjpeg: false,
+      progressive: false,
+      chromaSubsampling: "4:2:0",
+    })
     .toBuffer();
 }
 
 async function isDirectTikTokPhotoPublishable(input: Buffer, mime: string) {
-  if (mime !== "image/jpeg" && mime !== "image/webp") return false;
+  // Validate the encoded bytes, not just the declared MIME. TikTok's PHOTO
+  // endpoint intermittently rejects progressive/CMYK JPEGs even when their
+  // dimensions and Content-Type look valid.
+  if (mime !== "image/jpeg") return false;
   if (input.byteLength > TIKTOK_PHOTO_MAX_BYTES) return false;
 
   const meta = await sharp(input, { failOn: "none" }).metadata().catch(() => null);
   if (!meta?.width || !meta?.height) return false;
+  if (meta.format !== "jpeg" || meta.isProgressive === true) return false;
+  if (String(meta.space || "").toLowerCase() !== "srgb") return false;
+  if (String(meta.chromaSubsampling || "") !== "4:2:0") return false;
   const orientation = Number(meta.orientation || 1);
   const swapsAxes = orientation >= 5 && orientation <= 8;
   const width = swapsAxes ? meta.height : meta.width;
@@ -210,6 +230,14 @@ async function loadMedia(request: Request, includeBody: boolean) {
       } else {
         const cachePath = cachedVariantPath(path, variant);
         let cached = await downloadCachedVariant(cachePath);
+        if (cached) {
+          const cachedBuffer = Buffer.from(await cached.arrayBuffer());
+          const validCachedBytes = await isDirectTikTokPhotoPublishable(
+            cachedBuffer,
+            "image/jpeg",
+          );
+          if (!validCachedBytes) cached = null;
+        }
         if (!cached) {
           const prepared = await toTikTokPhotoBuffer(data, geometryLocked);
           await persistCachedVariant(cachePath, prepared.buffer);
@@ -218,7 +246,7 @@ async function loadMedia(request: Request, includeBody: boolean) {
           cached = new Blob([preparedBytes.buffer], { type: prepared.mime });
         }
         body = cached;
-        contentType = cached.type || "image/jpeg";
+        contentType = "image/jpeg";
         contentLength = cached.size;
       }
     } catch {

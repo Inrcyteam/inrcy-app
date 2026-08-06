@@ -61,11 +61,18 @@ const criticalChecks = [
     ),
   },
   {
-    id: "no-global-40mb",
-    label: "Aucun plafond universel artificiel à 40 Mo",
-    ok: /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
-      sources.mediaRules,
-    ),
+    id: "canonical-under-70mb",
+    label: "Toute source lourde produit un canon cible de 65 Mo et strictement inférieur à 70 Mo",
+    ok:
+      /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES = 70_000_000/.test(
+        sources.mediaRules,
+      ) &&
+      /INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES = 65_000_000/.test(
+        sources.mediaRules,
+      ) &&
+      /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1/.test(
+        sources.mediaRules,
+      ),
   },
   {
     id: "parallel-fanout",

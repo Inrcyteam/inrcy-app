@@ -20,6 +20,53 @@ export class MediaWorkspaceTimeoutError extends Error {
   }
 }
 
+export function isMediaWorkspaceRetryableHttpStatus(status: number) {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
+export class MediaWorkspaceHttpError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly retryable: boolean;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "MediaWorkspaceHttpError";
+    this.status = status;
+    this.code = `media_workspace_http_${status}`;
+    this.retryable = isMediaWorkspaceRetryableHttpStatus(status);
+  }
+}
+
+/**
+ * Browser fetch rejects with a TypeError for transport failures. Caller
+ * aborts and ordinary application errors are permanent for the current
+ * request and must not be hidden behind another polling attempt.
+ */
+export function isMediaWorkspaceRetryableFetchError(error: unknown) {
+  if (
+    error instanceof MediaWorkspaceTimeoutError ||
+    String((error as { code?: unknown } | null)?.code || "") ===
+      MEDIA_WORKSPACE_TIMEOUT_CODE
+  ) {
+    return true;
+  }
+
+  if (String((error as { name?: unknown } | null)?.name || "") === "AbortError") {
+    return false;
+  }
+
+  return (
+    error instanceof TypeError ||
+    String((error as { name?: unknown } | null)?.name || "") === "TypeError"
+  );
+}
+
+export function isMediaWorkspacePollingRetryableError(error: unknown) {
+  if (error instanceof MediaWorkspaceHttpError) return error.retryable;
+  return isMediaWorkspaceRetryableFetchError(error);
+}
+
 type MediaWorkspaceDeadlineOptions = {
   signal?: AbortSignal;
   timeoutMs: number;

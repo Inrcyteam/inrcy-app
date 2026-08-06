@@ -49,7 +49,8 @@ test("the Google Pixel bottom publish button is disabled from real modal state, 
 
 test("transient Pixel workspace reads get one safe retry and a precise user message", () => {
   assert.match(mediaWorkspaceClient, /fetchWorkspaceSnapshotWithRetry/);
-  assert.match(mediaWorkspaceClient, /WORKSPACE_READ_TRANSIENT_STATUS/);
+  assert.match(mediaWorkspaceClient, /isMediaWorkspaceRetryableHttpStatus/);
+  assert.match(mediaWorkspaceClient, /isMediaWorkspaceRetryableFetchError/);
   assert.match(publishModal, /Connexion interrompue pendant la préparation des médias/);
   assert.match(publishModal, /vérifiez iNr’Send avant de relancer/);
 });

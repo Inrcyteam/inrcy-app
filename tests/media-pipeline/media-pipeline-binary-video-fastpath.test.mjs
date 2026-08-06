@@ -4,11 +4,13 @@ import test from "node:test";
 
 const read = (path) => readFileSync(path, "utf8");
 
-test("les workers Storage n'envoient plus de Buffer Node brut", () => {
+test("les workers Storage évitent les copies binaires inutiles", () => {
   const imageWorker = read("lib/mediaImageNormalizationWorker.ts");
   const videoWorker = read("lib/mediaVideoNormalizationWorker.ts");
   assert.match(imageWorker, /toExactStorageArrayBuffer\(params\.normalized\.buffer\)/);
-  assert.match(videoWorker, /toExactStorageArrayBuffer\(buffer\)/);
+  assert.match(videoWorker, /createReadStream\(params\.normalized\.filePath\)/);
+  assert.match(videoWorker, /duplex:\s*"half"/);
+  assert.doesNotMatch(videoWorker, /readFile\(params\.normalized\.filePath\)/);
   assert.match(imageWorker, /withStorageBinaryMetadata/);
   assert.match(videoWorker, /withStorageBinaryMetadata/);
 });

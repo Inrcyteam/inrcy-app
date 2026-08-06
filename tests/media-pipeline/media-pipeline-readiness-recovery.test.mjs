@@ -66,8 +66,15 @@ test("la préparation vidéo cible le média du workspace au lieu d'un job arbit
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
   const targetedClaim = read("lib/mediaProcessingTargetedClaim.ts");
 
+  assert.match(
+    route,
+    /const mediaIds = pendingVideos\.map\(\(item\) => item\.mediaId\)/,
+  );
   assert.match(route, /processVideoNormalizationJobsForMedia\(\{/);
-  assert.match(route, /mediaIds: pendingVideos\.map\(\(item\) => item\.mediaId\)/);
+  assert.match(
+    route,
+    /after\(async \(\) => \{[\s\S]*processVideoNormalizationJobsForMedia\(\{[\s\S]*mediaIds,/,
+  );
   assert.match(worker, /claimTargetedProcessingJob\(/);
   assert.match(worker, /jobType: VIDEO_NORMALIZATION_JOB_TYPE/);
   assert.match(targetedClaim, /\.eq\("media_id", mediaId\)/);

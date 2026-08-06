@@ -1,13 +1,17 @@
 import path from "node:path";
 import {
   INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES,
+  INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES,
+  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "./mediaRules.ts";
 
 export const VIDEO_NORMALIZATION_JOB_TYPE = "video_normalize_v1";
-export const VIDEO_NORMALIZATION_PIPELINE_VERSION = 1;
-export const VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS = 420;
+// v2 invalidates the former 299 MiB canonical variants. Existing originals are
+// retained and transparently produce a new sub-70 MB shared master.
+export const VIDEO_NORMALIZATION_PIPELINE_VERSION = 2;
+export const VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS = 1_860;
 export const VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE = 1;
 export const VIDEO_NORMALIZATION_MAX_BATCH_SIZE = 1;
 export const VIDEO_NORMALIZATION_MAX_SOURCE_BYTES =
@@ -25,11 +29,11 @@ export const VIDEO_AI_PREVIEW_FPS = 15;
 // durée et de format sont ensuite contrôlées séparément pour chaque canal.
 export const VIDEO_CANONICAL_MAX_BYTES =
   INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES;
+export const VIDEO_CANONICAL_TARGET_BYTES =
+  INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES;
 
-// Politique qualité/poids du canonique social. Le plafond 299 Mio reste un
-// garde-fou technique, jamais une cible. Le worker conserve le remux rapide
-// uniquement pour les sources déjà efficaces, sinon il encode en CRF pour
-// réduire fortement le poids sans imposer une taille arbitraire.
+// Compatible light sources keep the remux fast path. Every source which needs
+// transcoding uses one duration-aware bitrate pass aimed at 65 MB.
 export const VIDEO_CANONICAL_QUALITY_CRF = 21;
 export const VIDEO_CANONICAL_ENCODER_PRESET = "veryfast" as const;
 export const VIDEO_CANONICAL_LONG_TRANSCODE_SECONDS = 300;
@@ -37,12 +41,17 @@ export const VIDEO_CANONICAL_LONG_TRANSCODE_MAX_SIDE = 1280;
 export const VIDEO_CANONICAL_LONG_TRANSCODE_MAX_VIDEO_KBPS = 2200;
 export const VIDEO_CANONICAL_AUDIO_BITRATE_KBPS = 128;
 export const VIDEO_CANONICAL_MIN_SAVINGS_RATIO = 0.08;
-// Above 70 MB, prepare one shared quality-optimized master in background.
-// Channel-specific limits (notably GMB) remain separate policies.
-export const VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES = 70_000_000;
+// Above 70 MB, prepare one shared master before every other derivative.
+export const VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES =
+  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES;
+// With the minimum viable H.264 + AAC bitrates below, 30 minutes is the
+// longest heavy source that can be guaranteed to fit the 65 MB target in one
+// bounded encode. Longer heavy sources are rejected explicitly instead of
+// looping, timing out, or producing a master above the publication ceiling.
+export const VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS = 30 * 60;
 export const VIDEO_CANONICAL_BITRATE_HEADROOM_RATIO = 1.12;
 export const VIDEO_CANONICAL_UNKNOWN_DURATION_OPTIMIZE_BYTES =
-  80 * 1024 * 1024;
+  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES;
 
 export const VIDEO_AI_PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 export const VIDEO_AUDIO_TRACK_MAX_BYTES = 40 * 1024 * 1024;

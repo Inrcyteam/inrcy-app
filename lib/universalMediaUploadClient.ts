@@ -74,6 +74,18 @@ const PROGRESS_PERSIST_INTERVAL_MS = 3_000;
 // avec l'endpoint non signé est volontairement invalidée.
 const TUS_RESUME_STORAGE_VERSION = 2;
 const TUS_RESUME_STORAGE_TTL_MS = 110 * 60 * 1_000;
+// A slow connection must not leave a TUS request pending forever. Two minutes
+// per 6 MiB chunk still supports modest upstream bandwidth while making a
+// stalled socket retryable and resumable.
+const TUS_REQUEST_TIMEOUT_MS = 120_000;
+const UPLOAD_CONFIRMATION_RETRY_DELAYS_MS = [
+  0,
+  500,
+  1_000,
+  2_000,
+  4_000,
+  8_000,
+] as const;
 
 function makePermanentTusError(message: string, status = 400) {
   const error = new Error(message) as Error & { status?: number };
@@ -205,8 +217,15 @@ async function postUniversalUploadEvent(params: {
     metadata: params.metadata || {},
   });
 
+  const retryDelays = params.required
+    ? UPLOAD_CONFIRMATION_RETRY_DELAYS_MS
+    : [0];
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+    const retryDelay = retryDelays[attempt];
+    if (retryDelay > 0) {
+      await wait(retryDelay, params.signal).catch(() => undefined);
+    }
     try {
       throwIfAborted(params.signal);
       const response = await fetch("/api/media-pipeline/upload-event", {
@@ -242,9 +261,6 @@ async function postUniversalUploadEvent(params: {
       if (params.signal?.aborted) break;
     }
 
-    if (attempt < 2) {
-      await wait(500 * (attempt + 1), params.signal).catch(() => undefined);
-    }
   }
 
   if (params.required) {
@@ -496,7 +512,7 @@ async function readTusResponseError(response: Response, fallback: string) {
   const body = await response.text().catch(() => "");
   if (response.status === 413) {
     return makePermanentTusError(
-      "La plateforme de stockage n'est pas encore configurée pour ce poids de fichier (limite requise : 320 Mo).",
+      "La plateforme de stockage n'est pas encore configurée pour ce poids de fichier (limite requise : 300 Mo).",
       413,
     );
   }
@@ -519,12 +535,43 @@ function assertSignedTusEndpoint(endpoint: string) {
   }
 }
 
+async function fetchTusWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  signal?: AbortSignal,
+) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const forwardAbort = () => controller.abort(signal?.reason || makeAbortError());
+  signal?.addEventListener("abort", forwardAbort, { once: true });
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, TUS_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut && !signal?.aborted) {
+      const timeoutError = new Error(
+        "La connexion d'envoi est restée inactive trop longtemps. Reprise automatique en cours.",
+      ) as Error & { status?: number };
+      timeoutError.status = 408;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", forwardAbort);
+  }
+}
+
 async function readTusOffset(
   uploadUrl: string,
   intent: UniversalMediaUploadIntent,
   signal?: AbortSignal,
 ): Promise<number | null> {
-  const response = await fetch(uploadUrl, {
+  const response = await fetchTusWithTimeout(uploadUrl, {
     method: "HEAD",
     headers: {
       "Tus-Resumable": "1.0.0",
@@ -532,9 +579,8 @@ async function readTusOffset(
       "x-signature": intent.token,
       "x-upsert": "true",
     },
-    signal,
     cache: "no-store",
-  });
+  }, signal);
   if (response.status === 404 || response.status === 410) return null;
   if (!response.ok) {
     throw await readTusResponseError(
@@ -546,13 +592,41 @@ async function readTusOffset(
   return Number.isFinite(offset) && offset >= 0 ? offset : 0;
 }
 
+async function readTusOffsetWithRetry(
+  uploadUrl: string,
+  intent: UniversalMediaUploadIntent,
+  signal?: AbortSignal,
+) {
+  let lastError: unknown = null;
+  for (
+    let attempt = 0;
+    attempt < UNIVERSAL_MEDIA_TUS_RETRY_DELAYS_MS.length;
+    attempt += 1
+  ) {
+    throwIfAborted(signal);
+    const delay = UNIVERSAL_MEDIA_TUS_RETRY_DELAYS_MS[attempt];
+    if (delay > 0) await wait(delay, signal);
+    try {
+      return await readTusOffset(uploadUrl, intent, signal);
+    } catch (error) {
+      lastError = error;
+      if (signal?.aborted) throw makeAbortError();
+      const status = Number((error as { status?: unknown })?.status || 0);
+      if (!isTransientTusStatus(status)) throw error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Impossible de relire la position de reprise de l’envoi.");
+}
+
 async function createTusUploadUrlOnce(
   file: File,
   intent: UniversalMediaUploadIntent,
   signal?: AbortSignal,
 ) {
   assertSignedTusEndpoint(intent.resumableEndpoint);
-  const response = await fetch(intent.resumableEndpoint, {
+  const response = await fetchTusWithTimeout(intent.resumableEndpoint, {
     method: "POST",
     headers: {
       "Tus-Resumable": "1.0.0",
@@ -562,9 +636,8 @@ async function createTusUploadUrlOnce(
       "x-signature": intent.token,
       "x-upsert": "true",
     },
-    signal,
     cache: "no-store",
-  });
+  }, signal);
   if (!response.ok) {
     throw await readTusResponseError(
       response,
@@ -639,6 +712,7 @@ function patchTusChunk(params: {
     };
 
     xhr.open("PATCH", params.uploadUrl, true);
+    xhr.timeout = TUS_REQUEST_TIMEOUT_MS;
     xhr.setRequestHeader("Tus-Resumable", "1.0.0");
     xhr.setRequestHeader("Upload-Offset", String(params.offset));
     xhr.setRequestHeader("Content-Type", "application/offset+octet-stream");
@@ -656,6 +730,13 @@ function patchTusChunk(params: {
         status?: number;
       };
       error.status = xhr.status || 0;
+      fail(error);
+    };
+    xhr.ontimeout = () => {
+      const error = new Error(
+        "La connexion d'envoi est restée inactive trop longtemps. Reprise automatique en cours.",
+      ) as Error & { status?: number };
+      error.status = 408;
       fail(error);
     };
     xhr.onabort = () => fail(makeAbortError());
@@ -698,7 +779,8 @@ async function uploadWithTus(
   options: PreparedIntentOptions,
 ) {
   if (typeof window === "undefined" || typeof XMLHttpRequest === "undefined") {
-    return await uploadWithSignedToken(file, intent, options);
+    await uploadWithSignedToken(file, intent, options);
+    return null;
   }
 
   const storageKey = tusStorageKey(intent, file);
@@ -707,14 +789,20 @@ async function uploadWithTus(
 
   if (uploadUrl) {
     try {
-      const existingOffset = await readTusOffset(uploadUrl, intent, options.signal);
+      const existingOffset = await readTusOffsetWithRetry(
+        uploadUrl,
+        intent,
+        options.signal,
+      );
       if (existingOffset === null) {
         clearStoredTusUrl(storageKey);
         uploadUrl = null;
       } else {
         offset = Math.min(file.size, existingOffset);
       }
-    } catch {
+    } catch (error) {
+      const status = Number((error as { status?: unknown })?.status || 0);
+      if (isTransientTusStatus(status)) throw error;
       clearStoredTusUrl(storageKey);
       uploadUrl = null;
       offset = 0;
@@ -783,7 +871,7 @@ async function uploadWithTus(
         // HEAD donne l'offset réel avant la tentative suivante et évite de
         // renvoyer des octets déjà acceptés.
         try {
-          const serverOffset = await readTusOffset(
+          const serverOffset = await readTusOffsetWithRetry(
             uploadUrl,
             intent,
             options.signal,
@@ -814,8 +902,11 @@ async function uploadWithTus(
     }
   }
 
-  clearStoredTusUrl(storageKey);
   report(file.size);
+  // Keep this checkpoint until the application-level `uploaded` event is
+  // acknowledged. Storage can contain all bytes before its metadata becomes
+  // visible; clearing here made that recoverable state impossible to resume.
+  return storageKey;
 }
 
 export async function uploadFileToPreparedUniversalIntent(
@@ -826,6 +917,9 @@ export async function uploadFileToPreparedUniversalIntent(
   throwIfAborted(options.signal);
 
   if (intent.alreadyUploaded) {
+    if (intent.protocol === "tus") {
+      clearStoredTusUrl(tusStorageKey(intent, file));
+    }
     options.onProgress?.({
       protocol: intent.protocol,
       bytesUploaded: file.size,
@@ -881,6 +975,7 @@ export async function uploadFileToPreparedUniversalIntent(
   };
 
   let storageUploadCompleted = false;
+  let tusResumeStorageKey: string | null = null;
   try {
     await postUniversalUploadEvent({
       intent,
@@ -892,7 +987,7 @@ export async function uploadFileToPreparedUniversalIntent(
     const protocol =
       intent.protocol || selectUniversalMediaUploadProtocol(file.size);
     if (protocol === "tus") {
-      await uploadWithTus(file, intent, {
+      tusResumeStorageKey = await uploadWithTus(file, intent, {
         ...options,
         onProgress: emitProgress,
       });
@@ -913,6 +1008,7 @@ export async function uploadFileToPreparedUniversalIntent(
       signal: options.signal,
       required: true,
     });
+    if (tusResumeStorageKey) clearStoredTusUrl(tusResumeStorageKey);
 
     return {
       protocol,

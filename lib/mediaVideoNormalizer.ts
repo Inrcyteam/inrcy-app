@@ -8,11 +8,13 @@ import {
   VIDEO_AI_PREVIEW_MAX_SIDE,
   VIDEO_AUDIO_TRACK_MAX_BYTES,
   VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
-  VIDEO_CANONICAL_MIN_SAVINGS_RATIO,
   VIDEO_CANONICAL_MAX_BYTES,
   VIDEO_CANONICAL_MAX_SIDE,
+  VIDEO_CANONICAL_TARGET_BYTES,
   VIDEO_FRAME_MAX_BYTES,
   VIDEO_FRAME_MAX_SIDE,
+  VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS,
+  VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
   VIDEO_THUMBNAIL_MAX_SIDE,
   buildVideoFrameCaptureTimes,
   fitVideoWithinMaxSide,
@@ -28,7 +30,7 @@ import { parseFfmpegVideoStreamMetadata } from "@/lib/mediaVideoProbeMetadata";
 
 const execFileAsync = promisify(execFile);
 const FFMPEG_PROBE_TIMEOUT_MS = 30_000;
-const FFMPEG_CANONICAL_TIMEOUT_MS = 240_000;
+const FFMPEG_CANONICAL_TIMEOUT_MS = 1_380_000;
 const FFMPEG_DERIVATIVE_TIMEOUT_MS = 75_000;
 const FFMPEG_STALL_TIMEOUT_MS = 55_000;
 
@@ -81,7 +83,6 @@ type CanonicalPreparation = {
   mode:
     | "stream_copy"
     | "video_copy_audio_transcode"
-    | "quality_transcode"
     | "size_cap_transcode";
   encoderPreset: "ultrafast" | "superfast" | "veryfast" | null;
   qualityCrf: number | null;
@@ -371,93 +372,94 @@ async function encodeMp4(params: {
   encoderPreset?: "ultrafast" | "superfast" | "veryfast";
   onProgress?: (ratio: number) => void;
 }) {
-  const initialBitrate = getVideoTargetBitrateKbps({
+  const bitrate = getVideoTargetBitrateKbps({
     durationSeconds: params.durationSeconds,
     maxBytes: params.maxBytes,
     audioBitrateKbps: params.includeAudio ? params.audioBitrateKbps : 0,
     minVideoKbps: params.minVideoKbps,
     maxVideoKbps: params.maxVideoKbps,
   });
-
-  let bitrate = initialBitrate;
   const encoderPreset = params.encoderPreset || "superfast";
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const args = [
-      "-y",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-nostdin",
-      "-i",
-      params.inputPath,
-      "-map",
-      "0:v:0",
-    ];
-    if (params.includeAudio) args.push("-map", "0:a:0?");
+  const args = [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-i",
+    params.inputPath,
+    "-map",
+    "0:v:0",
+  ];
+  if (params.includeAudio) args.push("-map", "0:a:0?");
+  args.push(
+    "-vf",
+    buildScaleFilter(params.maxSide, params.fps),
+    "-c:v",
+    "libx264",
+    "-preset",
+    encoderPreset,
+    "-threads",
+    "0",
+    "-b:v",
+    `${bitrate}k`,
+    "-maxrate",
+    `${Math.max(bitrate, Math.round(bitrate * 1.15))}k`,
+    "-bufsize",
+    `${Math.max(512, bitrate * 2)}k`,
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-map_metadata",
+    "-1",
+    "-map_chapters",
+    "-1",
+    "-metadata:s:v:0",
+    "rotate=0",
+    "-max_muxing_queue_size",
+    "2048",
+  );
+  if (params.includeAudio) {
     args.push(
-      "-vf",
-      buildScaleFilter(params.maxSide, params.fps),
-      "-c:v",
-      "libx264",
-      "-preset",
-      encoderPreset,
-      "-threads",
-      "0",
-      "-b:v",
-      `${bitrate}k`,
-      "-maxrate",
-      `${Math.max(bitrate, Math.round(bitrate * 1.25))}k`,
-      "-bufsize",
-      `${Math.max(512, bitrate * 2)}k`,
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      "-map_metadata",
-      "-1",
-      "-map_chapters",
-      "-1",
-      "-metadata:s:v:0",
-      "rotate=0",
-      "-max_muxing_queue_size",
-      "2048",
+      "-c:a",
+      "aac",
+      "-b:a",
+      `${params.audioBitrateKbps}k`,
+      "-ac",
+      "2",
     );
-    if (params.includeAudio) {
-      args.push("-c:a", "aac", "-b:a", `${params.audioBitrateKbps}k`, "-ac", "2");
-    } else {
-      args.push("-an");
-    }
-    args.push("-progress", "pipe:1", "-nostats", params.outputPath);
-
-    await runFfmpegWithProgress({
-      ffmpegPath: params.ffmpegPath,
-      args,
-      durationSeconds: params.durationSeconds,
-      timeoutMs: params.timeoutMs,
-      onProgress: (ratio) => {
-        const attemptBase = (attempt - 1) / 2;
-        params.onProgress?.(attemptBase + ratio / 2);
-      },
-    });
-    const sizeBytes = await outputSize(params.outputPath);
-    if (sizeBytes > 0 && sizeBytes <= params.maxBytes) {
-      params.onProgress?.(1);
-      return {
-        sizeBytes,
-        bitrateKbps: bitrate,
-        attempts: attempt,
-        mode: "size_cap_transcode" as const,
-        encoderPreset,
-        qualityCrf: null,
-        optimizationReason: "size_cap_fallback",
-      };
-    }
-    if (attempt === 2) {
-      throw new Error(`video_output_too_large:${path.basename(params.outputPath)}:${sizeBytes}`);
-    }
-    bitrate = Math.max(120, Math.floor(bitrate * 0.68));
+  } else {
+    args.push("-an");
   }
-  throw new Error("video_encoding_failed");
+  args.push("-progress", "pipe:1", "-nostats", params.outputPath);
+
+  // One duration-aware encode only. The target bitrate already reserves 18%
+  // for muxing/VBR variance; a failed size invariant is surfaced durably and
+  // never launches an unbounded second transcode in the same invocation.
+  await runFfmpegWithProgress({
+    ffmpegPath: params.ffmpegPath,
+    args,
+    durationSeconds: params.durationSeconds,
+    timeoutMs: params.timeoutMs,
+    onProgress: params.onProgress,
+  });
+  const sizeBytes = await outputSize(params.outputPath);
+  if (!sizeBytes || sizeBytes > params.maxBytes) {
+    throw new Error(
+      `video_output_too_large:${path.basename(params.outputPath)}:${sizeBytes}`,
+    );
+  }
+  params.onProgress?.(1);
+  return {
+    sizeBytes,
+    bitrateKbps: bitrate,
+    attempts: 1,
+    mode: "size_cap_transcode" as const,
+    encoderPreset,
+    qualityCrf: null,
+    optimizationReason: "shared_master_target_65mb",
+  };
 }
 
 function normalizedRotation(value: number) {
@@ -550,101 +552,6 @@ async function remuxCanonical(params: {
   };
 }
 
-async function encodeQualityOptimizedCanonical(params: {
-  ffmpegPath: string;
-  inputPath: string;
-  outputPath: string;
-  source: VideoSourceProbe;
-  targetMaxVideoKbps: number;
-  onProgress?: (ratio: number) => void;
-}): Promise<CanonicalPreparation> {
-  const transcodeProfile = getVideoCanonicalTranscodeProfile({
-    durationSeconds: params.source.durationSeconds,
-    videoCodec: params.source.videoCodec,
-  });
-  const targetMaxVideoKbps = Math.min(
-    params.targetMaxVideoKbps,
-    transcodeProfile.maxVideoKbps || params.targetMaxVideoKbps,
-  );
-  const args = [
-    "-y",
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-nostdin",
-    "-i",
-    params.inputPath,
-    "-map",
-    "0:v:0",
-  ];
-  if (params.source.hasAudio) args.push("-map", "0:a:0?");
-  args.push(
-    "-vf",
-    buildScaleFilter(transcodeProfile.maxSide, transcodeProfile.fps),
-    "-c:v",
-    "libx264",
-    "-preset",
-    transcodeProfile.encoderPreset,
-    "-crf",
-    String(transcodeProfile.qualityCrf),
-    "-maxrate",
-    `${targetMaxVideoKbps}k`,
-    "-bufsize",
-    `${targetMaxVideoKbps * 2}k`,
-    "-pix_fmt",
-    "yuv420p",
-    "-movflags",
-    "+faststart",
-    "-map_metadata",
-    "-1",
-    "-map_chapters",
-    "-1",
-    "-metadata:s:v:0",
-    "rotate=0",
-    "-max_muxing_queue_size",
-    "2048",
-  );
-  if (params.source.hasAudio) {
-    args.push(
-      "-c:a",
-      "aac",
-      "-b:a",
-      `${VIDEO_CANONICAL_AUDIO_BITRATE_KBPS}k`,
-      "-ac",
-      "2",
-    );
-  } else {
-    args.push("-an");
-  }
-  args.push("-progress", "pipe:1", "-nostats", params.outputPath);
-
-  await runFfmpegWithProgress({
-    ffmpegPath: params.ffmpegPath,
-    args,
-    durationSeconds: params.source.durationSeconds,
-    timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
-    onProgress: params.onProgress,
-  });
-  const sizeBytes = await outputSize(params.outputPath);
-  if (!sizeBytes) throw new Error("video_canonical_empty");
-  if (sizeBytes > VIDEO_CANONICAL_MAX_BYTES) {
-    throw new Error(
-      `video_output_too_large:${path.basename(params.outputPath)}:${sizeBytes}`,
-    );
-  }
-  return {
-    sizeBytes,
-    bitrateKbps: Math.round(
-      (sizeBytes * 8) / Math.max(0.001, params.source.durationSeconds) / 1000,
-    ),
-    attempts: 1,
-    mode: "quality_transcode",
-    encoderPreset: transcodeProfile.encoderPreset,
-    qualityCrf: transcodeProfile.qualityCrf,
-    optimizationReason: "meaningful_savings",
-  };
-}
-
 async function prepareCanonical(params: {
   ffmpegPath: string;
   inputPath: string;
@@ -663,7 +570,7 @@ async function prepareCanonical(params: {
     hasAudio: params.source.hasAudio,
   });
 
-  if (compatibleForRemux && !optimization.shouldOptimize) {
+  if (compatibleForRemux) {
     try {
       const remuxed = await remuxCanonical(params);
       return { ...remuxed, optimizationReason: optimization.reason };
@@ -673,38 +580,7 @@ async function prepareCanonical(params: {
     }
   }
 
-  try {
-    const optimized = await encodeQualityOptimizedCanonical({
-      ffmpegPath: params.ffmpegPath,
-      inputPath: params.inputPath,
-      outputPath: params.outputPath,
-      source: params.source,
-      targetMaxVideoKbps: optimization.targetMaxVideoKbps,
-      onProgress: params.onProgress,
-    });
-    const actualSavingsRatio = params.sourceSizeBytes
-      ? 1 - optimized.sizeBytes / params.sourceSizeBytes
-      : 1;
-    if (
-      compatibleForRemux &&
-      actualSavingsRatio < VIDEO_CANONICAL_MIN_SAVINGS_RATIO
-    ) {
-      params.warnings.push(
-        `canonical_transcode_skipped_low_gain:${actualSavingsRatio.toFixed(4)}`,
-      );
-      params.onProgress?.(0);
-      const remuxed = await remuxCanonical(params);
-      return { ...remuxed, optimizationReason: "measured_gain_too_small" };
-    }
-    return optimized;
-  } catch (error) {
-    params.warnings.push(
-      `canonical_quality_optimization_failed:${compactError(error)}`,
-    );
-    params.onProgress?.(0);
-  }
-
-  const fallbackProfile = getVideoCanonicalTranscodeProfile({
+  const transcodeProfile = getVideoCanonicalTranscodeProfile({
     durationSeconds: params.source.durationSeconds,
     videoCodec: params.source.videoCodec,
   });
@@ -712,20 +588,20 @@ async function prepareCanonical(params: {
     ffmpegPath: params.ffmpegPath,
     inputPath: params.inputPath,
     outputPath: params.outputPath,
-    maxSide: fallbackProfile.maxSide,
+    maxSide: transcodeProfile.maxSide,
     durationSeconds: params.source.durationSeconds,
-    maxBytes: VIDEO_CANONICAL_MAX_BYTES,
+    maxBytes: VIDEO_CANONICAL_TARGET_BYTES,
     maxVideoKbps: Math.min(
       optimization.targetMaxVideoKbps,
-      fallbackProfile.maxVideoKbps || optimization.targetMaxVideoKbps,
+      transcodeProfile.maxVideoKbps || optimization.targetMaxVideoKbps,
     ),
-    minVideoKbps: 250,
+    minVideoKbps: 96,
     audioBitrateKbps: VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
     includeAudio: params.source.hasAudio,
-    fps: fallbackProfile.fps,
+    fps: transcodeProfile.fps,
     timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
     encoderPreset:
-      fallbackProfile.encoderPreset === "ultrafast"
+      transcodeProfile.encoderPreset === "ultrafast"
         ? "ultrafast"
         : "superfast",
     onProgress: params.onProgress,
@@ -884,6 +760,16 @@ export async function normalizeVideoSource(params: {
     fallbackHeight: params.fallbackHeight,
     fallbackDurationSeconds: params.fallbackDurationSeconds,
   });
+  if (
+    requestedKeys.has("canonical") &&
+    sourceSizeBytes >= VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES &&
+    source.durationSeconds > VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS
+  ) {
+    throw new Error(
+      "video_shared_canonical_duration_too_long: " +
+        "Une vidéo de 70 Mo ou plus doit durer 30 minutes maximum pour être compressée sous 70 Mo.",
+    );
+  }
   emitProgress(8, "Analyse du format vidéo");
 
   const warnings: string[] = [];
@@ -1046,7 +932,6 @@ export async function normalizeVideoSource(params: {
   emitProgress(94, "Finalisation des fichiers vidéo");
 
   const canonicalWasTranscoded =
-    canonicalEncoding?.mode === "quality_transcode" ||
     canonicalEncoding?.mode === "size_cap_transcode";
   const canonicalTranscodeProfile = getVideoCanonicalTranscodeProfile({
     durationSeconds: source.durationSeconds,

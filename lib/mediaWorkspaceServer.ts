@@ -56,6 +56,7 @@ export async function refreshPublicationWorkspaceMediaStatus(params: {
       (status.mediaType === "video" && videoNormalizationEnabled);
     return (
       required &&
+      !["ready", "legacy_ready"].includes(status.publicationStatus) &&
       (status.processingStatus === "failed_terminal" ||
         status.publicationStatus === "failed")
     );
@@ -68,10 +69,7 @@ export async function refreshPublicationWorkspaceMediaStatus(params: {
       (status.mediaType === "image" && imageNormalizationEnabled) ||
       (status.mediaType === "video" && videoNormalizationEnabled);
     if (!required) return true;
-    return (
-      status.processingStatus === "ready" &&
-      status.publicationStatus === "ready"
-    );
+    return ["ready", "legacy_ready"].includes(status.publicationStatus);
   });
 
   const nextStatus =

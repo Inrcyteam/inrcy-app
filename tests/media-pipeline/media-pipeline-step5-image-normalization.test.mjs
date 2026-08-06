@@ -83,8 +83,10 @@ test("le workspace exige le traitement image seulement quand son flag est actif"
     /status\.mediaType === "image" && imageNormalizationEnabled/,
   );
   assert.match(source, /if \(!required\) return true/);
-  assert.match(source, /status\.processingStatus === "ready"/);
-  assert.match(source, /status\.publicationStatus === "ready"/);
+  assert.match(
+    source,
+    /\["ready", "legacy_ready"\]\.includes\(status\.publicationStatus\)/,
+  );
   assert.match(source, /failed_terminal/);
 });
 

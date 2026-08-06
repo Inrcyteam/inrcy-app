@@ -559,6 +559,12 @@ function buildCompletedPublicationStatus(
 function buildProcessingPublicationStatus(
   publicationId: string,
   channelStates: AsyncChannelState[],
+  mediaPreparation?: {
+    progress: number;
+    status: string;
+    mediaCount: number;
+    completedCount: number;
+  } | null,
 ) {
   const entries = channelStates.map((state) => {
     const terminal = TERMINAL_CHANNEL_STATUSES.has(state.status);
@@ -577,6 +583,9 @@ function buildProcessingPublicationStatus(
       warning: outcome?.warningCode || null,
       warning_kind: outcome?.warningKind || null,
       warning_message: outcome?.warningMessage || null,
+      ...(state.status === "preparing" && mediaPreparation
+        ? { processingProgress: mediaPreparation.progress }
+        : {}),
     };
   });
   const pendingCount = entries.filter(
@@ -589,6 +598,7 @@ function buildProcessingPublicationStatus(
     queued: true,
     publication_id: publicationId,
     status: pendingCount > 0 ? "processing" : "finalizing",
+    ...(mediaPreparation ? { mediaPreparation } : {}),
     pollAfterMs: pendingCount > 0 ? 3_000 : 1_500,
     summary: {
       total: entries.length,
@@ -605,6 +615,50 @@ function buildProcessingPublicationStatus(
         .filter((entry) => entry.ok === false)
         .map((entry) => entry.channel),
     },
+  };
+}
+
+async function loadWorkspacePreparationProgress(params: {
+  userId: string;
+  workspaceId: string;
+}) {
+  if (!params.workspaceId) return null;
+  const { data, error } = await supabaseAdmin
+    .from("publication_workspace_media")
+    .select(
+      "media_id,pro_media_library!inner(user_id,upload_status,upload_progress,processing_status,processing_progress)",
+    )
+    .eq("workspace_id", params.workspaceId)
+    .eq("pro_media_library.user_id", params.userId);
+  if (error) throw error;
+
+  const rows = (data || []).map((row: any) => {
+    const media = Array.isArray(row.pro_media_library)
+      ? row.pro_media_library[0]
+      : row.pro_media_library;
+    const uploadStatus = cleanString(media?.upload_status);
+    const processingStatus = cleanString(media?.processing_status);
+    const progress =
+      uploadStatus !== "uploaded"
+        ? Math.min(20, Math.max(0, Number(media?.upload_progress || 0) * 0.2))
+        : processingStatus === "ready"
+          ? 100
+          : Math.min(99, Math.max(1, Number(media?.processing_progress || 0)));
+    return { progress, processingStatus };
+  });
+  if (!rows.length) return null;
+
+  const progress = Math.round(
+    rows.reduce((sum, row) => sum + row.progress, 0) / rows.length,
+  );
+  const completedCount = rows.filter(
+    (row) => row.processingStatus === "ready",
+  ).length;
+  return {
+    progress,
+    status: completedCount === rows.length ? "ready" : "processing",
+    mediaCount: rows.length,
+    completedCount,
   };
 }
 
@@ -897,5 +951,33 @@ export async function readAsyncPublicationStatus(params: {
     }
   }
 
-  return buildProcessingPublicationStatus(params.publicationId, channelStates);
+  const hasPreparingChannel = channelStates.some(
+    (state) => state.status === "preparing",
+  );
+  let mediaPreparation: Awaited<
+    ReturnType<typeof loadWorkspacePreparationProgress>
+  > = null;
+  if (hasPreparingChannel || cleanString(parentPayload.stage) === "media_preparation") {
+    const workspaceId = cleanString(parentPayload.mediaWorkspaceId);
+    if (workspaceId) {
+      try {
+        mediaPreparation = await loadWorkspacePreparationProgress({
+          userId: params.userId,
+          workspaceId,
+        });
+      } catch (error) {
+        console.warn("[booster-async] workspace progress unavailable", {
+          publicationId: params.publicationId,
+          workspaceId,
+          error,
+        });
+      }
+    }
+  }
+
+  return buildProcessingPublicationStatus(
+    params.publicationId,
+    channelStates,
+    mediaPreparation,
+  );
 }

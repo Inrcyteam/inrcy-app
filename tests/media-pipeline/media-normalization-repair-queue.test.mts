@@ -16,12 +16,14 @@ function row(params: {
   status: "not_requested" | "failed_retryable";
   mission?: string;
   scope?: string;
+  pipelineVersion?: number;
   updatedAt: string;
 }) {
   return {
     id: params.id,
     user_id: `account-${params.id}`,
     processing_status: params.status,
+    pipeline_version: params.pipelineVersion ?? 2,
     updated_at: params.updatedAt,
     media_metadata: {
       pipeline_mission: params.mission,
@@ -74,6 +76,50 @@ test("une erreur retryable reste réparable quelle que soit sa mission historiqu
   );
 });
 
+test("une intention v1 missionnée est reprise sans sélectionner les médias v1 non missionnés", () => {
+  const selected = selectNormalizationRepairCandidates({
+    failedRetryableRows: [],
+    notRequestedRows: [
+      row({
+        id: "v1-source-only",
+        status: "not_requested",
+        mission: "source_metadata",
+        scope: "source_only",
+        pipelineVersion: 1,
+        updatedAt: "2026-08-01T00:00:00.000Z",
+      }),
+      row({
+        id: "v1-without-mission",
+        status: "not_requested",
+        pipelineVersion: 1,
+        updatedAt: "2026-08-01T00:00:01.000Z",
+      }),
+      row({
+        id: "v1-ai-intent",
+        status: "not_requested",
+        mission: "ai_preparation",
+        pipelineVersion: 1,
+        updatedAt: "2026-08-01T00:00:02.000Z",
+      }),
+      row({
+        id: "v1-publication-intent",
+        status: "not_requested",
+        mission: "publication_preparation",
+        pipelineVersion: 1,
+        updatedAt: "2026-08-01T00:00:03.000Z",
+      }),
+    ],
+    minimumPipelineVersion: 2,
+    minimumRequestedPipelineVersion: 1,
+    limit: 10,
+  });
+
+  assert.deepEqual(selected.map((item) => item.id), [
+    "v1-ai-intent",
+    "v1-publication-intent",
+  ]);
+});
+
 test("la sélection bornée réserve une place aux retries et aux demandes neuves", () => {
   const selected = selectNormalizationRepairCandidates({
     failedRetryableRows: [
@@ -103,12 +149,25 @@ test("la sélection bornée réserve une place aux retries et aux demandes neuve
 
 test("les deux requêtes sont séparées et l'index partiel exclut source_only", () => {
   const queue = read("lib/mediaNormalizationRepairQueue.ts");
+  const videoQueue = read("lib/mediaVideoNormalizationQueue.ts");
   const sql = read("ops/sql/2026-08-05_media_normalization_repair_queue_hardening.sql");
 
   assert.match(queue, /\.eq\("processing_status", "failed_retryable"\)/);
   assert.match(queue, /\.eq\("processing_status", "not_requested"\)/);
   assert.match(queue, /media_metadata->>pipeline_mission/);
+  assert.match(
+    queue,
+    /\.eq\("processing_status", "failed_retryable"\)[\s\S]{0,120}\.gte\("pipeline_version", minimumPipelineVersion\)/,
+  );
+  assert.match(
+    queue,
+    /\.eq\("processing_status", "not_requested"\)[\s\S]{0,120}\.gte\("pipeline_version", minimumRequestedPipelineVersion\)/,
+  );
   assert.doesNotMatch(queue, /\.in\("processing_status"/);
+  assert.match(
+    videoQueue,
+    /minimumRequestedPipelineVersion:\s*UNIVERSAL_MEDIA_PIPELINE_VERSION/,
+  );
   assert.match(sql, /pro_media_library_requested_repair_idx/);
   assert.match(sql, /processing_status = 'not_requested'/);
   assert.match(sql, /'ai_preparation'/);
@@ -116,7 +175,7 @@ test("les deux requêtes sont séparées et l'index partiel exclut source_only",
   assert.doesNotMatch(sql, /'source_metadata'/);
 });
 
-test("les scans de réparation sont espacés de cinq minutes et décalés", () => {
+test("le scan image reste espacé et le worker vidéo lourd tourne chaque minute", () => {
   const imageCron = read("app/api/cron/media-image-normalization/route.ts");
   const videoCron = read("app/api/cron/media-video-normalization/route.ts");
   const vercel = JSON.parse(read("vercel.json"));
@@ -131,5 +190,5 @@ test("les scans de réparation sont espacés de cinq minutes et décalés", () =
   assert.match(imageCron, /processImageNormalizationJobs/);
   assert.match(videoCron, /processVideoNormalizationJobs/);
   assert.equal(schedules.get("/api/cron/media-image-normalization"), "2-59/5 * * * *");
-  assert.equal(schedules.get("/api/cron/media-video-normalization"), "4-59/5 * * * *");
+  assert.equal(schedules.get("/api/cron/media-video-normalization"), "*/1 * * * *");
 });

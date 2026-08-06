@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   BOOSTER_PUBLISH_RESULT_GRACE_MS,
+  BoosterPublishError,
   createBoosterPublishIdempotencyKey,
   postBoosterPublication,
 } from "../../lib/boosterPublishClient.ts";
@@ -278,4 +279,41 @@ test("the initial queued acknowledgement is included in the visible balance wind
   assert.equal(now, BOOSTER_PUBLISH_RESULT_GRACE_MS);
   assert.equal(result.releasedToBackground, true);
   assert.equal((result.summary as Record<string, unknown>)?.pendingCount, 1);
+});
+
+test("a permanent status authorization error is surfaced instead of being released as background work", async () => {
+  let now = 0;
+  await assert.rejects(
+    postBoosterPublication(
+      { channels: ["facebook"] },
+      {
+        maxAttempts: 1,
+        maxPollingMs: 30_000,
+        nowImpl: () => now,
+        sleepImpl: async (ms) => {
+          now += ms;
+        },
+        fetchImpl: async (input) => {
+          if (String(input) === "/api/booster/publish-now") {
+            return new Response(
+              JSON.stringify({
+                ok: true,
+                queued: true,
+                publication_id: "44444444-4444-4444-8444-444444444444",
+              }),
+              { status: 202, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          return new Response(
+            JSON.stringify({ code: "forbidden", user_message: "Session expirée." }),
+            { status: 403, headers: { "Content-Type": "application/json" } },
+          );
+        },
+      },
+    ),
+    (error: unknown) =>
+      error instanceof BoosterPublishError &&
+      error.status === 403 &&
+      error.code === "forbidden",
+  );
 });

@@ -88,23 +88,24 @@ const requiredStepFiles = [
 
 const checks = [
   {
-    name: "contrat source vidéo 300 Mo sans plafond global 40 Mo",
+    name: "source vidéo 300 Mo, compression > 70 Mo, master final < 70 Mo",
     ok:
       /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 300 \* 1024 \* 1024/.test(mediaRules) &&
-      /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES =\s*\n?\s*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
+      /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES = 70_000_000/.test(
         mediaRules,
       ) &&
-      /INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES =\s*\n?\s*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES - 1 \* 1024 \* 1024/.test(
+      /INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES = 65_000_000/.test(mediaRules) &&
+      /INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES =\s*\n?\s*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1/.test(
         mediaRules,
       ),
   },
   {
-    name: "politique Google Business dédiée 72 Mo / 30 s / 720p",
+    name: "politique Google Business dédiée 70 Mo / 30 s / 720p",
     ok:
-      /GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES = 72_000_000/.test(googlePolicy) &&
+      /GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES = 70_000_000/.test(googlePolicy) &&
       /GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS = 30/.test(googlePolicy) &&
       /GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE = 720/.test(googlePolicy) &&
-      /action: "omit"/.test(googlePolicy),
+      /action: "block"/.test(googlePolicy),
   },
   {
     name: "Adapter reste isolé par canal et média",
@@ -120,12 +121,12 @@ const checks = [
       /"inrcy_site"/.test(imagePolicy) &&
       /"site_web"/.test(imagePolicy) &&
       /"inr_search"/.test(imagePolicy) &&
-      /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7/.test(imagePreparation),
+      /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/.test(imagePreparation),
   },
   {
-    name: "variantes vidéo Google et cache vidéo version 6",
+    name: "variantes vidéo Google et cache vidéo version 7",
     ok:
-      /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6/.test(videoPreparation) &&
+      /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/.test(videoPreparation) &&
       /GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS/.test(videoPreparation),
   },
   {
@@ -156,10 +157,10 @@ const checks = [
       !/(?:boxblur|gblur|avgblur|smartblur)/i.test(videoPreparation),
   },
   {
-    name: "tests historiques alignés sur les caches image 7 et vidéo 6",
+    name: "tests historiques alignés sur les caches image 8 et vidéo 7",
     ok:
-      /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 7/.test(historicalOriginalFirstTest) &&
-      /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6/.test(historicalOriginalFirstTest),
+      /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/.test(historicalOriginalFirstTest) &&
+      /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/.test(historicalOriginalFirstTest),
   },
   {
     name: "lockfile et dépendances critiques cohérents",

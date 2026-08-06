@@ -24,7 +24,10 @@ import { sanitizeClientMediaMetadata } from "@/lib/mediaClientMetadata";
 import { probeStoredBoosterVideoForPublication } from "@/lib/boosterVideoVariantServer";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// The response is returned as soon as the durable job is committed. Vercel
+// Fluid Compute may then use this budget for the best-effort immediate kick;
+// the one-minute cron remains the recovery owner if the invocation stops.
+export const maxDuration = 1_800;
 
 type UploadEvent = "uploading" | "uploaded" | "failed" | "removed";
 
@@ -87,6 +90,30 @@ async function verifyStoredUpload(params: {
   }
   if (lastError) throw lastError;
   return false;
+}
+
+function processVideoNormalizationAfterUpload(params: {
+  accountId: string;
+  mediaId: string;
+  context: string;
+}) {
+  after(async () => {
+    try {
+      await processVideoNormalizationJobsForMedia({
+        accountId: params.accountId,
+        mediaIds: [params.mediaId],
+      });
+    } catch (processingError) {
+      console.warn(
+        `[media-pipeline] ${params.context} deferred to durable cron`,
+        {
+          mediaId: params.mediaId,
+          accountId: params.accountId,
+          error: processingError,
+        },
+      );
+    }
+  });
 }
 
 export async function POST(request: Request) {
@@ -204,12 +231,14 @@ export async function POST(request: Request) {
       current.data.media_type === "video";
     const boosterPublicationNeedsCanonical =
       boosterPublicationSource &&
-      Number(current.data.size_bytes || 0) >
+      Number(current.data.size_bytes || 0) >=
+        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
+    const videoSourceNeedsSharedCanonical =
+      current.data.media_type === "video" &&
+      Number(current.data.size_bytes || 0) >=
         VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
     const workspaceAiNeedsSharedCanonical =
-      workspaceAiSource &&
-      Number(current.data.size_bytes || 0) >
-        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
+      workspaceAiSource && videoSourceNeedsSharedCanonical;
 
     if (event === "uploaded") {
       const verified = await verifyStoredUpload({
@@ -242,7 +271,11 @@ export async function POST(request: Request) {
       patch.uploaded_at = now;
       patch.upload_error_code = null;
       patch.upload_error_message = null;
-      if (directVideoSource && !sourceMetadataOnly) {
+      if (
+        directVideoSource &&
+        !sourceMetadataOnly &&
+        !videoSourceNeedsSharedCanonical
+      ) {
         patch.processing_status = "ready";
         patch.processing_progress = 100;
         patch.publication_status = "ready";
@@ -346,11 +379,35 @@ export async function POST(request: Request) {
         80,
       );
       if (!workspaceAiSource) {
-        videoNormalization = {
-          enabled: true,
-          queued: false,
-          reason: "workspace_source_ready",
-        };
+        try {
+          // Le mode manuel suit le mÃªme pipeline durable que le mode IA. Le
+          // worker atteste une source lÃ©gÃ¨re ou fabrique le master canonique ;
+          // l'ACK d'upload reste immÃ©diat dans les deux cas.
+          videoNormalization = await enqueueVideoNormalization({
+            mediaId,
+            accountId: activeUserId,
+            workspaceId: workspaceId || null,
+            mission: "publication_preparation",
+          });
+          if (videoNormalization.enabled && videoNormalization.jobId) {
+            processVideoNormalizationAfterUpload({
+              accountId: activeUserId,
+              mediaId,
+              context: "manual video prewarm",
+            });
+          }
+        } catch (queueError) {
+          console.error("[media-pipeline] manual video enqueue failed", {
+            mediaId,
+            accountId: activeUserId,
+            error: queueError,
+          });
+          videoNormalization = {
+            enabled: true,
+            queued: false,
+            reason: "enqueue_failed",
+          };
+        }
       } else {
         try {
           const aiNormalization = await enqueueVideoNormalization({
@@ -362,8 +419,8 @@ export async function POST(request: Request) {
           let publicationNormalization: VideoNormalizationEnqueueResult | null =
             null;
           if (workspaceAiNeedsSharedCanonical) {
-            // Fusion idempotente sur le même job : captures d'abord, puis un
-            // canonique H.264 prêt avant le clic Publier. Aucun second upload.
+            // Fusion idempotente sur le même job : pour une source lourde, le
+            // canonique H.264 est produit avant les captures. Aucun second upload.
             publicationNormalization = await enqueueVideoNormalization({
               mediaId,
               accountId: activeUserId,
@@ -385,18 +442,10 @@ export async function POST(request: Request) {
               publicationNormalization?.jobId || aiNormalization.jobId || null,
           };
           if (videoNormalization.enabled && videoNormalization.jobId) {
-            after(async () => {
-              try {
-                await processVideoNormalizationJobsForMedia({
-                  accountId: activeUserId,
-                  mediaIds: [mediaId],
-                });
-              } catch (processingError) {
-                console.warn(
-                  "[media-pipeline] video AI/publication prewarm deferred to generate/cron",
-                  { mediaId, accountId: activeUserId, error: processingError },
-                );
-              }
+            processVideoNormalizationAfterUpload({
+              accountId: activeUserId,
+              mediaId,
+              context: "video AI/publication prewarm",
             });
           }
         } catch (queueError) {
@@ -415,7 +464,7 @@ export async function POST(request: Request) {
     } else if (
       event === "uploaded" &&
       current.data.media_type === "video" &&
-      !directVideoSource
+      (!directVideoSource || videoSourceNeedsSharedCanonical)
     ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
@@ -456,33 +505,21 @@ export async function POST(request: Request) {
       } else {
         try {
           videoNormalization = await enqueueVideoNormalization({
-          mediaId,
-          accountId: activeUserId,
-          workspaceId: workspaceId || null,
-          mission: boosterPublicationNeedsCanonical
-              ? "publication_preparation"
-              : undefined,
-        });
+            mediaId,
+            accountId: activeUserId,
+            workspaceId: workspaceId || null,
+            mission:
+              videoSourceNeedsSharedCanonical || boosterPublicationNeedsCanonical
+                ? "publication_preparation"
+                : undefined,
+          });
           if (videoNormalization.enabled && videoNormalization.jobId) {
-          // Le navigateur reÃ§oit sa confirmation d'upload immÃ©diatement. Le
-          // canonical chauffe ensuite cÃ´tÃ© serveur pendant que le pro relit ses
-          // contenus ; le cron reste le filet de rÃ©cupÃ©ration durable.
-            after(async () => {
-            try {
-              await processVideoNormalizationJobsForMedia({
-                accountId: activeUserId,
-                mediaIds: [mediaId],
-              });
-            } catch (processingError) {
-              console.warn(
-                "[media-pipeline] video publication prewarm deferred to cron",
-                {
-                  mediaId,
-                  accountId: activeUserId,
-                  error: processingError,
-                },
-              );
-            }
+            // L'ACK d'upload est deja parti ; le cron durable reprend si ce
+            // prechauffage opportuniste depasse la duree de cette invocation.
+            processVideoNormalizationAfterUpload({
+              accountId: activeUserId,
+              mediaId,
+              context: "video publication prewarm",
             });
           }
         } catch (queueError) {
@@ -498,7 +535,11 @@ export async function POST(request: Request) {
           };
         }
       }
-    } else if (event === "uploaded" && directVideoSource) {
+    } else if (
+      event === "uploaded" &&
+      directVideoSource &&
+      !videoSourceNeedsSharedCanonical
+    ) {
       videoNormalization = {
         enabled: true,
         queued: false,

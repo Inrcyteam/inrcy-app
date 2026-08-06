@@ -126,11 +126,11 @@ test("les uploads ne forcent plus une compression globale au-dessus de 40 Mo", a
 
   assert.match(
     rules,
-    /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/,
+    /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES\s*-\s*1/,
   );
   assert.match(
     rules,
-    /INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL/,
+    /INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL\s*=\s*"< 70 Mo"/,
   );
   assert.match(intent, /getUniversalMediaProductMaxBytes\(mediaType\)/);
   for (const source of [event, workspace]) {

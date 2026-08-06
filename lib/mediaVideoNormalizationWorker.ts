@@ -1,15 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
-import {
-  BOOSTER_VIDEO_PREPARATION_KEYS,
-  type BoosterPreparationMission,
-} from "@/lib/boosterMediaPipelineMissions";
+import type { BoosterPreparationMission } from "@/lib/boosterMediaPipelineMissions";
 import { claimTargetedProcessingJob } from "@/lib/mediaProcessingTargetedClaim";
 import {
   findUnfulfilledVideoPreparationKeys,
@@ -18,6 +15,12 @@ import {
   readVideoPreparationMission,
 } from "@/lib/mediaVideoNormalizationMissionState";
 import { planVideoNormalizationExecution } from "@/lib/mediaVideoNormalizationExecutionPlan";
+import { planVideoNormalizationFailure } from "@/lib/mediaVideoNormalizationFailurePlan";
+import {
+  mapVideoNormalizationStageProgress,
+  resolveVideoNormalizationProgressWindow,
+  type VideoNormalizationProgressWindow,
+} from "@/lib/mediaVideoNormalizationProgress";
 import {
   VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE,
   VIDEO_NORMALIZATION_JOB_TYPE,
@@ -27,6 +30,7 @@ import {
   VIDEO_NORMALIZATION_PIPELINE_VERSION,
   VIDEO_NORMALIZATION_VARIANT_KEYS,
   VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
+  VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
   buildVideoNormalizationStoragePath,
   getVideoNormalizationKeyFromSignature,
   getVideoNormalizationPurpose,
@@ -39,10 +43,7 @@ import {
   normalizeVideoSource,
   type NormalizedVideoVariant,
 } from "@/lib/mediaVideoNormalizer";
-import {
-  toExactStorageArrayBuffer,
-  withStorageBinaryMetadata,
-} from "@/lib/supabaseStorageBinary";
+import { withStorageBinaryMetadata } from "@/lib/supabaseStorageBinary";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type ClaimedVideoJob = {
@@ -101,9 +102,9 @@ type ProcessedJobSummary = {
   errorCode?: string;
 };
 
-// A 300 MB source gets enough time to cross the private Storage link, while a
-// stalled socket releases the worker well before its 420-second lease expires.
-const VIDEO_SOURCE_DOWNLOAD_TIMEOUT_MS = 120_000;
+// A 300 MB source gets enough time to cross the private Storage link. FFmpeg
+// progress renews the 31-minute lease while stalled sockets still fail quickly.
+const VIDEO_SOURCE_DOWNLOAD_TIMEOUT_MS = 240_000;
 
 class VideoNormalizationError extends Error {
   readonly code: string;
@@ -151,6 +152,13 @@ function requiredVideoKeys(job: ClaimedVideoJob) {
 function classifyWorkerError(error: unknown) {
   if (error instanceof VideoNormalizationError) return error;
   const message = compactMessage(error).toLowerCase();
+  if (message.includes("video_shared_canonical_duration_too_long")) {
+    return new VideoNormalizationError(
+      "video_shared_canonical_duration_too_long",
+      "Une vidéo de 70 Mo ou plus doit durer 30 minutes maximum pour être compressée sous 70 Mo.",
+      false,
+    );
+  }
   const terminal =
     message.includes("video_source_too_large") ||
     message.includes("video_dimensions_unavailable") ||
@@ -176,7 +184,7 @@ function classifyWorkerError(error: unknown) {
 async function updateJobProgress(job: ClaimedVideoJob, progress: number) {
   const safe = Math.max(1, Math.min(99, Math.round(progress)));
   const now = new Date().toISOString();
-  await Promise.all([
+  const [jobUpdate, mediaUpdate, publicationStatusUpdate] = await Promise.all([
     supabaseAdmin
       .from("media_processing_jobs")
       .update({
@@ -187,12 +195,14 @@ async function updateJobProgress(job: ClaimedVideoJob, progress: number) {
         updated_at: now,
       })
       .eq("id", job.id)
-      .eq("account_id", job.account_id),
+      .eq("account_id", job.account_id)
+      .eq("status", "processing")
+      .select("id")
+      .maybeSingle(),
     supabaseAdmin
       .from("pro_media_library")
       .update({
         processing_status: "processing",
-        publication_status: "processing",
         processing_progress: safe,
         processing_started_at: now,
         processing_error_code: null,
@@ -200,7 +210,38 @@ async function updateJobProgress(job: ClaimedVideoJob, progress: number) {
       })
       .eq("id", job.media_id)
       .eq("user_id", job.account_id),
+    supabaseAdmin
+      .from("pro_media_library")
+      .update({ publication_status: "processing" })
+      .eq("id", job.media_id)
+      .eq("user_id", job.account_id)
+      .neq("publication_status", "ready"),
   ]);
+  if (mediaUpdate.error) {
+    console.warn("[media-pipeline] video media progress update failed", {
+      jobId: job.id,
+      mediaId: job.media_id,
+      progress: safe,
+      message: compactMessage(mediaUpdate.error),
+    });
+  }
+  if (publicationStatusUpdate.error) {
+    console.warn("[media-pipeline] video publication progress update failed", {
+      jobId: job.id,
+      mediaId: job.media_id,
+      progress: safe,
+      message: compactMessage(publicationStatusUpdate.error),
+    });
+  }
+  if (jobUpdate.error || !jobUpdate.data) {
+    throw new VideoNormalizationError(
+      "video_job_lease_refresh_failed",
+      jobUpdate.error
+        ? compactMessage(jobUpdate.error)
+        : "Le verrou du traitement video n'est plus actif.",
+      true,
+    );
+  }
 }
 
 async function loadMedia(job: ClaimedVideoJob): Promise<MediaRow> {
@@ -311,8 +352,13 @@ async function markVariantsProcessing(
   if (result.error) throw result.error;
 }
 
-async function downloadSourceToTemp(media: MediaRow, jobId: string) {
+async function downloadSourceToTemp(
+  media: MediaRow,
+  jobId: string,
+  options?: { canonicalMaster?: boolean },
+) {
   const expectedPrefix = `users/${media.user_id}/workspace-source/`;
+  const expectedCanonicalPrefix = `users/${media.user_id}/normalized/video/`;
   const boosterAccount = String(media.user_id || "").replace(/\./g, "-");
   const boosterPath = String(media.storage_path || "");
   const ownedBoosterSource =
@@ -323,7 +369,11 @@ async function downloadSourceToTemp(media: MediaRow, jobId: string) {
   if (
     !(
       (media.bucket_name === "inrcy-pro-media" &&
-        String(media.storage_path || "").startsWith(expectedPrefix)) ||
+        (String(media.storage_path || "").startsWith(expectedPrefix) ||
+          (options?.canonicalMaster === true &&
+            String(media.storage_path || "").startsWith(
+              expectedCanonicalPrefix,
+            )))) ||
       ownedBoosterSource
     )
   ) {
@@ -457,8 +507,8 @@ async function uploadVariant(params: {
   let storedPath: string | null = null;
 
   if (params.normalized.available && params.normalized.filePath) {
-    const buffer = await readFile(params.normalized.filePath);
-    if (!buffer.length) {
+    const fileSize = Number((await stat(params.normalized.filePath)).size || 0);
+    if (!fileSize) {
       throw new VideoNormalizationError(
         "video_variant_empty",
         `La variante ${params.normalized.key} est vide.`,
@@ -467,10 +517,12 @@ async function uploadVariant(params: {
     }
     const upload = await supabaseAdmin.storage
       .from(bucket)
-      .upload(storagePath, toExactStorageArrayBuffer(buffer), {
+      .upload(storagePath, createReadStream(params.normalized.filePath), {
         upsert: true,
         contentType: params.normalized.mimeType,
         cacheControl: "31536000",
+        duplex: "half",
+        headers: { "content-length": String(fileSize) },
       });
     if (upload.error) {
       throw new VideoNormalizationError(
@@ -566,12 +618,11 @@ async function markJobCancelled(
 
 async function markJobFailure(params: {
   job: ClaimedVideoJob;
+  claimedKeys: readonly VideoNormalizationVariantKey[];
   variants: VariantRow[];
   error: unknown;
 }): Promise<ProcessedJobSummary> {
   const normalized = classifyWorkerError(params.error);
-  const exhausted = params.job.attempt_count >= params.job.max_attempts;
-  const retryable = normalized.retryable && !exhausted;
   if (params.variants.length) {
     const variantFailure = await supabaseAdmin
       .from("media_variants")
@@ -590,17 +641,11 @@ async function markJobFailure(params: {
   }
 
   const claimedMission = readPreparationMission(params.job);
-  const claimedKeys = new Set(
-    readRequestedVideoPreparationKeys({
-      payload: params.job.payload,
-      fallbackMission: claimedMission,
-    }),
-  );
   let finalStatus: "queued" | "retry_wait" | "failed" | null = null;
 
-  // Même en cas d'échec terminal des captures, une publication demandée pendant
-  // le traitement AI reste une nouvelle mission. Elle repart seule et ne dépend
-  // donc jamais de l'audio/captures best-effort qui viennent d'échouer.
+  // Compare the complete request captured by the claim, not the smaller stage
+  // currently executing. Deferred derivatives are not late work; only keys
+  // added durably after the claim may reset attempts and start immediately.
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const [current, currentMedia] = await Promise.all([
       supabaseAdmin
@@ -636,9 +681,14 @@ async function markJobFailure(params: {
         payload: current.data.payload,
         fallbackMission: latestMission || claimedMission,
       });
-    const hasUntreatedRequest =
-      (latestMission !== null && latestMission !== claimedMission) ||
-      latestKeys.some((key) => !claimedKeys.has(key));
+    const failurePlan = planVideoNormalizationFailure({
+      claimedKeys: params.claimedKeys,
+      latestKeys,
+      retryableError: normalized.retryable,
+      attemptCount: params.job.attempt_count,
+      maxAttempts: params.job.max_attempts,
+    });
+    const hasUntreatedRequest = failurePlan.hasLateRequest;
     if (currentStatus === "queued") {
       finalStatus = "queued";
       break;
@@ -671,12 +721,12 @@ async function markJobFailure(params: {
       now.getTime() +
         getVideoNormalizationRetryDelaySeconds(params.job.attempt_count) * 1_000,
     ).toISOString();
-    const status = hasUntreatedRequest ? "queued" : retryable ? "retry_wait" : "failed";
+    const status = failurePlan.status;
     const payload = hasUntreatedRequest && followUpMission
       ? {
           ...asRecord(current.data.payload),
           pipelineMission: followUpMission,
-          requiredOutputs: [...BOOSTER_VIDEO_PREPARATION_KEYS[followUpMission]],
+          requiredOutputs: [...latestKeys],
           previousMissionFailure: {
             mission: claimedMission || "legacy_full_normalization",
             code: normalized.code,
@@ -689,16 +739,15 @@ async function markJobFailure(params: {
         status,
         payload,
         progress: 0,
-        attempt_count: hasUntreatedRequest ? 0 : params.job.attempt_count,
+        attempt_count: failurePlan.attemptCount,
         available_at: hasUntreatedRequest
           ? nextUpdatedAt
-          : retryable
+          : status === "retry_wait"
             ? availableAt
             : nextUpdatedAt,
         error_code: hasUntreatedRequest ? null : normalized.code,
         error_message: hasUntreatedRequest ? null : normalized.message,
-        completed_at:
-          hasUntreatedRequest || retryable ? null : nextUpdatedAt,
+        completed_at: status === "failed" ? nextUpdatedAt : null,
         locked_at: null,
         lock_expires_at: null,
         locked_by: null,
@@ -717,6 +766,17 @@ async function markJobFailure(params: {
   }
   if (!finalStatus) throw new Error("video_job_failure_contention");
 
+  const canonicalReadyResult = await supabaseAdmin
+    .from("media_variants")
+    .select("id")
+    .eq("account_id", params.job.account_id)
+    .eq("media_id", params.job.media_id)
+    .eq("signature", getVideoNormalizationSignature("canonical"))
+    .eq("status", "ready")
+    .limit(1)
+    .maybeSingle();
+  if (canonicalReadyResult.error) throw canonicalReadyResult.error;
+  const publicationMasterReady = Boolean(canonicalReadyResult.data?.id);
   const chained = finalStatus === "queued";
   const mediaStatus = chained
     ? "queued"
@@ -727,8 +787,14 @@ async function markJobFailure(params: {
     .from("pro_media_library")
     .update({
       processing_status: mediaStatus,
-      publication_status: finalStatus === "failed" ? "failed" : "processing",
-      processing_progress: 0,
+      // AI derivatives are best-effort for publication. A valid current
+      // canonical master remains publishable even if a frame/audio job fails.
+      publication_status: publicationMasterReady
+        ? "ready"
+        : finalStatus === "failed"
+          ? "failed"
+          : "processing",
+      processing_progress: publicationMasterReady ? 100 : 0,
       processing_error_code: chained ? null : normalized.code,
       processing_error_message: chained ? null : normalized.message,
       processing_completed_at:
@@ -764,8 +830,10 @@ async function updateMediaAfterSuccessfulNormalization(params: {
   canonical: Awaited<ReturnType<typeof uploadVariant>> | undefined;
   hasReadyCanonicalVariant: boolean;
   sourceSha256: string;
+  inputWasCanonical: boolean;
   completedAt: string;
-  continuesWithPublication?: boolean;
+  continuesWithPendingOutputs?: boolean;
+  stageCompletionProgress: number;
 }) {
   // Une demande publication peut arriver pendant FFmpeg. Ne jamais réécrire
   // media_metadata depuis le snapshot chargé au début du job : on recharge puis
@@ -801,20 +869,23 @@ async function updateMediaAfterSuccessfulNormalization(params: {
       duration_seconds: params.normalized.source.durationSeconds,
       detected_mime_type:
         params.media.detected_mime_type || params.media.mime_type || null,
-      content_hash_sha256: params.sourceSha256,
-      processing_status: params.continuesWithPublication ? "queued" : "ready",
+      processing_status: params.continuesWithPendingOutputs
+        ? "queued"
+        : "ready",
       publication_status:
         params.canonical || params.hasReadyCanonicalVariant
           ? "ready"
-          : params.continuesWithPublication
+          : params.continuesWithPendingOutputs
             ? "processing"
-          : params.mission === "ai_preparation"
-            ? "not_requested"
-            : current.data.publication_status,
-      processing_progress: params.continuesWithPublication ? 0 : 100,
+            : params.mission === "ai_preparation"
+              ? "not_requested"
+              : current.data.publication_status,
+      processing_progress: params.continuesWithPendingOutputs
+        ? params.stageCompletionProgress
+        : 100,
       processing_error_code: null,
       processing_error_message: null,
-      processing_completed_at: params.continuesWithPublication
+      processing_completed_at: params.continuesWithPendingOutputs
         ? null
         : params.completedAt,
       pipeline_version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
@@ -832,6 +903,9 @@ async function updateMediaAfterSuccessfulNormalization(params: {
       },
       updated_at: nextUpdatedAt,
     };
+    if (!params.inputWasCanonical) {
+      mediaPatch.content_hash_sha256 = params.sourceSha256;
+    }
     if (params.canonical?.bucket && params.canonical.storagePath) {
       Object.assign(mediaPatch, {
         canonical_bucket_name: params.canonical.bucket,
@@ -865,6 +939,7 @@ async function settleSuccessfulVideoJob(params: {
   fulfilledKeys: Iterable<VideoNormalizationVariantKey>;
   result: Record<string, unknown>;
   completedAt: string;
+  stageCompletionProgress: number;
 }): Promise<"succeeded" | "queued"> {
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const [current, currentMedia] = await Promise.all([
@@ -933,7 +1008,7 @@ async function settleSuccessfulVideoJob(params: {
       ? {
           status: "queued",
           payload: latestPayload,
-          progress: 0,
+          progress: params.stageCompletionProgress,
           attempt_count: 0,
           available_at: nextUpdatedAt,
           result: {
@@ -978,8 +1053,7 @@ async function settleSuccessfulVideoJob(params: {
         .from("pro_media_library")
         .update({
           processing_status: "queued",
-          publication_status: "processing",
-          processing_progress: 0,
+          processing_progress: params.stageCompletionProgress,
           processing_completed_at: null,
         })
         .eq("id", params.job.media_id)
@@ -1000,6 +1074,7 @@ async function settleSuccessfulVideoJob(params: {
 async function processClaimedVideoJob(
   job: ClaimedVideoJob,
 ): Promise<ProcessedJobSummary> {
+  const claimedRequest = requiredVideoKeys(job);
   let variants: VariantRow[] = [];
   let failureJob = job;
   let workDir = "";
@@ -1022,7 +1097,7 @@ async function processClaimedVideoJob(
       );
     }
 
-    const requested = requiredVideoKeys(job);
+    const requested = claimedRequest;
     const hasReadyCanonicalVariant = variants.some(
       (variant) =>
         variant.key === "canonical" &&
@@ -1038,7 +1113,21 @@ async function processClaimedVideoJob(
       mission: requested.mission,
       requestedKeys: requested.keys,
       readyKeys: fulfilledKeys,
+      requiresCanonicalFirst:
+        Number(media.size_bytes || 0) >=
+        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
     });
+    const progressWindow: VideoNormalizationProgressWindow =
+      resolveVideoNormalizationProgressWindow({
+        continuesWithPendingOutputs: execution.continuesWithPendingOutputs,
+        previousProgress: job.progress,
+        hasCompletedRequiredOutput: fulfilledKeys.size > 0,
+      });
+    const persistStageProgress = (stageProgress: number) =>
+      updateJobProgress(
+        job,
+        mapVideoNormalizationStageProgress(stageProgress, progressWindow),
+      );
     const requiredKeySet = new Set<VideoNormalizationVariantKey>(execution.keys);
     const selectedVariants = variants.filter((variant) =>
       requiredKeySet.has(variant.key),
@@ -1072,11 +1161,40 @@ async function processClaimedVideoJob(
     );
 
     await markVariantsProcessing(job, pendingVariants);
-    await updateJobProgress(job, 5);
+    await persistStageProgress(5);
 
-    const downloaded = await downloadSourceToTemp(media, job.id);
+    const readyCanonicalRow = allVariants.find(
+      (variant) => variant.key === "canonical",
+    );
+    const readyCanonical = readyCanonicalRow
+      ? readyVariantOutput(readyCanonicalRow)
+      : null;
+    const inputWasCanonical =
+      !pendingVariants.some((variant) => variant.key === "canonical") &&
+      Boolean(
+        readyCanonical?.available &&
+          readyCanonical.bucket &&
+          readyCanonical.storagePath,
+      );
+    const stageInput = inputWasCanonical
+      ? {
+          ...media,
+          bucket_name: String(readyCanonical?.bucket || ""),
+          storage_path: String(readyCanonical?.storagePath || ""),
+          mime_type: readyCanonical?.mimeType || "video/mp4",
+          detected_mime_type: readyCanonical?.mimeType || "video/mp4",
+          size_bytes: Number(readyCanonical?.sizeBytes || 0),
+          width: readyCanonical?.width || media.width,
+          height: readyCanonical?.height || media.height,
+          duration_seconds:
+            readyCanonical?.durationSeconds || media.duration_seconds,
+        }
+      : media;
+    const downloaded = await downloadSourceToTemp(stageInput, job.id, {
+      canonicalMaster: inputWasCanonical,
+    });
     workDir = downloaded.workDir;
-    await updateJobProgress(job, 20);
+    await persistStageProgress(20);
 
     let lastQueuedProgress = 20;
     let lastQueuedAt = 0;
@@ -1092,9 +1210,8 @@ async function processClaimedVideoJob(
       lastQueuedProgress = mapped;
       lastQueuedAt = now;
       progressWriteChain = progressWriteChain
-        .catch(() => undefined)
         .then(async () => {
-          await updateJobProgress(job, mapped);
+          await persistStageProgress(mapped);
           if (mapped === 72 || mapped % 10 <= 2) {
             console.info("[media-pipeline] video normalization progress", {
               mediaId: job.media_id,
@@ -1104,6 +1221,12 @@ async function processClaimedVideoJob(
           }
         })
         .catch((error) => {
+          if (
+            error instanceof VideoNormalizationError &&
+            error.code === "video_job_lease_refresh_failed"
+          ) {
+            throw error;
+          }
           console.warn("[media-pipeline] video progress persistence skipped", {
             mediaId: job.media_id,
             progress: mapped,
@@ -1125,7 +1248,7 @@ async function processClaimedVideoJob(
       },
     });
     await progressWriteChain;
-    await updateJobProgress(job, 72);
+    await persistStageProgress(72);
 
     const outputs: Partial<
       Record<VideoNormalizationVariantKey, Awaited<ReturnType<typeof uploadVariant>>>
@@ -1146,8 +1269,7 @@ async function processClaimedVideoJob(
         normalized: normalizedVariant,
       });
       fulfilledKeys.add(variant.key);
-      await updateJobProgress(
-        job,
+      await persistStageProgress(
         74 +
           Math.round(((index + 1) / Math.max(1, pendingVariants.length)) * 20),
       );
@@ -1175,8 +1297,10 @@ async function processClaimedVideoJob(
       canonical,
       hasReadyCanonicalVariant,
       sourceSha256: downloaded.sha256,
+      inputWasCanonical,
       completedAt,
-      continuesWithPublication: execution.continuesWithPublication,
+      continuesWithPendingOutputs: execution.continuesWithPendingOutputs,
+      stageCompletionProgress: progressWindow.end,
     });
     const result = {
       pipelineVersion: VIDEO_NORMALIZATION_PIPELINE_VERSION,
@@ -1192,6 +1316,7 @@ async function processClaimedVideoJob(
       fulfilledKeys,
       result,
       completedAt,
+      stageCompletionProgress: progressWindow.end,
     });
 
     await refreshPublicationWorkspaceStatusesForMedia({
@@ -1201,7 +1326,12 @@ async function processClaimedVideoJob(
 
     return { jobId: job.id, mediaId: job.media_id, status: disposition };
   } catch (error) {
-    return await markJobFailure({ job: failureJob, variants, error });
+    return await markJobFailure({
+      job: failureJob,
+      claimedKeys: claimedRequest.keys,
+      variants,
+      error,
+    });
   } finally {
     if (workDir) {
       await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
@@ -1315,23 +1445,19 @@ export async function processVideoNormalizationJobsForMedia(params: {
   let claimed = 0;
 
   for (const mediaId of mediaIds) {
-    // Au plus deux missions strictement séquentielles : si publication arrive
-    // pendant AI, le canonical part immédiatement après les captures, jamais en
-    // parallèle. Une éventuelle troisième demande reste durablement au cron.
-    for (let missionIndex = 0; missionIndex < 2; missionIndex += 1) {
-      const job = await claimTargetedProcessingJob({
-        accountId,
-        mediaId,
-        jobType: VIDEO_NORMALIZATION_JOB_TYPE,
-        workerId: workerId.slice(0, 180),
-        leaseSeconds: VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
-      });
-      if (!job) break;
-      claimed += 1;
-      const summary = await processClaimedVideoJob(job as ClaimedVideoJob);
-      summaries.push(summary);
-      if (summary.status !== "queued") break;
-    }
+    // Exactly one bounded stage per invocation. A chained stage is persisted as
+    // queued and picked up by the next cron tick, never hidden behind the first
+    // request's execution budget.
+    const job = await claimTargetedProcessingJob({
+      accountId,
+      mediaId,
+      jobType: VIDEO_NORMALIZATION_JOB_TYPE,
+      workerId: workerId.slice(0, 180),
+      leaseSeconds: VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
+    });
+    if (!job) continue;
+    claimed += 1;
+    summaries.push(await processClaimedVideoJob(job as ClaimedVideoJob));
   }
 
   return {

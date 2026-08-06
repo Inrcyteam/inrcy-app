@@ -48,11 +48,11 @@ test("waitForIdle is followed by one authoritative source-readiness snapshot", (
   );
 });
 
-test("generation targets 30 seconds but keeps a 45-second safety window without fake waits", () => {
+test("generation targets 30 seconds but keeps a 105-second safety window without fake waits", () => {
   assert.match(modal, /BOOSTER_GENERATION_TARGET_MS = 30_000/);
   assert.match(
     modal,
-    /BOOSTER_GENERATION_SAFETY_BUDGET_MS\s*=\s*BOOSTER_GENERATION_TARGET_MS \+ 15_000/,
+    /BOOSTER_GENERATION_SAFETY_BUDGET_MS\s*=\s*105_000/,
   );
   assert.doesNotMatch(modal, /await sleep\(320\)|await sleep\(650\)/);
   assert.doesNotMatch(modal, /transcribeVideoAudioForAI\(/);

@@ -3,11 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), "utf8");
+const read = (relativePath) =>
+  fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 
 const sources = {
   policy: read("lib/googleBusinessMediaPolicy.ts"),
-  videoPolicy: read("lib/videoPublicationPolicy.ts"),
   transforms: read("lib/boosterVideoTransforms.ts"),
   variantServer: read("lib/boosterVideoVariantServer.ts"),
   probe: read("lib/googleBusinessMediaProbe.ts"),
@@ -20,10 +20,10 @@ const sources = {
 const checks = [
   {
     id: "gmb-video-limits",
-    label: "Google Business possède 75 Mo officiel, 72 Mo cible, 30 s et 720 px",
+    label: "Google Business possède 75 Mo officiel, 70 Mo cible, 30 s et 720 px",
     ok:
       /75_000_000/.test(sources.policy) &&
-      /72_000_000/.test(sources.policy) &&
+      /70_000_000/.test(sources.policy) &&
       /MAX_DURATION_SECONDS = 30/.test(sources.policy) &&
       /MIN_SHORT_EDGE = 720/.test(sources.policy),
   },
@@ -33,14 +33,16 @@ const checks = [
     ok:
       /GOOGLE_BUSINESS_VIDEO_PROFILE/.test(sources.transforms) &&
       /publicationProfile/.test(sources.transforms) &&
-      /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 6/.test(sources.variantServer),
+      /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/.test(
+        sources.variantServer,
+      ),
   },
   {
     id: "no-silent-trim",
-    label: "Une vidéo de plus de 30 secondes est écartée sans découpe silencieuse",
+    label: "Une vidéo de plus de 30 secondes est bloquée sans découpe silencieuse",
     ok:
-      /action: "omit"/.test(sources.policy) &&
-      /n’a pas été coupée automatiquement/.test(sources.variantServer),
+      /action: "block"/.test(sources.policy) &&
+      /n[’']a pas été coupée automatiquement/.test(sources.variantServer),
   },
   {
     id: "url-probe",
@@ -62,26 +64,28 @@ const checks = [
   },
   {
     id: "prewarm-warning",
-    label: "Le préchauffage Google non conforme devient avertissement, pas blocage global",
+    label: "Le préchauffage distingue les avertissements récupérables des variantes invalides",
     ok:
       /mediaWarnings/.test(sources.prewarm) &&
-      /isGoogleBusinessVideoValidationOmittable/.test(sources.prewarm),
+      /allowOriginalVideoFallback/.test(sources.prewarm) &&
+      /invalidChannels/.test(sources.prewarm),
   },
   {
-    id: "publish-text-fallback",
-    label: "Publish-now conserve la publication texte sans média Google",
+    id: "publish-video-guard",
+    label: "Publish-now refuse une vidéo Google indisponible sans publier du texte à sa place",
     ok:
-      /videoMediaWarningsByChannel/.test(sources.route) &&
       /filterGoogleBusinessMediaUrls/.test(sources.route) &&
-      /published_without_video/.test(sources.route),
+      /publication texte n[’']a pas été envoyée à la place/.test(sources.route),
   },
   {
     id: "inrsend-same-guard",
-    label: "iNrSend applique le même contrôle d’URL et le même fallback",
+    label: "iNrSend applique le même contrôle d’URL et le même refus de substitution vidéo",
     ok:
       /filterGoogleBusinessMediaUrls/.test(sources.inrsend) &&
       /published_without_image/.test(sources.inrsend) &&
-      /published_without_video/.test(sources.inrsend),
+      /publication texte n[’']a pas été envoyée à la place/.test(
+        sources.inrsend,
+      ),
   },
 ];
 
@@ -94,5 +98,8 @@ for (const check of checks) {
     console.error(`FAIL  ${check.id} - ${check.label}`);
   }
 }
-console.log(`\nRésultat : ${checks.length - failures}/${checks.length} contrôles validés.`);
+
+console.log(
+  `\nRésultat : ${checks.length - failures}/${checks.length} contrôles validés.`,
+);
 if (failures) process.exit(1);

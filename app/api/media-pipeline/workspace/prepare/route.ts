@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -20,7 +20,7 @@ import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 1_800;
 
 type PreparationMission = Exclude<
   BoosterMediaPipelineMission,
@@ -573,6 +573,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null);
     const workspaceId = cleanText(body?.workspaceId, "", 80);
     const mission = readMission(body?.mission);
+    const dispatchWorker = body?.dispatchWorker !== false;
     if (!workspaceId) {
       return jsonError("Espace média manquant.", 400, "workspace_required");
     }
@@ -734,11 +735,30 @@ export async function POST(request: Request) {
         workerId: `workspace-${mission}-image-${requestId}`,
       });
     }
-    if (pendingVideos.length) {
-      await processVideoNormalizationJobsForMedia({
-        accountId: activeUserId,
-        mediaIds: pendingVideos.map((item) => item.mediaId),
-        workerId: `workspace-${mission}-video-${requestId}`,
+    if (pendingVideos.length && dispatchWorker) {
+      const mediaIds = pendingVideos.map((item) => item.mediaId);
+      // A video transcode is durable work, not request work. The job is already
+      // committed above, so the browser receives `processing` immediately and
+      // can poll while this best-effort kick (with the cron as fallback) runs.
+      after(async () => {
+        try {
+          await processVideoNormalizationJobsForMedia({
+            accountId: activeUserId,
+            mediaIds,
+            workerId: `workspace-${mission}-video-${requestId}`,
+          });
+          await refreshPublicationWorkspaceMediaStatus({
+            workspaceId,
+            accountId: activeUserId,
+          });
+        } catch (error) {
+          console.error("[media-pipeline] background video preparation failed", {
+            workspaceId,
+            mission,
+            mediaIds,
+            error,
+          });
+        }
       });
     }
 

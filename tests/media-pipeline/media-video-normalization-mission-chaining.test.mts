@@ -114,16 +114,22 @@ test("la queue et le worker protègent durablement la course AI vers publication
   );
   assert.match(worker, /settleSuccessfulVideoJob/);
   assert.match(worker, /findUnfulfilledVideoPreparationKeys/);
+  assert.match(worker, /planVideoNormalizationFailure/);
   assert.match(worker, /status: "queued"/);
-  assert.match(worker, /attempt_count: 0/);
+  assert.match(worker, /attempt_count: failurePlan\.attemptCount/);
+  assert.match(worker, /claimedKeys: claimedRequest\.keys/);
+  assert.match(worker, /requiredOutputs: \[\.\.\.latestKeys\]/);
   assert.match(worker, /previousMissionFailure/);
   assert.match(worker, /mediaMetadata: currentMedia\.data\?\.media_metadata/);
   assert.match(worker, /neq\("status", "ready"\)/);
-  assert.match(
-    worker,
-    /for \(let missionIndex = 0; missionIndex < 2; missionIndex \+= 1\)/,
-  );
-  assert.match(worker, /if \(summary\.status !== "queued"\) break/);
+  assert.match(worker, /video_job_lease_refresh_failed/);
+  assert.match(worker, /if \(mediaUpdate\.error\)/);
+  assert.match(worker, /if \(publicationStatusUpdate\.error\)/);
+  assert.match(worker, /if \(jobUpdate\.error \|\| !jobUpdate\.data\)/);
+  assert.match(worker, /neq\("publication_status", "ready"\)/);
+  assert.match(worker, /Exactly one bounded stage per invocation/);
+  assert.match(worker, /const job = await claimTargetedProcessingJob/);
+  assert.match(worker, /summaries\.push\(await processClaimedVideoJob/);
 
   // Le worker global reste strictement séquentiel et le claim ciblé refuse un
   // lock processing encore valide : aucun deuxième FFmpeg ne démarre en parallèle.

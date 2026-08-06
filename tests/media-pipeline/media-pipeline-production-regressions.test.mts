@@ -143,5 +143,5 @@ test("un 413 TUS explique la limite globale Supabase à configurer", async () =>
   const source = await readSource("lib/universalMediaUploadClient.ts");
 
   assert.match(source, /response\.status === 413/);
-  assert.match(source, /limite requise : 320 Mo/);
+  assert.match(source, /limite requise : 300 Mo/);
 });

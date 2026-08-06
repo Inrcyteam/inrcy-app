@@ -5,6 +5,7 @@ import {
   isVideoNormalizationEnabled,
 } from "@/lib/mediaVideoNormalizationPolicy";
 import { loadNormalizationRepairCandidates } from "@/lib/mediaNormalizationRepairQueue";
+import { UNIVERSAL_MEDIA_PIPELINE_VERSION } from "@/lib/mediaPipelineRegistry";
 import { mergeVideoPreparationRequest } from "@/lib/mediaVideoNormalizationMissionState";
 
 type EnqueueVideoNormalizationParams = {
@@ -182,6 +183,10 @@ export async function repairPendingVideoNormalizationQueue(params?: {
     supabase: supabaseAdmin,
     mediaType: "video",
     minimumPipelineVersion: VIDEO_NORMALIZATION_PIPELINE_VERSION,
+    // L'upload universel persiste d'abord une ligne v1. Si l'enqueue v2 tombe
+    // après l'écriture de la mission, le cron reprend cette intention durable,
+    // puis le RPC d'enqueue met atomiquement le média au niveau v2.
+    minimumRequestedPipelineVersion: UNIVERSAL_MEDIA_PIPELINE_VERSION,
     limit,
   });
 

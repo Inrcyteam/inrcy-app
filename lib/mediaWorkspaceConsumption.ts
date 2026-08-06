@@ -26,7 +26,6 @@ import {
   INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
 } from "@/lib/mediaRules";
 import {
-  VIDEO_CANONICAL_MIN_SAVINGS_RATIO,
   VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
 } from "@/lib/mediaVideoNormalizationPolicy";
 import {
@@ -559,6 +558,16 @@ async function readWorkspaceGraph(params: {
         ((params.allowUploadedVideoSource ?? false) &&
           canUseDirectWorkspaceVideoSource(item)));
     if (uploadedVideoIsUsable) return false;
+
+    // Publication readiness is independent from best-effort AI derivatives.
+    // A current canonical master may be ready while captures/audio report a
+    // separate processing failure; that must never block provider dispatch.
+    if (
+      item.mediaType === "video" &&
+      ["ready", "legacy_ready"].includes(item.publicationStatus)
+    ) {
+      return false;
+    }
 
     // Mission publication: conserver les garanties historiques.
     return (
@@ -1250,21 +1259,11 @@ export async function resolveWorkspacePublicationConsumption(params: {
         409,
       );
     }
-    const canonicalIsMateriallySmaller = Boolean(
-      canonical &&
-        canonical.sizeBytes > 0 &&
-        canonical.sizeBytes <=
-          item.sourceSizeBytes * (1 - VIDEO_CANONICAL_MIN_SAVINGS_RATIO),
-    );
-    const preferSharedCanonical = Boolean(
-      directSourceReady &&
-        item.sourceSizeBytes > VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES &&
-        canonicalIsMateriallySmaller,
-    );
-    // Up to 70 MB, a compatible source remains byte-for-byte original. Above
-    // that threshold, a materially smaller canonical prepared in background
-    // becomes the shared distribution master: the original is preserved, but
-    // ten provider transfers no longer repeat avoidable bytes.
+    const preferSharedCanonical =
+      item.sourceSizeBytes >= VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
+    // Below 70 MB, a compatible source may remain byte-for-byte original.
+    // At or above that threshold, publication must consume the shared canonical.
+    // The original is retained for recovery but is never a provider fallback.
     const publicationVariant =
       directSourceReady && !preferSharedCanonical ? null : canonical;
     const thumbnail = pickReadyVariant(variants, item.mediaId, "thumbnail");
@@ -1817,4 +1816,3 @@ export async function syncPublicationWorkspaceContext(params: {
   if (update.error) throw update.error;
   return true;
 }
-

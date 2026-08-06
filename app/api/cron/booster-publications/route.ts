@@ -74,6 +74,7 @@ type AsyncPreparationJob = {
   channelEventIds: string[];
   lastActivityAt: number;
   attempt: number;
+  lastPreparationError: string;
 };
 
 const PROCESSING_RECOVERY_GRACE_MS = 30 * 1000;
@@ -314,6 +315,7 @@ function readPreparationJob(row: AsyncEventRow): AsyncPreparationJob {
       .map((value) => String(value || "").trim())
       .filter(Boolean),
     attempt: Math.max(0, Number(payload.preparationAttempt || 0)),
+    lastPreparationError: String(payload.lastPreparationError || "").trim(),
     lastActivityAt: timestampMs(
       payload.updatedAt,
       payload.preparationStartedAt,
@@ -384,17 +386,31 @@ async function exhaustPreparationJob(job: AsyncPreparationJob) {
 }
 
 async function dispatchPreparationJob(job: AsyncPreparationJob, appOrigin: string) {
-  if (job.attempt >= BOOSTER_ASYNC_PREPARATION_MAX_ATTEMPTS) {
+  const waitingForWorkspaceMedia =
+    job.lastPreparationError === "workspace_media_processing" ||
+    job.lastPreparationError === "workspace_media_not_ready";
+  if (
+    !waitingForWorkspaceMedia &&
+    job.attempt >= BOOSTER_ASYNC_PREPARATION_MAX_ATTEMPTS
+  ) {
     await exhaustPreparationJob(job);
     return;
   }
+  // La normalisation video possede son propre budget de reprises et son etat
+  // terminal. Observer `workspace_media_processing` ne constitue donc pas une
+  // tentative de publication et ne doit jamais epuiser le parent. L'etape 1
+  // est toutefois reservee au dispatch sans media/images : les canaux media
+  // doivent avancer durablement a l'etape 2 au lieu de reboucler sur l'etape 1.
+  const nextPreparationAttempt = waitingForWorkspaceMedia
+    ? Math.max(2, job.attempt)
+    : job.attempt + 1;
   try {
     await fetch(`${appOrigin}/api/booster/publish-now`, {
       method: "POST",
       headers: buildInternalCronHeaders(job.userId),
       body: JSON.stringify({
         ...job.preparationRequest,
-        _asyncPreparationAttempt: job.attempt + 1,
+        _asyncPreparationAttempt: nextPreparationAttempt,
       }),
       cache: "no-store",
     });

@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   VIDEO_AI_PREVIEW_MAX_SIDE,
+  VIDEO_CANONICAL_MAX_BYTES,
   VIDEO_CANONICAL_MAX_SIDE,
+  VIDEO_CANONICAL_TARGET_BYTES,
   VIDEO_FRAME_MAX_SIDE,
   VIDEO_NORMALIZATION_MAX_SOURCE_BYTES,
   VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL,
+  VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
+  VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS,
   VIDEO_THUMBNAIL_MAX_SIDE,
   buildVideoFrameCaptureTimes,
   buildVideoNormalizationStoragePath,
@@ -20,6 +24,14 @@ import {
 test("le worker accepte les sources vidéo jusqu’à 300 Mo", () => {
   assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_BYTES, 300 * 1024 * 1024);
   assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL, "300 Mo");
+});
+
+test("le master partagé cible 65 Mo et reste strictement sous 70 Mo", () => {
+  assert.equal(VIDEO_CANONICAL_TARGET_BYTES, 65_000_000);
+  assert.equal(VIDEO_CANONICAL_MAX_BYTES, 70_000_000 - 1);
+  assert.ok(VIDEO_CANONICAL_TARGET_BYTES < VIDEO_CANONICAL_MAX_BYTES);
+  assert.equal(VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS, 1_860);
+  assert.equal(VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS, 30 * 60);
 });
 
 test("les formats vidéo restent hiérarchisés sans agrandissement", () => {
@@ -51,11 +63,11 @@ test("les rotations 90 et 270 degrés inversent les dimensions", () => {
 test("les signatures et chemins vidéo sont stables et privés", () => {
   assert.equal(
     getVideoNormalizationSignature("canonical"),
-    "inrcy:video:canonical:v1",
+    "inrcy:video:canonical:v2",
   );
   assert.equal(
     getVideoNormalizationSignature("frame_02"),
-    "inrcy:video:frame:02:v1",
+    "inrcy:video:frame:02:v2",
   );
   assert.equal(
     buildVideoNormalizationStoragePath({
@@ -63,7 +75,7 @@ test("les signatures et chemins vidéo sont stables et privés", () => {
       mediaId: "media-456",
       key: "audio_track",
     }),
-    "users/account-123/normalized/video/v1/media-456/audio-track.mp3",
+    "users/account-123/normalized/video/v2/media-456/audio-track.mp3",
   );
 });
 
@@ -90,6 +102,18 @@ test("le budget vidéo tient compte de la durée et de l'audio", () => {
   assert.equal(short, 5000);
   assert.ok(long < short);
   assert.ok(long >= 250);
+
+  const screenshotDuration = 10 * 60 + 37;
+  const sharedMasterVideoKbps = getVideoTargetBitrateKbps({
+    durationSeconds: screenshotDuration,
+    maxBytes: VIDEO_CANONICAL_TARGET_BYTES,
+    audioBitrateKbps: 128,
+    minVideoKbps: 96,
+    maxVideoKbps: 2_200,
+  });
+  const expectedBytes =
+    ((sharedMasterVideoKbps + 128) * 1_000 * screenshotDuration) / 8;
+  assert.ok(expectedBytes < VIDEO_CANONICAL_TARGET_BYTES);
 });
 
 test("le backoff vidéo augmente puis reste plafonné", () => {

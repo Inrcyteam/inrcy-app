@@ -81,8 +81,13 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
 // Bump both signatures whenever the encoded bytes contract changes. This
 // invalidates the old progressive derivatives instead of serving them again.
 const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8;
-const TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 9;
+const TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 10;
 const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
+const TIKTOK_PHOTO_MAX_BYTES = 20_000_000;
+const TIKTOK_LANDSCAPE_MAX_WIDTH = 1920;
+const TIKTOK_LANDSCAPE_MAX_HEIGHT = 1080;
+const TIKTOK_PORTRAIT_MAX_WIDTH = 1080;
+const TIKTOK_PORTRAIT_MAX_HEIGHT = 1920;
 
 function getChannelImagePipelineVersion(channel: BoosterImageChannel) {
   return channel === "tiktok"
@@ -94,7 +99,9 @@ function getChannelJpegOptions(channel: BoosterImageChannel, quality = 87) {
   if (channel === "tiktok") {
     return {
       quality: Math.max(50, Math.min(100, quality === 87 ? 90 : quality)),
-      mozjpeg: true,
+      // Sharp's mozjpeg preset enables optimizeScans and can emit a
+      // progressive JPEG even when progressive=false is requested.
+      mozjpeg: false,
       progressive: false,
       chromaSubsampling: "4:2:0" as const,
     };
@@ -106,6 +113,84 @@ function getChannelJpegOptions(channel: BoosterImageChannel, quality = 87) {
     // are visually valid but are intermittently rejected by Google Business
     // and can leave TikTok's pull worker in PROCESSING_DOWNLOAD.
     progressive: false,
+  };
+}
+
+async function inspectTikTokPhotoContract(input: Buffer) {
+  if (!input.length || input.length > TIKTOK_PHOTO_MAX_BYTES) return null;
+  const metadata = await sharp(input, { failOn: "none" })
+    .metadata()
+    .catch(() => null);
+  if (!metadata || metadata.format !== "jpeg") return null;
+  if (metadata.isProgressive === true) return null;
+  if (String(metadata.space || "").toLowerCase() !== "srgb") return null;
+  if (String(metadata.chromaSubsampling || "") !== "4:2:0") return null;
+
+  const oriented = getOrientedDimensions(metadata);
+  if (!oriented.width || !oriented.height) return null;
+  const landscape = oriented.width >= oriented.height;
+  const maxWidth = landscape
+    ? TIKTOK_LANDSCAPE_MAX_WIDTH
+    : TIKTOK_PORTRAIT_MAX_WIDTH;
+  const maxHeight = landscape
+    ? TIKTOK_LANDSCAPE_MAX_HEIGHT
+    : TIKTOK_PORTRAIT_MAX_HEIGHT;
+  if (oriented.width > maxWidth || oriented.height > maxHeight) return null;
+  return oriented;
+}
+
+async function ensureTikTokPhotoContract(input: Buffer) {
+  const compatible = await inspectTikTokPhotoContract(input);
+  if (compatible) {
+    return {
+      output: input,
+      mime: "image/jpeg" as const,
+      extension: "jpg" as const,
+      width: compatible.width,
+      height: compatible.height,
+    };
+  }
+
+  const metadata = await sharp(input, { failOn: "none" }).metadata();
+  const oriented = getOrientedDimensions(metadata);
+  if (!oriented.width || !oriented.height) {
+    throw new Error("tiktok_image_dimensions_missing");
+  }
+  const landscape = oriented.width >= oriented.height;
+  const maxWidth = landscape
+    ? TIKTOK_LANDSCAPE_MAX_WIDTH
+    : TIKTOK_PORTRAIT_MAX_WIDTH;
+  const maxHeight = landscape
+    ? TIKTOK_LANDSCAPE_MAX_HEIGHT
+    : TIKTOK_PORTRAIT_MAX_HEIGHT;
+  const render = (quality: number) =>
+    sharp(input, { failOn: "none" })
+      .rotate()
+      .resize({
+        width: maxWidth,
+        height: maxHeight,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .flatten({ background: { r: 255, g: 255, b: 255, alpha: 1 } })
+      .toColourspace("srgb")
+      .jpeg(getChannelJpegOptions("tiktok", quality))
+      .toBuffer();
+
+  let quality = 90;
+  let output = await render(quality);
+  while (output.length > TIKTOK_PHOTO_MAX_BYTES && quality > 50) {
+    quality -= 5;
+    output = await render(quality);
+  }
+  const verified = await inspectTikTokPhotoContract(output);
+  if (!verified) throw new Error("tiktok_image_contract_failed");
+  return {
+    output,
+    mime: "image/jpeg" as const,
+    extension: "jpg" as const,
+    width: verified.width,
+    height: verified.height,
   };
 }
 
@@ -462,7 +547,10 @@ const ORIGINAL_IMAGE_MIME_TYPES_BY_CHANNEL: Record<
   facebook: new Set(["image/jpeg", "image/png"]),
   instagram: new Set(["image/jpeg"]),
   linkedin: new Set(["image/jpeg", "image/png"]),
-  tiktok: new Set(["image/jpeg", "image/webp"]),
+  // TikTok always goes through a channel variant, including the visual
+  // "Originale" mode. A declared MIME type cannot prove that JPEG bytes are
+  // baseline, sRGB and 4:2:0, so bypassing the byte guard is unsafe.
+  tiktok: new Set(),
   youtube_shorts: new Set(),
   pinterest: new Set(["image/jpeg", "image/png"]),
 };
@@ -488,6 +576,9 @@ async function renderTechnicalImageCompatibility(params: {
   buffer: Buffer;
   channel: BoosterImageChannel;
 }) {
+  if (params.channel === "tiktok") {
+    return ensureTikTokPhotoContract(params.buffer);
+  }
   const oriented = sharp(params.buffer, { failOn: "none" }).rotate();
   const metadata = await oriented.metadata();
   const width = Number(metadata.width || 0);
@@ -964,6 +1055,14 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           width: number;
           height: number;
         }) => {
+          const publicationVariant =
+            channel === "tiktok"
+              ? await ensureTikTokPhotoContract(variant.output)
+              : variant;
+          const publicationName =
+            channel === "tiktok"
+              ? variant.name.replace(/\.[^.]+$/, "") + ".jpg"
+              : variant.name;
           const mediaId = String(entry.image.mediaId || "").trim();
           const signed = getPreparedVariantIdentity(
             variant.mode,
@@ -982,11 +1081,11 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
                 signature: signed.signature,
                 hash: signed.hash,
                 pipelineVersion: signed.pipelineVersion,
-                output: variant.output,
-                mime: variant.mime,
-                extension: variant.extension,
-                width: variant.width,
-                height: variant.height,
+                output: publicationVariant.output,
+                mime: publicationVariant.mime,
+                extension: publicationVariant.extension,
+                width: publicationVariant.width,
+                height: publicationVariant.height,
                 transform: { ...variant.transform },
                 metadata: {
                   imageKey: entry.imageKey,
@@ -999,7 +1098,7 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
             return {
               ...channelImagePayloadFromVariant({
                 row,
-                name: variant.name,
+                name: publicationName,
                 mediaId,
               }),
               ...common,
@@ -1008,9 +1107,9 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           }
           return {
             mediaId: mediaId || undefined,
-            name: variant.name,
-            type: variant.mime,
-            dataUrl: `data:${variant.mime};base64,${variant.output.toString("base64")}`,
+            name: publicationName,
+            type: publicationVariant.mime,
+            dataUrl: `data:${publicationVariant.mime};base64,${publicationVariant.output.toString("base64")}`,
             ...common,
             transform: variant.transform,
           };

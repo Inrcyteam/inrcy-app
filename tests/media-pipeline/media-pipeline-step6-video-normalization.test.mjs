@@ -54,6 +54,7 @@ test("le normaliseur produit le canonique et tous les dérivés sans recadrage",
   assert.match(source, /mode:\s*copyAudio \? "stream_copy" : "video_copy_audio_transcode"/);
   assert.match(source, /runFfmpegWithProgress/);
   assert.match(source, /video_ffmpeg_stalled/);
+  assert.match(source, /FFMPEG_CANONICAL_TIMEOUT_MS = 1_380_000/);
   assert.match(source, /"-nostdin"/);
   assert.match(source, /reason:\s*"ai_uses_server_frames_and_audio"/);
   assert.match(
@@ -125,9 +126,16 @@ test("le worker télécharge la source privée et conserve l'original", () => {
   const cron = read("app/api/cron/media-video-normalization/route.ts");
   assert.match(worker, /createSignedUrl\(media\.storage_path, 600\)/);
   assert.match(worker, /Readable\.fromWeb/);
+  assert.match(worker, /createReadStream\(params\.normalized\.filePath\)/);
+  assert.doesNotMatch(worker, /readFile\(params\.normalized\.filePath\)/);
   assert.match(worker, /VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL/);
   assert.match(worker, /content_hash_sha256/);
   assert.match(worker, /canonical_bucket_name/);
+  assert.match(
+    worker,
+    /!pendingVariants\.some\(\(variant\) => variant\.key === "canonical"\)/,
+  );
+  assert.match(worker, /canonicalMaster:\s*inputWasCanonical/);
   assert.match(worker, /failed_retryable/);
   assert.match(worker, /retry_wait/);
   assert.doesNotMatch(worker, /\.remove\(\[media\.storage_path\]\)/);
@@ -140,8 +148,14 @@ test("le workspace attend aussi la normalisation vidéo quand son flag est actif
   assert.match(source, /isImageNormalizationEnabled\(\)/);
   assert.match(source, /isVideoNormalizationEnabled\(\)/);
   assert.match(source, /status\.mediaType === "video" && videoNormalizationEnabled/);
-  assert.match(source, /status\.processingStatus === "ready"/);
-  assert.match(source, /status\.publicationStatus === "ready"/);
+  assert.match(
+    source,
+    /\["ready", "legacy_ready"\]\.includes\(status\.publicationStatus\)/,
+  );
+  assert.match(
+    source,
+    /!\["ready", "legacy_ready"\]\.includes\(status\.publicationStatus\)/,
+  );
   assert.match(source, /failed_terminal/);
 });
 
@@ -153,7 +167,7 @@ test("le cron vidéo est protégé, isolé et embarque FFmpeg", () => {
   assert.match(cron, /VERCEL_CRON_SECRET/);
   assert.match(cron, /repairPendingVideoNormalizationQueue/);
   assert.match(cron, /processVideoNormalizationJobs/);
-  assert.match(cron, /maxDuration = 300/);
+  assert.match(cron, /maxDuration = 1800/);
   assert.match(vercel, /\/api\/cron\/media-video-normalization/);
   assert.match(vercel, /app\/api\/cron\/media-video-normalization\/route\.ts/);
   assert.match(vercel, /node_modules\/ffmpeg-static\/\*\*\/\*/);

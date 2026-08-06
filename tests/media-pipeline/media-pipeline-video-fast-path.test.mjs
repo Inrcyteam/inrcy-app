@@ -11,10 +11,12 @@ test("les MP4 H.264 déjà efficaces évitent le double réencodage complet", ()
   assert.match(normalizer, /canFastPrepareCanonical/);
   assert.match(normalizer, /codec === "h264" \|\| codec === "avc1"/);
   assert.match(normalizer, /getVideoCanonicalOptimizationProfile/);
-  assert.match(normalizer, /!optimization\.shouldOptimize/);
+  assert.match(normalizer, /if \(compatibleForRemux\)/);
   assert.match(normalizer, /"-c:v", "copy"/);
   assert.match(normalizer, /"-movflags",\s*"\+faststart"/);
   assert.match(normalizer, /const remuxed = await remuxCanonical\(params\)/);
+  assert.doesNotMatch(normalizer, /for \(let attempt = 1; attempt <= 2/);
+  assert.match(normalizer, /maxBytes:\s*VIDEO_CANONICAL_TARGET_BYTES/);
 });
 
 test("la préparation lourde publie une progression et coupe un FFmpeg silencieux", () => {
@@ -26,7 +28,9 @@ test("la préparation lourde publie une progression et coupe un FFmpeg silencieu
   assert.match(normalizer, /video_ffmpeg_stalled/);
   assert.match(worker, /queueNormalizationProgress/);
   assert.match(worker, /onProgress:\s*\(\{ progress, stage \}\)/);
-  assert.match(worker, /updateJobProgress\(job, mapped\)/);
+  assert.match(worker, /const persistStageProgress[\s\S]*updateJobProgress/);
+  assert.match(worker, /await persistStageProgress\(mapped\)/);
+  assert.match(worker, /video_job_lease_refresh_failed/);
 });
 
 test("l'analyse IA utilise les captures et l'audio sans fabriquer un second film complet", () => {

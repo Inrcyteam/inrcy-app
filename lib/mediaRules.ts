@@ -4,26 +4,32 @@ export const INR_MEDIA_IMAGE_MAX_MB_LABEL = "50 Mo";
 export const INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 300 * 1024 * 1024;
 export const INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL = "300 Mo";
 
+// A source stays uploadable up to 300 MiB, but no heavy source is consumed by
+// the rest of the application. At 70,000,000 bytes it is first replaced by
+// one shared MP4 master. The 65,000,000-byte target leaves a real margin for
+// container overhead and provider-side size accounting.
+export const INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES = 70_000_000;
+export const INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_MB_LABEL = "70 Mo";
+export const INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES = 65_000_000;
+export const INR_MEDIA_VIDEO_CANONICAL_TARGET_MB_LABEL = "65 Mo";
+
 export const INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT = 5;
 export const INR_MEDIA_PUBLICATION_IMAGE_COUNT_LABEL = "5 images";
 export const INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES = 150 * 1024 * 1024;
 export const INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL = "150 Mo";
 
-// Plafond technique interne pour une vidéo prête à publier. Il reste aligné
-// sur la limite source iNrCy ; les contraintes de durée et de format sont
-// ensuite contrôlées canal par canal, sans plafond global artificiel à 40 Mo.
+// A provider-ready video is always the light application master. The larger
+// 300 MiB allowance applies only to the retained source upload, never to a
+// publication fallback or a channel transform.
 export const INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES =
-  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
-export const INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL =
-  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
+  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1;
+export const INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL = "< 70 Mo";
 
-// Le canonique commun garde une marge technique de 1 Mio sous la source.
-// Ce plafond est uniquement un garde-fou. La cible réelle est une variante
-// qualité/poids adaptative : les sources lourdes sont compressées selon leur
-// durée, résolution et débit, tandis qu'une source déjà efficace est remuxée.
+// Hard guard for the shared master. Encoding targets 65 MB and this one-byte
+// margin makes the invariant "canonical < 70 MB" unambiguous.
 export const INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES =
-  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES - 1 * 1024 * 1024;
-export const INR_MEDIA_VIDEO_CANONICAL_MAX_MB_LABEL = "299 Mo";
+  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1;
+export const INR_MEDIA_VIDEO_CANONICAL_MAX_MB_LABEL = "< 70 Mo";
 
 export const INR_MEDIA_AGENT_MAX_MEDIA_COUNT = 1;
 export const INR_MEDIA_UPLOAD_BATCH_SIZE = 10;

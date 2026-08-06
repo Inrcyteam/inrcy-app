@@ -64,8 +64,17 @@ test("YouTube streams the stored source instead of buffering the full video", ()
   assert.doesNotMatch(youtube, /const blob = await fetchVideoBlob/);
 });
 
-test("media finalization is the only technical phase exposed after publish", () => {
+test("media finalization exposes the real video preparation progress", () => {
   assert.match(publishModal, /Finalisation des médias/);
-  assert.match(publishModal, /Publication parallèle sur/);
+  assert.match(publishModal, /Préparation de la vidéo/);
+  assert.match(publishModal, /mediaPreparationProgress/);
+  assert.match(
+    publishModal,
+    /mapProgressRange\(progress, 0, 100, 60, 76\)/,
+  );
+  assert.doesNotMatch(
+    publishModal,
+    /setPublicationProgressPhase\([\s\S]{0,180}\b77\b/,
+  );
   assert.doesNotMatch(publishModal, /publishPulseTimerRef/);
 });

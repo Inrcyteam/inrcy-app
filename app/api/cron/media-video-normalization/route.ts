@@ -4,7 +4,9 @@ import { processVideoNormalizationJobs } from "@/lib/mediaVideoNormalizationWork
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// Pro + Fluid Compute: enough budget for one bounded 300 MB -> 65 MB stage.
+// The worker never chains a second FFmpeg mission inside this invocation.
+export const maxDuration = 1800;
 
 function isAuthorizedCron(req: Request) {
   const cronSecret =

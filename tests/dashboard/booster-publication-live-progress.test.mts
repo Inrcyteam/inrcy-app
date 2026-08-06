@@ -29,6 +29,13 @@ test("publication progress consumes existing durable snapshots without an extra 
   assert.match(modal, /_onPublicationProgress: onPublicationProgress/);
   assert.match(modal, /summary\.entries/);
   assert.match(modal, /terminalCount/);
+  assert.match(modal, /mediaPreparationProgress/);
+  assert.match(modal, /Préparation de la vidéo/);
+  assert.match(modal, /mapProgressRange\(progress, 0, 100, 60, 76\)/);
+  assert.doesNotMatch(
+    modal,
+    /setPublicationProgressPhase\([\s\S]{0,180}\b77\b/,
+  );
   assert.doesNotMatch(modal, /publishPulseTimerRef/);
 });
 

@@ -2,9 +2,11 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { enqueueImageNormalization } from "@/lib/mediaImageNormalizationQueue";
+import { getImageNormalizationSignature } from "@/lib/mediaImageNormalizationPolicy";
 import { processImageNormalizationJobsForMedia } from "@/lib/mediaImageNormalizationWorker";
 import { INR_MEDIA_IMAGE_MAX_BYTES, INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
+import { getVideoNormalizationSignature } from "@/lib/mediaVideoNormalizationPolicy";
 import {
   probeVideoSource,
   resolveVideoNormalizationFfmpegPath,
@@ -173,6 +175,10 @@ async function loadReadyCanonicalMediaIds(params: {
     .eq("account_id", params.accountId)
     .in("media_id", params.mediaIds)
     .eq("purpose", "canonical")
+    .in("signature", [
+      getImageNormalizationSignature("canonical"),
+      getVideoNormalizationSignature("canonical"),
+    ])
     .eq("status", "ready");
   if (result.error) throw result.error;
   return new Set(
@@ -180,6 +186,21 @@ async function loadReadyCanonicalMediaIds(params: {
       .map((row: any) => String(row.media_id || ""))
       .filter(Boolean),
   );
+}
+
+async function markCanonicalMediaReadyForPublication(params: {
+  accountId: string;
+  mediaIds: Iterable<string>;
+}) {
+  const mediaIds = [...new Set(params.mediaIds)].filter(Boolean);
+  if (!mediaIds.length) return;
+  const result = await supabaseAdmin
+    .from("pro_media_library")
+    .update({ publication_status: "ready" })
+    .eq("user_id", params.accountId)
+    .in("id", mediaIds)
+    .eq("upload_status", "uploaded");
+  if (result.error) throw result.error;
 }
 
 async function resetFailuresFromAnotherMission(params: {
@@ -361,6 +382,10 @@ export async function prepareWorkspaceMediaForPublication(params: {
     accountId: params.accountId,
     mediaIds: media.map((item) => item.mediaId).filter(Boolean),
   });
+  await markCanonicalMediaReadyForPublication({
+    accountId: params.accountId,
+    mediaIds: canonicalMediaIds,
+  });
   const pendingImages: string[] = [];
   const pendingVideos: string[] = [];
   let ffmpegPath: string | null = null;
@@ -445,14 +470,29 @@ export async function prepareWorkspaceMediaForPublication(params: {
     accountId: params.accountId,
     mediaIds: refreshedMedia.map((item) => item.mediaId).filter(Boolean),
   });
+  await markCanonicalMediaReadyForPublication({
+    accountId: params.accountId,
+    mediaIds: refreshedCanonicalMediaIds,
+  });
+  if (refreshedCanonicalMediaIds.size) {
+    await refreshPublicationWorkspaceMediaStatus(params);
+  }
   const terminalMediaIds = refreshedMedia
-    .filter(isTerminalFailure)
+    .filter(
+      (item) =>
+        isTerminalFailure(item) &&
+        !refreshedCanonicalMediaIds.has(item.mediaId) &&
+        !(item.mediaType === "video"
+          ? isDirectPublicationVideo(item)
+          : isDirectPublicationImage(item)),
+    )
     .map((item) => item.mediaId)
     .filter(Boolean);
   const stillPendingMediaIds = refreshedMedia
     .filter(
       (item) =>
-        !isTerminalFailure(item) &&
+        !(isTerminalFailure(item) &&
+          !refreshedCanonicalMediaIds.has(item.mediaId)) &&
         (item.uploadStatus !== "uploaded" ||
           (!refreshedCanonicalMediaIds.has(item.mediaId) &&
             !(item.mediaType === "video"

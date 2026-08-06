@@ -41,12 +41,14 @@ test("une vidéo longue déjà proche du débit cible garde le remux rapide", ()
   assert.equal(profile.reason, "already_efficient");
 });
 
-test("la compression vidéo est pilotée par la qualité et non par 40 Mo", () => {
+test("la compression vidéo est bornée par la durée et la cible de 65 Mo", () => {
   assert.equal(VIDEO_CANONICAL_QUALITY_CRF, 21);
   const normalizer = read("lib/mediaVideoNormalizer.ts");
-  assert.match(normalizer, /"-crf"/);
+  assert.match(normalizer, /getVideoTargetBitrateKbps/);
+  assert.match(normalizer, /VIDEO_CANONICAL_TARGET_BYTES/);
+  assert.match(normalizer, /One duration-aware encode only/);
   assert.match(normalizer, /getVideoCanonicalTranscodeProfile/);
-  assert.match(normalizer, /canonical_transcode_skipped_low_gain/);
+  assert.doesNotMatch(normalizer, /"-crf"/);
   assert.doesNotMatch(normalizer, /VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES/);
 });
 
@@ -112,7 +114,7 @@ test("les images utilisent MozJPEG et invalident le cache de publication", () =>
   assert.match(normalizer, /mozjpeg: !providerSafe/);
   assert.match(normalizer, /optimiseScans: !providerSafe/);
   assert.match(server, /CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 8/);
-  assert.match(server, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 9/);
+  assert.match(server, /TIKTOK_CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 10/);
   assert.match(server, /function getChannelJpegOptions/);
   assert.match(server, /quality = 87/);
   assert.match(server, /progressive: false/);

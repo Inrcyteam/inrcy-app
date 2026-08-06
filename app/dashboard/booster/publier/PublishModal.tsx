@@ -220,11 +220,10 @@ import MediaLibraryPickerModal, {
   type MediaLibraryPickerItem,
 } from "@/app/dashboard/_components/MediaLibraryPickerModal";
 
-// 30 s reste la cible UX. 45 s est uniquement le coupe-circuit de sécurité :
-// une réponse saine à 31 s ne doit plus être transformée en faux échec.
+// 30 s reste la cible UX. La marge couvre un basculement fournisseur sans
+// transformer une première tentative lente en faux échec nécessitant 2 clics.
 const BOOSTER_GENERATION_TARGET_MS = 30_000;
-const BOOSTER_GENERATION_SAFETY_BUDGET_MS =
-  BOOSTER_GENERATION_TARGET_MS + 15_000;
+const BOOSTER_GENERATION_SAFETY_BUDGET_MS = 105_000;
 // Le préchauffage démarre dès l'insertion. Au clic, cette fenêtre absorbe la
 // dernière course éventuelle d'une grosse vidéo sans rogner le budget de l'IA.
 // Au-delà, la génération continue avec le contexte sûr déjà disponible.
@@ -234,10 +233,9 @@ const BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000;
 // les captures commencent dès l'insertion et sont seulement relues au clic.
 const BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS = 2_500;
 const BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES = 70_000_000;
-// Une grosse vidéo peut nécessiter davantage de temps pour que son workspace
-// confirme l'upload et la préparation H.264. Ce plafond ne s'applique qu'aux
-// actions Publier / Programmer qui utilisent réellement cette vidéo.
-const BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 90_000;
+// Le clic accepte l'opération immédiatement, puis cette fenêtre laisse le TUS
+// et le worker durable terminer le master léger sans demander un second clic.
+const BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 30 * 60 * 1_000;
 const BOOSTER_PUBLISH_VISIBLE_CAP_MS = 60_000;
 const BOOSTER_PUBLISH_WITH_MEDIA_FINALIZATION_VISIBLE_CAP_MS = 90_000;
 
@@ -1426,14 +1424,14 @@ export default function PublishModal({
       creationMode !== "ai" ||
       !videoFile ||
       videoAiContextRef ||
-      videoFile.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
+      videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
     ) {
       return;
     }
 
-    // Une grosse vidéo peut encore être en cours d'upload côté serveur. Les trois
-    // JPEG sont donc préparés en parallèle depuis le File local, sans second upload
-    // et sans bloquer l'interface. Le cache est réutilisé au clic Générer.
+    // Les sources lourdes ne sont jamais décodées dans le navigateur : le worker
+    // compresse d'abord le master puis produit les captures depuis ce fichier.
+    // Ce petit fallback local reste réservé aux vidéos déjà légères.
     void getOrPrepareVideoFramesForAI(videoFile).catch((error) => {
       console.warn(
         "[booster-generate] local video frame prewarm unavailable",
@@ -2954,7 +2952,11 @@ export default function PublishModal({
               );
             },
             hasVideoForGeneration ? ["video"] : ["image"],
-            Math.max(1_000, mediaPreparationDeadlineAt - Date.now()),
+            hasVideoForGeneration &&
+            videoFile &&
+            videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
+              ? BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS
+              : Math.max(1_000, mediaPreparationDeadlineAt - Date.now()),
           );
         } catch (workspaceError) {
           console.warn(
@@ -3013,15 +3015,20 @@ export default function PublishModal({
             );
             return false;
           });
-        videoAiPreparationReady = await Promise.race([
-          preparation,
-          new Promise<boolean>((resolve) => {
-            graceTimeoutId = window.setTimeout(
-              () => resolve(false),
-              Math.max(0, mediaPreparationDeadlineAt - Date.now()),
-            );
-          }),
-        ]);
+        const heavyVideoNeedsCanonical =
+          (videoFile?.size || 0) >=
+          BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES;
+        videoAiPreparationReady = heavyVideoNeedsCanonical
+          ? await preparation
+          : await Promise.race([
+              preparation,
+              new Promise<boolean>((resolve) => {
+                graceTimeoutId = window.setTimeout(
+                  () => resolve(false),
+                  Math.max(0, mediaPreparationDeadlineAt - Date.now()),
+                );
+              }),
+            ]);
         if (graceTimeoutId !== null) window.clearTimeout(graceTimeoutId);
       }
 
@@ -3083,7 +3090,8 @@ export default function PublishModal({
       if (
         hasVideoForGeneration &&
         videoFile &&
-        !videoAiContextRef
+        !videoAiContextRef &&
+        videoFile.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
       ) {
         setGenerationProgressPhase(
           "media_analysis",
@@ -4259,6 +4267,16 @@ export default function PublishModal({
         payload.summary && typeof payload.summary === "object"
           ? (payload.summary as Record<string, any>)
           : {};
+      const mediaPreparation =
+        payload.mediaPreparation && typeof payload.mediaPreparation === "object"
+          ? (payload.mediaPreparation as Record<string, any>)
+          : null;
+      const mediaPreparationProgress = mediaPreparation
+        ? Math.min(
+            100,
+            Math.max(0, Number(mediaPreparation.progress || 0)),
+          )
+        : null;
       const entries = Array.isArray(summary.entries)
         ? (summary.entries.filter(
             (entry): entry is Record<string, any> =>
@@ -4291,11 +4309,31 @@ export default function PublishModal({
 
       const totalCount = Math.max(1, publishTargetChannels.length);
       const terminalCount = Math.min(totalCount, terminalChannels.size);
-      if (update.stage === "request_accepted") {
+      const mediaPreparationInProgress =
+        preparingCount > 0 ||
+        String(payload.status || "").toLowerCase() === "preparing" ||
+        (mediaPreparationProgress !== null && mediaPreparationProgress < 100);
+      if (mediaPreparationInProgress) {
+        const progress = mediaPreparationProgress ?? 0;
+        const label = `Préparation de la vidéo${mediaPreparationProgress === null ? "" : ` · ${Math.round(progress)} %`}`;
+        // The request may already have crossed the local file-preparation
+        // phases before the durable worker reports its first status. Keep the
+        // technical phase monotonic, but show the truthful media stage and map
+        // the worker's real 0..100 progress instead of jumping straight to 77%.
         setPublicationProgressPhase(
           "channel_dispatch",
-          `Publication parallèle sur ${publishableChannels.length} ${publishableChannels.length > 1 ? "canaux" : "canal"}`,
-          66,
+          label,
+          mapProgressRange(progress, 0, 100, 60, 76),
+        );
+        setPublishProgressPhaseIndex(2);
+        setPublishProgressPhaseLabel("Finalisation des médias");
+        return;
+      }
+      if (update.stage === "request_accepted") {
+        setPublicationProgressPhase(
+          "verification",
+          "Demande de publication prise en charge",
+          7,
         );
         return;
       }
@@ -4328,16 +4366,10 @@ export default function PublishModal({
           mapProgressRange(terminalCount, 0, totalCount, 79, 91),
         );
       } else {
-        const activeRatio = Math.min(
-          1,
-          Math.max(0, activeCount / Math.max(1, publishableChannels.length)),
-        );
         setPublicationProgressPhase(
           "channel_dispatch",
-          preparingCount > 0
-            ? `${preparingCount} ${preparingCount > 1 ? "canaux en préparation" : "canal en préparation"} · Envoi parallèle`
-            : `Envoi en cours sur ${publishableChannels.length} ${publishableChannels.length > 1 ? "canaux" : "canal"}`,
-          mapProgressRange(activeRatio, 0, 1, 66, 77),
+          `Envoi en cours sur ${activeCount || publishableChannels.length} ${activeCount > 1 || (!activeCount && publishableChannels.length > 1) ? "canaux" : "canal"}`,
+          mapProgressRange(update.pollAttempt, 0, 12, 60, 76),
         );
       }
     };

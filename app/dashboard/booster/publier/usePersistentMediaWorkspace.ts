@@ -24,6 +24,7 @@ import {
   type MediaWorkspacePreparationResult,
   type MediaWorkspaceReference,
 } from "@/lib/mediaWorkspaceClient";
+import { isMediaWorkspacePollingRetryableError } from "@/lib/mediaWorkspaceTimeout";
 import { uploadUniversalMediaFile } from "@/lib/universalMediaUploadClient";
 import {
   beginWorkspaceFamilyMutation,
@@ -70,6 +71,13 @@ export type PersistentWorkspaceSourceExpectation = {
   mediaType: "image" | "video";
   count: number;
 };
+
+const MEDIA_PREPARATION_POLL_INTERVAL_MS = 6_000;
+const MEDIA_PREPARATION_MAX_WAIT_MS = 30 * 60 * 1_000;
+
+function waitForPreparationPoll(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
 
 function isAbortError(error: unknown) {
   return (
@@ -568,23 +576,53 @@ export default function usePersistentMediaWorkspace({
       if (existing) return await existing;
 
       const operationVersion = operationVersionRef.current;
-      const task: Promise<MediaWorkspacePreparationResult> =
-        prepareMediaPublicationWorkspace({
-        workspaceId: workspace.workspaceId,
-        mission,
-      })
-        .then(async (result) => {
-          if (result.status === "ready") {
-            missionReadyRef.current[mission] = true;
+      const task: Promise<MediaWorkspacePreparationResult> = (async () => {
+        let result = await prepareMediaPublicationWorkspace({
+          workspaceId: workspace.workspaceId,
+          mission,
+          dispatchWorker: true,
+        });
+        const deadlineAt = Date.now() + MEDIA_PREPARATION_MAX_WAIT_MS;
+
+        // The first request only commits and kicks durable work. Keep one
+        // deduplicated client promise alive so a later Generate click reuses it
+        // instead of creating a second job or requiring a second click.
+        while (
+          (result.status === "processing" || result.status === "uploading") &&
+          operationVersion === operationVersionRef.current &&
+          Date.now() < deadlineAt
+        ) {
+          await waitForPreparationPoll(MEDIA_PREPARATION_POLL_INTERVAL_MS);
+          if (operationVersion !== operationVersionRef.current) break;
+          try {
+            result = await prepareMediaPublicationWorkspace({
+              workspaceId: workspace.workspaceId,
+              mission,
+              dispatchWorker: false,
+            });
+            onPreparedMediaRef.current?.(result.media);
+          } catch (error) {
+            if (!isMediaWorkspacePollingRetryableError(error)) throw error;
+            // A transient status read never cancels the already durable worker.
+            console.warn("[media-pipeline] preparation status retry", {
+              workspaceId: workspace.workspaceId,
+              mission,
+              error,
+            });
           }
-          if (operationVersion === operationVersionRef.current) {
-            await refreshPreparedMedia(
-              workspace.workspaceId,
-              operationVersion,
-            ).catch(() => undefined);
-          }
-          return result;
-        })
+        }
+
+        if (result.status === "ready") {
+          missionReadyRef.current[mission] = true;
+        }
+        if (operationVersion === operationVersionRef.current) {
+          await refreshPreparedMedia(
+            workspace.workspaceId,
+            operationVersion,
+          ).catch(() => undefined);
+        }
+        return result;
+      })()
         .finally(() => {
           if (activePreparationRef.current[mission] === task) {
             delete activePreparationRef.current[mission];
@@ -1061,4 +1099,3 @@ export default function usePersistentMediaWorkspace({
     archiveWorkspace,
   };
 }
-

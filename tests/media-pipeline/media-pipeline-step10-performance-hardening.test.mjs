@@ -106,6 +106,7 @@ test("les sources partent en parallèle sans préparation lourde et les MP4 dire
 test("le canon vidéo reste publiable et les incidents temporaires sont rejoués", () => {
   const policy = read("lib/mediaVideoNormalizationPolicy.ts");
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
+  const failurePlan = read("lib/mediaVideoNormalizationFailurePlan.ts");
   assert.match(
     policy,
     /VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES/,
@@ -122,7 +123,12 @@ test("le canon vidéo reste publiable et les incidents temporaires sont rejoués
   ]) {
     assert.doesNotMatch(terminalBlock, new RegExp(retryable));
   }
-  assert.match(worker, /retryable\s*\?\s*"retry_wait"\s*:\s*"failed"/);
+  assert.match(worker, /planVideoNormalizationFailure/);
+  assert.match(worker, /const status = failurePlan\.status/);
+  assert.match(
+    failurePlan,
+    /retryableError && !exhausted[\s\S]*?\? "retry_wait"[\s\S]*?: "failed"/,
+  );
 });
 
 test("les variantes par canal sont persistantes et la publication reste légère", () => {

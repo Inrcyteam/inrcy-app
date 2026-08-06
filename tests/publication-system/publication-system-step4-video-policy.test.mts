@@ -6,10 +6,15 @@ import { fileURLToPath } from "node:url";
 
 import {
   INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES,
+  INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES,
+  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES,
   INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "../../lib/mediaRules.ts";
-import { VIDEO_CANONICAL_MAX_BYTES } from "../../lib/mediaVideoNormalizationPolicy.ts";
+import {
+  VIDEO_CANONICAL_MAX_BYTES,
+  VIDEO_CANONICAL_TARGET_BYTES,
+} from "../../lib/mediaVideoNormalizationPolicy.ts";
 import { validateVideoPublicationForChannel } from "../../lib/videoPublicationPolicy.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -17,11 +22,14 @@ const MB = 1024 * 1024;
 const read = (relativePath: string) =>
   fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 
-test("la source reste à 300 Mio et le canonique garde uniquement 1 Mio de marge", () => {
+test("la source reste à 300 Mio et le master partagé reste sous 70 Mo", () => {
   assert.equal(INR_MEDIA_VIDEO_SOURCE_MAX_BYTES, 300 * MB);
-  assert.equal(INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES, 300 * MB);
-  assert.equal(INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES, 299 * MB);
-  assert.equal(VIDEO_CANONICAL_MAX_BYTES, 299 * MB);
+  assert.equal(INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES, 70_000_000 - 1);
+  assert.equal(INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES, 70_000_000);
+  assert.equal(INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES, 65_000_000);
+  assert.equal(INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES, 70_000_000 - 1);
+  assert.equal(VIDEO_CANONICAL_TARGET_BYTES, 65_000_000);
+  assert.equal(VIDEO_CANONICAL_MAX_BYTES, 70_000_000 - 1);
 });
 
 test("une variante sociale reste publiable jusqu'au garde-fou, mais les sources lourdes sont optimisées", () => {
@@ -65,14 +73,19 @@ test("Google Business reste le seul canal forcé vers une variante légère", ()
   if (!result.ok) assert.equal(result.reason, "video_too_large");
 });
 
-test("le worker remuxe seulement une source déjà efficace et compresse les débits excessifs", () => {
+test("le worker remuxe le MP4 léger compatible ou lance un unique encodage ciblé", () => {
   const normalizer = read("lib/mediaVideoNormalizer.ts");
   const policy = read("lib/mediaVideoNormalizationPolicy.ts");
   assert.match(policy, /getVideoCanonicalOptimizationProfile/);
-  assert.match(policy, /VIDEO_CANONICAL_MIN_SAVINGS_RATIO = 0\.08/);
-  assert.match(normalizer, /encodeQualityOptimizedCanonical/);
-  assert.match(normalizer, /VIDEO_CANONICAL_QUALITY_CRF/);
-  assert.match(normalizer, /actualSavingsRatio < VIDEO_CANONICAL_MIN_SAVINGS_RATIO/);
+  assert.match(
+    policy,
+    /VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES/,
+  );
+  assert.match(normalizer, /if \(compatibleForRemux\)/);
+  assert.match(normalizer, /maxBytes:\s*VIDEO_CANONICAL_TARGET_BYTES/);
+  assert.match(normalizer, /optimizationReason:\s*"shared_master_target_65mb"/);
+  assert.doesNotMatch(normalizer, /encodeQualityOptimizedCanonical/);
+  assert.doesNotMatch(normalizer, /for \(let attempt = 1; attempt <= 2/);
   assert.doesNotMatch(normalizer, /VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES/);
 });
 

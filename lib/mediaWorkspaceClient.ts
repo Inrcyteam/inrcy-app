@@ -1,6 +1,9 @@
 import { isUniversalMediaUploadEnabled } from "@/lib/universalMediaUploadClient";
 import type { BoosterMediaPipelineMission } from "@/lib/boosterMediaPipelineMissions";
 import {
+  isMediaWorkspaceRetryableFetchError,
+  isMediaWorkspaceRetryableHttpStatus,
+  MediaWorkspaceHttpError,
   MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
   MEDIA_WORKSPACE_READ_TIMEOUT_MS,
   withMediaWorkspaceDeadline,
@@ -53,8 +56,6 @@ export type MediaWorkspacePreparationResult = {
 
 const BOOSTER_WORKSPACE_SESSION_KEY = "inrcy:booster:media-workspace:v1";
 
-const WORKSPACE_READ_TRANSIENT_STATUS = new Set([502, 503, 504]);
-
 async function waitWorkspaceRetry(ms: number, signal?: AbortSignal | null) {
   if (signal?.aborted) throw signal.reason;
   await new Promise<void>((resolve, reject) => {
@@ -87,7 +88,7 @@ async function fetchWorkspaceSnapshotWithRetry(
       );
       if (
         attempt === 0 &&
-        WORKSPACE_READ_TRANSIENT_STATUS.has(response.status)
+        isMediaWorkspaceRetryableHttpStatus(response.status)
       ) {
         await waitWorkspaceRetry(700, init.signal);
         continue;
@@ -95,7 +96,13 @@ async function fetchWorkspaceSnapshotWithRetry(
       return response;
     } catch (error) {
       lastError = error;
-      if (init.signal?.aborted || attempt > 0) throw error;
+      if (
+        init.signal?.aborted ||
+        attempt > 0 ||
+        !isMediaWorkspaceRetryableFetchError(error)
+      ) {
+        throw error;
+      }
       await waitWorkspaceRetry(700, init.signal);
     }
   }
@@ -161,7 +168,10 @@ export function buildWorkspaceMediaClientKey(
 async function readWorkspaceResponse(response: Response, fallback: string) {
   const json = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(String(json?.error || fallback));
+    throw new MediaWorkspaceHttpError(
+      response.status,
+      String(json?.error || fallback),
+    );
   }
   return json;
 }
@@ -237,34 +247,54 @@ export async function clearMediaPublicationWorkspace(params: {
 export async function archiveMediaPublicationWorkspace(params: {
   workspaceId: string;
   reason?: string;
+  signal?: AbortSignal;
 }) {
-  const response = await fetch("/api/media-pipeline/workspace", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      action: "archive",
-      workspaceId: params.workspaceId,
-      reason: params.reason || "publication_completed",
-    }),
-    keepalive: true,
-  });
+  const response = await withMediaWorkspaceDeadline(
+    (signal) =>
+      fetch("/api/media-pipeline/workspace", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "archive",
+          workspaceId: params.workspaceId,
+          reason: params.reason || "publication_completed",
+        }),
+        keepalive: true,
+        signal,
+      }),
+    {
+      signal: params.signal,
+      timeoutMs: MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+      phase: "workspace_archive",
+    },
+  );
   await readWorkspaceResponse(response, "Impossible d’archiver l’espace média.");
 }
 
 export async function linkMediaPublicationWorkspaceDraft(params: {
   workspaceId: string;
   draftId: string;
+  signal?: AbortSignal;
 }) {
-  const response = await fetch("/api/media-pipeline/workspace", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      action: "link_draft",
-      workspaceId: params.workspaceId,
-      draftId: params.draftId,
-    }),
-    cache: "no-store",
-  });
+  const response = await withMediaWorkspaceDeadline(
+    (signal) =>
+      fetch("/api/media-pipeline/workspace", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "link_draft",
+          workspaceId: params.workspaceId,
+          draftId: params.draftId,
+        }),
+        cache: "no-store",
+        signal,
+      }),
+    {
+      signal: params.signal,
+      timeoutMs: MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+      phase: "workspace_link_draft",
+    },
+  );
   await readWorkspaceResponse(
     response,
     "Impossible de relier le brouillon à l’espace média.",
@@ -298,14 +328,19 @@ export async function prepareMediaWorkspaceSourcePreviews(params: {
   workspaceId: string;
   signal?: AbortSignal;
 }) {
-  const response = await fetch(
-    "/api/media-pipeline/workspace/source-preview",
+  const response = await withMediaWorkspaceDeadline(
+    (signal) =>
+      fetch("/api/media-pipeline/workspace/source-preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workspaceId: params.workspaceId }),
+        signal,
+        cache: "no-store",
+      }),
     {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ workspaceId: params.workspaceId }),
       signal: params.signal,
-      cache: "no-store",
+      timeoutMs: MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+      phase: "workspace_source_preview",
     },
   );
   return await readWorkspaceResponse(
@@ -317,18 +352,28 @@ export async function prepareMediaWorkspaceSourcePreviews(params: {
 export async function prepareMediaPublicationWorkspace(params: {
   workspaceId: string;
   mission: Exclude<BoosterMediaPipelineMission, "source_metadata">;
+  dispatchWorker?: boolean;
   signal?: AbortSignal;
 }): Promise<MediaWorkspacePreparationResult> {
-  const response = await fetch("/api/media-pipeline/workspace/prepare", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      workspaceId: params.workspaceId,
-      mission: params.mission,
-    }),
-    signal: params.signal,
-    cache: "no-store",
-  });
+  const response = await withMediaWorkspaceDeadline(
+    (signal) =>
+      fetch("/api/media-pipeline/workspace/prepare", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: params.workspaceId,
+          mission: params.mission,
+          dispatchWorker: params.dispatchWorker !== false,
+        }),
+        signal,
+        cache: "no-store",
+      }),
+    {
+      signal: params.signal,
+      timeoutMs: MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+      phase: "workspace_prepare",
+    },
+  );
   const json = await readWorkspaceResponse(
     response,
     "Impossible de lancer la préparation du média.",
@@ -346,23 +391,31 @@ export async function prewarmMediaPublicationWorkspace(params: {
   allowOriginalVideoFallback?: boolean;
   signal?: AbortSignal;
 }) {
-  const response = await fetch("/api/media-pipeline/workspace/prewarm", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      workspaceId: params.workspaceId,
-      selectedChannels: params.selectedChannels || [],
-      requestedMediaType: params.requestedMediaType,
-      imageSettingsByChannel: params.imageSettingsByChannel || {},
-      videoSettingsByChannel: params.videoSettingsByChannel || {},
-      generateMissingVideoVariants:
-        params.generateMissingVideoVariants !== false,
-      allowOriginalVideoFallback:
-        params.allowOriginalVideoFallback === true,
-    }),
-    signal: params.signal,
-    cache: "no-store",
-  });
+  const response = await withMediaWorkspaceDeadline(
+    (signal) =>
+      fetch("/api/media-pipeline/workspace/prewarm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: params.workspaceId,
+          selectedChannels: params.selectedChannels || [],
+          requestedMediaType: params.requestedMediaType,
+          imageSettingsByChannel: params.imageSettingsByChannel || {},
+          videoSettingsByChannel: params.videoSettingsByChannel || {},
+          generateMissingVideoVariants:
+            params.generateMissingVideoVariants !== false,
+          allowOriginalVideoFallback:
+            params.allowOriginalVideoFallback === true,
+        }),
+        signal,
+        cache: "no-store",
+      }),
+    {
+      signal: params.signal,
+      timeoutMs: MEDIA_WORKSPACE_MUTATION_TIMEOUT_MS,
+      phase: "workspace_prewarm",
+    },
+  );
   return await readWorkspaceResponse(
     response,
     "Impossible d’anticiper les variantes de publication.",

@@ -95,7 +95,7 @@ test("la vidéo n'est plus analysée au moment de son ajout et Générer ne lanc
   assert.match(modalSource, /BOOSTER_GENERATION_TARGET_MS = 30_000/);
   assert.match(
     modalSource,
-    /BOOSTER_GENERATION_SAFETY_BUDGET_MS\s*=\s*BOOSTER_GENERATION_TARGET_MS \+ 15_000/,
+    /BOOSTER_GENERATION_SAFETY_BUDGET_MS\s*=\s*105_000/,
   );
 });
 
@@ -142,7 +142,11 @@ test("l'upload workspace persiste les métadonnées puis préchauffe les dériv�
   assert.match(videoBlock, /await enqueueVideoNormalization\(/);
   assert.match(
     videoBlock,
-    /after\(async \(\) => \{[\s\S]*await processVideoNormalizationJobsForMedia\(/,
+    /processVideoNormalizationAfterUpload\(\{/,
+  );
+  assert.match(
+    uploadEventSource,
+    /function processVideoNormalizationAfterUpload[\s\S]*after\(async \(\) => \{[\s\S]*await processVideoNormalizationJobsForMedia\(/,
   );
 });
 

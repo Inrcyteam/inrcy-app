@@ -170,18 +170,21 @@ async function pollQueuedPublication(
         continue;
       }
       if (response.status === 404 && elapsedAfterSleep < 12_000) continue;
-      if (response.status >= 500) {
+      if (response.status === 429 || response.status >= 500) {
         consecutiveNetworkErrors += 1;
         continue;
       }
-      throw new Error(
+      throw new BoosterPublishError(
         String(
           payload.user_message ||
             payload.error ||
             "Impossible de vérifier la publication.",
         ),
+        response.status,
+        payload,
       );
     } catch (error) {
+      if (error instanceof BoosterPublishError) throw error;
       consecutiveNetworkErrors += 1;
       // The dispatch has already been accepted. A temporary status-read error
       // must never keep the publishing modal blocked for several minutes.

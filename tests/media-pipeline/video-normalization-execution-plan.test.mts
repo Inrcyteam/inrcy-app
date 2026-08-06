@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { planVideoNormalizationExecution } from "../../lib/mediaVideoNormalizationExecutionPlan.ts";
 
-test("AI derivatives run before a pending canonical publication transcode", () => {
+test("light sources keep the AI-first path", () => {
   const plan = planVideoNormalizationExecution({
     mission: "publication_preparation",
     requestedKeys: [
@@ -19,7 +19,7 @@ test("AI derivatives run before a pending canonical publication transcode", () =
   });
 
   assert.equal(plan.mission, "ai_preparation");
-  assert.equal(plan.continuesWithPublication, true);
+  assert.equal(plan.continuesWithPendingOutputs, true);
   assert.deepEqual(plan.keys, [
     "thumbnail",
     "ai_preview",
@@ -31,6 +31,38 @@ test("AI derivatives run before a pending canonical publication transcode", () =
   assert.ok(!plan.keys.includes("canonical"));
 });
 
+test("heavy sources produce the canonical before captures and audio", () => {
+  const plan = planVideoNormalizationExecution({
+    mission: "publication_preparation",
+    requestedKeys: [
+      "canonical",
+      "thumbnail",
+      "frame_01",
+      "frame_02",
+      "frame_03",
+      "audio_track",
+    ],
+    readyKeys: new Set(),
+    requiresCanonicalFirst: true,
+  });
+
+  assert.equal(plan.mission, "publication_preparation");
+  assert.equal(plan.continuesWithPendingOutputs, true);
+  assert.deepEqual(plan.keys, ["canonical"]);
+});
+
+test("a heavy publication-only request also separates its thumbnail", () => {
+  const plan = planVideoNormalizationExecution({
+    mission: "publication_preparation",
+    requestedKeys: ["canonical", "thumbnail"],
+    readyKeys: new Set(),
+    requiresCanonicalFirst: true,
+  });
+
+  assert.deepEqual(plan.keys, ["canonical"]);
+  assert.equal(plan.continuesWithPendingOutputs, true);
+});
+
 test("a publication-only request remains a single canonical stage", () => {
   const plan = planVideoNormalizationExecution({
     mission: "publication_preparation",
@@ -39,7 +71,7 @@ test("a publication-only request remains a single canonical stage", () => {
   });
 
   assert.equal(plan.mission, "publication_preparation");
-  assert.equal(plan.continuesWithPublication, false);
+  assert.equal(plan.continuesWithPendingOutputs, false);
   assert.deepEqual(plan.keys, ["canonical", "thumbnail"]);
 });
 
@@ -60,6 +92,6 @@ test("ready AI derivatives are not recomputed before publication", () => {
   });
 
   assert.equal(plan.mission, "publication_preparation");
-  assert.equal(plan.continuesWithPublication, false);
+  assert.equal(plan.continuesWithPendingOutputs, false);
   assert.deepEqual(plan.keys, [...requestedKeys]);
 });

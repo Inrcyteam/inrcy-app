@@ -46,7 +46,7 @@
     },
     {
       "path": "/api/cron/media-video-normalization",
-      "schedule": "4-59/5 * * * *"
+      "schedule": "*/1 * * * *"
     },
     {
       "path": "/api/cron/media-orphan-cleanup",

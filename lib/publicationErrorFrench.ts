@@ -10,6 +10,8 @@ export type PublicationErrorProvider =
   | "site_web"
   | "inr_search";
 
+export type PublicationErrorMediaKind = "photo" | "video" | "media";
+
 function normalizeErrorText(input: unknown): string {
   if (typeof input === "string") return input.trim();
   if (input instanceof Error) return String(input.message || "").trim();
@@ -26,6 +28,7 @@ function normalizeErrorText(input: unknown): string {
 export function getProviderPublicationErrorMessage(
   provider: PublicationErrorProvider,
   input: unknown,
+  context?: { mediaKind?: PublicationErrorMediaKind },
 ): string | null {
   const raw = normalizeErrorText(input);
   const message = raw.toLowerCase();
@@ -104,7 +107,14 @@ export function getProviderPublicationErrorMessage(
       return "TikTok refuse les dimensions d’une photo. iNrCy doit utiliser sa variante verticale compatible.";
     }
     if (message.includes("file_format_check_failed")) {
-      return "TikTok refuse le format de la vidéo. Utilisez une vidéo MP4/H.264 compatible.";
+      const mediaKind = context?.mediaKind || "media";
+      if (mediaKind === "photo") {
+        return "TikTok refuse le format d’une photo. iNrCy doit utiliser sa variante JPEG compatible.";
+      }
+      if (mediaKind === "video") {
+        return "TikTok refuse le format de la vidéo. Utilisez une vidéo MP4/H.264 compatible.";
+      }
+      return "TikTok refuse le format du média. Vérifiez sa compatibilité puis réessayez.";
     }
     if (message.includes("duration_check_failed")) {
       return "TikTok refuse la durée de cette vidéo. Utilisez une vidéo plus courte.";

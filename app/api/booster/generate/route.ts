@@ -41,7 +41,7 @@ import type { WorkspaceAiConsumptionDiagnostics } from "@/lib/workspaceAiMixedCo
 export const maxDuration = 120;
 
 const BOOSTER_GENERATION_BURST_LIMIT = 20;
-const BOOSTER_GENERATION_SAFETY_BUDGET_MS = 45_000;
+const BOOSTER_GENERATION_SAFETY_BUDGET_MS = 105_000;
 const BOOSTER_GENERATION_CLOSE_MARGIN_MS = 1_500;
 // Le média est un enrichissement. Même une lecture Supabase dégradée ne
 // peut consommer le budget réservé à la rédaction multicanale.
@@ -1103,4 +1103,3 @@ const handler = async (req: Request) => {
 };
 
 export const POST = withApi(handler, { route: "/api/booster/generate" });
-

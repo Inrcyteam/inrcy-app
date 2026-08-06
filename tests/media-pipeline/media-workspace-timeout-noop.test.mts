@@ -6,7 +6,11 @@ import {
   MEDIA_WORKSPACE_READINESS_TIMEOUT_MS,
   MEDIA_WORKSPACE_READ_TIMEOUT_MS,
   MEDIA_WORKSPACE_TIMEOUT_CODE,
+  MediaWorkspaceHttpError,
   MediaWorkspaceTimeoutError,
+  isMediaWorkspaceRetryableFetchError,
+  isMediaWorkspaceRetryableHttpStatus,
+  isMediaWorkspacePollingRetryableError,
   withMediaWorkspaceDeadline,
 } from "../../lib/mediaWorkspaceTimeout.ts";
 
@@ -57,9 +61,59 @@ test("les budgets workspace restent bornés sous le plafond de génération", ()
   assert.ok(MEDIA_WORKSPACE_READINESS_TIMEOUT_MS <= 45_000);
 });
 
-test("ensure, clear, read et readiness utilisent tous le coupe-circuit composable", () => {
+test("workspace polling retries only timeout, network, 429 and 5xx", () => {
+  assert.equal(isMediaWorkspaceRetryableHttpStatus(429), true);
+  assert.equal(isMediaWorkspaceRetryableHttpStatus(500), true);
+  assert.equal(isMediaWorkspaceRetryableHttpStatus(503), true);
+  assert.equal(isMediaWorkspaceRetryableHttpStatus(400), false);
+  assert.equal(isMediaWorkspaceRetryableHttpStatus(401), false);
+  assert.equal(isMediaWorkspaceRetryableHttpStatus(404), false);
+
+  assert.equal(
+    isMediaWorkspaceRetryableFetchError(
+      new MediaWorkspaceTimeoutError(undefined, "workspace_read"),
+    ),
+    true,
+  );
+  assert.equal(
+    isMediaWorkspaceRetryableFetchError(new TypeError("Failed to fetch")),
+    true,
+  );
+  assert.equal(
+    isMediaWorkspaceRetryableFetchError(
+      new DOMException("navigation interrupted", "AbortError"),
+    ),
+    false,
+  );
+  assert.equal(
+    isMediaWorkspaceRetryableFetchError(new Error("invalid request")),
+    false,
+  );
+
+  const permanent = new MediaWorkspaceHttpError(403, "forbidden");
+  assert.equal(permanent.status, 403);
+  assert.equal(permanent.retryable, false);
+  assert.equal(isMediaWorkspacePollingRetryableError(permanent), false);
+  assert.equal(
+    isMediaWorkspacePollingRetryableError(
+      new MediaWorkspaceHttpError(429, "rate limited"),
+    ),
+    true,
+  );
+  assert.equal(
+    isMediaWorkspacePollingRetryableError(
+      new MediaWorkspaceHttpError(502, "gateway"),
+    ),
+    true,
+  );
+});
+
+test("every workspace client fetch and readiness use a composable deadline", () => {
   const client = read("lib/mediaWorkspaceClient.ts");
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
+  const workspaceHook = read(
+    "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+  );
 
   assert.match(
     client,
@@ -73,13 +127,26 @@ test("ensure, clear, read et readiness utilisent tous le coupe-circuit composabl
     client,
     /fetchWorkspaceSnapshotWithRetry[\s\S]*withMediaWorkspaceDeadline\([\s\S]*workspace_read/,
   );
+  for (const phase of [
+    "workspace_archive",
+    "workspace_link_draft",
+    "workspace_source_preview",
+    "workspace_prepare",
+    "workspace_prewarm",
+  ]) {
+    assert.match(client, new RegExp(`withMediaWorkspaceDeadline\\([\\s\\S]*${phase}`));
+  }
+  assert.match(client, /isMediaWorkspaceRetryableHttpStatus\(response\.status\)/);
+  assert.match(client, /isMediaWorkspaceRetryableFetchError\(error\)/);
+  assert.match(client, /throw new MediaWorkspaceHttpError\(/);
+  assert.match(workspaceHook, /if \(!isMediaWorkspacePollingRetryableError\(error\)\) throw error/);
   assert.match(
     modal,
     /waitForPersistentWorkspaceReadiness[\s\S]*timeoutMs = MEDIA_WORKSPACE_READINESS_TIMEOUT_MS[\s\S]*withMediaWorkspaceDeadline\([\s\S]*timeoutMs/,
   );
   assert.match(
     modal,
-    /BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 90_000/,
+    /BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 30 \* 60 \* 1_000/,
   );
   assert.match(
     modal,

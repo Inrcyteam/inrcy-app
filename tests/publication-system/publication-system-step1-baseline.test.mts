@@ -68,7 +68,7 @@ test("Apply-to-all records an explicit decision for every media key", () => {
 
 test("The product accepts a 300 MB source without a universal 40 MB publication cap", () => {
   assert.equal(INR_MEDIA_VIDEO_SOURCE_MAX_BYTES, 300 * 1024 * 1024);
-  assert.equal(INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES, INR_MEDIA_VIDEO_SOURCE_MAX_BYTES);
+  assert.equal(INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES, 70_000_000 - 1);
 });
 
 test("Safety fallbacks never reactivate blurred image or video backgrounds", () => {

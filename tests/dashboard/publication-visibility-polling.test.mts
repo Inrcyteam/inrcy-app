@@ -53,11 +53,11 @@ test("iNrSend campaign tracking no longer owns a hidden-tab interval", () => {
   assert.doesNotMatch(mailboxClient, /window\.setInterval/);
   assert.equal(
     occurrences(mailboxClient, 'document.addEventListener("visibilitychange"'),
-    1,
+    2,
   );
   assert.equal(
     occurrences(mailboxClient, 'document.removeEventListener("visibilitychange"'),
-    1,
+    2,
   );
   assert.match(mailboxClient, /if \(cancelled \|\| document\.hidden\) return;/);
   assert.match(mailboxClient, /if \(document\.hidden\) \{\s*clearTimer\(\);/);

@@ -27,7 +27,7 @@ test("generation targets 30 seconds and keeps a cached local fallback for heavy 
   assert.match(modal, /BOOSTER_GENERATION_TARGET_MS = 30_000/);
   assert.match(
     modal,
-    /BOOSTER_GENERATION_SAFETY_BUDGET_MS\s*=\s*BOOSTER_GENERATION_TARGET_MS \+ 15_000/,
+    /BOOSTER_GENERATION_SAFETY_BUDGET_MS\s*=\s*105_000/,
   );
   assert.match(modal, /generationDeadlineAt/);
   assert.match(modal, /controller\.abort\(\)/);
@@ -40,7 +40,7 @@ test("generation targets 30 seconds and keeps a cached local fallback for heavy 
   );
   assert.match(
     modal,
-    /hasVideoForGeneration\s*&&\s*videoFile\s*&&\s*!videoAiContextRef\s*\)/,
+    /hasVideoForGeneration\s*&&\s*videoFile\s*&&\s*!videoAiContextRef[\s\S]{0,180}videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES/,
   );
   assert.match(
     modal,
@@ -57,7 +57,7 @@ test("generation targets 30 seconds and keeps a cached local fallback for heavy 
   );
   assert.match(
     aiPolicy,
-    /"booster\.publish"[\s\S]*maxTimeoutMs:\s*42_000[\s\S]*defaultOperationMaxDurationMs:\s*45_000/,
+    /"booster\.publish"[\s\S]*maxTimeoutMs:\s*70_000[\s\S]*defaultOperationMaxDurationMs:\s*100_000/,
   );
 });
 
@@ -77,7 +77,9 @@ test("publication isolates red channels and dispatches the ready subset for one 
     modal,
     /const publishableChannels = reviewItems[\s\S]*item\.blockers\.length === 0/,
   );
-  assert.match(modal, /Publication parallèle sur/);
+  assert.match(modal, /Préparation de la vidéo/);
+  assert.match(modal, /mediaPreparationProgress/);
+  assert.match(modal, /mapProgressRange\(progress, 0, 100, 60, 76\)/);
   assert.match(modal, /preflightFailedChannels,/);
   assert.match(
     publishRoute,

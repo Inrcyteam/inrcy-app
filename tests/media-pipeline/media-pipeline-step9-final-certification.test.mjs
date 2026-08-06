@@ -41,11 +41,11 @@ test("le healthcheck interne certifie flags, tables, buckets et files", () => {
   assert.match(cron, /report\.checks\.media_pipeline/);
 });
 
-test("les crons image et vidéo sont espacés et décalés", () => {
+test("le cron image reste espacé et le worker vidéo lourd tourne chaque minute", () => {
   const vercel = JSON.parse(read("vercel.json"));
   const byPath = new Map(vercel.crons.map((item) => [item.path, item.schedule]));
   assert.equal(byPath.get("/api/cron/media-image-normalization"), "2-59/5 * * * *");
-  assert.equal(byPath.get("/api/cron/media-video-normalization"), "4-59/5 * * * *");
+  assert.equal(byPath.get("/api/cron/media-video-normalization"), "*/1 * * * *");
   assert.match(
     vercel.functions["app/api/cron/media-video-normalization/route.ts"].includeFiles,
     /ffmpeg-static/,
@@ -96,7 +96,7 @@ test("le clic immédiat absorbe l'upload dans Générer, Publier et Programmer",
   );
 
   assert.match(workspaceHook, /const waitForIdle = useCallback/);
-  assert.match(workspaceHook, /Upload du média/);
+  assert.match(workspaceHook, /Envoi du média/);
   assert.match(
     modal,
     /readyMediaWorkspaceId\s*=\s*shouldUsePersistentMediaWorkspaceForAi[\s\S]*readyMediaWorkspaceId\s*=\s*await waitForPersistentWorkspaceReadiness\([\s\S]*"generate"/,

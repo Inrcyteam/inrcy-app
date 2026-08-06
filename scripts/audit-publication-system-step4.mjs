@@ -18,8 +18,10 @@ const checks = [
     "source iNrCy maintenue à 300 Mio",
   ],
   [
-    /INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\s\S]*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*-\s*1\s*\*\s*1024\s*\*\s*1024/.test(rules),
-    "canonique commun à 299 Mio sans plafond universel 40 Mio",
+    /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES\s*=\s*70_000_000/.test(rules) &&
+      /INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES\s*=\s*65_000_000/.test(rules) &&
+      /INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\s\S]*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES\s*-\s*1/.test(rules),
+    "compression au-dessus de 70 Mo et master canonique strictement inférieur à 70 Mo",
   ],
   [
     /VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES/.test(normalization),
@@ -27,9 +29,10 @@ const checks = [
   ],
   [
     /getVideoCanonicalOptimizationProfile/.test(normalization) &&
-      /encodeQualityOptimizedCanonical/.test(normalizer) &&
-      /!optimization\.shouldOptimize/.test(normalizer),
-    "compression adaptative et remux réservé aux sources déjà efficaces",
+      /async function encodeMp4/.test(normalizer) &&
+      /mode:\s*"size_cap_transcode"/.test(normalizer) &&
+      /attempts:\s*1/.test(normalizer),
+    "compression bornée en un encodage et remux réservé aux sources légères compatibles",
   ],
   [
     /gmb:\s*\{[\s\S]*GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES/.test(policies),

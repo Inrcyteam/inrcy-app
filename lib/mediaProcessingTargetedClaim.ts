@@ -82,7 +82,7 @@ export async function claimTargetedProcessingJob(
       progress: Math.max(1, Number(candidate.progress || 0)),
       locked_at: nowIso,
       lock_expires_at: new Date(
-        nowMs + Math.max(60, Math.min(900, params.leaseSeconds)) * 1_000,
+        nowMs + Math.max(60, Math.min(3_600, params.leaseSeconds)) * 1_000,
       ).toISOString(),
       locked_by: workerId,
       started_at: candidate.started_at || nowIso,
