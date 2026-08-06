@@ -227,13 +227,13 @@ export default function PublishImagesPanel({
   );
   const allocationParts = [
     mediaAllocation.images
-      ? `${mediaAllocation.images} canal${mediaAllocation.images > 1 ? "aux" : ""} avec photos`
+      ? `${mediaAllocation.images} ${mediaAllocation.images > 1 ? "canaux" : "canal"} avec photos`
       : "",
     mediaAllocation.video
-      ? `${mediaAllocation.video} canal${mediaAllocation.video > 1 ? "aux" : ""} avec vidéo`
+      ? `${mediaAllocation.video} ${mediaAllocation.video > 1 ? "canaux" : "canal"} avec vidéo`
       : "",
     mediaAllocation.none
-      ? `${mediaAllocation.none} canal${mediaAllocation.none > 1 ? "aux" : ""} sans média`
+      ? `${mediaAllocation.none} ${mediaAllocation.none > 1 ? "canaux" : "canal"} sans média`
       : "",
   ].filter(Boolean);
 
@@ -898,8 +898,8 @@ export default function PublishImagesPanel({
                     disabled: false,
                     title: `Image ${index + 1}`,
                     subtitle: included
-                      ? `Publiée sur ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`
-                      : `Retirée de ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`,
+                      ? `Publiée sur ce canal · utilisée sur ${usedChannelCount} ${usedChannelCount > 1 ? "canaux" : "canal"}`
+                      : `Retirée de ce canal · utilisée sur ${usedChannelCount} ${usedChannelCount > 1 ? "canaux" : "canal"}`,
                     fitLabel: decision.label,
                     previewAspectRatio,
                     backgroundMode: bgMode,

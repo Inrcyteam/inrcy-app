@@ -63,7 +63,7 @@ test("publish-now utilise les deux familles du workspace et transmet la preuve s
   );
   assert.match(
     route,
-    /_asyncTrustedVideoCompatibilityProof:\s*hasTrustedPublicationVideoCompatibilityProof/,
+    /_asyncTrustedVideoCompatibilityProof:[\s\S]{0,100}channelMediaMode === "video"[\s\S]{0,100}hasTrustedPublicationVideoCompatibilityProof/,
   );
   assert.match(
     route,

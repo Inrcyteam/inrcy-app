@@ -1791,13 +1791,21 @@ export async function GET(req: Request) {
     await withStatsReportContentUrls(items);
 
     if (!includeCounts) {
+      // When every relevant source was exhausted by the bounded page scan, the
+      // filtered collection is complete: expose its exact total at no extra
+      // database cost. Larger histories remain count-free and keep the normal
+      // lookahead behavior.
+      const exactTotalFromPageScan = allSourcesExhausted ? filtered.length : null;
       return NextResponse.json({
         items,
         page,
         pageSize,
-        hasMore: hasMoreFromPage,
-        total: null,
-        totalKnown: false,
+        hasMore:
+          exactTotalFromPageScan != null
+            ? page < MAX_HISTORY_PAGE && end < exactTotalFromPageScan
+            : hasMoreFromPage,
+        total: exactTotalFromPageScan,
+        totalKnown: exactTotalFromPageScan != null,
         countsIncluded: false,
       });
     }

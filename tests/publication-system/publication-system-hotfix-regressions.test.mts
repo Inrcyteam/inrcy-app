@@ -56,7 +56,10 @@ test("TikTok garde le plafond technique de 10 minutes avant la limite dynamique 
   assert.equal(validation.ok, false);
   if (!validation.ok) {
     assert.equal(validation.reason, "video_duration_too_long");
-    assert.match(validation.message, /10 minutes maximum/i);
+    assert.equal(
+      validation.message,
+      "Cette vidéo est trop longue pour TikTok. Choisissez une vidéo de 10 minutes maximum.",
+    );
   }
 });
 

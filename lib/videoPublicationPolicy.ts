@@ -181,6 +181,14 @@ export function formatVideoDuration(secondsValue: unknown) {
   return parts.join(" ");
 }
 
+function formatFriendlyDurationLimit(seconds: number) {
+  if (Number.isInteger(seconds / 60)) {
+    const minutes = seconds / 60;
+    return `${minutes} minute${minutes > 1 ? "s" : ""}`;
+  }
+  return formatVideoDuration(seconds);
+}
+
 export function normalizeYoutubeLongUploadsStatus(
   value: unknown,
 ): YoutubeLongUploadsStatus {
@@ -220,8 +228,8 @@ export function getVideoDurationRuleDescription(input: {
         input.tiktokMaxDurationSeconds,
       );
       return input.tiktokMaxDurationSeconds == null
-        ? "10 minutes maximum pour l’envoi vidéo par iNrCy ; le compte connecté peut imposer une limite plus courte."
-        : `${formatVideoDuration(max)} maximum pour le compte TikTok connecté (10 minutes maximum technique).`;
+        ? "10 minutes maximum."
+        : `${formatVideoDuration(max)} maximum.`;
     }
     case "youtube_shorts":
       return "jusqu’à 3 minutes : Short automatique ; au-delà : vidéo classique ; au-delà de 15 minutes : vidéos longues autorisées sur la chaîne ; 12 heures maximum.";
@@ -282,11 +290,15 @@ export function validateVideoDurationForChannel(input: {
   }
 
   if (effectiveMax !== null && durationSeconds > effectiveMax) {
+    const message =
+      input.channel === "tiktok"
+        ? `Cette vidéo est trop longue pour TikTok. Choisissez une vidéo de ${formatFriendlyDurationLimit(effectiveMax)} maximum.`
+        : `${label} bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)}. Règle ${label} : ${rule}`;
     return {
       ok: false,
       policy,
       reason: "video_duration_too_long",
-      message: `${label} bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)}. Règle ${label} : ${rule}`,
+      message,
       durationSeconds,
       rule: rule || "durée maximale dépassée.",
     };
@@ -301,7 +313,7 @@ export function validateVideoDurationForChannel(input: {
       ok: false,
       policy,
       reason: "video_duration_account_limit_unknown",
-      message: `TikTok bloqué — cette vidéo dure ${formatVideoDuration(durationSeconds)}. Règle TikTok : la durée maximale dépend du compte connecté (10 minutes maximum technique). iNrCy n’a pas pu vérifier la limite de ce compte ; actualisez puis réessayez.`,
+      message: "La limite de durée TikTok n’a pas pu être vérifiée. Actualisez la page puis réessayez.",
       durationSeconds,
       rule: rule || "limite du compte à vérifier avant publication.",
     };

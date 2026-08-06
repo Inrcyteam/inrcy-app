@@ -147,7 +147,11 @@ import {
 } from "@/lib/boosterVideoVariantServer";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 import { applyServerVideoFallbackAttestation } from "@/lib/boosterVideoFallbackAttestation";
-import { shouldDeferMixedVideoPreparation } from "@/lib/boosterMixedMediaPreparationPolicy";
+import {
+  normalizeAsyncPreparationAttempt,
+  resolveChannelDispatchMediaType,
+  shouldDeferMixedVideoPreparation,
+} from "@/lib/boosterMixedMediaPreparationPolicy";
 import {
   YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS,
   getYoutubePublicationTypeForDuration,
@@ -2090,6 +2094,9 @@ async function publishNowHandler(req: Request) {
                 sourceVideo: null,
               }
             : null;
+          const channelMediaMode = mediaModeByChannel[channel] || "none";
+          const channelMediaType =
+            resolveChannelDispatchMediaType(channelMediaMode);
           const channelDispatchRequest = {
             workflowTool: body.workflowTool,
             workflowAction: body.workflowAction,
@@ -2103,9 +2110,9 @@ async function publishNowHandler(req: Request) {
             post: channelPost,
             postByChannel: { [channel]: channelPost },
             mediaPipelineCutoverV1: false,
-            mediaType,
+            mediaType: channelMediaType,
             mediaModeByChannel: {
-              [channel]: mediaModeByChannel[channel],
+              [channel]: channelMediaMode,
             },
             videoSettingsByChannel: {
               [channel]: videoSettingsByChannel[channel],
@@ -2116,10 +2123,13 @@ async function publishNowHandler(req: Request) {
             videoAdaptationModeByChannel: {
               [channel]: videoSettingsByChannel[channel]?.adaptationMode,
             },
-            video: channelDispatchVideo,
+            video: channelMediaMode === "video" ? channelDispatchVideo : null,
             images: [],
             imagesByChannel: {
-              [channel]: preparedImagesByChannel[channel] || [],
+              [channel]:
+                channelMediaMode === "images"
+                  ? preparedImagesByChannel[channel] || []
+                  : [],
             },
             imageSettingsByChannel: {
               [channel]: imageSettingsByChannel[channel],
@@ -2142,6 +2152,7 @@ async function publishNowHandler(req: Request) {
             // transporte jusqu'au worker canal la preuve FFmpeg/canonique déjà
             // matérialisée par ce worker de préparation, sans relire le workspace.
             _asyncTrustedVideoCompatibilityProof:
+              channelMediaMode === "video" &&
               hasTrustedPublicationVideoCompatibilityProof,
           };
           return {
@@ -2208,10 +2219,9 @@ async function publishNowHandler(req: Request) {
               ...(workspacePreparationState?.pendingMediaIds.length
                 ? {
                     preparationAttempt:
-                      requestedMediaChannels.length ===
-                      dispatchableSelected.length
-                        ? 0
-                        : 1,
+                      normalizeAsyncPreparationAttempt(
+                        body._asyncPreparationAttempt,
+                      ),
                   }
                 : {}),
               lastPreparationError: "workspace_media_processing",

@@ -48,8 +48,15 @@ test("les bornes de durée statiques sont inclusives et isolées par canal", () 
     assert.equal(invalid.ok, false, `${entry.channel} doit refuser le dépassement`);
     if (!invalid.ok) {
       assert.equal(invalid.reason, "video_duration_too_long");
-      assert.match(invalid.message, /bloqué/i);
-      assert.match(invalid.message, /Règle/i);
+      if (entry.channel === "tiktok") {
+        assert.equal(
+          invalid.message,
+          "Cette vidéo est trop longue pour TikTok. Choisissez une vidéo de 10 minutes maximum.",
+        );
+      } else {
+        assert.match(invalid.message, /bloqué/i);
+        assert.match(invalid.message, /Règle/i);
+      }
     }
   }
 });
@@ -84,7 +91,10 @@ test("TikTok applique la limite réelle du compte et bloque si elle ne peut pas 
   assert.equal(accountLimit.ok, false);
   if (!accountLimit.ok) {
     assert.equal(accountLimit.reason, "video_duration_too_long");
-    assert.match(accountLimit.message, /3 min maximum pour le compte TikTok connecté/i);
+    assert.equal(
+      accountLimit.message,
+      "Cette vidéo est trop longue pour TikTok. Choisissez une vidéo de 3 minutes maximum.",
+    );
   }
 
   const unknownLimit = validateVideoDurationForChannel({
@@ -96,7 +106,10 @@ test("TikTok applique la limite réelle du compte et bloque si elle ne peut pas 
   assert.equal(unknownLimit.ok, false);
   if (!unknownLimit.ok) {
     assert.equal(unknownLimit.reason, "video_duration_account_limit_unknown");
-    assert.match(unknownLimit.message, /actualisez puis réessayez/i);
+    assert.equal(
+      unknownLimit.message,
+      "La limite de durée TikTok n’a pas pu être vérifiée. Actualisez la page puis réessayez.",
+    );
   }
 });
 

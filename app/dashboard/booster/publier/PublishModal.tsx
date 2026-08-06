@@ -4257,7 +4257,7 @@ export default function PublishModal({
       if (update.stage === "request_accepted") {
         setPublicationProgressPhase(
           "channel_dispatch",
-          `Demande acceptée · Publication parallèle sur ${publishableChannels.length} canal${publishableChannels.length > 1 ? "aux" : ""}`,
+          `Publication parallèle sur ${publishableChannels.length} ${publishableChannels.length > 1 ? "canaux" : "canal"}`,
           66,
         );
         return;
@@ -4265,7 +4265,7 @@ export default function PublishModal({
       if (update.stage === "released_to_background") {
         setPublicationProgressPhase(
           "status_collection",
-          `${Math.max(0, totalCount - terminalCount)} canal${totalCount - terminalCount > 1 ? "aux" : ""} poursuit${totalCount - terminalCount > 1 ? "vent" : ""} en arrière-plan · préparation du bilan`,
+          `${Math.max(0, totalCount - terminalCount)} ${totalCount - terminalCount > 1 ? "canaux finalisent" : "canal finalise"} · Bilan en préparation`,
           95,
         );
         return;
@@ -4273,7 +4273,7 @@ export default function PublishModal({
       if (update.stage === "completed") {
         setPublicationProgressPhase(
           "inrsend_recording",
-          "Confirmations reçues · préparation du bilan iNr’Send",
+          "Confirmations reçues · Bilan iNr’Send",
           99,
         );
         return;
@@ -4287,7 +4287,7 @@ export default function PublishModal({
       } else if (terminalCount > 0) {
         setPublicationProgressPhase(
           "publication_finalization",
-          `${terminalCount}/${totalCount} canaux confirmés · les autres poursuivent leur envoi`,
+          `${terminalCount}/${totalCount} canaux confirmés · Envoi en cours`,
           mapProgressRange(terminalCount, 0, totalCount, 79, 91),
         );
       } else {
@@ -4298,8 +4298,8 @@ export default function PublishModal({
         setPublicationProgressPhase(
           "channel_dispatch",
           preparingCount > 0
-            ? `Finalisation média sur ${preparingCount} canal${preparingCount > 1 ? "aux" : ""} · les autres envois avancent en parallèle`
-            : `Publication parallèle en cours sur ${publishableChannels.length} canal${publishableChannels.length > 1 ? "aux" : ""}`,
+            ? `${preparingCount} ${preparingCount > 1 ? "canaux en préparation" : "canal en préparation"} · Envoi parallèle`
+            : `Envoi en cours sur ${publishableChannels.length} ${publishableChannels.length > 1 ? "canaux" : "canal"}`,
           mapProgressRange(activeRatio, 0, 1, 66, 77),
         );
       }
@@ -4486,8 +4486,8 @@ export default function PublishModal({
       setPublicationProgressPhase(
         "channel_dispatch",
         publishableChannels.length > 1
-          ? `Transmission sécurisée de ${publishableChannels.length} canaux`
-          : `Transmission sécurisée vers ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
+          ? `Envoi vers ${publishableChannels.length} canaux`
+          : `Envoi vers ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
         60,
       );
 
@@ -5362,7 +5362,7 @@ export default function PublishModal({
           ? `Publication multicanale programmée dans iNr’Agent (${channelsToSchedule.length} canaux).`
           : "Publication programmée dans iNr’Agent.";
       const blockedMessage = blocked.length
-        ? ` Canal${blocked.length > 1 ? "aux" : ""} non programmé${blocked.length > 1 ? "s" : ""} : ${blocked
+        ? `${blocked.length > 1 ? " Canaux non programmés" : " Canal non programmé"} : ${blocked
             .map(
               (item) =>
                 `${item.label} — ${item.blockers[0] || "canal non prêt"}`,

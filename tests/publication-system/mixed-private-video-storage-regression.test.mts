@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { shouldDeferMixedVideoPreparation } from "../../lib/boosterMixedMediaPreparationPolicy.ts";
+import {
+  normalizeAsyncPreparationAttempt,
+  resolveChannelDispatchMediaType,
+  shouldDeferMixedVideoPreparation,
+} from "../../lib/boosterMixedMediaPreparationPolicy.ts";
 import { applyServerVideoFallbackAttestation } from "../../lib/boosterVideoFallbackAttestation.ts";
 import { authorizeStoredVideoProbeSource } from "../../lib/boosterStoredVideoProbePolicy.ts";
 import { validateVideoDurationForChannel } from "../../lib/videoPublicationPolicy.ts";
@@ -90,6 +94,46 @@ test("le fallback Booster historique reste limité au préfixe du compte", () =>
   );
 });
 
+test("chaque worker canal reçoit un type média strictement isolé", () => {
+  assert.equal(resolveChannelDispatchMediaType("video"), "video");
+  assert.equal(resolveChannelDispatchMediaType("images"), "images");
+  assert.equal(resolveChannelDispatchMediaType("none"), "images");
+
+  const route = read("app/api/booster/publish-now/route.ts");
+  const dispatchStart = route.indexOf("const channelMediaMode =");
+  const dispatchEnd = route.indexOf("return {", dispatchStart);
+  const dispatchPayload = route.slice(dispatchStart, dispatchEnd);
+
+  assert.match(dispatchPayload, /mediaType:\s*channelMediaType/);
+  assert.match(
+    dispatchPayload,
+    /video:\s*channelMediaMode === "video" \? channelDispatchVideo : null/,
+  );
+  assert.match(
+    dispatchPayload,
+    /channelMediaMode === "images"[\s\S]{0,120}preparedImagesByChannel\[channel\]/,
+  );
+  assert.doesNotMatch(dispatchPayload, /\n\s*mediaType,\s*\n/);
+});
+
+test("une préparation mixte ne redescend jamais à la tentative zéro", () => {
+  assert.equal(normalizeAsyncPreparationAttempt(0), 1);
+  assert.equal(normalizeAsyncPreparationAttempt(1), 1);
+  assert.equal(normalizeAsyncPreparationAttempt(2), 2);
+  assert.equal(normalizeAsyncPreparationAttempt("3"), 3);
+  assert.equal(normalizeAsyncPreparationAttempt("invalide"), 1);
+
+  const route = read("app/api/booster/publish-now/route.ts");
+  assert.match(
+    route,
+    /preparationAttempt:\s*normalizeAsyncPreparationAttempt\([\s\S]{0,80}body\._asyncPreparationAttempt/,
+  );
+  assert.doesNotMatch(
+    route,
+    /preparationAttempt:[\s\S]{0,140}requestedMediaChannels\.length[\s\S]{0,80}\?\s*0\s*:\s*1/,
+  );
+});
+
 test("la tentative 1 libère les images et la tentative 2 prend la vidéo", () => {
   const common = {
     internalAsyncPreparationDispatch: true,
@@ -158,10 +202,13 @@ test("l'attestation privée produit un payload vidéo qui franchit le préflight
   const dispatchStart = route.indexOf("const channelDispatchRequest =");
   const dispatchEnd = route.indexOf("return {", dispatchStart);
   const dispatchPayload = route.slice(dispatchStart, dispatchEnd);
-  assert.match(dispatchPayload, /video:\s*channelDispatchVideo/);
   assert.match(
     dispatchPayload,
-    /_asyncTrustedVideoCompatibilityProof:\s*hasTrustedPublicationVideoCompatibilityProof/,
+    /video:\s*channelMediaMode === "video" \? channelDispatchVideo : null/,
+  );
+  assert.match(
+    dispatchPayload,
+    /_asyncTrustedVideoCompatibilityProof:[\s\S]{0,100}channelMediaMode === "video"[\s\S]{0,100}hasTrustedPublicationVideoCompatibilityProof/,
   );
   const youtubeStart = route.indexOf('if (ch === "youtube_shorts")');
   const youtubeEnd = route.indexOf('if (ch === "tiktok")', youtubeStart);

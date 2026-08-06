@@ -1446,9 +1446,23 @@ export default function MailboxClient() {
   const detailsNavigationLabel = useMemo(() => {
     if (!detailsItem || detailsItemIndex < 0) return "—";
     const position = (historyPage - 1) * MAILBOX_PAGE_SIZE + detailsItemIndex + 1;
-    const totalLabel = historyTotalCount != null ? String(historyTotalCount) : historyHasMorePotential ? "…" : String(position);
+    const loadedThrough =
+      (historyPage - 1) * MAILBOX_PAGE_SIZE + visibleItems.length;
+    const totalLabel =
+      historyTotalCount != null
+        ? String(historyTotalCount)
+        : historyHasMorePotential
+          ? `${Math.max(position + 1, loadedThrough + 1)}+`
+          : String(Math.max(position, loadedThrough));
     return `${position} / ${totalLabel}`;
-  }, [detailsItem, detailsItemIndex, historyHasMorePotential, historyPage, historyTotalCount]);
+  }, [
+    detailsItem,
+    detailsItemIndex,
+    historyHasMorePotential,
+    historyPage,
+    historyTotalCount,
+    visibleItems.length,
+  ]);
 
   const detailsAccountLabel = useMemo(() => {
     if (!detailsItem) return "";
@@ -2237,11 +2251,12 @@ export default function MailboxClient() {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (!(
+        detail?.field === "inrsend_version" ||
         detail?.field === "docs_version" ||
         detail?.field === "publications_version"
       ))
         return;
-      void loadHistory();
+      void loadHistory({ silent: true, force: true });
     };
 
     window.addEventListener(

@@ -822,26 +822,26 @@ export default function usePersistentMediaWorkspace({
           if (failedCount > 0) {
             onProgress(
               averageProgress,
-              "Un ou plusieurs médias ont échoué pendant l’envoi.",
+              "Échec de préparation d’un média.",
             );
           } else if (queuedCount > 0 && uploadingCount === 0) {
             onProgress(
               averageProgress,
               total > 1
-                ? "Initialisation des envois sécurisés..."
-                : "Initialisation de l’envoi sécurisé...",
+                ? "Initialisation des médias…"
+                : "Initialisation du média…",
             );
           } else if (uploadingCount > 0 || queuedCount > 0) {
             onProgress(
               averageProgress,
               total > 1
-                ? `Upload des médias ${averageProgress}%`
-                : `Upload du média ${averageProgress}%`,
+                ? `Envoi des médias ${averageProgress}%`
+                : `Envoi du média ${averageProgress}%`,
             );
           } else if (total > 0) {
             onProgress(
               100,
-              total > 1 ? "Upload des médias terminé" : "Upload du média terminé",
+              total > 1 ? "Médias envoyés" : "Média envoyé",
             );
           }
         }

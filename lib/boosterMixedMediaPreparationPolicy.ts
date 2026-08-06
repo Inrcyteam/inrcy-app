@@ -1,12 +1,22 @@
+export function normalizeAsyncPreparationAttempt(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(1, Math.floor(numeric)) : 1;
+}
+
+export function resolveChannelDispatchMediaType(
+  mediaMode: unknown,
+): "video" | "images" {
+  return mediaMode === "video" ? "video" : "images";
+}
+
 export function shouldDeferMixedVideoPreparation(params: {
   internalAsyncPreparationDispatch: boolean;
   preparationAttempt: unknown;
   imageChannelCount: number;
   videoChannelCount: number;
 }) {
-  const preparationAttempt = Math.max(
-    1,
-    Math.floor(Number(params.preparationAttempt || 1)),
+  const preparationAttempt = normalizeAsyncPreparationAttempt(
+    params.preparationAttempt,
   );
   return Boolean(
     params.internalAsyncPreparationDispatch &&
@@ -15,4 +25,3 @@ export function shouldDeferMixedVideoPreparation(params: {
       params.videoChannelCount > 0,
   );
 }
-

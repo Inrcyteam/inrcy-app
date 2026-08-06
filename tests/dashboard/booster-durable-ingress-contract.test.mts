@@ -101,8 +101,13 @@ test("channel jobs contain only one channel payload and never clone the parent b
   assert.doesNotMatch(childRequest, /\.\.\.body/);
   assert.match(childRequest, /channels: \[channel\]/);
   assert.match(childRequest, /postByChannel: \{ \[channel\]: channelPost \}/);
+  assert.match(childRequest, /mediaType: channelMediaType/);
   assert.match(childRequest, /imagesByChannel: \{/);
-  assert.match(childRequest, /video: channelDispatchVideo/);
+  assert.match(
+    childRequest,
+    /video: channelMediaMode === "video" \? channelDispatchVideo : null/,
+  );
+  assert.match(childRequest, /channelMediaMode === "images"/);
   assert.match(childRequest, /channel === "tiktok"/);
   assert.match(childRequest, /channel === "pinterest"/);
   assert.match(route, /preparationRequest: null/);

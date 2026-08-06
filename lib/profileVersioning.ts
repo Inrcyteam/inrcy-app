@@ -3,7 +3,8 @@ export type ProfileVersionField =
   | "notifications_version"
   | "docs_version"
   | "loyalty_version"
-  | "publications_version";
+  | "publications_version"
+  | "inrsend_version";
 
 export const PROFILE_VERSION_FIELDS: ProfileVersionField[] = [
   "stats_version",
@@ -11,6 +12,7 @@ export const PROFILE_VERSION_FIELDS: ProfileVersionField[] = [
   "docs_version",
   "loyalty_version",
   "publications_version",
+  "inrsend_version",
 ];
 
 export const PROFILE_VERSION_EVENT = "inrcy:profile-version-change";
@@ -36,6 +38,7 @@ export function toProfileVersionsSnapshot(input: unknown): ProfileVersionsSnapsh
     docs_version: toSafeNumber(row.docs_version),
     loyalty_version: toSafeNumber(row.loyalty_version),
     publications_version: toSafeNumber(row.publications_version),
+    inrsend_version: toSafeNumber(row.inrsend_version),
   };
 }
 
