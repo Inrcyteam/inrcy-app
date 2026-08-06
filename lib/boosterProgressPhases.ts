@@ -60,6 +60,20 @@ export function getPublicationProgressStage(
   return PUBLICATION_PROGRESS_STAGES[3];
 }
 
+export function getPublicationProgressStageForValue(value: number) {
+  const progress = clampProgress(value);
+  if (progress < PUBLICATION_PROGRESS_PHASES[1].start) {
+    return PUBLICATION_PROGRESS_STAGES[0];
+  }
+  if (progress < PUBLICATION_PROGRESS_PHASES[4].start) {
+    return PUBLICATION_PROGRESS_STAGES[1];
+  }
+  if (progress < PUBLICATION_PROGRESS_PHASES[6].start) {
+    return PUBLICATION_PROGRESS_STAGES[2];
+  }
+  return PUBLICATION_PROGRESS_STAGES[3];
+}
+
 export function clampProgress(value: number, minimum = 0, maximum = 100) {
   const safeMinimum = Math.min(minimum, maximum);
   const safeMaximum = Math.max(minimum, maximum);

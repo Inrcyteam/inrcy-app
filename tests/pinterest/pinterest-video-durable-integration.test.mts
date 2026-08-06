@@ -105,7 +105,12 @@ test("the video file is materialized only when the protocol requests it", () => 
   assert.doesNotMatch(beforeNeedsFile, /videoFile:\s*asset\.videoFile/);
 });
 
-test("continue and waiting yield a durable 202 without holding the worker", () => {
+test("Pinterest waiting is polled inside the short request budget before durable fallback", () => {
+  assert.match(durableVideoBranch, /const pinterestPhaseDeadline = Date\.now\(\) \+ 35_000/);
+  assert.match(durableVideoBranch, /pinterestStep\.state === "waiting"/);
+  assert.match(durableVideoBranch, /waitMs \+ 1_000 >= remainingMs/);
+  assert.match(durableVideoBranch, /respectNextPollAt:\s*false/);
+  assert.match(durableVideoBranch, /setTimeout\(resolve, waitMs\)/);
   assert.match(
     durableVideoBranch,
     /pinterestStep\.state === "continue"\s*\|\|\s*pinterestStep\.state === "waiting"/,

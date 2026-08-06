@@ -1236,6 +1236,72 @@ export function isWarningChannelResult(result: any, channel = ""): boolean {
   return Boolean(warning || result.warning_message || result.warningMessage);
 }
 
+export function isProcessingChannelResult(result: any, channel = ""): boolean {
+  if (!result || typeof result !== "object") return false;
+  if (
+    isFailedChannelResult(result) ||
+    isDeletedChannelResult(result) ||
+    isCancelledChannelResult(result)
+  ) {
+    return false;
+  }
+
+  const status = String(
+    result?.tiktok_status ||
+      result?.technicalStatus ||
+      result?.status ||
+      result?.diagnostics?.status?.status ||
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  const terminalStatuses = new Set([
+    "published",
+    "published_with_warning",
+    "completed",
+    "complete",
+    "success",
+    "succeeded",
+    "done",
+    "publish_complete",
+  ]);
+  if (terminalStatuses.has(status)) return false;
+
+  if (
+    result.pending === true ||
+    result.processing === true ||
+    result.queued === true
+  ) {
+    return true;
+  }
+  if (
+    [
+      "processing",
+      "queued",
+      "pending",
+      "submitted",
+      "accepted",
+      "uploading",
+      "external_processing",
+      "in_progress",
+      "publishing",
+      "preparing",
+    ].includes(status)
+  ) {
+    return true;
+  }
+
+  return (
+    normalizeChannelKey(channel) === "tiktok" &&
+    Boolean(
+      result?.external_id ||
+        result?.publish_id ||
+        result?.diagnostics?.publish_id,
+    )
+  );
+}
+
 export function getWarningChannelMessage(result: any, channel = ""): string {
   if (!isWarningChannelResult(result, channel)) return "";
   const message =
@@ -1251,7 +1317,7 @@ export function getWarningChannelMessage(result: any, channel = ""): string {
   );
 }
 
-export function getChannelIndicatorMeta(result: any, channel = ""): { kind: "failed" | "deleted" | "cancelled" | "warning"; title: string; className: string } | null {
+export function getChannelIndicatorMeta(result: any, channel = ""): { kind: "failed" | "deleted" | "cancelled" | "warning" | "processing"; title: string; className: string } | null {
   if (isCancelledChannelResult(result)) {
     return {
       kind: "cancelled",
@@ -1271,6 +1337,13 @@ export function getChannelIndicatorMeta(result: any, channel = ""): { kind: "fai
       kind: "failed",
       title: "Échec sur ce canal",
       className: styles.channelFailedDot,
+    };
+  }
+  if (isProcessingChannelResult(result, channel)) {
+    return {
+      kind: "processing",
+      title: "En traitement sur ce canal",
+      className: styles.channelProcessingDot,
     };
   }
   if (isWarningChannelResult(result, channel)) {
@@ -1310,6 +1383,7 @@ export function getPublicationChannelStatuses(payload: any, fallbackChannels: st
       failed: indicator?.kind === "failed",
       deleted: indicator?.kind === "deleted",
       warning: indicator?.kind === "warning",
+      processing: indicator?.kind === "processing",
       indicator,
       result,
     };
@@ -1778,4 +1852,3 @@ export function listGridTemplateColumns(folder: Folder) {
   }
   return "minmax(0, 1.35fr) minmax(190px, 0.95fr) minmax(150px, 180px) 86px";
 }
-

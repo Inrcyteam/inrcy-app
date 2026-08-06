@@ -4964,6 +4964,41 @@ async function publishNowHandler(req: Request) {
                 pinterestPhaseAdvances += 1;
                 continue;
               }
+
+              if (
+                pinterestStep.state === "waiting" &&
+                pinterestPhaseAdvances < 8
+              ) {
+                const requestedRetryAt = Date.parse(
+                  String(
+                    pinterestStep.retryAt ||
+                      pinterestStep.checkpoint.nextPollAt ||
+                      "",
+                  ),
+                );
+                const waitMs = Number.isFinite(requestedRetryAt)
+                  ? Math.max(0, Math.min(5_000, requestedRetryAt - Date.now()))
+                  : 1_200;
+                const remainingMs = pinterestPhaseDeadline - Date.now();
+                if (waitMs + 1_000 >= remainingMs) break;
+
+                // Pinterest alone needs a provider-side readiness poll for
+                // video. We keep sending the original file unchanged and use
+                // the request's existing time budget before falling back to
+                // the durable minute cron.
+                if (waitMs > 0) {
+                  await new Promise<void>((resolve) =>
+                    setTimeout(resolve, waitMs),
+                  );
+                }
+                pinterestStep = await advancePinterestVideoProtocol({
+                  ...pinterestProtocolBase,
+                  checkpoint: pinterestStep.checkpoint,
+                  respectNextPollAt: false,
+                });
+                pinterestPhaseAdvances += 1;
+                continue;
+              }
               break;
             }
 

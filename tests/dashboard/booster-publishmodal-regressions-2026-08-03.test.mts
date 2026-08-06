@@ -38,7 +38,7 @@ test("block 4 exposes scoped media removal and global video removal", () => {
   assert.match(imagesPanel, /onRemoveMediaFromChannel/);
   assert.match(videoAdapter, /onRemoveMediaFromChannel/);
   assert.match(videoManager, /Retirer de ce canal/);
-  assert.match(videoManager, /Retirer de tous les canaux/);
+  assert.match(videoManager, /Supprimer partout/);
   assert.doesNotMatch(videoManager, /\) : onDeleteVideo \? \(/);
 });
 

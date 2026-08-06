@@ -233,12 +233,12 @@ export function ChannelImageAdapterCardsPanel({
                     <button type="button" className={buttonClassName} onClick={item.onMoveNext} disabled={!item.onMoveNext} title="Image suivante" style={{ justifyContent: "center", opacity: item.onMoveNext ? 1 : 0.45, padding: "0 8px" }}>→</button>
                   </div>
                   {(item.onRemove || item.onRemoveEverywhere) ? (
-                    <div style={{ display: "grid", gridTemplateColumns: item.onRemove && item.onRemoveEverywhere ? "1fr 1fr" : "1fr", gap: 6 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: item.onRemove && item.onRemoveEverywhere ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
                       {item.onRemove ? (
-                        <button type="button" className={buttonClassName} onClick={item.onRemove} title={item.removeLabel || "Retirer"} aria-label={`${item.removeLabel || "Retirer"} : ${item.title}`} style={{ justifyContent: "center", fontSize: 12, padding: "0 8px" }}>{item.removeLabel || "Retirer"}</button>
+                        <button type="button" className={buttonClassName} onClick={item.onRemove} title={item.removeLabel || "Retirer"} aria-label={`${item.removeLabel || "Retirer"} : ${item.title}`} style={{ minWidth: 0, maxWidth: "100%", justifyContent: "center", fontSize: 11, padding: "0 7px" }}>{item.removeLabel || "Retirer"}</button>
                       ) : null}
                       {item.onRemoveEverywhere ? (
-                        <button type="button" className={buttonClassName} onClick={item.onRemoveEverywhere} title={item.removeEverywhereLabel || "Supprimer pour tous les canaux"} aria-label={`${item.removeEverywhereLabel || "Supprimer pour tous les canaux"} : ${item.title}`} style={{ justifyContent: "center", fontSize: 12, padding: "0 8px", background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.24)", color: "#fecaca" }}>{item.removeEverywhereLabel || "Supprimer pour tous les canaux"}</button>
+                        <button type="button" className={buttonClassName} onClick={item.onRemoveEverywhere} title={item.removeEverywhereLabel || "Supprimer partout"} aria-label={`${item.removeEverywhereLabel || "Supprimer partout"} : ${item.title}`} style={{ minWidth: 0, maxWidth: "100%", justifyContent: "center", fontSize: 10.5, padding: "0 7px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.24)", color: "#fecaca" }}>{item.removeEverywhereLabel || "Supprimer partout"}</button>
                       ) : null}
                     </div>
                   ) : null}

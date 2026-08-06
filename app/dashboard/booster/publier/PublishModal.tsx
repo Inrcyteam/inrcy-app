@@ -23,6 +23,7 @@ import {
   getProgressPhase,
   getProgressPhaseIndex,
   getPublicationProgressStage,
+  getPublicationProgressStageForValue,
   mapProgressRange,
   resolvePublicationBilanProgress,
   type GenerationProgressPhaseKey,
@@ -670,11 +671,13 @@ export default function PublishModal({
       if (phaseIndex < publishProgressPhaseIndexRef.current) return;
 
       if (phaseIndex > publishProgressPhaseIndexRef.current) {
+        const publicationWasIdle = publishProgressPhaseIndexRef.current === 0;
         publishProgressPhaseIndexRef.current = phaseIndex;
-        const visibleStage = getPublicationProgressStage(key);
-        setPublishProgressPhaseIndex(visibleStage.index);
-        setPublishProgressPhaseLabel(visibleStage.label);
-        setPublishProgress((current) => Math.max(current, phase.start));
+        if (publicationWasIdle) {
+          const visibleStage = getPublicationProgressStageForValue(0);
+          setPublishProgressPhaseIndex(visibleStage.index);
+          setPublishProgressPhaseLabel(visibleStage.label);
+        }
       }
 
       const nextTarget = Math.min(
@@ -767,6 +770,13 @@ export default function PublishModal({
     }, 180);
     return () => window.clearInterval(timerId);
   }, [saving]);
+
+  useEffect(() => {
+    if (!saving || !phasedPublicationProgressRef.current) return;
+    const visibleStage = getPublicationProgressStageForValue(publishProgress);
+    setPublishProgressPhaseIndex(visibleStage.index);
+    setPublishProgressPhaseLabel(visibleStage.label);
+  }, [publishProgress, saving]);
 
   useEffect(() => {
     return () => {
@@ -4239,7 +4249,6 @@ export default function PublishModal({
         : [];
       const terminalChannels = new Set<string>(preflightFailureChannels);
       let preparingCount = 0;
-      let activeCount = 0;
       entries.forEach((entry) => {
         const channel = String(entry.channel || "");
         const status = String(
@@ -4257,7 +4266,6 @@ export default function PublishModal({
             "succeeded",
           ].includes(status);
         if (terminal) terminalChannels.add(channel);
-        else activeCount += 1;
         if (status === "preparing") preparingCount += 1;
       });
 
@@ -4282,17 +4290,14 @@ export default function PublishModal({
             ? ""
             : ` · ${Math.round(mediaPreparationLabelProgress)} %`
         }`;
-        // The request may already have crossed the local file-preparation
-        // phases before the durable worker reports its first status. Keep the
-        // technical phase monotonic, but show the truthful media stage and map
-        // the worker's real 0..100 progress instead of jumping straight to 77%.
+        // The durable worker can report preparation after the dispatch request
+        // has started. Keep the technical phase monotonic while preserving the
+        // truthful, media-neutral label. The visible percentage stays smooth.
         setPublicationProgressPhase(
           "channel_dispatch",
           label,
           mapProgressRange(progress, 0, 100, 60, 76),
         );
-        setPublishProgressPhaseIndex(2);
-        setPublishProgressPhaseLabel("Finalisation des médias");
         return;
       }
       if (update.stage === "released_to_background") {
@@ -4318,15 +4323,25 @@ export default function PublishModal({
           95,
         );
       } else if (terminalCount > 0) {
+        const nextChannel = publishTargetChannels.find(
+          (channel) => !terminalChannels.has(channel),
+        );
+        const nextChannelLabel = nextChannel
+          ? CHANNEL_LABELS[nextChannel] || nextChannel
+          : "le prochain canal";
         setPublicationProgressPhase(
           "publication_finalization",
-          `${terminalCount}/${totalCount} canaux confirmés · Envoi en cours`,
+          `${Math.min(totalCount, terminalCount + 1)}/${totalCount} · Publication sur ${nextChannelLabel}`,
           mapProgressRange(terminalCount, 0, totalCount, 79, 91),
         );
       } else {
+        const firstChannel = publishTargetChannels[0];
+        const firstChannelLabel = firstChannel
+          ? CHANNEL_LABELS[firstChannel] || firstChannel
+          : "le canal sélectionné";
         setPublicationProgressPhase(
           "channel_dispatch",
-          `Envoi en cours sur ${activeCount || publishableChannels.length} ${activeCount > 1 || (!activeCount && publishableChannels.length > 1) ? "canaux" : "canal"}`,
+          `1/${totalCount} · Publication sur ${firstChannelLabel}`,
           mapProgressRange(update.pollAttempt, 0, 12, 60, 76),
         );
       }
@@ -4515,9 +4530,7 @@ export default function PublishModal({
 
       setPublicationProgressPhase(
         "channel_dispatch",
-        publishableChannels.length > 1
-          ? `Envoi vers ${publishableChannels.length} canaux`
-          : `Envoi vers ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
+        `1/${Math.max(1, publishableChannels.length)} · Publication sur ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
         60,
       );
 

@@ -33,6 +33,12 @@ test("publication progress consumes existing durable snapshots without an extra 
   assert.match(modal, /Préparation des médias/);
   assert.doesNotMatch(modal, /Préparation de la vidéo/);
   assert.match(modal, /mapProgressRange\(progress, 0, 100, 60, 76\)/);
+  assert.match(modal, /getPublicationProgressStageForValue\(publishProgress\)/);
+  assert.match(modal, /1\/\$\{totalCount\} · Publication sur/);
+  assert.doesNotMatch(
+    modal,
+    /setPublishProgress\(\(current\) => Math\.max\(current, phase\.start\)\)/,
+  );
   assert.doesNotMatch(
     modal,
     /setPublicationProgressPhase\([\s\S]{0,180}\b77\b/,

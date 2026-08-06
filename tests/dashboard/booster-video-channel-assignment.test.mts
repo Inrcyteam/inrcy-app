@@ -135,7 +135,7 @@ test("channel removal and global deletion are explicit and remain separate", () 
   );
   assert.match(
     videoManager,
-    /deleteVideoLabel = "Retirer de tous les canaux"/,
+    /deleteVideoLabel = "Supprimer partout"/,
   );
   assert.match(videoManager, /aria-label=\{removeFromChannelLabel\}/);
   assert.match(videoManager, /aria-label=\{deleteVideoLabel\}/);

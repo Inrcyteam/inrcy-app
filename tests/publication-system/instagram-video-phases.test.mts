@@ -5,6 +5,8 @@ import test from "node:test";
 
 import ts from "typescript";
 
+import { isMetaAuthorizationError } from "../../lib/metaGraphErrorClassification.ts";
+
 type UnknownRecord = Record<string, unknown>;
 type PhaseResult = {
   ok: boolean;
@@ -44,6 +46,9 @@ execute(moduleRecord, moduleRecord.exports, (specifier: string) => {
       buildMetaGraphUrl: (path: string) =>
         `https://graph.test/v25.0/${String(path).replace(/^\/+/, "")}`,
     };
+  }
+  if (specifier === "@/lib/metaGraphErrorClassification") {
+    return { isMetaAuthorizationError };
   }
   return requireFromTest(specifier);
 });

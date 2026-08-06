@@ -35,8 +35,19 @@ Le Booster revient à un circuit simple et unique :
 
 - Le texte universel de progression est « Préparation des médias ».
 - Aucun libellé « Compression des médias » ne reste dans le parcours actif.
-- La progression est calculée à partir des étapes réelles et non d’un faux palier figé.
+- La progression de publication démarre à 0 et rejoint progressivement ses paliers, sans saut immédiat à 60 %.
+- Les quatre étapes visibles suivent la validation, la préparation des médias, l’envoi aux canaux et la finalisation.
+- Pendant l’envoi, le détail indique le canal courant sous la forme `1/5 · Publication sur Facebook`.
 - iNrSend recharge l’historique actif toutes les 10 secondes et dispose d’une invalidation dédiée lors de l’arrivée ou de la mise à jour d’une publication finale.
+- Un canal encore en traitement est signalé par une pastille jaune dans iNrSend.
+- Les libellés d’action sont simplifiés en « Ajouter une image » et « Supprimer partout », avec un affichage responsive qui ne déborde plus.
+
+## Correctifs fournisseurs
+
+- Le quota temporaire Meta/Instagram (`code 4`, `subcode 2207051`) n’est plus présenté comme une déconnexion : l’application demande de réessayer dans quelques minutes.
+- Pinterest vidéo conserve et publie le fichier original accepté ; aucun traitement, aucune compression et aucune conversion ne sont ajoutés.
+- Le seul traitement spécifique Pinterest conservé concerne les carrousels d’images : leurs images sont harmonisées au même format lorsque Pinterest l’exige.
+- Lorsqu’une vidéo Pinterest reste en traitement côté fournisseur, le worker vérifie son statut pendant sa fenêtre active puis transmet proprement la reprise au traitement durable, sans nouvel upload ni doublon.
 
 ## SQL déjà appliqués
 

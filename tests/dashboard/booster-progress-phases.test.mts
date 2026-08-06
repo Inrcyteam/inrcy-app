@@ -7,6 +7,7 @@ import {
   PUBLICATION_PROGRESS_STAGES,
   getProgressPhaseCaps,
   getPublicationProgressStage,
+  getPublicationProgressStageForValue,
   mapProgressRange,
   resolvePublicationBilanProgress,
 } from "../../lib/boosterProgressPhases.ts";
@@ -55,6 +56,13 @@ test("the UI groups technical publication work into four factual stages", () => 
   assert.equal(getPublicationProgressStage("publication_finalization").index, 3);
   assert.equal(getPublicationProgressStage("status_collection").index, 4);
   assert.equal(getPublicationProgressStage("complete").index, 4);
+  assert.equal(getPublicationProgressStageForValue(0).index, 1);
+  assert.equal(getPublicationProgressStageForValue(7).index, 1);
+  assert.equal(getPublicationProgressStageForValue(8).index, 2);
+  assert.equal(getPublicationProgressStageForValue(57).index, 2);
+  assert.equal(getPublicationProgressStageForValue(58).index, 3);
+  assert.equal(getPublicationProgressStageForValue(91).index, 3);
+  assert.equal(getPublicationProgressStageForValue(92).index, 4);
 });
 
 test("the 30-second bilan reaches 100 even while channels finish in background", () => {

@@ -108,7 +108,7 @@ export default function BoosterVideoFormatManager({
   onRemoveFromChannel,
   onDeleteVideo,
   removeFromChannelLabel = "Retirer de ce canal",
-  deleteVideoLabel = "Retirer de tous les canaux",
+  deleteVideoLabel = "Supprimer partout",
   onPickVideoClick,
   pickVideoLabel = "Remplacer la vidéo",
   showApplyAll = true,
@@ -364,12 +364,12 @@ export default function BoosterVideoFormatManager({
           background: "#111a2b",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minWidth: 0 }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 10, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 950, color: "rgba(248,250,252,0.92)", letterSpacing: "0.01em" }}>
             Modification
           </div>
           {onRemoveFromChannel || onDeleteVideo ? (
-            <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 6, flex: "0 0 auto", maxWidth: "100%" }}>
+            <div style={{ display: isMobile ? "grid" : "inline-flex", gridTemplateColumns: isMobile && onRemoveFromChannel && onDeleteVideo ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 6, flex: isMobile ? "1 1 auto" : "0 0 auto", width: isMobile ? "100%" : "auto", maxWidth: "100%", minWidth: 0 }}>
               {onRemoveFromChannel ? (
                 <button
                   type="button"
@@ -377,7 +377,7 @@ export default function BoosterVideoFormatManager({
                   onClick={onRemoveFromChannel}
                   title={removeFromChannelLabel}
                   aria-label={removeFromChannelLabel}
-                  style={{ minHeight: 28, padding: "4px 9px", fontSize: 10.5, opacity: 0.78, whiteSpace: "nowrap" }}
+                  style={{ minWidth: 0, maxWidth: "100%", minHeight: 28, padding: "4px 7px", fontSize: 10.5, opacity: 0.78, whiteSpace: isMobile ? "normal" : "nowrap", overflowWrap: "anywhere" }}
                 >
                   {removeFromChannelLabel}
                 </button>
@@ -391,7 +391,9 @@ export default function BoosterVideoFormatManager({
                   aria-label={deleteVideoLabel}
                   style={{
                     minHeight: 28,
-                    padding: "4px 9px",
+                    minWidth: 0,
+                    maxWidth: "100%",
+                    padding: "4px 7px",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -400,7 +402,8 @@ export default function BoosterVideoFormatManager({
                     color: "#fecaca",
                     borderColor: "rgba(248,113,113,0.34)",
                     background: "rgba(248,113,113,0.10)",
-                    whiteSpace: "nowrap",
+                    whiteSpace: isMobile ? "normal" : "nowrap",
+                    overflowWrap: "anywhere",
                   }}
                 >
                   {deleteVideoLabel}

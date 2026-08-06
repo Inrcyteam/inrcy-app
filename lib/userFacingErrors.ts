@@ -3,6 +3,7 @@ import {
   getProviderPublicationErrorMessage,
   looksLikeEnglishErrorMessage,
 } from "@/lib/publicationErrorFrench";
+import { isMetaRateLimitError } from "@/lib/metaGraphErrorClassification";
 
 export const FACEBOOK_RECONNECT_USER_MESSAGE = "Facebook à reconnecter. Rendez-vous dans Canaux.";
 export const INSTAGRAM_RECONNECT_USER_MESSAGE = "Instagram à reconnecter. Rendez-vous dans Canaux.";
@@ -225,6 +226,7 @@ function hasAuthSignal(raw: string): boolean {
 export function isFacebookAuthorizationLikeMessage(input: unknown): boolean {
   const raw = normalizeRawMessage(input).toLowerCase();
   if (!raw) return false;
+  if (isMetaRateLimitError({ message: raw })) return false;
   const hasFacebook = matches(raw, ["facebook", "meta", "graph", "page token", "page access", "pages_manage_posts", "pages_read_engagement"]);
   return hasFacebook && hasAuthSignal(raw);
 }
@@ -232,6 +234,7 @@ export function isFacebookAuthorizationLikeMessage(input: unknown): boolean {
 export function isInstagramAuthorizationLikeMessage(input: unknown): boolean {
   const raw = normalizeRawMessage(input).toLowerCase();
   if (!raw) return false;
+  if (isMetaRateLimitError({ message: raw })) return false;
   const hasInstagram = matches(raw, ["instagram", "ig_user", "ig user", "instagram_content_publish"]);
   return hasInstagram && hasAuthSignal(raw);
 }
@@ -491,11 +494,11 @@ function resolveUserFacingErrorKey(input: unknown, frenchMessage: string): UserF
   const raw = normalizeRawMessage(input).toLowerCase();
   const message = `${raw} ${frenchMessage.toLowerCase()}`;
 
+  if (matches(message, ["rate limit", "rate-limit", "too many requests", "quota", "429", "resource_exhausted", "application request limit", "user request limit"])) return "rate_limit";
   if (isFacebookAuthorizationLikeMessage(input)) return "facebook_reconnect";
   if (isInstagramAuthorizationLikeMessage(input)) return "instagram_reconnect";
   if (isLinkedInAuthorizationLikeMessage(input)) return "linkedin_reconnect";
   if (isGoogleBusinessAuthorizationLikeMessage(input)) return "google_business_reconnect";
-  if (matches(message, ["rate limit", "rate-limit", "too many requests", "quota", "429", "resource_exhausted"])) return "rate_limit";
   if (matches(message, ["not implemented", "501", "not available"])) return "not_available";
   if (matches(message, ["failed to fetch", "networkerror", "network request failed", "load failed", "fetch failed", "econnreset", "econnrefused", "enotfound", "socket hang up"])) return "network";
   if (matches(message, ["certificate", "ssl", "unable to verify", "issuer certificate"])) return "ssl";

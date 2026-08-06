@@ -223,7 +223,7 @@ test("block 4 exposes reuse and explicit local versus global deletion labels", (
     /onUseExistingImagesForChannel\(activeImageChannel\)/,
   );
   assert.match(imagesPanel, /Retirer les images de ce canal/);
-  assert.match(imagesPanel, /Supprimer pour tous les canaux/);
+  assert.match(imagesPanel, /Supprimer partout/);
   assert.match(cardPanel, /aria-label=\{`\$\{item\.removeLabel/);
   assert.match(
     cardPanel,

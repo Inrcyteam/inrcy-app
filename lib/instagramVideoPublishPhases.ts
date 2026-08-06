@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
+import { isMetaAuthorizationError } from "@/lib/metaGraphErrorClassification";
 
 const INSTAGRAM_VIDEO_CHECKPOINT_VERSION = 2 as const;
 const INSTAGRAM_VIDEO_DEFAULT_RETRY_AFTER_MS = 3_000;
@@ -284,17 +285,13 @@ function graphErrorMessage(value: unknown, fallback: string) {
 
 function isAuthorizationFailure(value: unknown, httpStatus?: number) {
   const error = asRecord(asRecord(value).error);
-  const code = Number(error.code || 0);
-  const subcode = Number(error.error_subcode || 0);
-  const text = [error.message, error.type, code, subcode]
-    .map((item) => cleanString(item))
-    .join(" ")
-    .toLowerCase();
-  return (
-    httpStatus === 401 ||
-    [10, 190, 200].includes(code) ||
-    /access token|oauth|authori[sz]|permission|session.*expired/.test(text)
-  );
+  return isMetaAuthorizationError({
+    message: error.message,
+    type: error.type,
+    code: error.code,
+    subcode: error.error_subcode,
+    httpStatus,
+  });
 }
 
 function isTransientHttpStatus(status: number) {

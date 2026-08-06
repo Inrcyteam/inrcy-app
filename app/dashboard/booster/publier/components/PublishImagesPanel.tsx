@@ -400,11 +400,11 @@ export default function PublishImagesPanel({
           className={styles.secondaryBtn}
           onClick={onPickImagesClick}
           disabled={pickImagesDisabled}
-          aria-label="Ajouter des images au lot global partagé par les canaux"
+          aria-label="Ajouter une image à la publication"
           title={
             imagesLimitReached
               ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-              : `Ajouter au lot global partagé par les canaux · ${BOOSTER_IMAGE_LIMITS_LABEL} · ${BOOSTER_IMAGE_FORMATS_LABEL}`
+              : `Ajouter une image à la publication · ${BOOSTER_IMAGE_LIMITS_LABEL} · ${BOOSTER_IMAGE_FORMATS_LABEL}`
           }
           style={{
             opacity: pickImagesDisabled ? 0.48 : 1,
@@ -412,7 +412,7 @@ export default function PublishImagesPanel({
             cursor: pickImagesDisabled ? "not-allowed" : "pointer",
           }}
         >
-          + Ajouter au lot global
+          + Ajouter une image
         </button>
         <button
           type="button"
@@ -915,8 +915,7 @@ export default function PublishImagesPanel({
                       : undefined,
                     removeLabel: "Retirer de ce canal",
                     onRemoveEverywhere: () => removeImage(index),
-                    removeEverywhereLabel:
-                      "Supprimer pour tous les canaux",
+                    removeEverywhereLabel: "Supprimer partout",
                     onMovePrevious:
                       included && selectedKeysForActiveChannel.indexOf(key) > 0
                         ? () => moveChannelImage(activeImageChannel, key, -1)

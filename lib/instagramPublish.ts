@@ -1,4 +1,5 @@
 import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
+import { isMetaAuthorizationError } from "@/lib/metaGraphErrorClassification";
 
 type PublishOk = {
   ok: true;
@@ -115,24 +116,15 @@ function extractGraphErrors(value: unknown, depth = 0): InstagramPublishAttempt[
 export function isInstagramAuthorizationErrorResult(result: InstagramPublishResult): boolean {
   if (result.ok) return false;
   const graphErrors = extractGraphErrors(result.diagnostics) || [];
-  const haystack = [
-    result.error,
-    ...graphErrors.flatMap((error) => [error.message || "", String(error.code || ""), String(error.subcode || ""), error.type || ""]),
-  ].join(" ").toLowerCase();
-
-  return (
-    haystack.includes("authorization")
-    || haystack.includes("authorisation")
-    || haystack.includes("not authorized")
-    || haystack.includes("not authorised")
-    || haystack.includes("permission")
-    || haystack.includes("permissions")
-    || haystack.includes("access token")
-    || haystack.includes("oauth")
-    || haystack.includes("expired")
-    || haystack.includes("session")
-    || /(^|\s)(10|190|200)(\s|$)/.test(haystack)
-  );
+  return [
+    { message: result.error },
+    ...graphErrors.map((error) => ({
+      message: error.message,
+      type: error.type,
+      code: error.code,
+      subcode: error.subcode,
+    })),
+  ].some(isMetaAuthorizationError);
 }
 
 function withTokenFallbackDiagnostics<T extends InstagramPublishResult>(

@@ -94,4 +94,7 @@ test("Booster et iNrSend affichent explicitement l'avertissement", () => {
   assert.match(modal, /Publié avec avertissement/);
   assert.match(mailbox, /Publiée avec avertissement/);
   assert.match(mailboxHelpers, /channelWarningDot/);
+  assert.match(mailboxHelpers, /isProcessingChannelResult/);
+  assert.match(mailboxHelpers, /channelProcessingDot/);
+  assert.match(mailboxHelpers, /En traitement sur ce canal/);
 });
