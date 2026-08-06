@@ -596,7 +596,7 @@ export function getBoosterSelectedMediaSummary(params: {
   }
   if (params.hasVideo) {
     parts.push(
-      `1 vidéo ajoutée · ${BOOSTER_MAX_VIDEO_MB_LABEL} maximum · compression et adaptation automatiques`,
+      `1 vidéo ajoutée · ${BOOSTER_MAX_VIDEO_MB_LABEL} maximum · original conservé · adaptation sur demande`,
     );
   }
   return parts.length
@@ -872,12 +872,14 @@ export function isBoosterVideoFile(file: Pick<File, "type" | "name">) {
       .split(";")[0]
       ?.trim() || "";
   const name = String(file?.name || "").toLowerCase();
-  return (
-    BOOSTER_ALLOWED_VIDEO_MIME_TYPES.includes(type as any) ||
-    INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.some((extension) =>
-      name.endsWith(`.${extension}`),
-    )
+  const extensionAccepted = INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.some(
+    (extension) => name.endsWith(`.${extension}`),
   );
+  const mimeAccepted =
+    !type ||
+    type === "application/octet-stream" ||
+    BOOSTER_ALLOWED_VIDEO_MIME_TYPES.includes(type as any);
+  return extensionAccepted && mimeAccepted;
 }
 
 export function getPublicationMediaLabel(
@@ -1898,7 +1900,7 @@ const ALLOWED_UPLOAD_EXTENSIONS = new Set([
   "heic",
   "heif",
 ]);
-const ALLOWED_VIDEO_UPLOAD_EXTENSIONS = new Set(["mp4", "mov", "webm", "m4v"]);
+const ALLOWED_VIDEO_UPLOAD_EXTENSIONS = new Set(["mp4", "m4v", "mov"]);
 
 function normalizeUploadSegment(value: string, fallback: string): string {
   const safe = String(value || "")
@@ -1942,7 +1944,7 @@ export function buildBoosterUploadPath(
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   return `${safeFolder}/${unique}-${safeName}`;
 }
-export function sanitizeVideoUploadName(name: string, mimeType = ""): string {
+export function sanitizeVideoUploadName(name: string, _mimeType = ""): string {
   const rawName =
     String(name || "video-inrcy")
       .split(/[\\/]/)
@@ -1950,16 +1952,11 @@ export function sanitizeVideoUploadName(name: string, mimeType = ""): string {
   const rawExtension = rawName.includes(".")
     ? rawName.split(".").pop()?.toLowerCase() || ""
     : "";
-  const mime = String(mimeType || "").toLowerCase();
   const extension = ALLOWED_VIDEO_UPLOAD_EXTENSIONS.has(rawExtension)
     ? rawExtension === "m4v"
       ? "mp4"
       : rawExtension
-    : mime.includes("quicktime")
-      ? "mov"
-      : mime.includes("webm")
-        ? "webm"
-        : "mp4";
+    : "mp4";
   const base = normalizeUploadSegment(
     rawName.replace(/\.[^.]*$/, ""),
     "video-inrcy",
@@ -2111,10 +2108,9 @@ export async function uploadBoosterVideo(
       };
     } catch (error) {
       console.warn("[media-pipeline] universal video upload fallback", error);
-      // A large TUS upload is resumable. Falling back to one monolithic PUT
-      // after a transient failure would restart up to 300 MB from byte zero
-      // and make the UI appear frozen. Keep the legacy direct upload only for
-      // small files where restarting is cheap.
+      // A TUS upload is resumable. Falling back to one monolithic PUT after a
+      // transient failure could restart an accepted 75 MB file from byte zero
+      // and make the UI appear frozen. Keep direct fallback for small files.
       if (file.size > UNIVERSAL_MEDIA_STANDARD_UPLOAD_MAX_BYTES) {
         throw error instanceof Error
           ? error

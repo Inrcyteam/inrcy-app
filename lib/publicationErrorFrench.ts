@@ -145,6 +145,26 @@ export function getProviderPublicationErrorMessage(
     ) {
       return `${provider === "instagram" ? "Instagram" : "Facebook"} a refusé le format d’une image. iNrCy doit utiliser une variante compatible.`;
     }
+
+    if (
+      message.includes("rate limit") ||
+      message.includes("too many requests") ||
+      message.includes("quota") ||
+      message.includes("application request limit reached") ||
+      message.includes("user request limit reached")
+    ) {
+      return `${provider === "instagram" ? "Instagram" : "Facebook"} limite temporairement les publications. Réessayez dans quelques minutes.`;
+    }
+
+    if (
+      message.includes("temporarily unavailable") ||
+      message.includes("service unavailable") ||
+      message.includes("please try again later") ||
+      message.includes("an unknown error has occurred") ||
+      message.includes("unexpected error")
+    ) {
+      return `${provider === "instagram" ? "Instagram" : "Facebook"} est temporairement indisponible. Réessayez dans quelques minutes.`;
+    }
   }
 
   if (provider === "linkedin") {

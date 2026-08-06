@@ -405,7 +405,7 @@ async function dispatchPreparationJob(job: AsyncPreparationJob, appOrigin: strin
     ? Math.max(2, job.attempt)
     : job.attempt + 1;
   try {
-    await fetch(`${appOrigin}/api/booster/publish-now`, {
+    const response = await fetch(`${appOrigin}/api/booster/publish-now`, {
       method: "POST",
       headers: buildInternalCronHeaders(job.userId),
       body: JSON.stringify({
@@ -414,6 +414,9 @@ async function dispatchPreparationJob(job: AsyncPreparationJob, appOrigin: strin
       }),
       cache: "no-store",
     });
+    if (!response.ok) {
+      throw new Error(`preparation_dispatch_http_${response.status}`);
+    }
   } catch (dispatchError) {
     console.warn("[booster-async-cron] preparation dispatch failed", {
       publicationId: job.id,
@@ -506,7 +509,7 @@ async function dispatchChannelJob(job: AsyncDispatchJob, appOrigin: string) {
         lastDispatchAt: new Date().toISOString(),
       },
     });
-    await fetch(`${appOrigin}/api/booster/publish-now`, {
+    const response = await fetch(`${appOrigin}/api/booster/publish-now`, {
       method: "POST",
       headers: buildInternalCronHeaders(job.userId),
       body: JSON.stringify({
@@ -532,6 +535,9 @@ async function dispatchChannelJob(job: AsyncDispatchJob, appOrigin: string) {
       }),
       cache: "no-store",
     });
+    if (!response.ok) {
+      throw new Error(`channel_dispatch_http_${response.status}`);
+    }
   } catch (dispatchError) {
     console.warn("[booster-async-cron] channel dispatch failed", {
       publicationId: job.publicationId,

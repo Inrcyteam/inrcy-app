@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  VIDEO_AI_PREVIEW_MAX_SIDE,
-  VIDEO_CANONICAL_MAX_BYTES,
-  VIDEO_CANONICAL_MAX_SIDE,
-  VIDEO_CANONICAL_TARGET_BYTES,
   VIDEO_FRAME_MAX_SIDE,
   VIDEO_NORMALIZATION_MAX_SOURCE_BYTES,
   VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL,
   VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
-  VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS,
   VIDEO_THUMBNAIL_MAX_SIDE,
   buildVideoFrameCaptureTimes,
   buildVideoNormalizationStoragePath,
@@ -20,47 +15,45 @@ import {
   getVideoTargetBitrateKbps,
 } from "../../lib/mediaVideoNormalizationPolicy.ts";
 
-
-test("le worker accepte les sources vidéo jusqu’à 300 Mo", () => {
-  assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_BYTES, 300 * 1024 * 1024);
-  assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL, "300 Mo");
-});
-
-test("le master partagé cible 65 Mo et reste strictement sous 70 Mo", () => {
-  assert.equal(VIDEO_CANONICAL_TARGET_BYTES, 65_000_000);
-  assert.equal(VIDEO_CANONICAL_MAX_BYTES, 70_000_000 - 1);
-  assert.ok(VIDEO_CANONICAL_TARGET_BYTES < VIDEO_CANONICAL_MAX_BYTES);
+test("le worker accepte une source vidéo jusqu'à 75 Mo exactement", () => {
+  assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_BYTES, 75_000_000);
+  assert.equal(VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL, "75 Mo");
   assert.equal(VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS, 1_860);
-  assert.equal(VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS, 30 * 60);
 });
 
-test("les formats vidéo restent hiérarchisés sans agrandissement", () => {
-  assert.equal(VIDEO_CANONICAL_MAX_SIDE, 1920);
-  assert.equal(VIDEO_AI_PREVIEW_MAX_SIDE, 1280);
+test("les captures et miniatures ne sont jamais agrandies", () => {
   assert.equal(VIDEO_FRAME_MAX_SIDE, 1280);
   assert.equal(VIDEO_THUMBNAIL_MAX_SIDE, 720);
   assert.deepEqual(
-    fitVideoWithinMaxSide({ width: 640, height: 360, maxSide: 1920 }),
+    fitVideoWithinMaxSide({ width: 640, height: 360, maxSide: 1280 }),
     { width: 640, height: 360 },
   );
   assert.deepEqual(
-    fitVideoWithinMaxSide({ width: 3840, height: 2160, maxSide: 1920 }),
-    { width: 1920, height: 1080 },
+    fitVideoWithinMaxSide({ width: 3840, height: 2160, maxSide: 1280 }),
+    { width: 1280, height: 720 },
   );
 });
 
 test("les rotations 90 et 270 degrés inversent les dimensions", () => {
   assert.deepEqual(
-    getOrientedVideoDimensions({ width: 1920, height: 1080, rotationDegrees: 90 }),
+    getOrientedVideoDimensions({
+      width: 1920,
+      height: 1080,
+      rotationDegrees: 90,
+    }),
     { width: 1080, height: 1920 },
   );
   assert.deepEqual(
-    getOrientedVideoDimensions({ width: 1920, height: 1080, rotationDegrees: 180 }),
+    getOrientedVideoDimensions({
+      width: 1920,
+      height: 1080,
+      rotationDegrees: 180,
+    }),
     { width: 1920, height: 1080 },
   );
 });
 
-test("les signatures et chemins vidéo sont stables et privés", () => {
+test("les anciennes signatures restent lisibles sans être produites", () => {
   assert.equal(
     getVideoNormalizationSignature("canonical"),
     "inrcy:video:canonical:v2",
@@ -84,17 +77,17 @@ test("les captures couvrent début, milieu et fin sans dépasser la durée", () 
   assert.deepEqual(buildVideoFrameCaptureTimes(2), [0.2, 1, 1.8]);
 });
 
-test("le budget vidéo tient compte de la durée et de l'audio", () => {
+test("le débit n'est calculé que pour une adaptation explicitement demandée", () => {
   const short = getVideoTargetBitrateKbps({
     durationSeconds: 20,
-    maxBytes: 94 * 1024 * 1024,
+    maxBytes: 75_000_000,
     audioBitrateKbps: 128,
     minVideoKbps: 250,
     maxVideoKbps: 5000,
   });
   const long = getVideoTargetBitrateKbps({
     durationSeconds: 300,
-    maxBytes: 94 * 1024 * 1024,
+    maxBytes: 75_000_000,
     audioBitrateKbps: 128,
     minVideoKbps: 250,
     maxVideoKbps: 5000,
@@ -102,18 +95,6 @@ test("le budget vidéo tient compte de la durée et de l'audio", () => {
   assert.equal(short, 5000);
   assert.ok(long < short);
   assert.ok(long >= 250);
-
-  const screenshotDuration = 10 * 60 + 37;
-  const sharedMasterVideoKbps = getVideoTargetBitrateKbps({
-    durationSeconds: screenshotDuration,
-    maxBytes: VIDEO_CANONICAL_TARGET_BYTES,
-    audioBitrateKbps: 128,
-    minVideoKbps: 96,
-    maxVideoKbps: 2_200,
-  });
-  const expectedBytes =
-    ((sharedMasterVideoKbps + 128) * 1_000 * screenshotDuration) / 8;
-  assert.ok(expectedBytes < VIDEO_CANONICAL_TARGET_BYTES);
 });
 
 test("le backoff vidéo augmente puis reste plafonné", () => {

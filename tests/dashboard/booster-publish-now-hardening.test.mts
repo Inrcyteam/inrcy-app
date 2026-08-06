@@ -94,7 +94,7 @@ test("publish-now rejects unknown or empty channels before durable ingress", () 
   assert.ok(validationIndex < publicationInsertIndex);
 });
 
-test("heavy video validation runs only after the durable parent ingress", () => {
+test("video validation runs only after the durable parent ingress", () => {
   const payloadErrorIndex = indexOfOrFail(
     route,
     "if (hasAnyVideoChannel && videoPayloadError)",

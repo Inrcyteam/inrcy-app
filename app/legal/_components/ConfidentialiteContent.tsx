@@ -189,7 +189,7 @@ historiques de publication ;
 statuts de publication ;
 erreurs ou retours techniques des plateformes connectées.
 
-Sauf évolution de l’offre, l’application peut permettre l’ajout de 5 images maximum, dans une limite de 50 Mo par image et de 150 Mo au total pour une publication, ou 1 vidéo source jusqu’à 300 Mo, avec préparation et compression automatiques vers une version compatible avec les contraintes du canal.
+Sauf évolution de l’offre, l’application peut permettre l’ajout de 5 images maximum, dans une limite de 50 Mo par image et de 150 Mo au total pour une publication, ou 1 vidéo source MP4/M4V/MOV H.264/AAC jusqu’à 75 Mo, conservée dans son format original sauf adaptation explicitement demandée par le professionnel. Au-delà de 75 Mo, le fichier doit d’abord être compressé hors du Booster.
 
 Le professionnel reste responsable des contenus, images, vidéos, marques, textes, sons, musiques, logos, documents et éléments qu’il importe, génère, valide ou publie.
 
@@ -205,9 +205,9 @@ sauvegarder un brouillon ;
 publier sur un canal connecté ;
 conserver un historique dans iNrSend lorsque cela est prévu ;
 assurer le support ou le diagnostic technique en cas d’erreur ;
-réaliser une conversion, compression ou adaptation technique lorsque cela est nécessaire au fonctionnement de la fonctionnalité demandée.
+réaliser une conversion ou une adaptation technique lorsque le professionnel demande explicitement cette fonctionnalité.
 
-Les traitements vidéo peuvent impliquer une adaptation technique du format, une compression, une génération de variante ou une préparation spécifique selon le canal choisi.
+Les traitements vidéo peuvent impliquer une adaptation technique du format ou une génération de variante uniquement lorsque le professionnel choisit cette adaptation pour un canal.
 
 iNrCy ne revend pas les médias transmis par ses utilisateurs.
 

@@ -8,13 +8,14 @@ const source = readFileSync(
   "utf8",
 );
 
-test("la génération IA vidéo ne bloque plus sur l'absence de ai_preview", () => {
+test("la génération IA utilise toujours la vidéo originale", () => {
   const start = source.indexOf("async function resolveWorkspaceAiVideoFamily");
   const end = source.indexOf("export async function syncPublicationWorkspaceContext", start);
   const resolver = source.slice(start, end);
 
-  assert.match(resolver, /const videoReference = preview \|\| \{/);
+  assert.match(resolver, /const videoReference = \{/);
   assert.match(resolver, /storagePath: item\.sourceStoragePath/);
+  assert.doesNotMatch(resolver, /const aiPreview/);
   assert.doesNotMatch(resolver, /workspace_ai_preview_missing/);
   assert.match(resolver, /type: normalizeMime\(videoReference\.mimeType, "video\/mp4"\)/);
 });

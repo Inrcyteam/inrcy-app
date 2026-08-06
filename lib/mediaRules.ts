@@ -1,35 +1,25 @@
 export const INR_MEDIA_IMAGE_MAX_BYTES = 50 * 1024 * 1024;
 export const INR_MEDIA_IMAGE_MAX_MB_LABEL = "50 Mo";
 
-export const INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 300 * 1024 * 1024;
-export const INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL = "300 Mo";
-
-// A source stays uploadable up to 300 MiB, but no heavy source is consumed by
-// the rest of the application. At 70,000,000 bytes it is first replaced by
-// one shared MP4 master. The 65,000,000-byte target leaves a real margin for
-// container overhead and provider-side size accounting.
-export const INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES = 70_000_000;
-export const INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_MB_LABEL = "70 Mo";
-export const INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES = 65_000_000;
-export const INR_MEDIA_VIDEO_CANONICAL_TARGET_MB_LABEL = "65 Mo";
+// Booster has one video class only: an original source up to 75,000,000 bytes.
+// Files above this ceiling belong to the future, separate media-library
+// compressor and are rejected before upload by the current publication flow.
+export const INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 75_000_000;
+export const INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL = "75 Mo";
+export const INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE =
+  `Cette vidéo dépasse ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}. Compressez-la d'abord avant de l'ajouter au Booster.`;
 
 export const INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT = 5;
 export const INR_MEDIA_PUBLICATION_IMAGE_COUNT_LABEL = "5 images";
 export const INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES = 150 * 1024 * 1024;
 export const INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL = "150 Mo";
 
-// A provider-ready video is always the light application master. The larger
-// 300 MiB allowance applies only to the retained source upload, never to a
-// publication fallback or a channel transform.
+// Publication consumes the same accepted original. A channel derivative is
+// created only when the professional explicitly requests a format adaptation.
 export const INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES =
-  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1;
-export const INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL = "< 70 Mo";
-
-// Hard guard for the shared master. Encoding targets 65 MB and this one-byte
-// margin makes the invariant "canonical < 70 MB" unambiguous.
-export const INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES =
-  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1;
-export const INR_MEDIA_VIDEO_CANONICAL_MAX_MB_LABEL = "< 70 Mo";
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+export const INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL =
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 
 export const INR_MEDIA_AGENT_MAX_MEDIA_COUNT = 1;
 export const INR_MEDIA_UPLOAD_BATCH_SIZE = 10;
@@ -37,9 +27,9 @@ export const INR_MEDIA_UPLOAD_BATCH_SIZE = 10;
 export const INR_MEDIA_IMAGE_FORMATS_LABEL =
   "JPG/JFIF, PNG, WebP, GIF, AVIF, HEIC, HEIF, TIFF ou BMP";
 export const INR_MEDIA_VIDEO_FORMATS_LABEL =
-  "MP4, M4V, MOV, WebM, MPEG, AVI, MKV, 3GP, TS, WMV, FLV ou OGV";
+  "MP4, M4V ou MOV (H.264/AAC)";
 export const INR_MEDIA_IMAGE_LIMITS_LABEL = `${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images maximum · ${INR_MEDIA_IMAGE_MAX_MB_LABEL} par image · ${INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL} au total`;
-export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo source maximum · ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · préparation automatique`;
+export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo maximum · ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · original conservé`;
 
 export const INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES = [
   "image/jpeg",
@@ -78,38 +68,15 @@ export const INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS = [
 
 export const INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES = [
   "video/mp4",
-  "video/webm",
-  "video/quicktime",
   "video/x-m4v",
-  "video/mpeg",
-  "video/x-msvideo",
-  "video/x-matroska",
-  "video/3gpp",
-  "video/3gpp2",
-  "video/mp2t",
-  "video/x-ms-wmv",
-  "video/x-flv",
-  "video/ogg",
+  "video/quicktime",
+  "application/mp4",
 ] as const;
 
 export const INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS = [
   "mp4",
-  "mov",
-  "webm",
   "m4v",
-  "mpeg",
-  "mpg",
-  "avi",
-  "mkv",
-  "3gp",
-  "3g2",
-  "ts",
-  "mts",
-  "m2ts",
-  "wmv",
-  "flv",
-  "ogv",
-  "qt",
+  "mov",
 ] as const;
 
 function normalizeInrMediaMimeType(value: unknown) {
@@ -158,9 +125,12 @@ export function isInrMediaVideoFile(value: {
   type?: unknown;
 }) {
   const extension = getInrMediaFileExtension(value?.name);
+  const mimeType = normalizeInrMediaMimeType(value?.type);
   return (
-    isInrMediaVideoMimeType(value?.type) ||
-    INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.includes(extension as any)
+    INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.includes(extension as any) &&
+    (!mimeType ||
+      mimeType === "application/octet-stream" ||
+      isInrMediaVideoMimeType(mimeType))
   );
 }
 

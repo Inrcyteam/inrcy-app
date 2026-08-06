@@ -199,8 +199,8 @@ test("le préwarm vidéo reste explicite quand le workspace est mixte", () => {
   );
 });
 
-test("une source de 300 Mo est probée par ranges bornés, jamais chargée en Buffer", () => {
-  const max = 300 * 1024 * 1024;
+test("une source de 75 Mo est probée par ranges bornés, jamais chargée en Buffer", () => {
+  const max = 75_000_000;
   assert.deepEqual(
     validateBoosterRemoteVideoProbeTransport({
       expectedSizeBytes: max,
@@ -255,10 +255,8 @@ test("l'attestation fallback démarre à l'upload et la vidéo ne retient pas le
     /booster_video_source:\s*\{[\s\S]{0,360}registerSource:\s*true/,
   );
   assert.match(uploadEvent, /reason:\s*"source_probe_queued"/);
-  assert.match(
-    uploadEvent,
-    /boosterPublicationNeedsCanonical[\s\S]{0,220}VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES/,
-  );
+  assert.doesNotMatch(uploadEvent, /boosterPublicationNeedsCanonical|VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES/);
+  assert.match(uploadEvent, /mission:\s*"publication_preparation"/);
   assert.match(
     uploadEvent,
     /after\(async \(\) => \{[\s\S]{0,200}probeStoredBoosterVideoForPublication/,

@@ -4,108 +4,36 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import {
-  getVideoCanonicalEncoderPreset,
-  getVideoCanonicalOptimizationProfile,
-  getVideoCanonicalTranscodeProfile,
-  VIDEO_CANONICAL_QUALITY_CRF,
-} from "../../lib/mediaVideoNormalizationPolicy.ts";
+import { BOOSTER_VIDEO_PREPARATION_KEYS } from "../../lib/boosterMediaPipelineMissions.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (relativePath: string) =>
   fs.readFileSync(path.join(ROOT, relativePath), "utf8");
-const MB = 1024 * 1024;
 
-test("une vidéo 220 Mo de 20 secondes est obligatoirement optimisée", () => {
-  const profile = getVideoCanonicalOptimizationProfile({
-    width: 1920,
-    height: 1080,
-    durationSeconds: 20,
-    sourceSizeBytes: 220 * MB,
-    hasAudio: true,
-  });
-  assert.equal(profile.shouldOptimize, true);
-  assert.equal(profile.reason, "meaningful_savings");
-  assert.ok((profile.expectedSavingsRatio || 0) > 0.8);
-});
-
-test("une vidéo longue déjà proche du débit cible garde le remux rapide", () => {
-  const profile = getVideoCanonicalOptimizationProfile({
-    width: 1920,
-    height: 1080,
-    durationSeconds: 300,
-    sourceSizeBytes: 205 * MB,
-    hasAudio: true,
-  });
-  assert.equal(profile.shouldOptimize, false);
-  assert.equal(profile.reason, "already_efficient");
-});
-
-test("la compression vidéo est bornée par la durée et la cible de 65 Mo", () => {
-  assert.equal(VIDEO_CANONICAL_QUALITY_CRF, 21);
+test("le pipeline Booster ne produit plus de master vidéo compressé", () => {
+  assert.deepEqual(BOOSTER_VIDEO_PREPARATION_KEYS.publication_preparation, [
+    "thumbnail",
+  ]);
+  assert.equal(
+    BOOSTER_VIDEO_PREPARATION_KEYS.ai_preparation.includes("canonical" as never),
+    false,
+  );
   const normalizer = read("lib/mediaVideoNormalizer.ts");
-  assert.match(normalizer, /getVideoTargetBitrateKbps/);
-  assert.match(normalizer, /VIDEO_CANONICAL_TARGET_BYTES/);
-  assert.match(normalizer, /One duration-aware encode only/);
-  assert.match(normalizer, /getVideoCanonicalTranscodeProfile/);
-  assert.doesNotMatch(normalizer, /"-crf"/);
-  assert.doesNotMatch(normalizer, /VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES/);
+  assert.doesNotMatch(normalizer, /encodeMp4|prepareCanonical|libx264/);
+  assert.doesNotMatch(normalizer, /Compression des médias/);
+  assert.match(normalizer, /extractFrame/);
+  assert.match(normalizer, /extractAudioTrack/);
 });
 
-
-test("les sources longues ou AV1 utilisent le preset serveur rapide sans toucher aux petites H.264", () => {
-  assert.equal(
-    getVideoCanonicalEncoderPreset({
-      durationSeconds: 636.8,
-      videoCodec: "av1",
-    }),
-    "ultrafast",
-  );
-  assert.equal(
-    getVideoCanonicalEncoderPreset({
-      durationSeconds: 45,
-      videoCodec: "h264",
-    }),
-    "veryfast",
-  );
-  assert.deepEqual(
-    getVideoCanonicalTranscodeProfile({
-      durationSeconds: 636.8,
-      videoCodec: "av1",
-    }),
-    {
-      encoderPreset: "ultrafast",
-      maxSide: 1280,
-      fps: 30,
-      qualityCrf: 21,
-      maxVideoKbps: 2200,
-    },
-  );
-  assert.deepEqual(
-    getVideoCanonicalTranscodeProfile({
-      durationSeconds: 45,
-      videoCodec: "h264",
-    }),
-    {
-      encoderPreset: "veryfast",
-      maxSide: 1920,
-      fps: 30,
-      qualityCrf: 21,
-      maxVideoKbps: null,
-    },
-  );
-});
-
-test("l'original compatible reste original et les adaptations explicites restent normalisées", () => {
+test("l'original compatible reste original et seules les adaptations explicites utilisent FFmpeg", () => {
   const server = read("lib/boosterVideoVariantServer.ts");
-  assert.doesNotMatch(server, /requiresSocialOptimization/);
   assert.match(
     server,
     /variant\.format === "original"[\s\S]*sourceCanPublishDirectly/,
   );
   assert.match(server, /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/);
-  assert.match(server, /"-r",\s*"30"/);
-  assert.doesNotMatch(server, /quality\.videoBitrate/);
+  assert.match(server, /runFfmpegVariant/);
+  assert.doesNotMatch(server, /requiresSocialOptimization/);
 });
 
 test("les images utilisent MozJPEG et invalident le cache de publication", () => {

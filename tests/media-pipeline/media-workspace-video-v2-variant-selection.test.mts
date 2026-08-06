@@ -169,6 +169,14 @@ test("publication and AI consumption use the strict selector for managed video o
   const aiVideo = source.slice(aiStart, aiEnd);
   assert.match(
     publication,
+    /const directSourceReady = canUseDirectWorkspaceVideoSource\(item\)/,
+  );
+  assert.match(
+    publication,
+    /const publicationVariant = directSourceReady \? null : canonical/,
+  );
+  assert.match(
+    publication,
     /pickReadyVideoNormalizationVariant\(\s*variants,\s*item\.mediaId,\s*"canonical"/,
   );
   assert.match(
@@ -184,11 +192,7 @@ test("publication and AI consumption use the strict selector for managed video o
     aiVideo,
     /pickReadyVideoNormalizationVariant\(\s*params\.variants,\s*item\.mediaId,\s*"thumbnail"/,
   );
-  assert.match(
-    aiVideo,
-    /const aiPreview = pickReadyVideoNormalizationVariant\(\s*params\.variants,\s*item\.mediaId,\s*"ai_preview"/,
-  );
-  assert.match(aiVideo, /\.\.\.\(aiPreview \? \[aiPreview\] : \[\]\)/);
+  assert.doesNotMatch(aiVideo, /"ai_preview"/);
   assert.match(
     aiVideo,
     /const audioVariant = pickReadyVideoNormalizationVariant\(\s*params\.variants,\s*item\.mediaId,\s*"audio_track"/,

@@ -175,7 +175,7 @@ test("les deux requêtes sont séparées et l'index partiel exclut source_only",
   assert.doesNotMatch(sql, /'source_metadata'/);
 });
 
-test("le scan image reste espacé et le worker vidéo lourd tourne chaque minute", () => {
+test("le scan image reste espacé et le worker vidéo tourne chaque minute", () => {
   const imageCron = read("app/api/cron/media-image-normalization/route.ts");
   const videoCron = read("app/api/cron/media-video-normalization/route.ts");
   const vercel = JSON.parse(read("vercel.json"));

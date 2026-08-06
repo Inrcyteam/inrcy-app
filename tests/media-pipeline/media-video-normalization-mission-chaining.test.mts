@@ -32,13 +32,11 @@ test("une publication arrivée pendant la préparation IA fusionne les sorties s
   assert.deepEqual(
     new Set(merged.requiredOutputs),
     new Set([
-      "ai_preview",
       "thumbnail",
       "frame_01",
       "frame_02",
       "frame_03",
       "audio_track",
-      "canonical",
     ]),
   );
 
@@ -54,20 +52,21 @@ test("une publication arrivée pendant la préparation IA fusionne les sorties s
     requestedMission: "ai_preparation",
   });
   assert.equal(lateAiRetry.mission, "publication_preparation");
-  assert.ok(lateAiRetry.requiredOutputs.includes("canonical"));
+  assert.deepEqual(
+    new Set(lateAiRetry.requiredOutputs),
+    new Set(merged.requiredOutputs),
+  );
 });
 
 test("le worker ne refile que les sorties demandées après son snapshot", () => {
   const latestPayload = {
     pipelineMission: "publication_preparation",
     requiredOutputs: [
-      "ai_preview",
       "thumbnail",
       "frame_01",
       "frame_02",
       "frame_03",
       "audio_track",
-      "canonical",
     ],
   };
   const fulfilledByAiWorker = [
@@ -84,7 +83,7 @@ test("le worker ne refile que les sorties demandées après son snapshot", () =>
       payload: latestPayload,
       fulfilledKeys: fulfilledByAiWorker,
     }),
-    ["canonical"],
+    [],
   );
   assert.deepEqual(
     readRequestedVideoPreparationKeys({ payload: latestPayload }),

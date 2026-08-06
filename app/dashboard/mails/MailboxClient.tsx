@@ -140,6 +140,7 @@ import {
   mailboxHistoryGroupKey,
   mailboxHistoryPageCount,
   mailboxHistoryPageKey,
+  mailboxHistoryRefreshInterval,
   normalizeMailboxHistoryQuery,
   type MailboxHistoryContext,
   type MailboxHistorySnapshot,
@@ -206,7 +207,6 @@ type InrSendDefaultSnapshot = {
   draftFolderCounts: FolderCounts;
 };
 
-const INRSEND_HISTORY_RECOVERY_REFRESH_MS = 60_000;
 const INRSEND_HISTORY_RECOVERY_THROTTLE_MS = 10_000;
 const INRSEND_COUNTS_CACHE_MS = 30_000;
 
@@ -262,6 +262,7 @@ export default function MailboxClient() {
   const historyCountsFetchedAtRef = useRef<Map<string, number>>(new Map());
   const historyCountsDisplayKeyRef = useRef("");
   const historyDisplayedContextKeyRef = useRef("");
+  const historyLoadedContextKeyRef = useRef("");
   const historyPreloadGenerationRef = useRef(0);
   const historyPreloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -2310,14 +2311,23 @@ export default function MailboxClient() {
   // refresh des changements de filtres / recherche
   useEffect(() => {
     if (!historyCacheHydrated) return;
+    if (historyLoadedContextKeyRef.current === activeHistoryContextKey) return;
+    const isInitialContextLoad = historyLoadedContextKeyRef.current === "";
+    historyLoadedContextKeyRef.current = activeHistoryContextKey;
     void loadHistory({
       page: 1,
-      silent: Boolean(initialHistorySnapshot),
-      // A fresh dashboard snapshot is already in the local history cache.
-      // Reusing it avoids issuing the same expensive request again on mount.
-      force: false,
+      silent: isInitialContextLoad && Boolean(initialHistorySnapshot),
+      // The cached snapshot makes navigation instant, but it can predate a
+      // publication that just finished. Always revalidate the first visible
+      // context once; later tab/search changes can still reuse their cache.
+      force: isInitialContextLoad,
     });
-  }, [historyCacheHydrated, initialHistorySnapshot, loadHistory]);
+  }, [
+    activeHistoryContextKey,
+    historyCacheHydrated,
+    initialHistorySnapshot,
+    loadHistory,
+  ]);
 
   useEffect(() => {
     const handleMailAccountsUpdated = async () => {
@@ -2414,7 +2424,10 @@ export default function MailboxClient() {
         recoveryTimer = null;
         refreshVisibleHistory();
         scheduleRecovery();
-      }, INRSEND_HISTORY_RECOVERY_REFRESH_MS);
+      }, mailboxHistoryRefreshInterval({
+        context: activeHistoryContext,
+        items,
+      }));
     };
 
     scheduleRecovery();
@@ -2431,7 +2444,7 @@ export default function MailboxClient() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [loadHistory]);
+  }, [activeHistoryContext, items, loadHistory]);
 
   // open folder from URL
   useEffect(() => {

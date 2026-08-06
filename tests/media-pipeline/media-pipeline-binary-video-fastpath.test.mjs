@@ -38,7 +38,7 @@ test("la génération vidéo utilise les captures locales tandis que programmer 
     modal,
     /mediaPipelineCutoverV1:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/,
   );
-  assert.match(generate, /workspace_verified_client_ai_preview/);
+  assert.match(generate, /workspace_verified_client_video_context/);
   assert.match(generate, /existingVideoFrames\.length/);
 });
 

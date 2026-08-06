@@ -7,7 +7,7 @@ export type VideoNormalizationFailureStatus =
 
 /**
  * A claimed job contains the complete durable request. The worker may execute
- * only one prerequisite stage (for example `canonical`) from that request.
+ * only one bounded extraction stage from that request.
  * Consequently, only outputs absent from the claim snapshot are a genuinely
  * late mission; outputs merely deferred to the next stage must keep the
  * current attempt/backoff.

@@ -1,4 +1,7 @@
-import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
+import {
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "./mediaRules.ts";
 
 export const TIKTOK_RANGE_UPLOAD_MAX_ATTEMPTS = 3;
 export const TIKTOK_RANGE_SOURCE_TIMEOUT_MS = 30_000;
@@ -139,7 +142,7 @@ export function assertTikTokRangeVideoSize(totalBytes: unknown) {
   if (size > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES) {
     throw new TikTokRangeUploadError(
       "tiktok_video_source_too_large",
-      "La vidéo TikTok dépasse la limite iNrCy de 300 Mo.",
+      `La vidéo TikTok dépasse la limite iNrCy de ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}.`,
     );
   }
   return size;

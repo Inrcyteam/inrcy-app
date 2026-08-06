@@ -1,15 +1,10 @@
 import path from "node:path";
 import {
-  INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES,
-  INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES,
-  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "./mediaRules.ts";
 
 export const VIDEO_NORMALIZATION_JOB_TYPE = "video_normalize_v1";
-// v2 invalidates the former 299 MiB canonical variants. Existing originals are
-// retained and transparently produce a new sub-70 MB shared master.
 export const VIDEO_NORMALIZATION_PIPELINE_VERSION = 2;
 export const VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS = 1_860;
 export const VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE = 1;
@@ -19,45 +14,14 @@ export const VIDEO_NORMALIZATION_MAX_SOURCE_BYTES =
 export const VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL =
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 
-export const VIDEO_CANONICAL_MAX_SIDE = 1920;
-export const VIDEO_CANONICAL_FRAME_RATE = 30;
-export const VIDEO_AI_PREVIEW_MAX_SIDE = 1280;
 export const VIDEO_FRAME_MAX_SIDE = 1280;
 export const VIDEO_THUMBNAIL_MAX_SIDE = 720;
-export const VIDEO_AI_PREVIEW_FPS = 15;
-
-// Le canonique doit rester sous le plafond technique iNrCy. Les limites de
-// durée et de format sont ensuite contrôlées séparément pour chaque canal.
-export const VIDEO_CANONICAL_MAX_BYTES =
-  INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES;
-export const VIDEO_CANONICAL_TARGET_BYTES =
-  INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES;
-
-// Compatible light sources keep the remux fast path. Every source which needs
-// transcoding uses one duration-aware bitrate pass aimed at 65 MB.
-export const VIDEO_CANONICAL_QUALITY_CRF = 21;
-export const VIDEO_CANONICAL_ENCODER_PRESET = "veryfast" as const;
-export const VIDEO_CANONICAL_LONG_TRANSCODE_SECONDS = 300;
-export const VIDEO_CANONICAL_LONG_TRANSCODE_MAX_SIDE = 1280;
-export const VIDEO_CANONICAL_LONG_TRANSCODE_MAX_VIDEO_KBPS = 2200;
-export const VIDEO_CANONICAL_AUDIO_BITRATE_KBPS = 128;
-export const VIDEO_CANONICAL_MIN_SAVINGS_RATIO = 0.08;
-// Above 70 MB, prepare one shared master before every other derivative.
-export const VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES =
-  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES;
-// With the minimum viable H.264 + AAC bitrates below, 30 minutes is the
-// longest heavy source that can be guaranteed to fit the 65 MB target in one
-// bounded encode. Longer heavy sources are rejected explicitly instead of
-// looping, timing out, or producing a master above the publication ceiling.
-export const VIDEO_SHARED_CANONICAL_MAX_DURATION_SECONDS = 30 * 60;
-export const VIDEO_CANONICAL_BITRATE_HEADROOM_RATIO = 1.12;
-export const VIDEO_CANONICAL_UNKNOWN_DURATION_OPTIMIZE_BYTES =
-  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES;
-
-export const VIDEO_AI_PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 export const VIDEO_AUDIO_TRACK_MAX_BYTES = 40 * 1024 * 1024;
 export const VIDEO_FRAME_MAX_BYTES = 5 * 1024 * 1024;
 
+// canonical et ai_preview restent lisibles pour les anciens brouillons déjà
+// persistés. Les missions Booster actives ne les demandent plus et le worker
+// ne produit plus aucun fichier vidéo dérivé.
 export const VIDEO_NORMALIZATION_VARIANT_KEYS = [
   "canonical",
   "ai_preview",
@@ -77,51 +41,6 @@ export type VideoNormalizationPurpose =
   | "thumbnail"
   | "video_frame"
   | "audio_track";
-
-export type VideoCanonicalEncoderPreset = "ultrafast" | "veryfast";
-
-export function getVideoCanonicalEncoderPreset(params: {
-  durationSeconds: number;
-  videoCodec?: string | null;
-}): VideoCanonicalEncoderPreset {
-  const durationSeconds = Number(params.durationSeconds || 0);
-  const videoCodec = String(params.videoCodec || "")
-    .trim()
-    .toLowerCase();
-  const sourceAlreadyH264 = ["h264", "avc", "avc1"].includes(videoCodec);
-  const longSource =
-    Number.isFinite(durationSeconds) &&
-    durationSeconds >= VIDEO_CANONICAL_LONG_TRANSCODE_SECONDS;
-
-  // Les sources longues ou AV1/HEVC/VPx exigent un décodage complet. Le preset
-  // ultrafast protège la fenêtre serveur. Le profil 720p borné ne s'active que
-  // pour les vidéos d'au moins 5 minutes ; les petites H.264 gardent veryfast.
-  return longSource || (videoCodec !== "" && !sourceAlreadyH264)
-    ? "ultrafast"
-    : VIDEO_CANONICAL_ENCODER_PRESET;
-}
-
-export function getVideoCanonicalTranscodeProfile(params: {
-  durationSeconds: number;
-  videoCodec?: string | null;
-}) {
-  const durationSeconds = Number(params.durationSeconds || 0);
-  const longSource =
-    Number.isFinite(durationSeconds) &&
-    durationSeconds >= VIDEO_CANONICAL_LONG_TRANSCODE_SECONDS;
-
-  return {
-    encoderPreset: getVideoCanonicalEncoderPreset(params),
-    maxSide: longSource
-      ? VIDEO_CANONICAL_LONG_TRANSCODE_MAX_SIDE
-      : VIDEO_CANONICAL_MAX_SIDE,
-    fps: VIDEO_CANONICAL_FRAME_RATE,
-    qualityCrf: VIDEO_CANONICAL_QUALITY_CRF,
-    maxVideoKbps: longSource
-      ? VIDEO_CANONICAL_LONG_TRANSCODE_MAX_VIDEO_KBPS
-      : null,
-  } as const;
-}
 
 const PURPOSE_BY_KEY: Record<
   VideoNormalizationVariantKey,
@@ -176,9 +95,11 @@ export function getVideoNormalizationFileDescriptor(
 
 export function getVideoNormalizationKeyFromSignature(value: string) {
   const signature = String(value || "").trim();
-  return VIDEO_NORMALIZATION_VARIANT_KEYS.find(
-    (key) => getVideoNormalizationSignature(key) === signature,
-  ) || null;
+  return (
+    VIDEO_NORMALIZATION_VARIANT_KEYS.find(
+      (key) => getVideoNormalizationSignature(key) === signature,
+    ) || null
+  );
 }
 
 export function sanitizeVideoNormalizationPathSegment(value: string) {
@@ -252,110 +173,6 @@ export function fitVideoWithinMaxSide(params: {
   };
 }
 
-export type VideoCanonicalOptimizationProfile = {
-  outputWidth: number;
-  outputHeight: number;
-  sourceAverageBitrateKbps: number | null;
-  targetMaxVideoKbps: number;
-  targetTotalBitrateKbps: number;
-  expectedTargetBytes: number | null;
-  expectedSavingsRatio: number | null;
-  shouldOptimize: boolean;
-  reason:
-    | "already_efficient"
-    | "meaningful_savings"
-    | "large_unknown_duration"
-    | "insufficient_metadata";
-};
-
-export function getVideoAverageBitrateKbps(params: {
-  sizeBytes: number;
-  durationSeconds: number;
-}) {
-  const sizeBytes = Math.max(0, Number(params.sizeBytes || 0));
-  const durationSeconds = Number(params.durationSeconds || 0);
-  if (!sizeBytes || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    return null;
-  }
-  return Math.round((sizeBytes * 8) / durationSeconds / 1000);
-}
-
-function getVideoCanonicalMaxVideoKbps(params: {
-  width: number;
-  height: number;
-}) {
-  const pixels = Math.max(1, params.width) * Math.max(1, params.height);
-  if (pixels >= 1_500_000) return 5_500;
-  if (pixels >= 700_000) return 3_500;
-  if (pixels >= 300_000) return 2_200;
-  return 1_400;
-}
-
-export function getVideoCanonicalOptimizationProfile(params: {
-  width: number;
-  height: number;
-  durationSeconds: number;
-  sourceSizeBytes: number;
-  hasAudio?: boolean;
-}): VideoCanonicalOptimizationProfile {
-  const fitted = fitVideoWithinMaxSide({
-    width: params.width,
-    height: params.height,
-    maxSide: VIDEO_CANONICAL_MAX_SIDE,
-  });
-  const targetMaxVideoKbps = getVideoCanonicalMaxVideoKbps(fitted);
-  const targetTotalBitrateKbps =
-    targetMaxVideoKbps +
-    (params.hasAudio === false ? 0 : VIDEO_CANONICAL_AUDIO_BITRATE_KBPS);
-  const sourceSizeBytes = Math.max(0, Number(params.sourceSizeBytes || 0));
-  const durationSeconds = Number(params.durationSeconds || 0);
-  const sourceAverageBitrateKbps = getVideoAverageBitrateKbps({
-    sizeBytes: sourceSizeBytes,
-    durationSeconds,
-  });
-
-  if (!sourceAverageBitrateKbps || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    const shouldOptimize =
-      sourceSizeBytes >= VIDEO_CANONICAL_UNKNOWN_DURATION_OPTIMIZE_BYTES;
-    return {
-      outputWidth: fitted.width,
-      outputHeight: fitted.height,
-      sourceAverageBitrateKbps,
-      targetMaxVideoKbps,
-      targetTotalBitrateKbps,
-      expectedTargetBytes: null,
-      expectedSavingsRatio: null,
-      shouldOptimize,
-      reason: shouldOptimize
-        ? "large_unknown_duration"
-        : "insufficient_metadata",
-    };
-  }
-
-  const expectedTargetBytes = Math.ceil(
-    (targetTotalBitrateKbps * 1000 * durationSeconds) / 8,
-  );
-  const expectedSavingsRatio = sourceSizeBytes
-    ? Math.max(0, 1 - expectedTargetBytes / sourceSizeBytes)
-    : 0;
-  const alreadyEfficient =
-    sourceAverageBitrateKbps <=
-      targetTotalBitrateKbps * VIDEO_CANONICAL_BITRATE_HEADROOM_RATIO ||
-    expectedSavingsRatio < VIDEO_CANONICAL_MIN_SAVINGS_RATIO;
-
-  return {
-    outputWidth: fitted.width,
-    outputHeight: fitted.height,
-    sourceAverageBitrateKbps,
-    targetMaxVideoKbps,
-    targetTotalBitrateKbps,
-    expectedTargetBytes,
-    expectedSavingsRatio,
-    shouldOptimize: !alreadyEfficient,
-    reason: alreadyEfficient ? "already_efficient" : "meaningful_savings",
-  };
-}
-
 export function buildVideoFrameCaptureTimes(durationSeconds: number) {
   const duration = Number(durationSeconds || 0);
   if (!Number.isFinite(duration) || duration <= 0) return [0, 1, 2] as const;
@@ -369,6 +186,9 @@ export function buildVideoFrameCaptureTimes(durationSeconds: number) {
   ] as const;
 }
 
+// Utilisé uniquement lorsqu'un professionnel demande explicitement une
+// adaptation de format par canal. Ce calcul ne fait pas partie du flux vidéo
+// original de Booster.
 export function getVideoTargetBitrateKbps(params: {
   durationSeconds: number;
   maxBytes: number;

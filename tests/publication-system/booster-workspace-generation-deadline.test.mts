@@ -68,7 +68,7 @@ test("generation targets 30 seconds but keeps a 105-second safety window without
   assert.ok(requestBuildIndex > deadlineStartIndex);
 });
 
-test("a heavy-video compression never holds the Generate click beyond the shared grace window", () => {
+test("video preparation never holds Generate beyond the shared grace window", () => {
   assert.match(modal, /BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000/);
   assert.match(
     modal,

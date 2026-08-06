@@ -19,7 +19,6 @@ import {
   hasServerVideoProbeProvenance,
 } from "@/lib/mediaVideoSourceCompatibility";
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
-import { VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES } from "@/lib/mediaVideoNormalizationPolicy";
 import { sanitizeClientMediaMetadata } from "@/lib/mediaClientMetadata";
 import { probeStoredBoosterVideoForPublication } from "@/lib/boosterVideoVariantServer";
 
@@ -229,17 +228,6 @@ export async function POST(request: Request) {
       cleanText(current.data.media_metadata?.upload_target, "", 80) ===
         "booster_video_source" &&
       current.data.media_type === "video";
-    const boosterPublicationNeedsCanonical =
-      boosterPublicationSource &&
-      Number(current.data.size_bytes || 0) >=
-        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
-    const videoSourceNeedsSharedCanonical =
-      current.data.media_type === "video" &&
-      Number(current.data.size_bytes || 0) >=
-        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
-    const workspaceAiNeedsSharedCanonical =
-      workspaceAiSource && videoSourceNeedsSharedCanonical;
-
     if (event === "uploaded") {
       const verified = await verifyStoredUpload({
         bucket: String(current.data.bucket_name || ""),
@@ -271,11 +259,7 @@ export async function POST(request: Request) {
       patch.uploaded_at = now;
       patch.upload_error_code = null;
       patch.upload_error_message = null;
-      if (
-        directVideoSource &&
-        !sourceMetadataOnly &&
-        !videoSourceNeedsSharedCanonical
-      ) {
+      if (directVideoSource && !sourceMetadataOnly) {
         patch.processing_status = "ready";
         patch.processing_progress = 100;
         patch.publication_status = "ready";
@@ -381,8 +365,8 @@ export async function POST(request: Request) {
       if (!workspaceAiSource) {
         try {
           // Le mode manuel suit le mÃªme pipeline durable que le mode IA. Le
-          // worker atteste une source lÃ©gÃ¨re ou fabrique le master canonique ;
-          // l'ACK d'upload reste immÃ©diat dans les deux cas.
+          // worker atteste l'original et extrait seulement sa miniature ;
+          // l'ACK d'upload reste immÃ©diat.
           videoNormalization = await enqueueVideoNormalization({
             mediaId,
             accountId: activeUserId,
@@ -416,36 +400,17 @@ export async function POST(request: Request) {
             workspaceId: workspaceId || null,
             mission: "ai_preparation",
           });
-          let publicationNormalization: VideoNormalizationEnqueueResult | null =
-            null;
-          if (workspaceAiNeedsSharedCanonical) {
-            // Fusion idempotente sur le même job : pour une source lourde, le
-            // canonique H.264 est produit avant les captures. Aucun second upload.
-            publicationNormalization = await enqueueVideoNormalization({
-              mediaId,
-              accountId: activeUserId,
-              workspaceId: workspaceId || null,
-              mission: "publication_preparation",
-            });
-          }
           videoNormalization = {
-            enabled:
-              aiNormalization.enabled ||
-              Boolean(publicationNormalization?.enabled),
-            queued:
-              aiNormalization.queued ||
-              Boolean(publicationNormalization?.queued),
-            reason: publicationNormalization
-              ? "ai_and_publication_preparation_queued"
-              : aiNormalization.reason,
-            jobId:
-              publicationNormalization?.jobId || aiNormalization.jobId || null,
+            enabled: aiNormalization.enabled,
+            queued: aiNormalization.queued,
+            reason: aiNormalization.reason,
+            jobId: aiNormalization.jobId || null,
           };
           if (videoNormalization.enabled && videoNormalization.jobId) {
             processVideoNormalizationAfterUpload({
               accountId: activeUserId,
               mediaId,
-              context: "video AI/publication prewarm",
+              context: "video AI prewarm",
             });
           }
         } catch (queueError) {
@@ -464,21 +429,22 @@ export async function POST(request: Request) {
     } else if (
       event === "uploaded" &&
       current.data.media_type === "video" &&
-      (!directVideoSource || videoSourceNeedsSharedCanonical)
+      !sourceMetadataOnly &&
+      !directVideoSource
     ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
         "",
         80,
       );
-      if (boosterPublicationSource && !boosterPublicationNeedsCanonical) {
+      if (boosterPublicationSource) {
         const boosterProbeBucket = String(current.data.bucket_name || "");
         const boosterProbeStoragePath = String(
           current.data.storage_path || "",
         );
         // Confirmation upload immédiate. L'attestation serveur range-aware se
         // fait pendant que le pro relit son contenu ; elle ne télécharge jamais
-        // les 300 Mo dans cette requête et sera relue par publish-now.
+        // la vidéo dans cette requête et sera relue par publish-now.
         videoNormalization = {
           enabled: true,
           queued: true,
@@ -508,10 +474,7 @@ export async function POST(request: Request) {
             mediaId,
             accountId: activeUserId,
             workspaceId: workspaceId || null,
-            mission:
-              videoSourceNeedsSharedCanonical || boosterPublicationNeedsCanonical
-                ? "publication_preparation"
-                : undefined,
+            mission: "publication_preparation",
           });
           if (videoNormalization.enabled && videoNormalization.jobId) {
             // L'ACK d'upload est deja parti ; le cron durable reprend si ce
@@ -537,8 +500,7 @@ export async function POST(request: Request) {
       }
     } else if (
       event === "uploaded" &&
-      directVideoSource &&
-      !videoSourceNeedsSharedCanonical
+      directVideoSource
     ) {
       videoNormalization = {
         enabled: true,

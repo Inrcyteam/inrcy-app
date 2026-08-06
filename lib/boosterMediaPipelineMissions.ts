@@ -17,14 +17,13 @@ export const BOOSTER_IMAGE_PREPARATION_PURPOSES = Object.freeze({
 
 export const BOOSTER_VIDEO_PREPARATION_KEYS = Object.freeze({
   ai_preparation: [
-    "ai_preview",
     "thumbnail",
     "frame_01",
     "frame_02",
     "frame_03",
     "audio_track",
   ] as const,
-  publication_preparation: ["canonical", "thumbnail"] as const,
+  publication_preparation: ["thumbnail"] as const,
 });
 
 export type BoosterPreparationMission = Exclude<

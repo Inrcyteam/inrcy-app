@@ -737,8 +737,8 @@ export async function probeStoredBoosterVideoForPublication(params: {
   });
 
   // FFprobe/FFmpeg lit l'URL Storage avec des seeks HTTP. Pour un MP4 de
-  // 300 Mo dont `moov` est en fin de fichier, seuls l'en-tête et la queue sont
-  // lus ; aucun Buffer/fichier temporaire de 300 Mo n'est créé dans ce worker.
+  // Quand `moov` est en fin de fichier, seuls l'en-tête et la queue sont lus ;
+  // aucun Buffer complet n'est créé dans ce worker.
   const probed = await probeVideoMetadata(publicUrl, {
     remote: true,
     timeoutMs: BOOSTER_REMOTE_VIDEO_PROBE_TIMEOUT_MS,
@@ -1259,7 +1259,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       tempDir,
       `source.${getSourceExtension(params.source)}`,
     );
-    // Le fichier peut atteindre 300 Mo. Il est transféré en flux vers /tmp avec
+    // Le fichier accepté peut atteindre 75 Mo. Il est transféré en flux vers /tmp avec
     // un compteur strict : aucun Blob.arrayBuffer()/Buffer de la source ne
     // double la mémoire du worker.
     const downloaded = await downloadSourceVideoToFile(params.source, inputPath);
@@ -1350,7 +1350,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         const outputMetadata = await probeVideoMetadata(outputPath);
         if (outputSize > quality.maxOutputBytes) {
           throw new Error(
-            `La variante ${variant.target.label} reste trop lourde après compression (${Math.ceil(outputSize / 1024 / 1024)} Mo).`,
+            `La variante ${variant.target.label} reste trop lourde après adaptation (${Math.ceil(outputSize / 1024 / 1024)} Mo).`,
           );
         }
         if (

@@ -8,21 +8,24 @@ import {
   getVideoPublicationPolicy,
   validateVideoPublicationForChannel,
 } from "../../lib/videoPublicationPolicy.ts";
+import {
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+} from "../../lib/mediaRules.ts";
 
 const ROOT = process.cwd();
-const MB = 1024 * 1024;
 
 async function readSource(relativePath: string) {
   return await readFile(path.resolve(ROOT, relativePath), "utf8");
 }
 
-test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () => {
+test("une source MP4 passe exactement à 75 Mo et échoue un octet au-dessus", () => {
   assert.equal(
     canPublishVideoSourceDirectly({
-      name: "video-110-mo.mp4",
+      name: "video-75-mo.mp4",
       mimeType: "video/mp4",
-      sizeBytes: 110 * MB,
-      maxBytes: 300 * MB,
+      sizeBytes: 75_000_000,
+      maxBytes: INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
       videoCodec: "h264",
       audioCodec: "aac",
       frameRate: 30,
@@ -34,10 +37,10 @@ test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () 
   );
   assert.equal(
     canPublishVideoSourceDirectly({
-      name: "video-301-mo.mp4",
+      name: "video-trop-lourde.mp4",
       mimeType: "video/mp4",
-      sizeBytes: 301 * MB,
-      maxBytes: 300 * MB,
+      sizeBytes: 75_000_001,
+      maxBytes: INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
       videoCodec: "h264",
       audioCodec: "aac",
       frameRate: 30,
@@ -51,7 +54,7 @@ test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () 
     canPublishVideoSourceDirectly({
       name: "taille-inconnue.mp4",
       mimeType: "video/mp4",
-      maxBytes: 300 * MB,
+      maxBytes: INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
       videoCodec: "h264",
       audioCodec: "aac",
       frameRate: 30,
@@ -64,7 +67,7 @@ test("une source MP4 de 110 Mo reste publiable sous la limite source iNrCy", () 
 });
 
 test("les limites vidéo sont contrôlées canal par canal", () => {
-  assert.equal(getVideoPublicationPolicy("tiktok").maxBytes, 300 * MB);
+  assert.equal(getVideoPublicationPolicy("tiktok").maxBytes, 75_000_000);
   assert.equal(getVideoPublicationPolicy("tiktok").maxDurationSeconds, 10 * 60);
   assert.equal(getVideoPublicationPolicy("linkedin").maxDurationSeconds, 30 * 60);
   assert.equal(getVideoPublicationPolicy("instagram").maxDurationSeconds, 15 * 60);
@@ -76,7 +79,7 @@ test("les limites vidéo sont contrôlées canal par canal", () => {
       name: "video.mp4",
       type: "video/mp4",
       storagePath: "videos/video.mp4",
-      sizeBytes: 110 * MB,
+      sizeBytes: 70_000_000,
       durationSeconds: 600,
     }).ok,
     true,
@@ -87,7 +90,7 @@ test("les limites vidéo sont contrôlées canal par canal", () => {
       name: "video.mp4",
       type: "video/mp4",
       storagePath: "videos/video.mp4",
-      sizeBytes: 110 * MB,
+      sizeBytes: 70_000_000,
       durationSeconds: 717,
     }).ok,
     false,
@@ -98,7 +101,7 @@ test("les limites vidéo sont contrôlées canal par canal", () => {
       name: "video.mp4",
       type: "video/mp4",
       storagePath: "videos/video.mp4",
-      sizeBytes: 110 * MB,
+      sizeBytes: 70_000_000,
       durationSeconds: 901,
     }).ok,
     false,
@@ -109,13 +112,13 @@ test("les limites vidéo sont contrôlées canal par canal", () => {
       name: "video.mp4",
       type: "video/mp4",
       storagePath: "videos/video.mp4",
-      sizeBytes: 110 * MB,
+      sizeBytes: 70_000_000,
     }).ok,
     false,
   );
 });
 
-test("les uploads ne forcent plus une compression globale au-dessus de 40 Mo", async () => {
+test("les uploads partagent le plafond de 75 Mo sans compression automatique", async () => {
   const rules = await readSource("lib/mediaRules.ts");
   const intent = await readSource("app/api/media-pipeline/upload-intent/route.ts");
   const event = await readSource("app/api/media-pipeline/upload-event/route.ts");
@@ -126,12 +129,14 @@ test("les uploads ne forcent plus une compression globale au-dessus de 40 Mo", a
 
   assert.match(
     rules,
-    /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES\s*-\s*1/,
+    /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/,
   );
   assert.match(
     rules,
-    /INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL\s*=\s*"< 70 Mo"/,
+    /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES\s*=\s*75_000_000/,
   );
+  assert.equal(INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES, 75_000_000);
+  assert.doesNotMatch(rules, /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES/);
   assert.match(intent, /getUniversalMediaProductMaxBytes\(mediaType\)/);
   for (const source of [event, workspace]) {
     assert.match(source, /maxBytes:\s*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES/);
@@ -160,7 +165,8 @@ test("la finalisation serveur valide chaque canal et isole les adaptations", asy
 
   assert.match(modal, /async function ensureCutoverVideoVariantsReady/);
   assert.match(modal, /Finalisation des médias/);
-  assert.match(modal, /Vérification de la vidéo pour la programmation/);
+  assert.match(modal, /setPublishProgressLabel\("Préparation des médias"\)/);
+  assert.doesNotMatch(modal, /Compression des médias/);
   assert.match(controller, /validateVideoPublicationForChannel/);
   assert.match(prewarm, /invalidSignatures/);
   assert.match(prewarm, /invalidChannels/);

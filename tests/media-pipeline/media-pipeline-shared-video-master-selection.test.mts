@@ -7,13 +7,14 @@ const source = readFileSync(
   "utf8",
 );
 
-test("heavy and light videos always use the canonical shared master", () => {
-  assert.match(source, /allowUploadedVideoSource:\s*false/);
-  assert.match(source, /const publicationVariant = canonical/);
-  assert.doesNotMatch(source, /directSourceReady && !preferSharedCanonical/);
+test("every accepted video uses the verified original as publication master", () => {
+  assert.match(source, /allowUploadedVideoSource:\s*true/);
+  assert.match(source, /const publicationVariant = directSourceReady \? null : canonical/);
+  assert.match(source, /compatibilityProof:\s*publicationVariant[\s\S]{0,120}: "server_ffmpeg"/);
+  assert.match(source, /storagePath:\s*publicationVariant\?\.storagePath \|\| item\.sourceStoragePath/);
 });
 
-test("the managed master carries the durable thumbnail contract", () => {
+test("the original keeps the durable thumbnail contract", () => {
   assert.match(
     source,
     /pickReadyVideoNormalizationVariant\(\s*variants,\s*item\.mediaId,\s*"thumbnail"/,

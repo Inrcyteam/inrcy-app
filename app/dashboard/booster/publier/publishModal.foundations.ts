@@ -289,13 +289,8 @@ export function buildVideoFileName(file: Pick<File, "name" | "type">) {
     String(file?.name || "video-inrcy")
       .split(/[\\/]/)
       .pop() || "video-inrcy";
-  if (/\.(mp4|mov|webm|m4v)$/i.test(rawName)) return rawName;
-  const type = String(file?.type || "").toLowerCase();
-  const extension = type.includes("quicktime")
-    ? "mov"
-    : type.includes("webm")
-      ? "webm"
-      : "mp4";
+  if (/\.(mp4|m4v|mov)$/i.test(rawName)) return rawName;
+  const extension = "mp4";
   return `${rawName.replace(/\.[^.]*$/, "")}.${extension}`;
 }
 

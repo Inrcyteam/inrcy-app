@@ -8,22 +8,21 @@ import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import {
   INR_MEDIA_VIDEO_FORMATS_LABEL,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
-  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+  INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE,
 } from "@/lib/mediaRules";
 
 const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
-const MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 const LEGACY_MULTIPART_VIDEO_MAX_BYTES = 6 * 1024 * 1024;
 const DEFAULT_UPLOAD_FOLDER = "booster-videos";
 
 const MIME_EXTENSION: Record<string, string> = {
   "video/mp4": "mp4",
-  "video/webm": "webm",
-  "video/quicktime": "mov",
   "video/x-m4v": "mp4",
+  "video/quicktime": "mov",
+  "application/mp4": "mp4",
 };
 
-const ALLOWED_VIDEO_EXTENSIONS = new Set(["mp4", "mov", "webm", "m4v"]);
+const ALLOWED_VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov"]);
 
 function normalizeMime(type: string) {
   return (
@@ -35,11 +34,10 @@ function normalizeMime(type: string) {
 }
 
 function isAllowedVideoMime(type: string) {
-  return /^video\/(mp4|webm|quicktime|x-m4v)$/i.test(normalizeMime(type));
+  return Object.hasOwn(MIME_EXTENSION, normalizeMime(type));
 }
 
 function isAllowedVideoFile(file: File) {
-  if (isAllowedVideoMime(file.type)) return true;
   const rawName =
     String(file.name || "")
       .split(/[\\/]/)
@@ -47,7 +45,13 @@ function isAllowedVideoFile(file: File) {
   const ext = rawName.includes(".")
     ? rawName.split(".").pop()?.toLowerCase() || ""
     : "";
-  return ALLOWED_VIDEO_EXTENSIONS.has(ext);
+  if (!ALLOWED_VIDEO_EXTENSIONS.has(ext)) return false;
+  const mimeType = normalizeMime(file.type);
+  return (
+    !mimeType ||
+    mimeType === "application/octet-stream" ||
+    isAllowedVideoMime(mimeType)
+  );
 }
 
 function normalizeSafeSegment(value: string, fallback: string) {
@@ -88,16 +92,10 @@ function getSafeExtension(name: string, mimeType: string) {
 
 function getSafeContentType(file: File) {
   const type = normalizeMime(String(file.type || ""));
-  if (isAllowedVideoMime(type)) return type;
-  const rawName =
-    String(file.name || "")
-      .split(/[\\/]/)
-      .pop() || "";
-  const ext = rawName.includes(".")
-    ? rawName.split(".").pop()?.toLowerCase() || ""
-    : "";
-  if (ext === "mov") return "video/quicktime";
-  if (ext === "webm") return "video/webm";
+  if (type === "video/quicktime" || /\.mov$/i.test(file.name)) {
+    return "video/quicktime";
+  }
+  if (isAllowedVideoMime(type)) return "video/mp4";
   return "video/mp4";
 }
 
@@ -236,7 +234,7 @@ export async function POST(req: Request) {
     if (file.size > MAX_VIDEO_BYTES) {
       return NextResponse.json(
         {
-          error: `Vidéo trop lourde. Taille maximale : ${MAX_VIDEO_MB_LABEL}.`,
+          error: INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE,
         },
         { status: 413 },
       );
@@ -244,7 +242,7 @@ export async function POST(req: Request) {
 
     // This compatibility endpoint materializes multipart/form-data and the
     // file bytes in the server heap. Large sources must use the signed/TUS
-    // storage ingress instead; accepting 300 MB here could require several
+    // storage ingress instead; accepting 75 MB here could require several
     // simultaneous full-size copies in a Vercel function.
     if (file.size > LEGACY_MULTIPART_VIDEO_MAX_BYTES) {
       return NextResponse.json(

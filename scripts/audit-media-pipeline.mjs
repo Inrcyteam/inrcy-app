@@ -65,8 +65,13 @@ requirePattern(
 );
 requirePattern(
   "lib/mediaRules.ts",
-  /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES\s*=\s*300\s*\*\s*1024\s*\*\s*1024/,
-  "Limite vidéo source 300 Mo",
+  /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES\s*=\s*75_000_000/,
+  "Limite vidéo source 75 Mo",
+);
+forbidPattern(
+  "lib/mediaRules.ts",
+  /INR_MEDIA_VIDEO_(?:COMPRESSION_TRIGGER|CANONICAL_(?:TARGET|MAX))_BYTES/,
+  "Ancien contrat de compression vidéo",
 );
 forbidPattern(
   "app/dashboard/booster/publier/usePublishImageController.ts",
@@ -93,7 +98,7 @@ requirePattern(
 );
 requirePattern(
   "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
-  /queueBackgroundPreparation/,
+  /void\s+prepareAiMedia\(\)\.catch/,
   "Préparation serveur anticipée",
 );
 requirePattern(

@@ -3,10 +3,13 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 import {
+  MAILBOX_HISTORY_ACTIVE_REFRESH_MS,
+  MAILBOX_HISTORY_IDLE_REFRESH_MS,
   buildMailboxHistoryPreloadPlan,
   mailboxHistoryContextKey,
   mailboxHistoryPageCount,
   mailboxHistoryPageKey,
+  mailboxHistoryRefreshInterval,
 } from "../../app/dashboard/mails/_lib/mailboxHistoryPreload.ts";
 
 const client = readFileSync("app/dashboard/mails/MailboxClient.tsx", "utf8");
@@ -88,6 +91,49 @@ test("history keys isolate folder, box, account and search contexts", () => {
   assert.equal(mailboxHistoryPageCount(71, 20), 4);
 });
 
+test("the visible sent-publications folder always uses bounded fast refresh", () => {
+  const context = {
+    folder: "publications" as const,
+    boxView: "sent" as const,
+    filterAccountId: "",
+    query: "",
+  };
+  const now = Date.parse("2026-08-06T19:00:00.000Z");
+
+  assert.equal(
+    mailboxHistoryRefreshInterval({
+      context,
+      items: [{ status: "processing", created_at: "2026-08-06T18:55:00.000Z" }],
+      now,
+    }),
+    MAILBOX_HISTORY_ACTIVE_REFRESH_MS,
+  );
+  assert.equal(
+    mailboxHistoryRefreshInterval({
+      context,
+      items: [{ status: "sent", created_at: "2026-08-06T18:55:00.000Z" }],
+      now,
+    }),
+    MAILBOX_HISTORY_ACTIVE_REFRESH_MS,
+  );
+  assert.equal(
+    mailboxHistoryRefreshInterval({
+      context,
+      items: [{ status: "processing", created_at: "2026-08-06T17:00:00.000Z" }],
+      now,
+    }),
+    MAILBOX_HISTORY_ACTIVE_REFRESH_MS,
+  );
+  assert.equal(
+    mailboxHistoryRefreshInterval({
+      context: { ...context, folder: "mails" },
+      items: [],
+      now,
+    }),
+    MAILBOX_HISTORY_IDLE_REFRESH_MS,
+  );
+});
+
 test("client and API keep history reads bounded and count-free by default", () => {
   assert.match(client, /historyCacheRef/);
   assert.match(client, /buildMailboxHistoryPreloadPlan/);
@@ -105,7 +151,9 @@ test("client and API keep history reads bounded and count-free by default", () =
   assert.match(route, /if \(!includeCounts\)/);
   assert.match(route, /fetchBoundedRows/);
   assert.match(route, /countsIncluded:\s*false/);
-  assert.doesNotMatch(client, /force:\s*shouldRefreshInitialSnapshot/);
+  assert.match(client, /force:\s*isInitialContextLoad/);
+  assert.match(route, /HISTORY_NO_STORE_HEADERS/);
+  assert.match(route, /private, no-store, max-age=0/);
 });
 
 test("the publications tab filters every source before downloading history rows", () => {

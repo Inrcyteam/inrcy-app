@@ -561,8 +561,8 @@ async function readWorkspaceGraph(params: {
     if (uploadedVideoIsUsable) return false;
 
     // Publication readiness is independent from best-effort AI derivatives.
-    // A current canonical master may be ready while captures/audio report a
-    // separate processing failure; that must never block provider dispatch.
+    // A verified original may be ready while captures/audio report a separate
+    // processing failure; that must never block provider dispatch.
     if (
       item.mediaType === "video" &&
       ["ready", "legacy_ready"].includes(item.publicationStatus)
@@ -1155,7 +1155,7 @@ export async function resolveWorkspacePublicationConsumption(params: {
   const graph = await readWorkspaceGraph({
     ...params,
     allowUploadedImageSourceForPublication: true,
-    allowUploadedVideoSource: false,
+    allowUploadedVideoSource: true,
   });
   const { workspace, media, variants } = graph;
 
@@ -1270,17 +1270,18 @@ export async function resolveWorkspacePublicationConsumption(params: {
       item.mediaId,
       "canonical",
     );
-    if (!canonical) {
+    const directSourceReady = canUseDirectWorkspaceVideoSource(item);
+    if (!directSourceReady && !canonical) {
       throw new MediaWorkspaceConsumptionError(
-        "La version canonique de la vidéo n'est pas prête.",
-        "workspace_canonical_missing",
-        409,
+        "Cette vidéo ne peut pas être publiée telle quelle. Utilisez un fichier MP4/M4V/MOV H.264 avec audio AAC, de 75 Mo maximum.",
+        "workspace_video_source_incompatible",
+        422,
       );
     }
-    // Every provider consumes the same managed MP4 master. Heavy sources are
-    // compressed below 70 MB; light sources are still normalized to H.264,
-    // 30 fps and receive the same durable thumbnail contract.
-    const publicationVariant = canonical;
+    // Le chemin normal publie exactement l'original validé par FFprobe. Une
+    // ancienne variante canonique reste un secours de compatibilité pour les
+    // publications créées avant ce changement, sans nouvelle compression.
+    const publicationVariant = directSourceReady ? null : canonical;
     const thumbnail = pickReadyVideoNormalizationVariant(
       variants,
       item.mediaId,
@@ -1304,7 +1305,7 @@ export async function resolveWorkspacePublicationConsumption(params: {
         serverProbedMetadata.durationSeconds ??
         serverProbedMetadata.duration_seconds,
     );
-    // A NULL/zero duration on an old canonical row must not erase the positive
+    // A NULL/zero duration on a legacy derivative must not erase the positive
     // FFmpeg source probe. Browser/registry metadata is never used as the
     // trusted duration that authorizes or blocks a provider dispatch.
     const videoDuration =
@@ -1480,21 +1481,9 @@ async function resolveWorkspaceAiVideoFamily(params: {
     );
   }
 
-  // Le texte n'attend ni ai_preview ni canonical : l'original reste la
-  // référence, tandis que les captures et l'audio enrichissent le prompt.
-  const aiPreview = pickReadyVideoNormalizationVariant(
-    params.variants,
-    item.mediaId,
-    "ai_preview",
-  );
-  const preview =
-    aiPreview ||
-    pickReadyVideoNormalizationVariant(
-      params.variants,
-      item.mediaId,
-      "canonical",
-    );
-  const videoReference = preview || {
+  // L'original est l'unique référence vidéo de l'IA. Les captures et l'audio
+  // préparés ci-dessous sont eux aussi extraits de ce même fichier.
+  const videoReference = {
     bucket: item.sourceBucket,
     storagePath: item.sourceStoragePath,
     mimeType: item.detectedMimeType || item.sourceMimeType,
@@ -1521,9 +1510,7 @@ async function resolveWorkspaceAiVideoFamily(params: {
       return String(a.signature || "").localeCompare(String(b.signature || ""));
     });
   // Une miniature déjà produite est un contexte visuel valable pendant que
-  // les trois captures début/milieu/fin terminent en arrière-plan. `ai_preview`
-  // est normalement une vidéo, mais d'anciennes lignes peuvent contenir une
-  // image : on ne la retient que si son MIME est explicitement visuel.
+  // les trois captures début/milieu/fin terminent en arrière-plan.
   const fallbackThumbnail = pickReadyVideoNormalizationVariant(
     params.variants,
     item.mediaId,
@@ -1531,7 +1518,6 @@ async function resolveWorkspaceAiVideoFamily(params: {
   );
   const fallbackFrameVariants = [
     ...(fallbackThumbnail ? [fallbackThumbnail] : []),
-    ...(aiPreview ? [aiPreview] : []),
   ].filter((variant) =>
     normalizeMime(variant.mimeType, "application/octet-stream").startsWith(
       "image/",
@@ -1641,9 +1627,7 @@ async function resolveWorkspaceAiVideoFamily(params: {
   }
 
   // La source stockée et ses métadonnées suffisent toujours à conserver le
-  // mode vidéo. Les enrichissements sont isolés : ils ne transforment jamais
-  // une vidéo de 150–300 Mo déjà uploadée en erreur 409 et la source lourde
-  // n'est pas téléchargée par cette route.
+  // mode vidéo. Les enrichissements IA restent isolés et facultatifs.
   const diagnostic: WorkspaceAiFamilyDiagnostic = enrichmentFailures.length
     ? {
         state: "partial",

@@ -144,17 +144,14 @@ test("every workspace client fetch and readiness use a composable deadline", () 
     modal,
     /waitForPersistentWorkspaceReadiness[\s\S]*timeoutMs = MEDIA_WORKSPACE_READINESS_TIMEOUT_MS[\s\S]*withMediaWorkspaceDeadline\([\s\S]*timeoutMs/,
   );
+  assert.doesNotMatch(modal, /BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS/);
   assert.match(
     modal,
-    /BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 30 \* 60 \* 1_000/,
+    /publishWorkspaceReadinessTimeoutMs\s*=\s*[\r\n\s]*MEDIA_WORKSPACE_READINESS_TIMEOUT_MS[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"publish"[\s\S]*publishWorkspaceReadinessTimeoutMs/,
   );
   assert.match(
     modal,
-    /publishWorkspaceReadinessTimeoutMs[\s\S]*videoFile\.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"publish"[\s\S]*publishWorkspaceReadinessTimeoutMs/,
-  );
-  assert.match(
-    modal,
-    /scheduleWorkspaceReadinessTimeoutMs[\s\S]*videoFile\.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"schedule"[\s\S]*scheduleWorkspaceReadinessTimeoutMs/,
+    /scheduleWorkspaceReadinessTimeoutMs\s*=\s*[\r\n\s]*MEDIA_WORKSPACE_READINESS_TIMEOUT_MS[\s\S]*waitForPersistentWorkspaceReadiness\([\s\S]*"schedule"[\s\S]*scheduleWorkspaceReadinessTimeoutMs/,
   );
 });
 

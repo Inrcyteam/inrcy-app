@@ -2,12 +2,13 @@ import type { BoosterVideoChannelKey } from "./boosterVideoSettings.ts";
 import {
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+  INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE,
 } from "./mediaRules.ts";
 import { canPublishVideoSourceDirectly } from "./mediaVideoSourceCompatibility.ts";
 import {
   GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
   GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
-  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+  GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
 } from "./googleBusinessMediaPolicy.ts";
 
 export type YoutubeLongUploadsStatus =
@@ -101,9 +102,9 @@ export const PINTEREST_VIDEO_TOO_LONG_MESSAGE =
   "Vidéo de plus de 15 minutes non autorisée sur une épingle vidéo Pinterest standard.";
 
 /**
- * La source iNrCy reste acceptée jusqu'à 300 Mo. Les formats, codecs, FPS,
- * dimensions et poids sont normalisés par les variantes serveur. La durée,
- * elle, n'est jamais coupée silencieusement : elle est contrôlée par canal.
+ * Booster accepte un original MP4/M4V/MOV H.264/AAC compatible jusqu'à 75 Mo. Les
+ * adaptations de cadrage explicitement choisies restent isolées par canal.
+ * La durée n'est jamais coupée silencieusement : elle est contrôlée par canal.
  */
 export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
   BoosterVideoChannelKey,
@@ -115,8 +116,8 @@ export const VIDEO_PUBLICATION_POLICY_BY_CHANNEL: Record<
   gmb: {
     channel: "gmb",
     ...DEFAULT_POLICY,
-    maxBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
-    maxBytesLabel: "70 Mo (marge iNrCy sous la limite Google de 75 Mo)",
+    maxBytes: GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
+    maxBytesLabel: "75 Mo",
     maxDurationSeconds: GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
     minShortEdgePixels: GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
   },
@@ -413,7 +414,7 @@ export function validateVideoPublicationForChannel(input: {
       ok: false,
       policy,
       reason: "video_too_large",
-      message: `La vidéo ${label} dépasse ${policy.maxBytesLabel}. Une variante dédiée doit être préparée.`,
+      message: INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE,
     };
   }
 

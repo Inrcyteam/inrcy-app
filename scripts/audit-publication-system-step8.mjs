@@ -88,21 +88,28 @@ const requiredStepFiles = [
 
 const checks = [
   {
-    name: "source vidéo 300 Mo, compression > 70 Mo, master final < 70 Mo",
+    name: "source vidéo originale plafonnée à 75 Mo sans compression automatique",
     ok:
-      /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 300 \* 1024 \* 1024/.test(mediaRules) &&
-      /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES = 70_000_000/.test(
+      /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 75_000_000/.test(mediaRules) &&
+      /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES =\s*\n?\s*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
         mediaRules,
       ) &&
-      /INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES = 65_000_000/.test(mediaRules) &&
-      /INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES =\s*\n?\s*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1/.test(
+      !/INR_MEDIA_VIDEO_(?:COMPRESSION_TRIGGER|CANONICAL_(?:TARGET|MAX))_BYTES/.test(
         mediaRules,
       ),
   },
   {
-    name: "politique Google Business dédiée 70 Mo / 30 s / 720p",
+    name: "politique Google Business 75 Mo / 30 s / 720p sans cible compressée",
     ok:
-      /GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES = 70_000_000/.test(googlePolicy) &&
+      /GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES = 75_000_000/.test(
+        googlePolicy,
+      ) &&
+      /GOOGLE_BUSINESS_VIDEO_MAX_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
+        googlePolicy,
+      ) &&
+      !/GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES|size_requires_compression/.test(
+        googlePolicy,
+      ) &&
       /GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS = 30/.test(googlePolicy) &&
       /GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE = 720/.test(googlePolicy) &&
       /action: "block"/.test(googlePolicy),

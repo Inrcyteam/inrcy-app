@@ -1,8 +1,8 @@
 import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
 
 // Above this threshold a remote probe is allowed only when Storage proves that
-// byte ranges work. That keeps a 300 MB MP4 (including `moov` at the end) out
-// of application memory: FFprobe/FFmpeg can seek directly from header to tail.
+// byte ranges work. That keeps an accepted 75 MB MP4 (including `moov` at the
+// end) out of application memory: FFprobe/FFmpeg can seek header to tail.
 export const BOOSTER_REMOTE_VIDEO_RANGE_REQUIRED_BYTES = 50 * 1024 * 1024;
 export const BOOSTER_REMOTE_VIDEO_PROBE_TIMEOUT_MS = 20_000;
 export const BOOSTER_REMOTE_VIDEO_TRANSPORT_TIMEOUT_MS = 5_000;

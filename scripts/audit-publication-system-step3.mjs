@@ -20,10 +20,13 @@ const sources = {
 const checks = [
   {
     id: "gmb-video-limits",
-    label: "Google Business possède 75 Mo officiel, 70 Mo cible, 30 s et 720 px",
+    label: "Google Business partage le plafond 75 Mo, avec 30 s et 720 px",
     ok:
-      /75_000_000/.test(sources.policy) &&
-      /70_000_000/.test(sources.policy) &&
+      /VIDEO_OFFICIAL_MAX_BYTES = 75_000_000/.test(sources.policy) &&
+      /VIDEO_MAX_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
+        sources.policy,
+      ) &&
+      !/VIDEO_TARGET_MAX_BYTES|size_requires_compression/.test(sources.policy) &&
       /MAX_DURATION_SECONDS = 30/.test(sources.policy) &&
       /MIN_SHORT_EDGE = 720/.test(sources.policy),
   },

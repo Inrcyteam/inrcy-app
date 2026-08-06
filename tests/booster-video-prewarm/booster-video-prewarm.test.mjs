@@ -30,7 +30,7 @@ const transcribeRoute = await readFile(
   "utf8",
 );
 
-test("les captures vidéo lourdes restent mises en cache et préchauffent hors du bloc d'insertion", () => {
+test("les captures vidéo restent mises en cache et préchauffent hors du bloc d'insertion", () => {
   assert.match(foundations, /type VideoFramesPreparationCache = \{/);
   assert.match(source, /const getOrPrepareVideoFramesForAI = useCallback/);
   assert.match(source, /videoFramesForAiCacheRef\.current = null/);

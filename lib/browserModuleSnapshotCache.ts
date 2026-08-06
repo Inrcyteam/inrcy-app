@@ -1,4 +1,8 @@
-import { readAccountCacheValue, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import {
+  readAccountCacheValue,
+  removeAccountCacheValue,
+  writeAccountCacheValue,
+} from "@/lib/browserAccountCache";
 
 export type BrowserModuleSnapshot<T> = {
   cachedAt: number;
@@ -40,6 +44,10 @@ export function writeModuleSnapshot<T>(key: string, data: T) {
     // Le cache est un confort UX. Une indisponibilité du stockage navigateur
     // ne doit jamais bloquer l'outil ni son actualisation réseau.
   }
+}
+
+export function invalidateModuleSnapshot(key: string) {
+  removeAccountCacheValue(cacheKey(key));
 }
 
 export const MODULE_SNAPSHOT_KEYS = {

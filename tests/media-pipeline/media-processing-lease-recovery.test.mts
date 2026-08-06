@@ -106,14 +106,11 @@ test("manual and AI workspace videos enqueue preparation as soon as upload finis
   );
   assert.match(
     uploadEvent,
-    /workspaceAiNeedsSharedCanonical[\s\S]*?mission: "ai_preparation"[\s\S]*?mission: "publication_preparation"/,
+    /else \{[\s\S]*?mission: "ai_preparation"[\s\S]*?context: "video AI prewarm"/,
   );
+  assert.doesNotMatch(uploadEvent, /workspaceAiNeedsSharedCanonical|videoSourceNeedsSharedCanonical/);
   assert.match(
     uploadEvent,
-    /\(!directVideoSource \|\| videoSourceNeedsSharedCanonical\)/,
-  );
-  assert.match(
-    uploadEvent,
-    /after\(async \(\) =>[\s\S]*?processVideoNormalizationJobsForMedia/,
+    /function processVideoNormalizationAfterUpload[\s\S]*?after\(async \(\) =>[\s\S]*?processVideoNormalizationJobsForMedia/,
   );
 });

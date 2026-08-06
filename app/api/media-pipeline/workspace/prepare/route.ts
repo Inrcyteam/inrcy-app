@@ -12,6 +12,11 @@ import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
 import { processImageNormalizationJobsForMedia } from "@/lib/mediaImageNormalizationWorker";
 import { processVideoNormalizationJobsForMedia } from "@/lib/mediaVideoNormalizationWorker";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
+import {
+  canPublishVideoSourceDirectly,
+  hasServerVideoProbeProvenance,
+} from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +54,12 @@ type ReadyVariantState = Map<string, Map<string, number>>;
 
 function cleanText(value: unknown, fallback = "", max = 500) {
   return String(value ?? fallback).trim().slice(0, max);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function jsonError(error: string, status = 400, code?: string) {
@@ -218,8 +229,32 @@ function hasAiArtifacts(media: WorkspaceMedia, variants: ReadyVariantState) {
     hasVariant(variants, media.mediaId, "ai_preview") ||
     hasVariant(variants, media.mediaId, "canonical");
   if (media.mediaType === "image") return hasPreview;
+  return hasVariant(variants, media.mediaId, "video_frame");
+}
+
+function canUseOriginalVideo(media: WorkspaceMedia) {
+  if (media.mediaType !== "video" || media.uploadStatus !== "uploaded") {
+    return false;
+  }
+  const normalization = asRecord(media.mediaMetadata.video_normalization);
+  const source = asRecord(normalization.source);
   return (
-    hasPreview && hasVariant(variants, media.mediaId, "video_frame")
+    hasServerVideoProbeProvenance(source) &&
+    canPublishVideoSourceDirectly({
+      name: media.fileName,
+      mimeType: media.mimeType,
+      storagePath: media.storagePath,
+      sizeBytes: media.sizeBytes,
+      maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+      videoCodec: source.videoCodec ?? source.video_codec,
+      audioCodec: source.audioCodec ?? source.audio_codec,
+      frameRate: source.frameRate ?? source.frame_rate ?? source.fps,
+      hasAudio: source.hasAudio ?? source.has_audio,
+      containerFormats:
+        source.containerFormats ?? source.container_formats,
+      pixelFormat: source.pixelFormat ?? source.pixel_format,
+      requireCodecProof: true,
+    })
   );
 }
 
@@ -242,10 +277,19 @@ function isMediaReady(params: {
   if (params.mission === "ai_preparation") {
     return hasAiArtifacts(params.media, params.variants);
   }
-  // Publication always consumes the managed canonical video. This guarantees
-  // one MP4/H.264/30 fps source plus its thumbnail for every provider instead
-  // of letting TikTok or Pinterest receive an arbitrary uploaded original.
-  return hasVariant(params.variants, params.media.mediaId, "canonical");
+  if (params.media.mediaType === "image") {
+    return hasVariant(params.variants, params.media.mediaId, "canonical");
+  }
+  // The original server-probed MP4 is the publication source. A current
+  // thumbnail remains required for Pinterest and for durable previews. A
+  // legacy canonical is accepted only to keep already-created drafts usable.
+  const sourceReady =
+    canUseOriginalVideo(params.media) ||
+    hasVariant(params.variants, params.media.mediaId, "canonical");
+  return (
+    sourceReady &&
+    hasVariant(params.variants, params.media.mediaId, "thumbnail")
+  );
 }
 
 async function alignReadyMissionStatuses(params: {
@@ -690,9 +734,9 @@ export async function POST(request: Request) {
     }
     if (pendingVideos.length && dispatchWorker) {
       const mediaIds = pendingVideos.map((item) => item.mediaId);
-      // A video transcode is durable work, not request work. The job is already
-      // committed above, so the browser receives `processing` immediately and
-      // can poll while this best-effort kick (with the cron as fallback) runs.
+      // Video probing/capture extraction is durable work, not request work.
+      // The job is already committed, so the browser receives `processing`
+      // immediately while this best-effort kick runs (cron remains fallback).
       after(async () => {
         try {
           await processVideoNormalizationJobsForMedia({

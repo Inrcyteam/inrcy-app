@@ -3,95 +3,56 @@ import test from "node:test";
 
 import { planVideoNormalizationExecution } from "../../lib/mediaVideoNormalizationExecutionPlan.ts";
 
-test("light sources keep the AI-first path", () => {
+const AI_OUTPUTS = [
+  "thumbnail",
+  "frame_01",
+  "frame_02",
+  "frame_03",
+  "audio_track",
+] as const;
+
+test("AI preparation extracts only lightweight artifacts from the original", () => {
   const plan = planVideoNormalizationExecution({
-    mission: "publication_preparation",
-    requestedKeys: [
-      "canonical",
-      "thumbnail",
-      "ai_preview",
-      "frame_01",
-      "frame_02",
-      "frame_03",
-      "audio_track",
-    ],
+    mission: "ai_preparation",
+    requestedKeys: AI_OUTPUTS,
     readyKeys: new Set(),
   });
 
   assert.equal(plan.mission, "ai_preparation");
-  assert.equal(plan.continuesWithPendingOutputs, true);
-  assert.deepEqual(plan.keys, [
-    "thumbnail",
-    "ai_preview",
-    "frame_01",
-    "frame_02",
-    "frame_03",
-    "audio_track",
-  ]);
+  assert.equal(plan.continuesWithPendingOutputs, false);
+  assert.deepEqual(plan.keys, AI_OUTPUTS);
+});
+
+test("publication preparation only requests the universal thumbnail", () => {
+  const plan = planVideoNormalizationExecution({
+    mission: "publication_preparation",
+    requestedKeys: ["thumbnail"],
+    readyKeys: new Set(),
+  });
+
+  assert.equal(plan.mission, "publication_preparation");
+  assert.equal(plan.continuesWithPendingOutputs, false);
+  assert.deepEqual(plan.keys, ["thumbnail"]);
+});
+
+test("obsolete compressed outputs from persisted jobs are ignored", () => {
+  const plan = planVideoNormalizationExecution({
+    mission: "publication_preparation",
+    requestedKeys: ["canonical", "ai_preview", ...AI_OUTPUTS],
+    readyKeys: new Set(),
+  });
+
+  assert.deepEqual(plan.keys, AI_OUTPUTS);
   assert.ok(!plan.keys.includes("canonical"));
+  assert.ok(!plan.keys.includes("ai_preview"));
 });
 
-test("heavy sources produce the canonical before captures and audio", () => {
+test("ready artifacts are never recomputed", () => {
   const plan = planVideoNormalizationExecution({
-    mission: "publication_preparation",
-    requestedKeys: [
-      "canonical",
-      "thumbnail",
-      "frame_01",
-      "frame_02",
-      "frame_03",
-      "audio_track",
-    ],
-    readyKeys: new Set(),
-    requiresCanonicalFirst: true,
+    mission: "ai_preparation",
+    requestedKeys: AI_OUTPUTS,
+    readyKeys: new Set(["thumbnail", "frame_01", "audio_track"]),
   });
 
-  assert.equal(plan.mission, "publication_preparation");
-  assert.equal(plan.continuesWithPendingOutputs, true);
-  assert.deepEqual(plan.keys, ["canonical"]);
-});
-
-test("a heavy publication-only request also separates its thumbnail", () => {
-  const plan = planVideoNormalizationExecution({
-    mission: "publication_preparation",
-    requestedKeys: ["canonical", "thumbnail"],
-    readyKeys: new Set(),
-    requiresCanonicalFirst: true,
-  });
-
-  assert.deepEqual(plan.keys, ["canonical"]);
-  assert.equal(plan.continuesWithPendingOutputs, true);
-});
-
-test("a publication-only request remains a single canonical stage", () => {
-  const plan = planVideoNormalizationExecution({
-    mission: "publication_preparation",
-    requestedKeys: ["canonical", "thumbnail"],
-    readyKeys: new Set(),
-  });
-
-  assert.equal(plan.mission, "publication_preparation");
-  assert.equal(plan.continuesWithPendingOutputs, false);
-  assert.deepEqual(plan.keys, ["canonical", "thumbnail"]);
-});
-
-test("ready AI derivatives are not recomputed before publication", () => {
-  const requestedKeys = [
-    "canonical",
-    "thumbnail",
-    "ai_preview",
-    "frame_01",
-    "frame_02",
-    "frame_03",
-    "audio_track",
-  ] as const;
-  const plan = planVideoNormalizationExecution({
-    mission: "publication_preparation",
-    requestedKeys,
-    readyKeys: new Set(requestedKeys.filter((key) => key !== "canonical")),
-  });
-
-  assert.equal(plan.mission, "publication_preparation");
-  assert.equal(plan.continuesWithPendingOutputs, false);
-  assert.deepEqual(plan.keys, [...requestedKeys]);
+  assert.deepEqual(plan.keys, ["frame_02", "frame_03"]);
 });

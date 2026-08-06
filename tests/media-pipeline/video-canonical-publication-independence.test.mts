@@ -6,56 +6,41 @@ import test from "node:test";
 const ROOT = process.cwd();
 const read = (file: string) => readFileSync(resolve(ROOT, file), "utf8");
 
-test("a ready canonical remains publishable outside Pinterest when optional AI derivatives fail", () => {
+test("the verified original remains publishable when optional AI artifacts fail", () => {
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
-  const preparation = read("lib/mediaWorkspacePublicationPreparation.ts");
-  const workspaceStatus = read("lib/mediaWorkspaceServer.ts");
   const consumption = read("lib/mediaWorkspaceConsumption.ts");
 
+  assert.match(worker, /const publicationMediaReady = originalReady/);
   assert.match(
     worker,
-    /signature", getVideoNormalizationSignature\("canonical"\)/,
+    /Captures\/audio IA are best-effort and never invalidate a compatible/,
   );
+  assert.doesNotMatch(worker, /outputs\.canonical|libx264/);
   assert.match(
-    worker,
-    /publication_status: publicationMasterReady[\s\S]*?\? "ready"/,
-  );
-  assert.match(
-    preparation,
-    /getVideoNormalizationSignature\("canonical"\)/,
-  );
-  assert.match(
-    preparation,
-    /if \(!params\.canonicalMediaIds\.has\(params\.media\.mediaId\)\) return false/,
-  );
-  assert.match(
-    preparation,
-    /params\.media\.mediaType !== "video" \|\|\s*!params\.requiresVideoThumbnail/,
-  );
-  assert.match(
-    preparation,
-    /isTerminalFailure\(item\) &&\s*!hasReadyPublicationVariants/,
-  );
-  assert.match(
-    workspaceStatus,
-    /!\["ready", "legacy_ready"\]\.includes\(status\.publicationStatus\)/,
+    consumption,
+    /const publicationVariant = directSourceReady \? null : canonical/,
   );
   assert.match(
     consumption,
-    /item\.mediaType === "video"[\s\S]*?\["ready", "legacy_ready"\]\.includes\(item\.publicationStatus\)/,
+    /bucket: publicationVariant\?\.bucket \|\| item\.sourceBucket/,
   );
 });
 
-test("heavy-video AI captures never decode the original in the browser", () => {
+test("AI captures start for every accepted video without a size branch", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
-  const start = modal.indexOf("hasVideoForGeneration &&", modal.indexOf("let videoFramesForAI"));
-  const end = modal.indexOf("setGenerationProgressPhase(", start);
-  const localCaptureGuard = modal.slice(start, end);
-
-  assert.ok(start >= 0 && end > start);
-  assert.match(
-    localCaptureGuard,
-    /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES/,
+  const prewarmStart = modal.indexOf(
+    "// Les captures locales commencent dès l'insertion de toute vidéo acceptée.",
   );
-  assert.doesNotMatch(localCaptureGuard, /!mediaPipelineCutoverEnabled/);
+  const prewarmEnd = modal.indexOf("}, [", prewarmStart);
+  const localPrewarm = modal.slice(prewarmStart, prewarmEnd);
+
+  assert.ok(prewarmStart >= 0 && prewarmEnd > prewarmStart);
+  assert.match(localPrewarm, /getOrPrepareVideoFramesForAI\(videoFile\)/);
+  assert.doesNotMatch(localPrewarm, /size\s*[<>]=?|HEAVY|PREWARM_MIN/);
+
+  const generationStart = modal.indexOf("let videoFramesForAI");
+  const generationEnd = modal.indexOf("const generationMediaWorkspaceId", generationStart);
+  const localGeneration = modal.slice(generationStart, generationEnd);
+  assert.match(localGeneration, /getOrPrepareVideoFramesForAI\(videoFile\)/);
+  assert.match(localGeneration, /BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS/);
 });

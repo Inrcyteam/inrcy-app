@@ -4,8 +4,8 @@ import { processVideoNormalizationJobs } from "@/lib/mediaVideoNormalizationWork
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Pro + Fluid Compute: enough budget for one bounded 300 MB -> 65 MB stage.
-// The worker never chains a second FFmpeg mission inside this invocation.
+// Pro + Fluid Compute: enough budget for one bounded probe or capture mission
+// on an accepted original (75,000,000 bytes maximum). No compression runs here.
 export const maxDuration = 1800;
 
 function isAuthorizedCron(req: Request) {

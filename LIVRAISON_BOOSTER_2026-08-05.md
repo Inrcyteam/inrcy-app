@@ -53,7 +53,7 @@ Formats source couverts :
 - Images : JPG/JFIF, PNG, WebP, GIF, AVIF, HEIC/HEIF, TIFF et BMP ;
 - Vidéos : MP4/M4V, MOV, WebM, MPEG, AVI, MKV, 3GP/3G2, TS, WMV, FLV et OGV ;
 - Limites produit : 5 images, 50 Mo par image, 150 Mo au total, ou 1 vidéo de
-  300 Mo maximum.
+  75 Mo maximum ; au-delà, le fichier doit d’abord être compressé hors du Booster.
 
 Un original réellement compatible est conservé octet pour octet. Une source
 incompatible mais adaptable reçoit une dérivée serveur minimale. GIF animé et

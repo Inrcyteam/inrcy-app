@@ -19,6 +19,32 @@ type SubscriptionGateRow = {
   start_date?: string | null;
 };
 
+function isAuthorizedInternalPublishWorker(req: NextRequest, pathname: string) {
+  if (pathname !== "/api/booster/publish-now") return false;
+  const secret = String(
+    process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "",
+  ).trim();
+  if (!secret) return false;
+
+  const authorization = String(req.headers.get("authorization") || "");
+  const bearer = authorization.startsWith("Bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+  const headerSecret = String(req.headers.get("x-cron-secret") || "").trim();
+  const userId = String(
+    req.headers.get("x-inr-agent-user-id") ||
+      req.headers.get("x-cron-user-id") ||
+      "",
+  ).trim();
+
+  return (
+    (bearer === secret || headerSecret === secret) &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      userId,
+    )
+  );
+}
+
 const TRIAL_DURATION_DAYS = 21;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -594,6 +620,15 @@ export async function proxy(req: NextRequest) {
 
   // OAuth callbacks bypass rate limiting, but not the blocked-account guard above.
   if (isOauthCallback(pathname)) {
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    return applyResponseHeaders(res);
+  }
+
+  // A single publication fans out into one authenticated durable worker per
+  // channel. Those internal callbacks must not consume the user's six-request
+  // burst limit or daily publication quota; the original user request already
+  // passed both controls. The route verifies the same secret again.
+  if (isAuthorizedInternalPublishWorker(req, pathname)) {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
     return applyResponseHeaders(res);
   }

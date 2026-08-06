@@ -16,7 +16,7 @@ async function readSource(relativePath: string) {
   return await readFile(path.resolve(ROOT, relativePath), "utf8");
 }
 
-test("MP4 et M4V utilisent directement la source stockée", () => {
+test("MP4, M4V et MOV H.264/AAC utilisent directement la source stockée", () => {
   assert.equal(
     canPublishVideoSourceDirectly({
       name: "publication.MP4",
@@ -54,7 +54,7 @@ test("MP4 et M4V utilisent directement la source stockée", () => {
       containerFormats: ["mov"],
       pixelFormat: "yuv420p",
     }),
-    false,
+    true,
   );
 });
 
@@ -65,22 +65,18 @@ test("TikTok reçoit une vidéo de 30 Mo en un morceau", () => {
   });
 });
 
-test("TikTok reçoit une vidéo de 160 Mo en cinq morceaux séquentiels", () => {
-  assert.deepEqual(buildTikTokVideoUploadPlan(160 * MB), {
+test("TikTok découpe la limite exacte de 75 Mo sans modifier la vidéo", () => {
+  assert.deepEqual(buildTikTokVideoUploadPlan(75_000_000), {
     chunkSize: TIKTOK_DEFAULT_CHUNK_BYTES,
-    totalChunkCount: 5,
+    totalChunkCount: 2,
   });
 });
 
-test("TikTok garde un dernier morceau conforme pour une source de 300 Mo", () => {
-  const size = 300 * MB;
-  const plan = buildTikTokVideoUploadPlan(size);
-  const lastChunkSize =
-    size - plan.chunkSize * (plan.totalChunkCount - 1);
-
-  assert.equal(plan.totalChunkCount, 9);
-  assert.ok(lastChunkSize >= 5 * MB);
-  assert.ok(lastChunkSize <= 64 * MB);
+test("TikTok refuse une vidéo au-dessus du plafond Booster", () => {
+  assert.throws(
+    () => buildTikTokVideoUploadPlan(75_000_001),
+    /tiktok_video_source_too_large/,
+  );
 });
 
 test("publier finalise après le clic tandis que la programmation garde sa récupération", async () => {
@@ -124,14 +120,11 @@ test("publier finalise après le clic tandis que la programmation garde sa récu
   );
   assert.match(uploadEvent, /!directVideoSource/);
   assert.match(uploadEvent, /reason:\s*"source_direct_ready"/);
+  assert.match(prepareRoute, /function canUseOriginalVideo/);
   assert.match(
     prepareRoute,
-    /Publication always consumes the managed canonical video/,
+    /canUseOriginalVideo\(params\.media\)[\s\S]*hasVariant\(params\.variants, params\.media\.mediaId, "canonical"\)/,
   );
-  assert.match(
-    prepareRoute,
-    /return hasVariant\(params\.variants,\s*params\.media\.mediaId,\s*"canonical"\)/,
-  );
-  assert.doesNotMatch(prepareRoute, /function isDirectPublicationVideo/);
+  assert.match(prepareRoute, /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES/);
   assert.doesNotMatch(publishRoute, /oversizedPublicationVideo/);
 });

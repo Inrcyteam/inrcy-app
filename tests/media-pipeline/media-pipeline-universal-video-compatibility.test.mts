@@ -21,7 +21,7 @@ const ROOT = process.cwd();
 
 const PROVEN_MP4 = {
   sizeBytes: 24 * MB,
-  maxBytes: 300 * MB,
+  maxBytes: 75_000_000,
   videoCodec: "h264",
   audioCodec: "aac",
   frameRate: 29.97,
@@ -37,26 +37,28 @@ test("le transport garde tous les formats universels autorisÃ©s", () => {
   for (const extension of ["jpg", "png", "webp", "gif", "avif", "heic", "tiff", "bmp"]) {
     assert.ok(imageExtensions.has(extension));
   }
-  for (const extension of ["mp4", "m4v", "mov", "webm", "mpeg", "avi", "mkv", "3gp", "ts", "wmv", "flv", "ogv"]) {
+  for (const extension of ["mp4", "m4v", "mov"]) {
     assert.ok(videoExtensions.has(extension));
+  }
+  for (const extension of ["webm", "mkv", "avi"]) {
+    assert.equal(videoExtensions.has(extension), false);
   }
 });
 
-test("MOV, WebM et MKV sont acceptÃ©s comme sources mais demandent une adaptation avant publication", () => {
+test("WebM et MKV ne peuvent pas être publiés directement", () => {
   for (const source of [
-    { name: "camera.mov", mimeType: "video/quicktime" },
     { name: "navigateur.webm", mimeType: "video/webm" },
     { name: "studio.mkv", mimeType: "video/x-matroska" },
   ]) {
     assert.deepEqual(getDirectVideoCompatibility({ ...source, ...PROVEN_MP4 }), {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "container_incompatible",
     });
   }
 });
 
-test("un MP4 H.264/AAC avec FPS prouvÃ© conserve exactement l'original", () => {
+test("un MP4, M4V ou MOV H.264/AAC prouvé conserve exactement l'original", () => {
   assert.deepEqual(
     getDirectVideoCompatibility({
       name: "original.mp4",
@@ -76,10 +78,18 @@ test("un MP4 H.264/AAC avec FPS prouvÃ© conserve exactement l'original", () =>
     }),
     true,
   );
+  assert.equal(
+    canPublishVideoSourceDirectly({
+      name: "iphone.mov",
+      mimeType: "video/quicktime",
+      ...PROVEN_MP4,
+    }),
+    true,
+  );
   assert.equal(normalizeVideoFrameRate("30000/1001"), 29.97);
 });
 
-test("un faux .mp4 Matroska/WebM et un H.264 yuv444p sont canonicalisÃƒÂ©s", () => {
+test("un faux MP4 ou un pixel format incompatible demande une adaptation", () => {
   assert.deepEqual(
     getDirectVideoCompatibility({
       name: "matroska-renomme.mp4",
@@ -89,7 +99,7 @@ test("un faux .mp4 Matroska/WebM et un H.264 yuv444p sont canonicalisÃƒÂ©s",
     }),
     {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "container_proof_incompatible",
     },
   );
@@ -102,7 +112,7 @@ test("un faux .mp4 Matroska/WebM et un H.264 yuv444p sont canonicalisÃƒÂ©s",
     }),
     {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "pixel_format_incompatible",
     },
   );
@@ -121,17 +131,17 @@ test("le probe FFmpeg extrait codec, dimensions et FPS effectif", () => {
   });
 });
 
-test("codec, audio ou FPS incompatible/inconnu force le canonique sans bloquer le lot", () => {
+test("codec, audio ou FPS incompatible demande une adaptation sans bloquer le lot", () => {
   assert.deepEqual(
     getDirectVideoCompatibility({
       name: "mp4-ne-suffit-pas.mp4",
       mimeType: "video/mp4",
       sizeBytes: 10 * MB,
-      maxBytes: 300 * MB,
+      maxBytes: 75_000_000,
     }),
     {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "container_proof_unknown",
     },
   );
@@ -153,7 +163,7 @@ test("codec, audio ou FPS incompatible/inconnu force le canonique sans bloquer l
       ...override,
     });
     assert.equal(decision.compatible, false);
-    assert.equal(decision.action, "canonical_required");
+    assert.equal(decision.action, "adaptation_required");
     assert.equal(decision.reason, override.reason);
   }
 });
@@ -184,7 +194,7 @@ test("la preuve codec/FPS ne contourne jamais durÃ©e, poids ou rÃ©solution p
   const tooHeavy = validateVideoPublicationForChannel({
     ...common,
     channel: "gmb",
-    sizeBytes: 73_000_000,
+    sizeBytes: 75_000_001,
     durationSeconds: 20,
     width: 1280,
     height: 720,
@@ -294,9 +304,8 @@ test("un workspace source-only inconnu se prÃ©chauffe puis s'auto-rÃ©pare du
 
   assert.match(normalizer, /frameRate:\s*stream\.frameRate/);
   assert.match(normalizer, /source_frame_rate:\s*source\.frameRate/);
-  assert.match(normalizer, /output_frame_rate:\s*canonicalOutputFrameRate/);
-  assert.match(normalizer, /output_container_format:\s*"mp4"/);
-  assert.match(normalizer, /output_pixel_format:\s*canonicalOutputPixelFormat/);
+  assert.match(normalizer, /source_container_formats:\s*source\.containerFormats/);
+  assert.doesNotMatch(normalizer, /libx264|canonicalOutputFrameRate|output_container_format/);
   assert.match(worker, /source:\s*normalized\.source/);
   assert.match(worker, /width:\s*params\.normalized\.source\.orientedWidth/);
   assert.match(worker, /height:\s*params\.normalized\.source\.orientedHeight/);
@@ -350,10 +359,7 @@ test("un workspace source-only inconnu se prÃ©chauffe puis s'auto-rÃ©pare du
     workspaceApi,
     /durationSeconds:\s*Number\(item\?\.duration_seconds/,
   );
-  assert.doesNotMatch(
-    uploadEvent,
-    /current\.data\.media_type === "video" &&[\s\S]{0,80}!sourceMetadataOnly/,
-  );
+  assert.doesNotMatch(uploadEvent, /sharedCanonical|canonical_required/);
   assert.match(
     imagePreparation,
     /instagram:\s*new Set\(\["image\/jpeg"\]\)/,

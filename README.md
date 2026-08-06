@@ -227,8 +227,8 @@ Ne jamais lancer une migration non testée directement en production.
 ## Règles média actuelles
 
 - Images : jusqu’à 5 images, 50 Mo par image et 150 Mo au total.
-- Vidéo source : 1 vidéo, jusqu’à 300 Mo.
-- Publication optimisée : source jusqu’à 300 Mo, canonique jusqu’à 299 Mo et variante dédiée plus légère uniquement lorsque le canal l’exige (notamment Google Business).
+- Vidéo source : 1 vidéo MP4/M4V, jusqu’à 75 Mo. Au-delà, le fichier doit d’abord être compressé hors du Booster.
+- Publication optimisée : l’original validé est conservé ; une variante est créée uniquement lorsqu’une adaptation de format est explicitement demandée pour un canal.
 
 Ces règles doivent rester alignées entre :
 

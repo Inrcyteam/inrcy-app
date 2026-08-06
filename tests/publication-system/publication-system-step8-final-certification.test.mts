@@ -8,12 +8,10 @@ import {
 import { classifyBoosterPublicationResult } from "../../lib/boosterPublicationOutcome.ts";
 import {
   getGoogleBusinessVideoPreparationDecision,
-  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+  GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
 } from "../../lib/googleBusinessMediaPolicy.ts";
 import {
-  INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES,
-  INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES,
-  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES,
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "../../lib/mediaRules.ts";
 import {
@@ -22,40 +20,17 @@ import {
   normalizeMetaGraphApiVersion,
 } from "../../lib/metaGraphApi.ts";
 
-test("la source 300 Mio est acceptée puis son master cible 65 Mo", () => {
-  assert.equal(INR_MEDIA_VIDEO_SOURCE_MAX_BYTES, 300 * 1024 * 1024);
-  assert.equal(INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES, 70_000_000);
-  assert.equal(INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES, 65_000_000);
-  assert.equal(INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES, 70_000_000 - 1);
-  assert.ok(
-    INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES <
-      INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES,
-  );
+test("la source et la publication partagent le plafond exact de 75 Mo", () => {
+  assert.equal(INR_MEDIA_VIDEO_SOURCE_MAX_BYTES, 75_000_000);
+  assert.equal(INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES, 75_000_000);
 });
 
-test("Google prépare 220 Mo, accepte une vidéo conforme et ne coupe jamais silencieusement 31 secondes", () => {
-  const heavy = getGoogleBusinessVideoPreparationDecision({
-    name: "video.mp4",
-    type: "video/mp4",
-    storagePath: "videos/video.mp4",
-    sizeBytes: 220 * 1024 * 1024,
-    durationSeconds: 20,
-    width: 1280,
-    height: 720,
-    videoCodec: "h264",
-    audioCodec: "aac",
-    frameRate: 30,
-    hasAudio: true,
-    containerFormats: ["mov", "mp4"],
-    pixelFormat: "yuv420p",
-  });
-  assert.deepEqual(heavy, { action: "prepare", reason: "size_requires_compression" });
-
+test("Google accepte l'original de 75 Mo et ne coupe jamais silencieusement 31 secondes", () => {
   const direct = getGoogleBusinessVideoPreparationDecision({
     name: "video.mp4",
     type: "video/mp4",
     storagePath: "videos/video.mp4",
-    sizeBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES - 1024,
+    sizeBytes: GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
     durationSeconds: 20,
     width: 1280,
     height: 720,

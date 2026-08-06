@@ -12,6 +12,10 @@ import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import {
+  invalidateModuleSnapshot,
+  MODULE_SNAPSHOT_KEYS,
+} from "@/lib/browserModuleSnapshotCache";
+import {
   postBoosterPublication,
   type BoosterPublishProgressUpdate,
 } from "@/lib/boosterPublishClient";
@@ -538,6 +542,10 @@ export default function DashboardBoosterModalLayer({
                       : 0,
                   }
                 : null;
+              // A previous dashboard warm-up may still contain the history from
+              // before this publication. Keep it only as a visual optimization:
+              // iNrSend must read the accepted publication from the server.
+              invalidateModuleSnapshot(MODULE_SNAPSHOT_KEYS.inrSendDefault);
               setPublishSummary(summary);
               setPublishSuccessOpen(true);
             }}

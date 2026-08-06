@@ -1,10 +1,11 @@
 const DIRECT_VIDEO_MIME_TYPES = new Set([
   "video/mp4",
   "video/x-m4v",
+  "video/quicktime",
   "application/mp4",
 ]);
 
-const DIRECT_VIDEO_EXTENSIONS = new Set(["mp4", "m4v"]);
+const DIRECT_VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov"]);
 // `ffmpeg -i` reports a comma-separated alias list for the ISO BMFF family
 // (usually `mov,mp4,m4a,3gp,3g2,mj2`). This proof is about the bytes that were
 // probed by the server, unlike a filename or a browser-provided MIME type.
@@ -45,7 +46,7 @@ export type DirectVideoCompatibilityReason =
 
 export type DirectVideoCompatibility = {
   compatible: boolean;
-  action: "original" | "canonical_required";
+  action: "original" | "adaptation_required";
   reason: DirectVideoCompatibilityReason;
 };
 
@@ -172,9 +173,9 @@ function normalizedAudioCodec(value: unknown) {
 
 /**
  * DÃ©cide si le binaire original peut Ãªtre envoyÃ© tel quel. Une incompatibilitÃ©
- * technique demande une canonicalisation/adaptation ; elle ne constitue pas un
+ * technique demande une adaptation explicite de canal ; elle ne constitue pas un
  * blocage mÃ©tier global (durÃ©e, poids et rÃ©solution restent validÃ©s canal par
- * canal par `videoPublicationPolicy`).
+ * canal par `videoPublicationPolicy`). Elle ne lance aucune compression automatique.
  */
 export function getDirectVideoCompatibility(
   input: DirectVideoCompatibilityInput,
@@ -188,7 +189,7 @@ export function getDirectVideoCompatibility(
   if (!compatibleContainer) {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "container_incompatible",
     };
   }
@@ -199,14 +200,14 @@ export function getDirectVideoCompatibility(
     if (!sizeBytes) {
       return {
         compatible: false,
-        action: "canonical_required",
+        action: "adaptation_required",
         reason: "size_unknown",
       };
     }
     if (sizeBytes > maxBytes) {
       return {
         compatible: false,
-        action: "canonical_required",
+        action: "adaptation_required",
         reason: "size_exceeded",
       };
     }
@@ -223,7 +224,7 @@ export function getDirectVideoCompatibility(
   if (!containerFormats.length) {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "container_proof_unknown",
     };
   }
@@ -234,7 +235,7 @@ export function getDirectVideoCompatibility(
   ) {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "container_proof_incompatible",
     };
   }
@@ -243,14 +244,14 @@ export function getDirectVideoCompatibility(
   if (!videoCodec || videoCodec === "unknown") {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "video_codec_unknown",
     };
   }
   if (!DIRECT_VIDEO_CODECS.has(videoCodec)) {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "video_codec_incompatible",
     };
   }
@@ -259,14 +260,14 @@ export function getDirectVideoCompatibility(
   if (!pixelFormat || pixelFormat === "unknown") {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "pixel_format_unknown",
     };
   }
   if (!pixelFormat.startsWith("yuv420")) {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "pixel_format_incompatible",
     };
   }
@@ -283,14 +284,14 @@ export function getDirectVideoCompatibility(
     if (!audioCodec || audioCodec === "unknown") {
       return {
         compatible: false,
-        action: "canonical_required",
+        action: "adaptation_required",
         reason: "audio_codec_unknown",
       };
     }
     if (!DIRECT_AUDIO_CODECS.has(audioCodec)) {
       return {
         compatible: false,
-        action: "canonical_required",
+        action: "adaptation_required",
         reason: "audio_codec_incompatible",
       };
     }
@@ -300,14 +301,14 @@ export function getDirectVideoCompatibility(
   if (frameRate === null) {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "frame_rate_unknown",
     };
   }
   if (frameRate > DIRECT_VIDEO_MAX_FRAME_RATE) {
     return {
       compatible: false,
-      action: "canonical_required",
+      action: "adaptation_required",
       reason: "frame_rate_incompatible",
     };
   }

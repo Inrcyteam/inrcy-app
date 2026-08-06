@@ -104,7 +104,7 @@ test("les aperçus locaux restent affichés pendant la préparation serveur", as
   assert.match(source, /makeImageKey\(currentFile\) !== expectedImageKey/);
 });
 
-test("le choix vidéo reste instantané et le canonique géré se finalise après Publier", async () => {
+test("le choix vidéo reste instantané et l'original est attesté sans compression", async () => {
   const hook = await readSource(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
@@ -118,11 +118,12 @@ test("le choix vidéo reste instantané et le canonique géré se finalise aprè
   assert.match(hook, /missionReadyRef/);
   assert.match(hook, /runPreparationMission\("publication_preparation"\)/);
   assert.match(hook, /loadMediaPublicationWorkspace\(/);
-  assert.doesNotMatch(prepareRoute, /function isDirectPublicationVideo/);
+  assert.match(prepareRoute, /function canUseOriginalVideo/);
   assert.match(
     prepareRoute,
-    /Publication always consumes the managed canonical video[\s\S]{0,240}hasVariant\(params\.variants, params\.media\.mediaId, "canonical"\)/,
+    /The original server-probed MP4 is the publication source/,
   );
+  assert.doesNotMatch(prepareRoute, /size_requires_compression/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);
   const immediatePublish = modal.slice(
@@ -142,9 +143,9 @@ test("le choix vidéo reste instantané et le canonique géré se finalise aprè
   assert.match(modal, /options\?\.generateMissingVideoVariants === false/);
 });
 
-test("un 413 TUS explique la limite globale Supabase à configurer", async () => {
+test("un 413 TUS explique le plafond Booster de 75 Mo", async () => {
   const source = await readSource("lib/universalMediaUploadClient.ts");
 
   assert.match(source, /response\.status === 413/);
-  assert.match(source, /limite requise : 300 Mo/);
+  assert.match(source, /limite requise : \$\{INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL\}/);
 });

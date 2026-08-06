@@ -7,7 +7,7 @@ import {
   postGoogleBusinessLocalPost,
 } from "../../lib/googleBusinessPostTransport.ts";
 import {
-  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+  GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
   getGoogleBusinessVideoPreparationDecision,
 } from "../../lib/googleBusinessMediaPolicy.ts";
 import { probeGoogleBusinessMediaUrl } from "../../lib/googleBusinessMediaProbe.ts";
@@ -23,13 +23,13 @@ function videoHeaders(contentLength?: number) {
   };
 }
 
-test("une source de 300 Mio exige une variante GMB sans modifier l'original", () => {
+test("une source conforme de 75 Mo est envoyée directement à GMB", () => {
   assert.deepEqual(
     getGoogleBusinessVideoPreparationDecision({
       name: "master.mp4",
       type: "video/mp4",
       storagePath: "users/u/master.mp4",
-      sizeBytes: 300 * MIB,
+      sizeBytes: 75_000_000,
       durationSeconds: 20,
       width: 1920,
       height: 1080,
@@ -40,9 +40,9 @@ test("une source de 300 Mio exige une variante GMB sans modifier l'original", ()
       containerFormats: ["mov", "mp4"],
       pixelFormat: "yuv420p",
     }),
-    { action: "prepare", reason: "size_requires_compression" },
+    { action: "direct", reason: "already_compatible" },
   );
-  assert.equal(GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES, 70_000_000);
+  assert.equal(GOOGLE_BUSINESS_VIDEO_MAX_BYTES, 75_000_000);
 });
 
 test("le probe rejette 300 Mio sur HEAD sans retélécharger un seul octet", async () => {
@@ -66,7 +66,7 @@ test("le probe rejette 300 Mio sur HEAD sans retélécharger un seul octet", asy
   assert.equal(calls, 1);
 });
 
-test("70 000 000 octets passent, 70 000 001 sont refusés", async () => {
+test("75 000 000 octets passent, 75 000 001 sont refusés", async () => {
   const probe = (contentLength: number) =>
     probeGoogleBusinessMediaUrl({
       url: "https://cdn.example.test/gmb.mp4",
@@ -77,10 +77,10 @@ test("70 000 000 octets passent, 70 000 001 sont refusés", async () => {
           headers: videoHeaders(contentLength),
         })) as typeof fetch,
     });
-  const accepted = await probe(70_000_000);
-  const rejected = await probe(70_000_001);
+  const accepted = await probe(75_000_000);
+  const rejected = await probe(75_000_001);
   assert.equal(accepted.ok, true);
-  assert.equal(accepted.contentLength, 70_000_000);
+  assert.equal(accepted.contentLength, 75_000_000);
   assert.equal(rejected.ok, false);
   assert.equal(rejected.reason, "file_too_large");
 });
@@ -101,7 +101,7 @@ test("un HEAD sans taille utilise uniquement GET bytes=0-0 et valide la Range", 
       headers: {
         ...videoHeaders(),
         "Content-Length": "1",
-        "Content-Range": "bytes 0-0/70000000",
+        "Content-Range": "bytes 0-0/75000000",
       },
     });
   }) as typeof fetch;
@@ -111,7 +111,7 @@ test("un HEAD sans taille utilise uniquement GET bytes=0-0 et valide la Range", 
     fetchImpl,
   });
   assert.equal(result.ok, true);
-  assert.equal(result.contentLength, 70_000_000);
+  assert.equal(result.contentLength, 75_000_000);
   assert.deepEqual(methods, ["HEAD", "GET"]);
 });
 
@@ -125,7 +125,7 @@ test("un serveur qui ignore Range n'est jamais autorisé à renvoyer la vidéo e
     }
     return new Response(new Uint8Array([1]), {
       status: 200,
-      headers: videoHeaders(70_000_000),
+      headers: videoHeaders(75_000_000),
     });
   }) as typeof fetch;
   const result = await probeGoogleBusinessMediaUrl({

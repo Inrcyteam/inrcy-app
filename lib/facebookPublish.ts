@@ -237,9 +237,9 @@ export async function facebookPublishVideoToPage(params: {
     form.append("access_token", pageAccessToken);
     form.append("description", description || "");
     if (title?.trim()) form.append("title", title.trim().slice(0, 120));
-    // Meta ingests the object directly from the signed Supabase URL. A 300 MB
-    // source therefore never crosses the Vercel heap and is not downloaded a
-    // second time before the provider upload.
+    // Meta ingests the accepted original directly from the signed Supabase URL.
+    // It never crosses the Vercel heap or gets downloaded a second time before
+    // the provider upload.
     form.append("file_url", hostedVideoUrl);
 
     const uploadRes = await fetch(

@@ -25,6 +25,13 @@ import {
 import { UNIVERSAL_MEDIA_PIPELINE_VERSION } from "@/lib/mediaPipelineRegistry";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
 import { sanitizeClientMediaMetadata } from "@/lib/mediaClientMetadata";
+import {
+  INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS,
+  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
+  INR_MEDIA_VIDEO_FORMATS_LABEL,
+  INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE,
+  getInrMediaFileExtension,
+} from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 
@@ -105,6 +112,27 @@ function cleanJsonObject(value: unknown): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).slice(0, 80),
   );
+}
+
+function isAcceptedBoosterVideoSource(params: {
+  fileName: string;
+  mimeType: string;
+}) {
+  const extension = getInrMediaFileExtension(params.fileName);
+  const mimeType = String(params.mimeType || "")
+    .toLowerCase()
+    .split(";")[0]
+    ?.trim() || "";
+  const extensionAccepted = INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.includes(
+    extension as (typeof INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS)[number],
+  );
+  const mimeAccepted =
+    !mimeType ||
+    mimeType === "application/octet-stream" ||
+    INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES.includes(
+      mimeType as (typeof INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES)[number],
+    );
+  return extensionAccepted && mimeAccepted;
 }
 
 function positiveNumber(value: unknown) {
@@ -509,6 +537,17 @@ export async function POST(request: Request) {
         "media_type_target_mismatch",
       );
     }
+    if (
+      mediaType === "video" &&
+      (target === "booster_video_source" || target === "workspace_source") &&
+      !isAcceptedBoosterVideoSource({ fileName, mimeType })
+    ) {
+      return jsonError(
+        `Format vidÃ©o non autorisÃ© dans Booster. Formats acceptÃ©s : ${INR_MEDIA_VIDEO_FORMATS_LABEL}.`,
+        415,
+        "unsupported_booster_video_format",
+      );
+    }
     if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
       return jsonError("La taille du média est invalide.", 400, "invalid_size");
     }
@@ -517,7 +556,7 @@ export async function POST(request: Request) {
     if (sizeBytes > productMax) {
       return jsonError(
         mediaType === "video"
-          ? `Vidéo trop lourde. Taille maximale : ${getUniversalMediaProductMaxLabel(mediaType)}.`
+          ? INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE
           : `Image trop lourde. Taille maximale : ${getUniversalMediaProductMaxLabel(mediaType)}.`,
         413,
         "media_product_limit_exceeded",

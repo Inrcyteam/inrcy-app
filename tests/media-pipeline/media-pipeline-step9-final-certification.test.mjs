@@ -41,7 +41,7 @@ test("le healthcheck interne certifie flags, tables, buckets et files", () => {
   assert.match(cron, /report\.checks\.media_pipeline/);
 });
 
-test("le cron image reste espacé et le worker vidéo lourd tourne chaque minute", () => {
+test("le cron image reste espacé et le worker vidéo tourne chaque minute", () => {
   const vercel = JSON.parse(read("vercel.json"));
   const byPath = new Map(vercel.crons.map((item) => [item.path, item.schedule]));
   assert.equal(byPath.get("/api/cron/media-image-normalization"), "2-59/5 * * * *");

@@ -584,7 +584,7 @@ async function publishNowHandler(req: Request) {
         videoChannelCount: requestedVideoChannels.length,
       })
     ) {
-      // A remote video attestation/transcode must never hold image channels.
+      // A remote video attestation/preparation must never hold image channels.
       // Attempt 1 materializes images; the durable next attempt owns video.
       requestedVideoChannels.forEach((channel) =>
         deferredPreparationChannels.add(channel),
@@ -2164,8 +2164,8 @@ async function publishNowHandler(req: Request) {
             _asyncParentIdempotencyKey: publishIdempotencyKey || null,
             _asyncWorkspacePurpose: workspacePurpose,
             // Ce bit n'est honoré que par une requête cron authentifiée. Il
-            // transporte jusqu'au worker canal la preuve FFmpeg/canonique déjà
-            // matérialisée par ce worker de préparation, sans relire le workspace.
+            // transporte jusqu'au worker canal la preuve FFmpeg de l'original
+            // (ou d'un ancien dérivé), sans relire le workspace.
             _asyncTrustedVideoCompatibilityProof:
               channelMediaMode === "video" &&
               hasTrustedPublicationVideoCompatibilityProof,

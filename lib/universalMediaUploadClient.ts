@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabaseClient";
+import { INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL } from "@/lib/mediaRules";
 import {
   UNIVERSAL_MEDIA_TUS_CHUNK_SIZE_BYTES,
   UNIVERSAL_MEDIA_TUS_RETRY_DELAYS_MS,
@@ -512,7 +513,7 @@ async function readTusResponseError(response: Response, fallback: string) {
   const body = await response.text().catch(() => "");
   if (response.status === 413) {
     return makePermanentTusError(
-      "La plateforme de stockage n'est pas encore configurée pour ce poids de fichier (limite requise : 300 Mo).",
+      `La plateforme de stockage n'est pas encore configurée pour ce poids de fichier (limite requise : ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}).`,
       413,
     );
   }

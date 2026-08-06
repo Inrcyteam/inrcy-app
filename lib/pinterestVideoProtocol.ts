@@ -1,4 +1,7 @@
-import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
+import {
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "./mediaRules.ts";
 import {
   ensureFrenchPublicationErrorMessage,
   getProviderPublicationErrorMessage,
@@ -796,7 +799,9 @@ function validateProtocolInput(params: PinterestVideoDurableProtocolArgs) {
     throw new Error("La taille de la vidéo Pinterest est invalide.");
   }
   if (videoSize > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES) {
-    throw new Error("La vidéo Pinterest dépasse 300 Mo.");
+    throw new Error(
+      `La vidéo Pinterest dépasse ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}.`,
+    );
   }
   normalizeApiBaseUrl(params.apiBaseUrl);
 }

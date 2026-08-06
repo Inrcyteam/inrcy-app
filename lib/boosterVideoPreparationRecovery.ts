@@ -21,8 +21,8 @@ const NON_RECOVERABLE_VIDEO_REASONS = new Set([
 /**
  * A missing/invalid publication variant must be regenerated once before the
  * publication is rejected. Only hard duration constraints are known to remain
- * invalid after a transcode because iNrCy never trims the professional's video
- * silently.
+ * invalid after another technical preparation attempt because iNrCy never
+ * trims the professional's video silently.
  */
 export function shouldRetryVideoVariantGeneration(
   issues: readonly VideoPreparationIssue[] | null | undefined,

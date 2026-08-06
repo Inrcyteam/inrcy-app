@@ -30,7 +30,6 @@ import {
   VIDEO_NORMALIZATION_PIPELINE_VERSION,
   VIDEO_NORMALIZATION_VARIANT_KEYS,
   VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
-  VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
   buildVideoNormalizationStoragePath,
   getVideoNormalizationKeyFromSignature,
   getVideoNormalizationPurpose,
@@ -39,6 +38,8 @@ import {
   isVideoNormalizationEnabled,
   type VideoNormalizationVariantKey,
 } from "@/lib/mediaVideoNormalizationPolicy";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 import {
   normalizeVideoSource,
   type NormalizedVideoVariant,
@@ -102,8 +103,8 @@ type ProcessedJobSummary = {
   errorCode?: string;
 };
 
-// A 300 MB source gets enough time to cross the private Storage link. FFmpeg
-// progress renews the 31-minute lease while stalled sockets still fail quickly.
+// The source is capped at exactly 75,000,000 bytes before this worker. Keep a bounded transfer
+// timeout while still tolerating a slow private Storage link.
 const VIDEO_SOURCE_DOWNLOAD_TIMEOUT_MS = 240_000;
 
 class VideoNormalizationError extends Error {
@@ -132,6 +133,38 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function canPublishOriginalVideo(params: {
+  media: Pick<
+    MediaRow,
+    | "original_file_name"
+    | "mime_type"
+    | "detected_mime_type"
+    | "storage_path"
+    | "size_bytes"
+  >;
+  sourceProbe: Record<string, unknown>;
+}) {
+  return canPublishVideoSourceDirectly({
+    name: params.media.original_file_name,
+    mimeType: params.media.detected_mime_type || params.media.mime_type,
+    storagePath: params.media.storage_path,
+    sizeBytes: params.media.size_bytes,
+    maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+    videoCodec: params.sourceProbe.videoCodec,
+    audioCodec: params.sourceProbe.audioCodec,
+    frameRate: params.sourceProbe.frameRate,
+    hasAudio: params.sourceProbe.hasAudio,
+    pixelFormat: params.sourceProbe.pixelFormat,
+    containerFormats: params.sourceProbe.containerFormats,
+    requireCodecProof: true,
+  });
+}
+
+function persistedSourceProbe(mediaMetadata: unknown) {
+  const normalization = asRecord(asRecord(mediaMetadata).video_normalization);
+  return asRecord(normalization.source);
+}
+
 function readPreparationMission(
   job: ClaimedVideoJob,
 ): BoosterPreparationMission | null {
@@ -152,13 +185,6 @@ function requiredVideoKeys(job: ClaimedVideoJob) {
 function classifyWorkerError(error: unknown) {
   if (error instanceof VideoNormalizationError) return error;
   const message = compactMessage(error).toLowerCase();
-  if (message.includes("video_shared_canonical_duration_too_long")) {
-    return new VideoNormalizationError(
-      "video_shared_canonical_duration_too_long",
-      "Une vidéo de 70 Mo ou plus doit durer 30 minutes maximum pour être compressée sous 70 Mo.",
-      false,
-    );
-  }
   const terminal =
     message.includes("video_source_too_large") ||
     message.includes("video_dimensions_unavailable") ||
@@ -355,10 +381,8 @@ async function markVariantsProcessing(
 async function downloadSourceToTemp(
   media: MediaRow,
   jobId: string,
-  options?: { canonicalMaster?: boolean },
 ) {
   const expectedPrefix = `users/${media.user_id}/workspace-source/`;
-  const expectedCanonicalPrefix = `users/${media.user_id}/normalized/video/`;
   const boosterAccount = String(media.user_id || "").replace(/\./g, "-");
   const boosterPath = String(media.storage_path || "");
   const ownedBoosterSource =
@@ -369,11 +393,7 @@ async function downloadSourceToTemp(
   if (
     !(
       (media.bucket_name === "inrcy-pro-media" &&
-        (String(media.storage_path || "").startsWith(expectedPrefix) ||
-          (options?.canonicalMaster === true &&
-            String(media.storage_path || "").startsWith(
-              expectedCanonicalPrefix,
-            )))) ||
+        String(media.storage_path || "").startsWith(expectedPrefix)) ||
       ownedBoosterSource
     )
   ) {
@@ -656,7 +676,9 @@ async function markJobFailure(params: {
         .maybeSingle(),
       supabaseAdmin
         .from("pro_media_library")
-        .select("media_metadata")
+        .select(
+          "media_metadata,publication_status,original_file_name,mime_type,detected_mime_type,storage_path,size_bytes",
+        )
         .eq("id", params.job.media_id)
         .eq("user_id", params.job.account_id)
         .maybeSingle(),
@@ -707,11 +729,7 @@ async function markJobFailure(params: {
     ) {
       throw new Error("video_job_failure_state_invalid");
     }
-    const followUpMission =
-      latestMission ||
-      (latestKeys.includes("canonical")
-        ? "publication_preparation"
-        : claimedMission);
+    const followUpMission = latestMission || claimedMission;
     const now = new Date();
     const previousUpdatedAt = String(current.data.updated_at || "");
     const nextUpdatedAt = new Date(
@@ -766,35 +784,45 @@ async function markJobFailure(params: {
   }
   if (!finalStatus) throw new Error("video_job_failure_contention");
 
-  const canonicalReadyResult = await supabaseAdmin
-    .from("media_variants")
-    .select("id")
-    .eq("account_id", params.job.account_id)
-    .eq("media_id", params.job.media_id)
-    .eq("signature", getVideoNormalizationSignature("canonical"))
-    .eq("status", "ready")
-    .limit(1)
+  const latestMediaResult = await supabaseAdmin
+    .from("pro_media_library")
+    .select(
+      "media_metadata,publication_status,original_file_name,mime_type,detected_mime_type,storage_path,size_bytes",
+    )
+    .eq("id", params.job.media_id)
+    .eq("user_id", params.job.account_id)
     .maybeSingle();
-  if (canonicalReadyResult.error) throw canonicalReadyResult.error;
-  const publicationMasterReady = Boolean(canonicalReadyResult.data?.id);
+  if (latestMediaResult.error) throw latestMediaResult.error;
+  const latestMedia = latestMediaResult.data;
+  const originalReady = latestMedia
+    ? canPublishOriginalVideo({
+        media: latestMedia,
+        sourceProbe: persistedSourceProbe(latestMedia.media_metadata),
+      })
+    : false;
+  const publicationMediaReady = originalReady;
+  const publicationMissionFailed = claimedMission === "publication_preparation";
   const chained = finalStatus === "queued";
   const mediaStatus = chained
     ? "queued"
     : finalStatus === "retry_wait"
       ? "failed_retryable"
       : "failed_terminal";
+  const publicationStatus = publicationMediaReady
+    ? "ready"
+    : publicationMissionFailed
+      ? finalStatus === "failed"
+        ? "failed"
+        : "processing"
+      : String(latestMedia?.publication_status || "not_requested");
   const mediaUpdate = await supabaseAdmin
     .from("pro_media_library")
     .update({
       processing_status: mediaStatus,
-      // AI derivatives are best-effort for publication. A valid current
-      // canonical master remains publishable even if a frame/audio job fails.
-      publication_status: publicationMasterReady
-        ? "ready"
-        : finalStatus === "failed"
-          ? "failed"
-          : "processing",
-      processing_progress: publicationMasterReady ? 100 : 0,
+      // Captures/audio IA are best-effort and never invalidate a compatible
+      // original. Only a publication-preparation failure may fail publication.
+      publication_status: publicationStatus,
+      processing_progress: publicationMediaReady ? 100 : 0,
       processing_error_code: chained ? null : normalized.code,
       processing_error_message: chained ? null : normalized.message,
       processing_completed_at:
@@ -827,10 +855,8 @@ async function updateMediaAfterSuccessfulNormalization(params: {
   outputs: Partial<
     Record<VideoNormalizationVariantKey, Awaited<ReturnType<typeof uploadVariant>>>
   >;
-  canonical: Awaited<ReturnType<typeof uploadVariant>> | undefined;
-  hasReadyCanonicalVariant: boolean;
+  originalPublicationReady: boolean;
   sourceSha256: string;
-  inputWasCanonical: boolean;
   completedAt: string;
   continuesWithPendingOutputs?: boolean;
   stageCompletionProgress: number;
@@ -873,7 +899,7 @@ async function updateMediaAfterSuccessfulNormalization(params: {
         ? "queued"
         : "ready",
       publication_status:
-        params.canonical || params.hasReadyCanonicalVariant
+        params.originalPublicationReady
           ? "ready"
           : params.continuesWithPendingOutputs
             ? "processing"
@@ -903,17 +929,7 @@ async function updateMediaAfterSuccessfulNormalization(params: {
       },
       updated_at: nextUpdatedAt,
     };
-    if (!params.inputWasCanonical) {
-      mediaPatch.content_hash_sha256 = params.sourceSha256;
-    }
-    if (params.canonical?.bucket && params.canonical.storagePath) {
-      Object.assign(mediaPatch, {
-        canonical_bucket_name: params.canonical.bucket,
-        canonical_storage_path: params.canonical.storagePath,
-        canonical_mime_type: params.canonical.mimeType,
-        canonical_size_bytes: params.canonical.sizeBytes,
-      });
-    }
+    mediaPatch.content_hash_sha256 = params.sourceSha256;
 
     const update = await supabaseAdmin
       .from("pro_media_library")
@@ -1098,12 +1114,6 @@ async function processClaimedVideoJob(
     }
 
     const requested = claimedRequest;
-    const hasReadyCanonicalVariant = variants.some(
-      (variant) =>
-        variant.key === "canonical" &&
-        variant.status === "ready" &&
-        Boolean(variant.bucket_name && variant.storage_path),
-    );
     const fulfilledKeys = new Set<VideoNormalizationVariantKey>(
       allVariants
         .filter((variant) => Boolean(readyVariantOutput(variant)))
@@ -1113,9 +1123,6 @@ async function processClaimedVideoJob(
       mission: requested.mission,
       requestedKeys: requested.keys,
       readyKeys: fulfilledKeys,
-      requiresCanonicalFirst:
-        Number(media.size_bytes || 0) >=
-        VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
     });
     const progressWindow: VideoNormalizationProgressWindow =
       resolveVideoNormalizationProgressWindow({
@@ -1163,36 +1170,10 @@ async function processClaimedVideoJob(
     await markVariantsProcessing(job, pendingVariants);
     await persistStageProgress(5);
 
-    const readyCanonicalRow = allVariants.find(
-      (variant) => variant.key === "canonical",
-    );
-    const readyCanonical = readyCanonicalRow
-      ? readyVariantOutput(readyCanonicalRow)
-      : null;
-    const inputWasCanonical =
-      !pendingVariants.some((variant) => variant.key === "canonical") &&
-      Boolean(
-        readyCanonical?.available &&
-          readyCanonical.bucket &&
-          readyCanonical.storagePath,
-      );
-    const stageInput = inputWasCanonical
-      ? {
-          ...media,
-          bucket_name: String(readyCanonical?.bucket || ""),
-          storage_path: String(readyCanonical?.storagePath || ""),
-          mime_type: readyCanonical?.mimeType || "video/mp4",
-          detected_mime_type: readyCanonical?.mimeType || "video/mp4",
-          size_bytes: Number(readyCanonical?.sizeBytes || 0),
-          width: readyCanonical?.width || media.width,
-          height: readyCanonical?.height || media.height,
-          duration_seconds:
-            readyCanonical?.durationSeconds || media.duration_seconds,
-        }
-      : media;
-    const downloaded = await downloadSourceToTemp(stageInput, job.id, {
-      canonicalMaster: inputWasCanonical,
-    });
+    // Captures IA, audio et miniature sont toujours extraits de l'original.
+    // Une ancienne variante canonique peut rester lisible pour l'historique,
+    // mais elle n'est plus une entrée de travail du Booster.
+    const downloaded = await downloadSourceToTemp(media, job.id);
     workDir = downloaded.workDir;
     await persistStageProgress(20);
 
@@ -1275,15 +1256,15 @@ async function processClaimedVideoJob(
       );
     }
 
-    const canonical = outputs.canonical;
-    if (
-      execution.mission === "publication_preparation" &&
-      (!canonical?.bucket || !canonical.storagePath)
-    ) {
+    const originalPublicationReady = canPublishOriginalVideo({
+      media,
+      sourceProbe: normalized.source,
+    });
+    if (execution.mission === "publication_preparation" && !originalPublicationReady) {
       throw new VideoNormalizationError(
-        "video_canonical_missing",
-        "La variante canonique vidéo n’a pas été produite.",
-        true,
+        "video_source_incompatible",
+        "Cette vidéo ne peut pas être publiée telle quelle. Utilisez un fichier MP4/M4V/MOV H.264 avec audio AAC, de 75 Mo maximum.",
+        false,
       );
     }
 
@@ -1294,10 +1275,8 @@ async function processClaimedVideoJob(
       mission: execution.mission,
       normalized,
       outputs,
-      canonical,
-      hasReadyCanonicalVariant,
+      originalPublicationReady,
       sourceSha256: downloaded.sha256,
-      inputWasCanonical,
       completedAt,
       continuesWithPendingOutputs: execution.continuesWithPendingOutputs,
       stageCompletionProgress: progressWindow.end,
@@ -1379,8 +1358,8 @@ export async function processVideoNormalizationJobs(params?: {
   const jobs = await claimVideoJobs({ workerId, limit });
   const summaries: ProcessedJobSummary[] = [];
 
-  // Un seul encodage vidéo à la fois : la source peut atteindre 300 Mo et
-  // FFmpeg utilise déjà plusieurs threads pour le MP4 canonique.
+  // Un seul traitement vidéo à la fois : la source peut atteindre 75 Mo et
+  // FFmpeg utilise déjà plusieurs threads pour extraire captures et audio.
   for (const job of jobs) {
     summaries.push(await processClaimedVideoJob(job));
   }

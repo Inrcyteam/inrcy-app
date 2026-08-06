@@ -457,7 +457,7 @@ const handler = async (req: Request) => {
       | "none"
       | "workspace"
       | "workspace_cutover_v1"
-      | "workspace_verified_client_ai_preview"
+      | "workspace_verified_client_video_context"
       | "legacy_fallback";
     mediaWorkspaceFallbackCode?: string;
     mediaWorkspaceDiagnostics?: WorkspaceAiConsumptionDiagnostics;
@@ -553,10 +553,9 @@ const handler = async (req: Request) => {
           imagesForAI: [],
           imageCount: 0,
           useImagesForAI: false,
-          // Pour une vidéo fraîchement envoyée, les trois captures JPEG et la
-          // transcription peuvent déjà être prêtes dans le navigateur alors
-          // que la compression MP4 canonique continue. Elles ne remplacent
-          // jamais le workspace : celui-ci reste obligatoire et vérifié.
+          // Pour une vidéo fraîchement envoyée, les captures JPEG peuvent déjà
+          // être prêtes dans le navigateur. Elles complètent l'original conservé
+          // dans le workspace, qui reste obligatoire et vérifié.
           videoForAI: mediaType === "video" ? body.videoForAI : null,
         }
       : body;
@@ -725,8 +724,9 @@ const handler = async (req: Request) => {
           useVerifiedLocalVideoPreview =
             expectedFamily === "video" &&
             [
-              "workspace_ai_preview_missing",
-              "workspace_video_frames_missing",
+              "workspace_video_frames_pending",
+              "workspace_video_frame_unavailable",
+              "workspace_video_audio_unavailable",
               "workspace_variant_download_failed",
               "workspace_variant_binary_invalid",
               "workspace_ai_video_deadline_exceeded",
@@ -735,7 +735,7 @@ const handler = async (req: Request) => {
 
           if (useVerifiedLocalVideoPreview) {
             timingContext.mediaWorkspaceSource =
-              "workspace_verified_client_ai_preview";
+              "workspace_verified_client_video_context";
           } else {
             const fallbackCode =
               expectedDiagnostic.code || "workspace_media_mismatch";
@@ -919,8 +919,9 @@ const handler = async (req: Request) => {
           const canUseVerifiedLocalVideoPreview =
             mediaType === "video" &&
             [
-              "workspace_ai_preview_missing",
-              "workspace_video_frames_missing",
+              "workspace_video_frames_pending",
+              "workspace_video_frame_unavailable",
+              "workspace_video_audio_unavailable",
               "workspace_variant_download_failed",
               "workspace_variant_binary_invalid",
               "workspace_ai_video_deadline_exceeded",
@@ -929,7 +930,7 @@ const handler = async (req: Request) => {
 
           if (canUseVerifiedLocalVideoPreview) {
             timingContext.mediaWorkspaceSource =
-              "workspace_verified_client_ai_preview";
+              "workspace_verified_client_video_context";
             mediaAnalysisFallback = null;
           }
         }

@@ -54,7 +54,10 @@ test("heavy dashboard tools hydrate from browser snapshots then refresh silently
   const propulser = read("app/dashboard/propulser/page.tsx");
   const fideliser = read("app/dashboard/fideliser/page.tsx");
   assert.match(mailbox, /MODULE_SNAPSHOT_KEYS\.inrSendDefault/);
-  assert.match(mailbox, /silent: Boolean\(initialHistorySnapshot\)/);
+  assert.match(
+    mailbox,
+    /silent: isInitialContextLoad && Boolean\(initialHistorySnapshot\)/,
+  );
   assert.match(crm, /MODULE_SNAPSHOT_KEYS\.crmDefault/);
   assert.match(agenda, /MODULE_SNAPSHOT_KEYS\.agendaMonth/);
   assert.match(propulser, /MODULE_SNAPSHOT_KEYS\.propulserMetrics/);

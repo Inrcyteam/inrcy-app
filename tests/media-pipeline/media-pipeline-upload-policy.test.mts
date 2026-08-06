@@ -71,8 +71,8 @@ test("les formats courants sont reconnus même lorsque le navigateur fournit peu
 test("les plafonds produit sont alignés sur Booster", () => {
   assert.equal(getUniversalMediaProductMaxBytes("image"), 50 * 1024 * 1024);
   assert.equal(getUniversalMediaProductMaxLabel("image"), "50 Mo");
-  assert.equal(getUniversalMediaProductMaxBytes("video"), 300 * 1024 * 1024);
-  assert.equal(getUniversalMediaProductMaxLabel("video"), "300 Mo");
+  assert.equal(getUniversalMediaProductMaxBytes("video"), 75_000_000);
+  assert.equal(getUniversalMediaProductMaxLabel("video"), "75 Mo");
 });
 
 test("les destinations n'acceptent jamais un type incohérent", () => {

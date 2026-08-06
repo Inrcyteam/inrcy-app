@@ -22,7 +22,8 @@ test('iNrSend does not read browser cache during the hydration initializer', () 
 test('history fetch waits for the cached snapshot restoration pass', () => {
   assert.match(
     mailbox,
-    /useEffect\(\(\) => \{\s*if \(!historyCacheHydrated\) return;\s*void loadHistory/,
+    /useEffect\(\(\) => \{\s*if \(!historyCacheHydrated\) return;[\s\S]{0,320}void loadHistory/,
   );
-  assert.match(mailbox, /silent: Boolean\(initialHistorySnapshot\)/);
+  assert.match(mailbox, /silent: isInitialContextLoad && Boolean\(initialHistorySnapshot\)/);
+  assert.match(mailbox, /force: isInitialContextLoad/);
 });

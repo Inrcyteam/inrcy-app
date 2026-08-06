@@ -1,4 +1,8 @@
 import { getProviderCreateFailureSafety } from "@/lib/providerMediaFallbackPolicy";
+import {
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 
 const LINKEDIN_VERSION = "202603";
 
@@ -369,7 +373,7 @@ type LinkedInVideoStatus =
   | "AVAILABLE"
   | string;
 
-const LINKEDIN_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+const LINKEDIN_VIDEO_MAX_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
 
 type LinkedInRemoteVideoSource = {
   size: number;
@@ -563,7 +567,9 @@ async function probeLinkedInVideoSource(
   }
 
   if (size > LINKEDIN_VIDEO_MAX_BYTES) {
-    throw new Error("La vidéo LinkedIn dépasse la limite de 300 Mo.");
+    throw new Error(
+      `La vidéo LinkedIn dépasse la limite de ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}.`,
+    );
   }
   return { size, mimeType };
 }

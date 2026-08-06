@@ -693,7 +693,30 @@ test("phased Instagram API has no timer or long polling loop", () => {
   assert.doesNotMatch(source, /\bsleep\s*\(/);
   assert.doesNotMatch(source, /setTimeout\s*\(/);
   assert.doesNotMatch(source, /maxAttempts|initialDelayMs/);
-  assert.match(source, /AbortSignal\.timeout\(INSTAGRAM_VIDEO_HTTP_TIMEOUT_MS\)/);
+  assert.match(
+    source,
+    /const INSTAGRAM_VIDEO_STATUS_HTTP_TIMEOUT_MS = 15_000;/,
+  );
+  assert.match(
+    source,
+    /const INSTAGRAM_VIDEO_MUTATION_HTTP_TIMEOUT_MS = 45_000;/,
+  );
+  assert.equal(
+    (
+      source.match(
+        /AbortSignal\.timeout\(INSTAGRAM_VIDEO_MUTATION_HTTP_TIMEOUT_MS\)/g,
+      ) || []
+    ).length,
+    2,
+  );
+  assert.equal(
+    (
+      source.match(
+        /AbortSignal\.timeout\(INSTAGRAM_VIDEO_STATUS_HTTP_TIMEOUT_MS\)/g,
+      ) || []
+    ).length,
+    1,
+  );
   assert.match(source, /outcome: "checkpoint"/);
   assert.match(source, /requestMayHaveSucceeded: true/);
   assert.match(source, /state: "publish_unknown"/);

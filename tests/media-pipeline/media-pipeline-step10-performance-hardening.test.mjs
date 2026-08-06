@@ -15,7 +15,7 @@ test("les limites et formats source correspondent au contrat produit", () => {
   );
   assert.match(
     rules,
-    /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES\s*=\s*300\s*\*\s*1024\s*\*\s*1024/,
+    /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES\s*=\s*75_000_000/,
   );
   assert.match(rules, /INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT\s*=\s*5/);
   for (const format of [
@@ -24,13 +24,14 @@ test("les limites et formats source correspondent au contrat produit", () => {
     "tiff",
     "bmp",
     "jfif",
-    "mkv",
-    "3gp",
-    "mts",
-    "wmv",
   ]) {
     assert.match(rules.toLowerCase(), new RegExp(`"${format}"`));
   }
+  assert.match(
+    rules,
+    /INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS\s*=\s*\[\s*"mp4",\s*"m4v",\s*"mov"/,
+  );
+  assert.match(rules, /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/);
 });
 
 test("HEIC et HEIF ne traversent plus une route de conversion Vercel", () => {
@@ -104,22 +105,20 @@ test("les sources partent en parallèle sans préparation lourde et les MP4 dire
   );
 });
 
-test("le canon vidéo reste publiable et les incidents temporaires sont rejoués", () => {
-  const policy = read("lib/mediaVideoNormalizationPolicy.ts");
+test("l'original reste publiable et les incidents d'extraction sont rejoués", () => {
+  const missions = read("lib/boosterMediaPipelineMissions.ts");
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
   const failurePlan = read("lib/mediaVideoNormalizationFailurePlan.ts");
-  assert.match(
-    policy,
-    /VIDEO_CANONICAL_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_CANONICAL_MAX_BYTES/,
+  const videoMissions = missions.slice(
+    missions.indexOf("BOOSTER_VIDEO_PREPARATION_KEYS"),
   );
+  assert.doesNotMatch(videoMissions, /"canonical"|"ai_preview"/);
+  assert.match(videoMissions, /publication_preparation:\s*\["thumbnail"\]/);
   const terminalBlock =
     worker.match(/const terminal\s*=([\s\S]*?);\s*[\r\n]+\s*return new VideoNormalizationError/)?.[1] ||
     "";
   assert.ok(terminalBlock, "classification terminale introuvable");
   for (const retryable of [
-    "video_ffmpeg_stalled",
-    "video_ffmpeg_timeout",
-    "video_ffmpeg_spawn_failed",
     "video_frames_unavailable",
   ]) {
     assert.doesNotMatch(terminalBlock, new RegExp(retryable));
@@ -130,6 +129,7 @@ test("le canon vidéo reste publiable et les incidents temporaires sont rejoués
     failurePlan,
     /retryableError && !exhausted[\s\S]*?\? "retry_wait"[\s\S]*?: "failed"/,
   );
+  assert.match(worker, /const originalPublicationReady = canPublishOriginalVideo/);
 });
 
 test("les variantes par canal sont persistantes et la publication reste légère", () => {

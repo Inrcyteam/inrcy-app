@@ -8,7 +8,7 @@ const PUBLICATION_KEYS = [...BOOSTER_VIDEO_PREPARATION_KEYS.publication_preparat
 const AI_KEYS = [...BOOSTER_VIDEO_PREPARATION_KEYS.ai_preparation];
 const UNION_KEYS = Array.from(new Set([...AI_KEYS, ...PUBLICATION_KEYS]));
 
-test("canonical + thumbnail timeout preserves the attempt and enters backoff", () => {
+test("publication thumbnail timeout preserves the attempt and enters backoff", () => {
   const plan = planVideoNormalizationFailure({
     claimedKeys: PUBLICATION_KEYS,
     latestKeys: PUBLICATION_KEYS,
@@ -23,7 +23,7 @@ test("canonical + thumbnail timeout preserves the attempt and enters backoff", (
   assert.deepEqual(plan.addedKeys, []);
 });
 
-test("canonical + thumbnail terminal failure never requeues its dependent thumbnail", () => {
+test("publication thumbnail terminal failure does not create another mission", () => {
   const plan = planVideoNormalizationFailure({
     claimedKeys: PUBLICATION_KEYS,
     latestKeys: PUBLICATION_KEYS,
@@ -53,7 +53,7 @@ test("the preclaimed AI/publication union is not mistaken for a late request", (
   }
 });
 
-test("only an output added after the AI claim starts an immediate fresh mission", () => {
+test("publication arriving after the complete AI claim adds no output", () => {
   const plan = planVideoNormalizationFailure({
     claimedKeys: AI_KEYS,
     latestKeys: UNION_KEYS,
@@ -62,10 +62,10 @@ test("only an output added after the AI claim starts an immediate fresh mission"
     maxAttempts: 4,
   });
 
-  assert.equal(plan.status, "queued");
-  assert.equal(plan.attemptCount, 0);
-  assert.equal(plan.hasLateRequest, true);
-  assert.deepEqual(plan.addedKeys, ["canonical"]);
+  assert.equal(plan.status, "failed");
+  assert.equal(plan.attemptCount, 4);
+  assert.equal(plan.hasLateRequest, false);
+  assert.deepEqual(plan.addedKeys, []);
 });
 
 test("AI outputs arriving after a publication claim remain in the follow-up union", () => {
@@ -80,7 +80,6 @@ test("AI outputs arriving after a publication claim remain in the follow-up unio
   assert.equal(plan.status, "queued");
   assert.equal(plan.attemptCount, 0);
   assert.deepEqual(plan.addedKeys, [
-    "ai_preview",
     "frame_01",
     "frame_02",
     "frame_03",

@@ -7,7 +7,7 @@ const source = readFileSync(
   "utf8",
 );
 
-test("Facebook lets Meta pull the hosted video without buffering 300 MB", () => {
+test("Facebook lets Meta pull an accepted hosted video without buffering it", () => {
   const videoSection = source.slice(
     source.indexOf("function normalizeHostedFacebookVideoUrl"),
   );

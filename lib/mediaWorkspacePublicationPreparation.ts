@@ -215,11 +215,16 @@ function hasReadyPublicationVariants(params: {
   videoThumbnailMediaIds: ReadonlySet<string>;
   requiresVideoThumbnail: boolean;
 }) {
-  if (!params.canonicalMediaIds.has(params.media.mediaId)) return false;
-  return (
-    params.media.mediaType !== "video" ||
-    !params.requiresVideoThumbnail ||
-    params.videoThumbnailMediaIds.has(params.media.mediaId)
+  if (params.media.mediaType === "image") {
+    return params.canonicalMediaIds.has(params.media.mediaId);
+  }
+  const videoSourceReady =
+    isDirectPublicationVideo(params.media) ||
+    params.canonicalMediaIds.has(params.media.mediaId);
+  return Boolean(
+    videoSourceReady &&
+      (!params.requiresVideoThumbnail ||
+        params.videoThumbnailMediaIds.has(params.media.mediaId)),
   );
 }
 
@@ -392,11 +397,9 @@ async function prioritizeJobs(params: {
 
 /**
  * Owns the bounded publication-preparation step for durable publish jobs.
- * It probes an otherwise-unproven MP4 first so a compatible H.264/AAC source
- * can be published directly; only incompatible sources enter FFmpeg
- * canonicalization. Images can finish inside the bounded preparation request;
- * video canonicalization remains queued for the dedicated 300-second worker
- * because its own 240-second FFmpeg budget exceeds publish-now's runtime.
+ * It probes an otherwise-unproven MP4 so a compatible H.264/AAC source is
+ * published directly. Video work is limited to the durable thumbnail needed
+ * by Pinterest/previews; no shared compressed master is created.
  */
 export async function prepareWorkspaceMediaForPublication(params: {
   accountId: string;
@@ -466,10 +469,7 @@ export async function prepareWorkspaceMediaForPublication(params: {
       continue;
     }
 
-    if (
-      !canonicalMediaIds.has(item.mediaId) &&
-      canBenefitFromDirectVideoProbe(item)
-    ) {
+    if (!isDirectPublicationVideo(item) && canBenefitFromDirectVideoProbe(item)) {
       try {
         ffmpegPath ||= await resolveVideoNormalizationFfmpegPath();
         await probePotentialDirectVideo({
@@ -478,10 +478,15 @@ export async function prepareWorkspaceMediaForPublication(params: {
           ffmpegPath,
         });
       } catch {
-        // The canonical worker performs its own bounded download/probe and
-        // persists retryable/terminal diagnostics. Falling through keeps this
-        // helper crash-safe.
+        // The durable preparation worker retries the bounded source probe.
       }
+    }
+
+    if (
+      (isDirectPublicationVideo(item) || canonicalMediaIds.has(item.mediaId)) &&
+      (!requiresVideoThumbnail || videoThumbnailMediaIds.has(item.mediaId))
+    ) {
+      continue;
     }
 
     const enqueued = await enqueueVideoNormalization({
@@ -508,10 +513,9 @@ export async function prepareWorkspaceMediaForPublication(params: {
       workerId: `publish-preparation-image-${workerId}`,
     });
   }
-  // Do not run the video worker here. The durable media recovery cron owns
-  // this already-prioritized fallback and has maxDuration=300; publish-now has
-  // only 180 seconds and must be free to dispatch every other channel. The
-  // normal upload/prepare paths already start their targeted worker directly.
+  // Do not run the video worker here. The durable recovery cron owns the
+  // thumbnail/probe retry so publish-now remains free to dispatch every other
+  // channel. Normal upload/prepare paths already start the targeted worker.
 
   await refreshPublicationWorkspaceMediaStatus(params);
   const refreshedMedia = (await loadOwnedWorkspaceMedia(params)).filter(

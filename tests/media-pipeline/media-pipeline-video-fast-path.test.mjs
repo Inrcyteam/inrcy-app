@@ -6,26 +6,22 @@ import test from "node:test";
 const ROOT = process.cwd();
 const read = (file) => readFileSync(resolve(ROOT, file), "utf8");
 
-test("les MP4 H.264 déjà efficaces évitent le double réencodage complet", () => {
+test("Booster ne fabrique plus aucun second fichier vidéo", () => {
   const normalizer = read("lib/mediaVideoNormalizer.ts");
-  assert.match(normalizer, /canFastPrepareCanonical/);
-  assert.match(normalizer, /codec === "h264" \|\| codec === "avc1"/);
-  assert.match(normalizer, /getVideoCanonicalOptimizationProfile/);
-  assert.match(normalizer, /if \(compatibleForRemux\)/);
-  assert.match(normalizer, /"-c:v", "copy"/);
-  assert.match(normalizer, /"-movflags",\s*"\+faststart"/);
-  assert.match(normalizer, /const remuxed = await remuxCanonical\(params\)/);
-  assert.doesNotMatch(normalizer, /for \(let attempt = 1; attempt <= 2/);
-  assert.match(normalizer, /maxBytes:\s*VIDEO_CANONICAL_TARGET_BYTES/);
+  assert.doesNotMatch(normalizer, /libx264|VIDEO_CANONICAL_TARGET_BYTES/);
+  assert.doesNotMatch(normalizer, /key:\s*"canonical"|key:\s*"ai_preview"/);
+  assert.match(normalizer, /BOOSTER_VIDEO_DERIVATIVE_KEYS/);
+  assert.match(normalizer, /"thumbnail"/);
+  assert.match(normalizer, /"frame_01"/);
+  assert.match(normalizer, /"audio_track"/);
 });
 
-test("la préparation lourde publie une progression et coupe un FFmpeg silencieux", () => {
+test("les extractions bornées publient une progression durable", () => {
   const normalizer = read("lib/mediaVideoNormalizer.ts");
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
-  assert.match(normalizer, /"-progress", "pipe:1"/);
-  assert.match(normalizer, /FFMPEG_STALL_TIMEOUT_MS/);
-  assert.match(normalizer, /video_ffmpeg_timeout/);
-  assert.match(normalizer, /video_ffmpeg_stalled/);
+  assert.match(normalizer, /FFMPEG_DERIVATIVE_TIMEOUT_MS/);
+  assert.match(normalizer, /extractFrame/);
+  assert.match(normalizer, /extractAudioTrack/);
   assert.match(worker, /queueNormalizationProgress/);
   assert.match(worker, /onProgress:\s*\(\{ progress, stage \}\)/);
   assert.match(worker, /const persistStageProgress[\s\S]*updateJobProgress/);
@@ -33,13 +29,15 @@ test("la préparation lourde publie une progression et coupe un FFmpeg silencieu
   assert.match(worker, /video_job_lease_refresh_failed/);
 });
 
-test("l'analyse IA utilise les captures et l'audio sans fabriquer un second film complet", () => {
+test("l'analyse IA utilise les captures et l'audio issus de l'original", () => {
   const normalizer = read("lib/mediaVideoNormalizer.ts");
   const consumption = read("lib/mediaWorkspaceConsumption.ts");
-  assert.match(normalizer, /available:\s*false,[\s\S]*reason:\s*"ai_uses_server_frames_and_audio"/);
   assert.match(normalizer, /inputPath:\s*params\.inputPath/);
+  assert.doesNotMatch(normalizer, /key:\s*"ai_preview"/);
   assert.match(
     consumption,
-    /const aiPreview = pickReadyVideoNormalizationVariant\([\s\S]*"ai_preview"[\s\S]*const preview =\s*aiPreview \|\|[\s\S]*pickReadyVideoNormalizationVariant\([\s\S]*"canonical"/,
+    /const videoReference = \{[\s\S]*storagePath: item\.sourceStoragePath/,
   );
+  assert.match(consumption, /\["frame_01", "frame_02", "frame_03"\] as const/);
+  assert.match(consumption, /"audio_track"/);
 });

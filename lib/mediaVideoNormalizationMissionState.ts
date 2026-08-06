@@ -2,13 +2,13 @@ import {
   BOOSTER_VIDEO_PREPARATION_KEYS,
   type BoosterPreparationMission,
 } from "./boosterMediaPipelineMissions.ts";
-import {
-  VIDEO_NORMALIZATION_VARIANT_KEYS,
-  type VideoNormalizationVariantKey,
-} from "./mediaVideoNormalizationPolicy.ts";
+import type { VideoNormalizationVariantKey } from "./mediaVideoNormalizationPolicy.ts";
 
 const VIDEO_NORMALIZATION_KEY_SET = new Set<string>(
-  VIDEO_NORMALIZATION_VARIANT_KEYS,
+  [
+    ...BOOSTER_VIDEO_PREPARATION_KEYS.ai_preparation,
+    ...BOOSTER_VIDEO_PREPARATION_KEYS.publication_preparation,
+  ],
 );
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -53,7 +53,7 @@ export function readRequestedVideoPreparationKeys(params: {
   const mission = readMission(payload.pipelineMission) || params.fallbackMission;
   return mission
     ? [...BOOSTER_VIDEO_PREPARATION_KEYS[mission]]
-    : [...VIDEO_NORMALIZATION_VARIANT_KEYS];
+    : [...BOOSTER_VIDEO_PREPARATION_KEYS.ai_preparation];
 }
 
 /**

@@ -15,8 +15,8 @@ function clampPercent(value: unknown) {
  * Keeps the media-level progress monotonic across durable worker invocations.
  *
  * A planned first stage owns 0..65. Any follow-up stage starts at 65 and owns
- * the remaining 65..100. For heavy videos this is canonicalization followed by
- * captures/audio/thumbnail generation. A one-stage light video keeps 0..100.
+ * the remaining window. Booster extracts only the requested thumbnail, AI
+ * frames and audio from the accepted original.
  */
 export function resolveVideoNormalizationProgressWindow(params: {
   continuesWithPendingOutputs: boolean;

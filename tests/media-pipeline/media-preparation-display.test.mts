@@ -6,67 +6,43 @@ import {
   resolveMediaPreparationDisplayState,
 } from "../../lib/mediaPreparationDisplay.ts";
 
-const HEAVY_VIDEO_BYTES = 70_000_000;
-
-test("the compression label is limited to the canonical stage of a heavy video", () => {
+test("all media preparation states use one universal phase", () => {
   assert.deepEqual(
     resolveMediaPreparationDisplayState([
       {
         mediaType: "video",
-        sizeBytes: HEAVY_VIDEO_BYTES,
+        sizeBytes: 75_000_000,
         processingStatus: "processing",
         processingProgress: 32.5,
       },
     ]),
-    { phase: "compression", phaseProgress: 50 },
-  );
-  assert.equal(
-    resolveMediaPreparationDisplayPhase([
-      {
-        mediaType: "video",
-        sizeBytes: HEAVY_VIDEO_BYTES,
-        processingStatus: "queued",
-        processingProgress: 64,
-      },
-    ]),
-    "compression",
-  );
-  assert.equal(
-    resolveMediaPreparationDisplayPhase([
-      {
-        mediaType: "video",
-        sizeBytes: HEAVY_VIDEO_BYTES,
-        processingStatus: "processing",
-        processingProgress: 65,
-      },
-    ]),
-    "preparation",
+    { phase: "preparation", phaseProgress: null },
   );
 });
 
-test("light videos, images and terminal heavy videos use the universal preparation label", () => {
+test("videos, images and terminal rows use the universal preparation label", () => {
   for (const row of [
     {
       mediaType: "video",
-      sizeBytes: HEAVY_VIDEO_BYTES - 1,
+      sizeBytes: 75_000_000,
       processingStatus: "processing",
       processingProgress: 20,
     },
     {
       mediaType: "image",
-      sizeBytes: HEAVY_VIDEO_BYTES,
+      sizeBytes: 50_000_000,
       processingStatus: "processing",
       processingProgress: 20,
     },
     {
       mediaType: "video",
-      sizeBytes: HEAVY_VIDEO_BYTES,
+      sizeBytes: 75_000_000,
       processingStatus: "ready",
       processingProgress: 100,
     },
     {
       mediaType: "video",
-      sizeBytes: HEAVY_VIDEO_BYTES,
+      sizeBytes: 75_000_000,
       processingStatus: "failed_terminal",
       processingProgress: 0,
     },
@@ -86,7 +62,7 @@ test("the async publication scopes progress to the media families of preparing c
   assert.match(source, /phaseProgress/);
 });
 
-test("generation and publication expose compression then the universal media label", () => {
+test("generation and publication expose only the universal media label", () => {
   const modal = readFileSync(
     new URL(
       "../../app/dashboard/booster/publier/PublishModal.tsx",
@@ -94,12 +70,7 @@ test("generation and publication expose compression then the universal media lab
     ),
     "utf8",
   );
-  assert.match(modal, /"Compression des médias"/);
+  assert.doesNotMatch(modal, /Compression des médias/);
   assert.match(modal, /"Préparation des médias"/);
-  assert.match(modal, /videoPreparationDisplayPhase/);
-  assert.match(
-    modal,
-    /heavyVideoCompressionRequiredForPublish\s*&&\s*videoPreparationDisplayPhase\s*!==\s*"preparation"/,
-  );
   assert.doesNotMatch(modal, /Préparation de la vidéo/);
 });

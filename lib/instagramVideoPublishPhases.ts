@@ -4,7 +4,11 @@ import { buildMetaGraphUrl } from "@/lib/metaGraphApi";
 
 const INSTAGRAM_VIDEO_CHECKPOINT_VERSION = 2 as const;
 const INSTAGRAM_VIDEO_DEFAULT_RETRY_AFTER_MS = 3_000;
-const INSTAGRAM_VIDEO_HTTP_TIMEOUT_MS = 15_000;
+// Status reads are cheap and safe to retry. Container creation and publication
+// are mutations: Meta can legitimately need longer to acknowledge them and an
+// early client timeout leaves their result ambiguous (and unsafe to replay).
+const INSTAGRAM_VIDEO_STATUS_HTTP_TIMEOUT_MS = 15_000;
+const INSTAGRAM_VIDEO_MUTATION_HTTP_TIMEOUT_MS = 45_000;
 
 type FetchLike = (
   input: RequestInfo | URL,
@@ -415,7 +419,7 @@ export async function instagramCreateVideoCheckpoint(
     response = await fetchImpl(createUrl, {
       method: "POST",
       cache: "no-store",
-      signal: AbortSignal.timeout(INSTAGRAM_VIDEO_HTTP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(INSTAGRAM_VIDEO_MUTATION_HTTP_TIMEOUT_MS),
     });
   } catch (error) {
     return {
@@ -638,7 +642,7 @@ export async function instagramPollVideoCheckpoint(
     response = await fetchImpl(url, {
       method: "GET",
       cache: "no-store",
-      signal: AbortSignal.timeout(INSTAGRAM_VIDEO_HTTP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(INSTAGRAM_VIDEO_STATUS_HTTP_TIMEOUT_MS),
     });
   } catch (error) {
     return {
@@ -941,7 +945,7 @@ export async function instagramPublishVideoCheckpoint(
     response = await fetchImpl(publishUrl, {
       method: "POST",
       cache: "no-store",
-      signal: AbortSignal.timeout(INSTAGRAM_VIDEO_HTTP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(INSTAGRAM_VIDEO_MUTATION_HTTP_TIMEOUT_MS),
     });
   } catch (error) {
     const unknownCheckpoint = withUpdatedCheckpoint(checkpoint, dependencies, {

@@ -14,6 +14,9 @@ function read(path: string) {
 
 const migration = read("ops/sql/2026-08-06_inrsend_realtime_version.sql");
 const mailbox = read("app/dashboard/mails/MailboxClient.tsx");
+const historyPreload = read("app/dashboard/mails/_lib/mailboxHistoryPreload.ts");
+const boosterLayer = read("app/dashboard/_components/DashboardBoosterModalLayer.tsx");
+const moduleSnapshotCache = read("lib/browserModuleSnapshotCache.ts");
 const versionsRoute = read("app/api/profile/versions/route.ts");
 const repairMigration = read("ops/sql/2026-08-06_inrsend_final_publication_refresh_repair.sql");
 const historyRoute = read("app/api/inrsend/history/route.ts");
@@ -85,11 +88,22 @@ test("le déploiement reste compatible si le SQL arrive juste après le code", (
 
 
 test("iNrSend garde un filet de sécurité visible même si le realtime SQL manque un signal", () => {
-  assert.match(mailbox, /INRSEND_HISTORY_RECOVERY_REFRESH_MS = 60_000/);
+  assert.match(historyPreload, /MAILBOX_HISTORY_ACTIVE_REFRESH_MS = 10_000/);
+  assert.match(historyPreload, /MAILBOX_HISTORY_IDLE_REFRESH_MS = 60_000/);
+  assert.match(mailbox, /mailboxHistoryRefreshInterval/);
   assert.match(mailbox, /window\.setTimeout\([\s\S]*refreshVisibleHistory/);
   assert.match(mailbox, /document\.visibilityState === "hidden"/);
   assert.match(mailbox, /setHistoryCountsLoadedOnce\(true\)/);
   assert.match(historyRoute, /countsOnly/);
+});
+
+test("une publication invalide le snapshot iNrSend avant la navigation", () => {
+  assert.match(moduleSnapshotCache, /export function invalidateModuleSnapshot/);
+  assert.match(
+    boosterLayer,
+    /invalidateModuleSnapshot\(MODULE_SNAPSHOT_KEYS\.inrSendDefault\)/,
+  );
+  assert.match(mailbox, /force:\s*isInitialContextLoad/);
 });
 
 test("les origines programmées et iNrAgent sont marquées sans ambiguïté", () => {

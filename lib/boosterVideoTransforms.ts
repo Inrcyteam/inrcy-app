@@ -10,7 +10,7 @@ import {
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "./mediaRules.ts";
 import {
   GOOGLE_BUSINESS_VIDEO_PROFILE,
-  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+  GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
 } from "./googleBusinessMediaPolicy.ts";
 
 export type VideoPublicationProfile =
@@ -179,7 +179,7 @@ const GOOGLE_BUSINESS_QUALITY_PROFILE: BoosterVideoQualityProfile = {
   maxrate: "6000k",
   bufsize: "12000k",
   audioBitrate: "128k",
-  maxOutputBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+  maxOutputBytes: GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
 };
 
 export function getVideoTransformQualityProfile(

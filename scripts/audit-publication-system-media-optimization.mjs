@@ -14,39 +14,34 @@ const imageNormalizer = read("lib/mediaImageNormalizer.ts");
 const imageServer = read("lib/boosterImageServerPreparation.ts");
 const rules = read("lib/mediaRules.ts");
 const workspaceConsumption = read("lib/mediaWorkspaceConsumption.ts");
+const publishModal = read(
+  "app/dashboard/booster/publier/PublishModal.tsx",
+);
 
 const checks = [
   [
-    /getVideoCanonicalOptimizationProfile/.test(policy),
-    "profil vidéo poids/durée/résolution",
-  ],
-  [
-    /VIDEO_CANONICAL_TARGET_BYTES =\s*[\r\n\s]*INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES/.test(
+    /VIDEO_NORMALIZATION_MAX_SOURCE_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
       policy,
     ),
-    "master commun ciblé à 65 Mo",
+    "worker vidéo aligné sur le plafond unique de 75 Mo",
   ],
   [
-    /getVideoTargetBitrateKbps/.test(normalizer),
-    "débit calculé selon la durée",
-  ],
-  [
-    /One duration-aware encode only/.test(normalizer),
-    "un seul encodage borné",
-  ],
-  [
-    !/VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES/.test(normalizer),
-    "ancien seuil poids supprimé",
+    /BOOSTER_VIDEO_DERIVATIVE_KEYS[\s\S]*"thumbnail"[\s\S]*"frame_03"[\s\S]*"audio_track"/.test(
+      normalizer,
+    ) &&
+      !/encodeMp4|libx264|size_cap_transcode/.test(normalizer),
+    "aucune compression vidéo dans le worker Booster",
   ],
   [
     /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/.test(variants),
-    "cache vidéo invalidé",
+    "cache des adaptations vidéo conservé",
   ],
   [
-    /sourceSizeBytes >= VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES/.test(
-      workspaceConsumption,
-    ),
-    "source lourde jamais envoyée directement",
+    /canUseDirectWorkspaceVideoSource/.test(workspaceConsumption) &&
+      /const publicationVariant = directSourceReady \? null : canonical/.test(
+        workspaceConsumption,
+      ),
+    "publication de l'original vérifié avec secours réservé aux anciens brouillons",
   ],
   [
     !/quality\.videoBitrate/.test(variants),
@@ -54,7 +49,7 @@ const checks = [
   ],
   [
     /preset: "veryfast"/.test(transforms) && /maxVideoKbps/.test(transforms),
-    "profils vidéo rapides bornés",
+    "adaptations manuelles rapides et bornées",
   ],
   [
     /mozjpeg: !providerSafe/.test(imageNormalizer),
@@ -70,14 +65,21 @@ const checks = [
     "images légères haute qualité",
   ],
   [
-    /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES = 70_000_000/.test(rules) &&
-      /INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES = 65_000_000/.test(rules),
-    "contrat média documenté",
+    /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 75_000_000/.test(rules) &&
+      /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*[\r\n\s]*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
+        rules,
+      ),
+    "contrat vidéo original 75 Mo documenté",
+  ],
+  [
+    /Préparation des médias/.test(publishModal) &&
+      !/Compression des médias/.test(publishModal),
+    "progression universelle sans étape de compression",
   ],
 ];
 
 let failures = 0;
-console.log("\n=== iNrCy - Optimisation média qualité / poids / vitesse ===\n");
+console.log("\n=== iNrCy - Optimisation média qualité / vitesse ===\n");
 for (const [ok, label] of checks) {
   if (ok) console.log(`PASS  ${label}`);
   else {

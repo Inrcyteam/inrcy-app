@@ -156,6 +156,9 @@ const MIN_SOURCE_BATCHES_PER_REQUEST = 1;
 const MAX_SOURCE_BATCHES_PER_REQUEST = 40;
 const COUNT_SOURCE_BATCH_SIZE = 150;
 const COUNT_SOURCE_ROW_LIMIT = 300;
+const HISTORY_NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+};
 const ALL_FOLDERS: Folder[] = Array.from(
   new Set<string>([...INRSEND_LEGACY_FOLDERS, ...INRSEND_GROUPED_FOLDERS]),
 ) as Folder[];
@@ -1527,7 +1530,7 @@ export async function GET(req: Request) {
         countsComplete: countsIncluded,
         folderCounts: countsIncluded ? sentCountsResult.counts : null,
         draftFolderCounts: countsIncluded ? draftCountsResult.counts : null,
-      }, { headers: { "Cache-Control": "no-store" } });
+      }, { headers: HISTORY_NO_STORE_HEADERS });
     }
 
     const folderCutoffIso = getInrSendRetentionCutoffIso(folder);
@@ -1825,7 +1828,7 @@ export async function GET(req: Request) {
         total: exactTotalFromPageScan,
         totalKnown: exactTotalFromPageScan != null,
         countsIncluded: false,
-      });
+      }, { headers: HISTORY_NO_STORE_HEADERS });
     }
 
     const [sentCountsResult, draftCountsResult] = await Promise.all([
@@ -1841,7 +1844,7 @@ export async function GET(req: Request) {
         total: null,
         totalKnown: false,
         countsIncluded: false,
-      });
+      }, { headers: HISTORY_NO_STORE_HEADERS });
     }
     const folderCounts = sentCountsResult.counts;
     const draftFolderCounts = draftCountsResult.counts;
@@ -1859,7 +1862,7 @@ export async function GET(req: Request) {
       countsIncluded: true,
       folderCounts,
       draftFolderCounts,
-    });
+    }, { headers: HISTORY_NO_STORE_HEADERS });
   } catch (error) {
     return jsonUserFacingError(error, { status: 500 });
   }

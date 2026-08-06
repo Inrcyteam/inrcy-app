@@ -2,6 +2,10 @@ import "server-only";
 
 import { createHash, randomUUID } from "crypto";
 import { asRecord, asString } from "@/lib/tsSafe";
+import {
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 
 export type YoutubeShortsUploadInput = {
   accessToken: string;
@@ -96,7 +100,7 @@ export type YoutubeResumableUploadPhaseResult =
       raw?: unknown;
     };
 
-const YOUTUBE_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+const YOUTUBE_VIDEO_MAX_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
 const YOUTUBE_RESUMABLE_CHUNK_GRANULARITY_BYTES = 256 * 1024;
 const YOUTUBE_RESUMABLE_CHUNK_BYTES = 8 * 1024 * 1024;
 const YOUTUBE_RESUMABLE_MAX_CHUNK_BYTES = 16 * 1024 * 1024;
@@ -499,7 +503,9 @@ async function probeYoutubeVideoSource(params: {
     throw new Error("La taille de la vidéo YouTube n'est pas vérifiable.");
   }
   if (size > YOUTUBE_VIDEO_MAX_BYTES) {
-    throw new Error("La vidéo YouTube dépasse la limite de 300 Mo.");
+    throw new Error(
+      `La vidéo YouTube dépasse la limite de ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}.`,
+    );
   }
   return { size, mimeType, rangeSupported } satisfies YoutubeVideoSource;
 }

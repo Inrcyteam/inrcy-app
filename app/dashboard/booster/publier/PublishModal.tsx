@@ -179,8 +179,6 @@ import usePersistentMediaWorkspace, {
 } from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
-import { INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES } from "@/lib/mediaRules";
-import { resolveMediaPreparationDisplayPhase } from "@/lib/mediaPreparationDisplay";
 import {
   getBoosterCreationWorkflow,
   getBoosterPublicationWorkflowSteps,
@@ -224,19 +222,12 @@ import MediaLibraryPickerModal, {
 // transformer une première tentative lente en faux échec nécessitant 2 clics.
 const BOOSTER_GENERATION_TARGET_MS = 30_000;
 const BOOSTER_GENERATION_SAFETY_BUDGET_MS = 105_000;
-// Le préchauffage démarre dès l'insertion. Au clic, cette fenêtre absorbe la
-// dernière course éventuelle d'une grosse vidéo sans rogner le budget de l'IA.
-// Au-delà, la génération continue avec le contexte sûr déjà disponible.
+// Le préchauffage démarre dès l'insertion. Au clic, cette courte fenêtre absorbe
+// la fin éventuelle des captures sans rogner le budget de l'IA.
 const BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000;
 // Le fallback navigateur reste un bonus court : aucun FileReader, canvas ou
-// décodeur vidéo ne peut retenir la rédaction IA au-delà. Pour une vidéo lourde,
-// les captures commencent dès l'insertion et sont seulement relues au clic.
+// décodeur vidéo ne peut retenir la rédaction IA au-delà.
 const BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS = 2_500;
-const BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES =
-  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES;
-// Le clic accepte l'opération immédiatement, puis cette fenêtre laisse le TUS
-// et le worker durable terminer le master léger sans demander un second clic.
-const BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 30 * 60 * 1_000;
 const BOOSTER_PUBLISH_VISIBLE_CAP_MS = 60_000;
 const BOOSTER_PUBLISH_WITH_MEDIA_FINALIZATION_VISIBLE_CAP_MS = 90_000;
 
@@ -288,8 +279,6 @@ export default function PublishModal({
   const [generationPhaseIndex, setGenerationPhaseIndex] = useState(0);
   const [generationPhaseLabel, setGenerationPhaseLabel] = useState("");
   const [generationStage, setGenerationStage] = useState("");
-  const [videoPreparationDisplayPhase, setVideoPreparationDisplayPhase] =
-    useState<"compression" | "preparation" | null>(null);
   const generationProgressTargetRef = useRef(0);
   const generationPhaseIndexRef = useRef(0);
   const generationRequestPhaseTimerRef = useRef<number | null>(null);
@@ -1295,10 +1284,6 @@ export default function PublishModal({
       const preparedVideos = preparedMedia.filter(
         (item) => item.mediaType === "video",
       );
-      const preparationPhase = preparedVideos.length
-        ? resolveMediaPreparationDisplayPhase(preparedVideos)
-        : null;
-      setVideoPreparationDisplayPhase(preparationPhase);
 
       if (
         generating &&
@@ -1306,10 +1291,8 @@ export default function PublishModal({
       ) {
         setGenerationProgressPhase(
           "media_analysis",
-          preparationPhase === "compression"
-            ? "Compression des médias"
-            : "Préparation des médias",
-          preparationPhase === "compression" ? 34 : 37,
+          "Préparation des médias",
+          37,
         );
       }
 
@@ -1444,25 +1427,16 @@ export default function PublishModal({
   });
 
   useEffect(() => {
-    // A new local source must start with a fresh server-side preparation state.
-    // Heavy files show compression immediately; the workspace snapshot switches
-    // the wording to the universal preparation label as soon as compression ends.
-    setVideoPreparationDisplayPhase(null);
-  }, [videoFile?.lastModified, videoFile?.name, videoFile?.size]);
-
-  useEffect(() => {
     if (
       creationMode !== "ai" ||
       !videoFile ||
-      videoAiContextRef ||
-      videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
+      videoAiContextRef
     ) {
       return;
     }
 
-    // Les sources lourdes ne sont jamais décodées dans le navigateur : le worker
-    // compresse d'abord le master puis produit les captures depuis ce fichier.
-    // Ce petit fallback local reste réservé aux vidéos déjà légères.
+    // Les captures locales commencent dès l'insertion de toute vidéo acceptée.
+    // Elles restent un bonus court : le worker serveur peut les compléter.
     void getOrPrepareVideoFramesForAI(videoFile).catch((error) => {
       console.warn(
         "[booster-generate] local video frame prewarm unavailable",
@@ -1643,9 +1617,8 @@ export default function PublishModal({
     ],
   );
 
-  // Les captures ne sont jamais décodées localement depuis le conteneur lourd à l'ajout.
-  // La mission serveur IA préchauffée depuis Storage fournit les captures ;
-  // ce cache local reste uniquement le filet du pipeline historique.
+  // Les captures locales de l'original démarrent dès l'ajout. La mission
+  // serveur durable les complète si le navigateur n'a pas fini avant le clic.
 
   useEffect(() => {
     return () => {
@@ -1749,9 +1722,9 @@ export default function PublishModal({
       mediaPipelineCutoverV1: true,
       allowOriginalVideoFallback: false,
     });
-    // Fast path first: reuse an existing server variant. If cache v6
-    // invalidated it, regenerate exactly once from the canonical v2 workspace
-    // master; the browser original never authorizes a scheduled publication.
+    // Fast path first: reuse an existing explicit channel adaptation. If its
+    // cache was invalidated, regenerate that adaptation once from the original
+    // server-validated workspace source.
     if (
       !isVideoPreparationReady(result) &&
       options?.generateMissingVideoVariants === false &&
@@ -2891,9 +2864,6 @@ export default function PublishModal({
       storage: videoStorageContext,
     });
     const hasVideoForGeneration = !!videoGenerationContext?.enabled;
-    const heavyVideoCompressionRequired =
-      Boolean(videoFile) &&
-      (videoFile?.size || 0) >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES;
     const shouldUseImagesForAI =
       !hasVideoForGeneration && images.length > 0 && useImagesForAI;
     const shouldPrepareMediaForAi = shouldPrepareBoosterMediaForAi({
@@ -2943,13 +2913,7 @@ export default function PublishModal({
               }
               setGenerationProgressPhase(
                 "media_analysis",
-                heavyVideoCompressionRequired
-                  ? "Compression des médias"
-                  : publicationMediaType === "video"
-                  ? "Analyse de la vidéo en cours"
-                  : images.length > 1
-                    ? "Analyse des images en cours"
-                    : "Analyse de l’image en cours",
+                "Préparation des médias",
                 mapProgressRange(progress, 25, 42, 23, 39),
               );
             },
@@ -2983,14 +2947,12 @@ export default function PublishModal({
       ) {
         setGenerationProgressPhase(
           "media_analysis",
-          heavyVideoCompressionRequired
-            ? "Compression des médias"
-            : "Préparation des captures vidéo pour l’IA",
+          "Préparation des médias",
           34,
         );
         // La mission est dédupliquée par le hook et travaille directement
-        // depuis la source Supabase : aucun second upload des 150–300 Mo. On lui
-        // laisse une courte avance pour les vidéos légères, puis on continue
+        // depuis la source Supabase : aucun second upload ni transcodage. On lui
+        // laisse une courte avance, puis on continue
         // avec les captures déjà prêtes ou le contexte métadonnées/phrase.
         let graceTimeoutId: number | null = null;
         const preparation = startPersistentAiMediaPreparation()
@@ -3033,9 +2995,7 @@ export default function PublishModal({
           hasVideoForGeneration
             ? videoAiPreparationReady
               ? "Vidéo et captures prêtes pour l’analyse IA"
-              : heavyVideoCompressionRequired
-                ? "Compression des médias poursuivie en arrière-plan"
-                : "Vidéo prête · captures finalisées en arrière-plan"
+              : "Vidéo prête · captures finalisées en arrière-plan"
             : shouldUseImagesForAI
               ? "Visuels prêts pour l’analyse IA"
               : "Média prêt pour l’analyse IA",
@@ -3087,8 +3047,7 @@ export default function PublishModal({
       if (
         hasVideoForGeneration &&
         videoFile &&
-        !videoAiContextRef &&
-        videoFile.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
+        !videoAiContextRef
       ) {
         setGenerationProgressPhase(
           "media_analysis",
@@ -3492,7 +3451,7 @@ export default function PublishModal({
 
     if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
       setImgError(
-        `La vidéo ${file.name} dépasse ${BOOSTER_MAX_VIDEO_MB_LABEL}.`,
+        `La vidéo ${file.name} dépasse ${BOOSTER_MAX_VIDEO_MB_LABEL}. Compressez-la d'abord avant de l'ajouter au Booster.`,
       );
       return;
     }
@@ -4129,25 +4088,13 @@ export default function PublishModal({
     const hasAnyImagePublish = publishableChannels.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
-    const heavyVideoCompressionRequiredForPublish =
-      hasAnyVideoPublish &&
-      Boolean(videoFile) &&
-      (videoFile?.size || 0) >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES;
-    const pendingMediaPreparationLabel =
-      heavyVideoCompressionRequiredForPublish &&
-      videoPreparationDisplayPhase !== "preparation"
-        ? "Compression des médias"
-        : "Préparation des médias";
+    const pendingMediaPreparationLabel = "Préparation des médias";
     const requiredPublishMediaTypes = [
       ...(hasAnyImagePublish ? (["image"] as const) : []),
       ...(hasAnyVideoPublish ? (["video"] as const) : []),
     ];
     const publishWorkspaceReadinessTimeoutMs =
-      hasAnyVideoPublish &&
-      videoFile &&
-      videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
-        ? BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS
-        : MEDIA_WORKSPACE_READINESS_TIMEOUT_MS;
+      MEDIA_WORKSPACE_READINESS_TIMEOUT_MS;
     // Les deux familles coexistent dans le workspace. Leur présence réelle,
     // et non le dernier onglet média activé, décide si un fallback est requis.
     const workspaceCarriesImagesForPublish =
@@ -4283,14 +4230,7 @@ export default function PublishModal({
             Math.max(0, Number(mediaPreparation.progress || 0)),
           )
         : null;
-      const mediaCompressionInProgress =
-        String(mediaPreparation?.phase || "") === "compression";
-      const mediaPreparationLabelProgress = mediaCompressionInProgress
-        ? Math.min(
-            100,
-            Math.max(0, Number(mediaPreparation?.phaseProgress || 0)),
-          )
-        : mediaPreparationProgress;
+      const mediaPreparationLabelProgress = mediaPreparationProgress;
       const entries = Array.isArray(summary.entries)
         ? (summary.entries.filter(
             (entry): entry is Record<string, any> =>
@@ -4337,11 +4277,11 @@ export default function PublishModal({
       }
       if (mediaPreparationInProgress) {
         const progress = mediaPreparationProgress ?? 0;
-        const label = `${
-          mediaCompressionInProgress
-            ? "Compression des médias"
-            : "Préparation des médias"
-        }${mediaPreparationLabelProgress === null ? "" : ` · ${Math.round(mediaPreparationLabelProgress)} %`}`;
+        const label = `Préparation des médias${
+          mediaPreparationLabelProgress === null
+            ? ""
+            : ` · ${Math.round(mediaPreparationLabelProgress)} %`
+        }`;
         // The request may already have crossed the local file-preparation
         // phases before the durable worker reports its first status. Keep the
         // technical phase monotonic, but show the truthful media stage and map
@@ -5105,11 +5045,7 @@ export default function PublishModal({
       ...(hasAnyVideoPublish ? (["video"] as const) : []),
     ];
     const scheduleWorkspaceReadinessTimeoutMs =
-      hasAnyVideoPublish &&
-      videoFile &&
-      videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
-        ? BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS
-        : MEDIA_WORKSPACE_READINESS_TIMEOUT_MS;
+      MEDIA_WORKSPACE_READINESS_TIMEOUT_MS;
     const workspaceCarriesImagesForSchedule =
       mediaPipelineCutoverEnabled && images.length > 0;
     const workspaceCarriesVideoForSchedule =
@@ -5156,9 +5092,7 @@ export default function PublishModal({
           (channel) => publishMediaModeByChannel[channel] === "video",
         );
         setPublishProgress((current) => Math.max(current, 43));
-        setPublishProgressLabel(
-          "Vérification de la vidéo pour la programmation...",
-        );
+        setPublishProgressLabel("Préparation des médias");
         const videoPreparation = await ensureCutoverVideoVariantsReady(
           videoChannels,
           scheduleVideoSettingsByChannel,
@@ -5168,11 +5102,7 @@ export default function PublishModal({
           },
         );
         setPublishProgress((current) => Math.max(current, 57));
-        setPublishProgressLabel(
-          canContinueWithIsolatedVideoPreparationFailures(videoPreparation)
-            ? "Vidéo vérifiée : les canaux incompatibles seront isolés."
-            : "Vidéo compatible et prête à programmer.",
-        );
+        setPublishProgressLabel("Préparation des médias");
       }
 
       const emptyChannelImages = {} as ChannelImagePayload;

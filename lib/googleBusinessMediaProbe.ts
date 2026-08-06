@@ -1,7 +1,7 @@
 import {
   GOOGLE_BUSINESS_IMAGE_OFFICIAL_MAX_BYTES,
   GOOGLE_BUSINESS_IMAGE_MIN_BYTES,
-  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+  GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
 } from "./googleBusinessMediaPolicy.ts";
 
 export type GoogleBusinessMediaKind = "image" | "video";
@@ -137,7 +137,7 @@ function validateHeaders(params: {
   const maxBytes =
     kind === "image"
       ? GOOGLE_BUSINESS_IMAGE_OFFICIAL_MAX_BYTES
-      : GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES;
+      : GOOGLE_BUSINESS_VIDEO_MAX_BYTES;
   if (contentLength !== null && contentLength > maxBytes) {
     return {
       ok: false,
@@ -239,7 +239,8 @@ export async function probeGoogleBusinessMediaUrl(params: {
     );
     if (head.ok) return head;
     // A known out-of-bounds length cannot be repaired by a second request.
-    // Avoid even the one-byte fallback for an already rejected 300 MB source.
+    // Avoid even the one-byte fallback for a source already rejected by the
+    // shared 75,000,000-byte Booster ceiling.
     if (head.reason === "file_too_large" || head.reason === "file_too_small") {
       return head;
     }

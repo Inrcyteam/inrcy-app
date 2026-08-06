@@ -18,6 +18,8 @@ export type MailboxHistoryCounts = Record<MailboxHistoryFolder, number>;
 export const MAILBOX_HISTORY_CACHE_TTL_MS = 2 * 60 * 1000;
 export const MAILBOX_HISTORY_PREFETCH_CONCURRENCY = 1;
 export const MAILBOX_HISTORY_MAX_PRELOAD_JOBS = 1;
+export const MAILBOX_HISTORY_ACTIVE_REFRESH_MS = 10_000;
+export const MAILBOX_HISTORY_IDLE_REFRESH_MS = 60_000;
 
 export type MailboxHistoryContext = {
   folder: MailboxHistoryFolder;
@@ -41,6 +43,25 @@ export type MailboxHistoryPreloadJob = {
   page: number;
   total: number | null;
 };
+
+export function mailboxHistoryRefreshInterval(options: {
+  context: MailboxHistoryContext;
+  items: { status?: unknown; created_at?: unknown }[];
+  now?: number;
+}): number {
+  void options.items;
+  void options.now;
+  if (
+    options.context.folder !== "publications" ||
+    options.context.boxView !== "sent"
+  ) {
+    return MAILBOX_HISTORY_IDLE_REFRESH_MS;
+  }
+  // A just-accepted publication may not be present in the current snapshot yet.
+  // Refresh the visible Publications folder every ten seconds independently of
+  // Realtime so the row and its channel statuses appear without a manual reload.
+  return MAILBOX_HISTORY_ACTIVE_REFRESH_MS;
+}
 
 export function normalizeMailboxHistoryQuery(value: string): string {
   return String(value || "").trim();

@@ -44,7 +44,11 @@ test("étape 2 expose exactement les trois missions média", () => {
   );
   assert.match(
     missionSource,
-    /ai_preparation:\s*\[[\s\S]*"frame_01"[\s\S]*"audio_track"[\s\S]*publication_preparation:\s*\["canonical", "thumbnail"\]/,
+    /ai_preparation:\s*\[[\s\S]*"thumbnail"[\s\S]*"frame_01"[\s\S]*"audio_track"[\s\S]*publication_preparation:\s*\["thumbnail"\]/,
+  );
+  assert.doesNotMatch(
+    missionSource,
+    /BOOSTER_VIDEO_PREPARATION_KEYS[\s\S]*"canonical"|BOOSTER_VIDEO_PREPARATION_KEYS[\s\S]*"ai_preview"/,
   );
 });
 

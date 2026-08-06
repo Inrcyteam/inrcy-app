@@ -11,9 +11,9 @@ import {
   GOOGLE_BUSINESS_IMAGE_MIN_BYTES,
   GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE,
   GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS,
+  GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
   GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE,
   GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES,
-  GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
   getGoogleBusinessVideoPreparationDecision,
 } from "../../lib/googleBusinessMediaPolicy.ts";
 import {
@@ -35,9 +35,9 @@ function read(relativePath: string) {
   return fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 }
 
-test("Google Business owns a dedicated safety policy without reducing the 300 MB source limit globally", () => {
+test("Google Business and Booster share the exact 75 MB video ceiling", () => {
   assert.equal(GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES, 75_000_000);
-  assert.equal(GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES, 70_000_000);
+  assert.equal(GOOGLE_BUSINESS_VIDEO_MAX_BYTES, 75_000_000);
   assert.equal(GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS, 30);
   assert.equal(GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE, 720);
   assert.equal(GOOGLE_BUSINESS_IMAGE_MIN_BYTES, 10 * 1024);
@@ -50,7 +50,7 @@ test("Google Business owns a dedicated safety policy without reducing the 300 MB
     name: "source.mp4",
     type: "video/mp4",
     storagePath: "source.mp4",
-    sizeBytes: 220 * MB,
+    sizeBytes: 75_000_000,
     durationSeconds: 20,
     width: 1920,
     height: 1080,
@@ -60,15 +60,29 @@ test("Google Business owns a dedicated safety policy without reducing the 300 MB
     name: "source.mp4",
     type: "video/mp4",
     storagePath: "source.mp4",
-    sizeBytes: 220 * MB,
+    sizeBytes: 75_000_000,
     durationSeconds: 20,
     width: 1920,
     height: 1080,
   });
 
-  assert.equal(gmb.ok, false);
-  if (!gmb.ok) assert.equal(gmb.reason, "video_too_large");
+  assert.equal(gmb.ok, true);
   assert.equal(facebook.ok, true);
+
+  for (const channel of ["gmb", "facebook"] as const) {
+    const oversized = validateVideoPublicationForChannel({
+      channel,
+      name: "source.mp4",
+      type: "video/mp4",
+      storagePath: "source.mp4",
+      sizeBytes: 75_000_001,
+      durationSeconds: 20,
+      width: 1920,
+      height: 1080,
+    });
+    assert.equal(oversized.ok, false);
+    if (!oversized.ok) assert.equal(oversized.reason, "video_too_large");
+  }
 });
 
 test("a compliant Google Business video is accepted directly", () => {
@@ -77,7 +91,7 @@ test("a compliant Google Business video is accepted directly", () => {
     name: "gmb.mp4",
     type: "video/mp4",
     storagePath: "gmb.mp4",
-    sizeBytes: 70_000_000,
+    sizeBytes: 75_000_000,
     durationSeconds: 30,
     width: 1280,
     height: 720,
@@ -88,7 +102,7 @@ test("a compliant Google Business video is accepted directly", () => {
       name: "gmb.mp4",
       type: "video/mp4",
       storagePath: "gmb.mp4",
-      sizeBytes: 70_000_000,
+      sizeBytes: 75_000_000,
       durationSeconds: 30,
       width: 1280,
       height: 720,
@@ -103,19 +117,7 @@ test("a compliant Google Business video is accepted directly", () => {
   );
 });
 
-test("Google Business prepares heavy or low-resolution videos but never silently trims a long video", () => {
-  assert.deepEqual(
-    getGoogleBusinessVideoPreparationDecision({
-      name: "heavy.mp4",
-      type: "video/mp4",
-      storagePath: "heavy.mp4",
-      sizeBytes: 220 * MB,
-      durationSeconds: 20,
-      width: 1920,
-      height: 1080,
-    }),
-    { action: "prepare", reason: "size_requires_compression" },
-  );
+test("Google Business adapts only technical incompatibilities and never trims silently", () => {
   assert.deepEqual(
     getGoogleBusinessVideoPreparationDecision({
       name: "small.mp4",
@@ -231,7 +233,7 @@ test("Google media URL probing rejects inaccessible, mistyped and oversized file
 
   const sources = read("lib/googleBusinessMediaProbe.ts");
   assert.match(sources, /GOOGLE_BUSINESS_IMAGE_MIN_BYTES/);
-  assert.match(sources, /GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES/);
+  assert.match(sources, /GOOGLE_BUSINESS_VIDEO_MAX_BYTES/);
   assert.match(sources, /content_type_invalid/);
   assert.match(sources, /file_too_small/);
   assert.match(sources, /file_too_large/);

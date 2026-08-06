@@ -23,7 +23,7 @@ const migrationVerification = read(
 const boosterMetrics = read("app/api/booster/metrics/route.ts");
 const propulserMetrics = read("app/api/propulser/metrics/route.ts");
 
-test("generation targets 30 seconds and keeps a cached local fallback for heavy videos", () => {
+test("generation targets 30 seconds and starts local captures for every accepted video", () => {
   assert.match(modal, /BOOSTER_GENERATION_TARGET_MS = 30_000/);
   assert.match(
     modal,
@@ -31,19 +31,15 @@ test("generation targets 30 seconds and keeps a cached local fallback for heavy 
   );
   assert.match(modal, /generationDeadlineAt/);
   assert.match(modal, /controller\.abort\(\)/);
-  // Le seuil partagé empêche tout décodage navigateur d'une vidéo lourde.
   assert.match(
     modal,
-    /BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES/,
+    /Les captures locales commencent dès l'insertion de toute vidéo acceptée\.[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
   );
   assert.match(
     modal,
-    /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
+    /settleOptionalMediaEnrichment\([\s\S]{0,120}getOrPrepareVideoFramesForAI\(videoFile\)[\s\S]{0,100}BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS/,
   );
-  assert.match(
-    modal,
-    /hasVideoForGeneration\s*&&\s*videoFile\s*&&\s*!videoAiContextRef[\s\S]{0,180}videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES/,
-  );
+  assert.doesNotMatch(modal, /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES/);
   assert.match(
     modal,
     /useWorkspaceMediaForAI:[\s\S]*?unifiedMediaConsumptionClientAvailable[\s\S]*?Boolean\(readyMediaWorkspaceId\)/,

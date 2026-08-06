@@ -52,6 +52,12 @@ function loadTypeScriptModule(relativePath: string) {
         }),
       };
     }
+    if (specifier === "@/lib/mediaRules") {
+      return {
+        INR_MEDIA_VIDEO_SOURCE_MAX_BYTES: 75_000_000,
+        INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL: "75 Mo",
+      };
+    }
     return requireFromTest(specifier);
   };
   const execute = new Function("module", "exports", "require", output);
@@ -105,11 +111,11 @@ const uploadYoutubeShort =
 const linkedinPublishVideo =
   linkedinExports.linkedinPublishVideo as LinkedinPublishVideo;
 
-test("YouTube streams a 300 MiB source in bounded resumable ranges", async () => {
-  const size = 300 * 1024 * 1024;
+test("YouTube streams a 75 MB source in bounded resumable ranges", async () => {
+  const size = 75_000_000;
   const chunkSize = 16 * 1024 * 1024;
-  const sourceUrl = "https://storage.test/youtube-300.mp4";
-  const sessionUrl = "https://upload.youtube.test/session-300";
+  const sourceUrl = "https://storage.test/youtube-75.mp4";
+  const sessionUrl = "https://upload.youtube.test/session-75";
   const downloadedRanges: Array<[number, number]> = [];
   const uploadedRanges: Array<[number, number]> = [];
   const uploadedBodies: unknown[] = [];
@@ -168,7 +174,7 @@ test("YouTube streams a 300 MiB source in bounded resumable ranges", async () =>
         });
       }
       return jsonResponse({
-        id: "youtube-video-300",
+        id: "youtube-video-75",
         snippet: { title: "Publication test" },
         status: { privacyStatus: "public", uploadStatus: "uploaded" },
       });
@@ -183,7 +189,7 @@ test("YouTube streams a 300 MiB source in bounded resumable ranges", async () =>
   });
 
   assert.equal(result.ok, true);
-  assert.equal(result.videoId, "youtube-video-300");
+  assert.equal(result.videoId, "youtube-video-75");
   assert.equal(initializedSize, String(size));
   assert.equal(downloadedRanges.length, Math.ceil(size / chunkSize));
   assert.deepEqual(downloadedRanges, uploadedRanges);
@@ -288,8 +294,8 @@ test("YouTube resumes from the server offset after network and 5xx failures", as
 });
 
 test("YouTube rejects oversized and incoherent ranged sources before upload", async () => {
-  const oversized = 301 * 1024 * 1024;
-  const oversizedUrl = "https://storage.test/youtube-301.mp4";
+  const oversized = 75_000_001;
+  const oversizedUrl = "https://storage.test/youtube-oversized.mp4";
   let initialized = false;
   const oversizedResult = await uploadYoutubeShort(youtubeInput(oversizedUrl), {
     fetchImpl: async (input, init) => {
@@ -308,7 +314,7 @@ test("YouTube rejects oversized and incoherent ranged sources before upload", as
     },
   });
   assert.equal(oversizedResult.ok, false);
-  assert.match(String(oversizedResult.error), /300 Mo/);
+  assert.match(String(oversizedResult.error), /75 Mo/);
   assert.equal(initialized, false);
 
   const size = 10 * 1024 * 1024;
@@ -394,10 +400,10 @@ test("YouTube guards the monoblock fallback when storage has no Range", async ()
   assert.equal(fullSourceGetCount, 0);
 });
 
-test("LinkedIn derives 300 MiB from storage and streams every instructed part", async () => {
-  const size = 300 * 1024 * 1024;
-  const split = 150 * 1024 * 1024;
-  const sourceUrl = "https://storage.test/linkedin-300.mp4";
+test("LinkedIn derives 75 MB from storage and streams every instructed part", async () => {
+  const size = 75_000_000;
+  const split = size / 2;
+  const sourceUrl = "https://storage.test/linkedin-75.mp4";
   const partUrls = [
     "https://upload.linkedin.test/part-1",
     "https://upload.linkedin.test/part-2",
@@ -432,7 +438,7 @@ test("LinkedIn derives 300 MiB from storage and streams every instructed part", 
       initializedFileSize = Number(request.fileSizeBytes);
       return jsonResponse({
         value: {
-          video: "urn:li:video:test-300",
+          video: "urn:li:video:test-75",
           uploadToken: "linkedin-upload-token",
           uploadInstructions: [
             { uploadUrl: partUrls[0], firstByte: 0, lastByte: split - 1 },
@@ -457,14 +463,14 @@ test("LinkedIn derives 300 MiB from storage and streams every instructed part", 
       finalizedPartIds = request.uploadedPartIds;
       return jsonResponse({});
     }
-    if (url.includes("/rest/videos/urn%3Ali%3Avideo%3Atest-300")) {
+    if (url.includes("/rest/videos/urn%3Ali%3Avideo%3Atest-75")) {
       return jsonResponse({ status: "AVAILABLE" });
     }
     if (url.includes("/rest/posts") && method === "POST") {
       return jsonResponse(
-        { id: "urn:li:share:test-300" },
+        { id: "urn:li:share:test-75" },
         201,
-        { "x-restli-id": "urn:li:share:test-300" },
+        { "x-restli-id": "urn:li:share:test-75" },
       );
     }
     throw new Error(`Unexpected fetch: ${method} ${url}`);
@@ -494,12 +500,12 @@ test("LinkedIn derives 300 MiB from storage and streams every instructed part", 
   }
 });
 
-test("LinkedIn rejects bad ranges, missing ETags, and videos over 300 MiB", async () => {
+test("LinkedIn rejects bad ranges, missing ETags, and videos over 75 MB", async () => {
   const previousFetch = globalThis.fetch;
   try {
     const run = async (mode: "range" | "etag" | "oversized") => {
       const size =
-        mode === "oversized" ? 301 * 1024 * 1024 : 10 * 1024 * 1024;
+        mode === "oversized" ? 75_000_001 : 10 * 1024 * 1024;
       const sourceUrl = `https://storage.test/linkedin-${mode}.mp4`;
       let initialized = false;
       let finalized = false;
@@ -562,7 +568,7 @@ test("LinkedIn rejects bad ranges, missing ETags, and videos over 300 MiB", asyn
       assert.equal(finalized, false, mode);
       if (mode === "oversized") {
         assert.equal(initialized, false);
-        assert.match(String(result.error), /300 Mo/);
+        assert.match(String(result.error), /75 Mo/);
       } else if (mode === "range") {
         assert.match(String(result.error), /segment/);
       } else {

@@ -46,6 +46,12 @@ new Function("module", "exports", "require", transpiled)(
           typeof value === "string" ? value : null,
       };
     }
+    if (specifier === "@/lib/mediaRules") {
+      return {
+        INR_MEDIA_VIDEO_SOURCE_MAX_BYTES: 75_000_000,
+        INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL: "75 Mo",
+      };
+    }
     return requireFromTest(specifier);
   },
 );

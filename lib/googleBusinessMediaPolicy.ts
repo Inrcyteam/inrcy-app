@@ -1,4 +1,5 @@
 import { canPublishVideoSourceDirectly } from "./mediaVideoSourceCompatibility.ts";
+import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
 
 export const GOOGLE_BUSINESS_IMAGE_MIN_BYTES = 10 * 1024;
 export const GOOGLE_BUSINESS_IMAGE_OFFICIAL_MAX_BYTES = 5_000_000;
@@ -7,10 +8,10 @@ export const GOOGLE_BUSINESS_IMAGE_TARGET_MAX_BYTES = 4_800_000;
 export const GOOGLE_BUSINESS_IMAGE_MIN_SHORT_EDGE = 250;
 
 export const GOOGLE_BUSINESS_VIDEO_OFFICIAL_MAX_BYTES = 75_000_000;
-// Marge volontaire sous la limite Google afin d'éviter les rejets à la frontière.
-// 70 MB decimal leaves operational headroom below Google's 75 MB limit for
-// transport/provider overhead. This threshold is GMB-only.
-export const GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES = 70_000_000;
+// Le plafond Booster est exactement le plafond Google. Une source acceptée
+// ne déclenche donc jamais de conversion uniquement à cause de son poids.
+export const GOOGLE_BUSINESS_VIDEO_MAX_BYTES =
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
 export const GOOGLE_BUSINESS_VIDEO_MAX_DURATION_SECONDS = 30;
 export const GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE = 720;
 
@@ -21,7 +22,6 @@ export type GoogleBusinessVideoPreparationDecision =
   | {
       action: "prepare";
       reason:
-        | "size_requires_compression"
         | "format_requires_normalization"
         | "resolution_requires_normalization"
         | "metadata_requires_probe";
@@ -85,10 +85,6 @@ export function getGoogleBusinessVideoPreparationDecision(input: {
     return { action: "prepare", reason: "metadata_requires_probe" };
   }
 
-  if (sizeBytes > GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES) {
-    return { action: "prepare", reason: "size_requires_compression" };
-  }
-
   if (Math.min(width, height) < GOOGLE_BUSINESS_VIDEO_MIN_SHORT_EDGE) {
     return { action: "prepare", reason: "resolution_requires_normalization" };
   }
@@ -100,7 +96,7 @@ export function getGoogleBusinessVideoPreparationDecision(input: {
       mimeType: input.mimeType,
       storagePath: input.storagePath,
       sizeBytes,
-      maxBytes: GOOGLE_BUSINESS_VIDEO_TARGET_MAX_BYTES,
+      maxBytes: GOOGLE_BUSINESS_VIDEO_MAX_BYTES,
       videoCodec: input.videoCodec,
       audioCodec: input.audioCodec,
       frameRate: input.frameRate ?? input.fps,

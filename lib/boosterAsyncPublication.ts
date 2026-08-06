@@ -591,7 +591,7 @@ function buildProcessingPublicationStatus(
     status: string;
     mediaCount: number;
     completedCount: number;
-    phase: "compression" | "preparation";
+    phase: "preparation";
     phaseProgress: number | null;
   } | null,
 ) {

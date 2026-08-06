@@ -54,23 +54,20 @@ const criticalChecks = [
       /safe_blur[\s\S]{0,140}safe_frame/.test(sources.videoSettings),
   },
   {
-    id: "source-300mb",
-    label: "La source vidéo reste acceptée jusqu'à 300 Mo",
-    ok: /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 300 \* 1024 \* 1024/.test(
+    id: "source-75mb",
+    label: "La source vidéo est plafonnée exactement à 75 000 000 octets",
+    ok: /INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 75_000_000/.test(
       sources.mediaRules,
     ),
   },
   {
-    id: "canonical-under-70mb",
-    label: "Toute source lourde produit un canon cible de 65 Mo et strictement inférieur à 70 Mo",
+    id: "no-automatic-video-compression",
+    label: "Le Booster publie l'original accepté sans compression automatique",
     ok:
-      /INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES = 70_000_000/.test(
+      /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_SOURCE_MAX_BYTES/.test(
         sources.mediaRules,
       ) &&
-      /INR_MEDIA_VIDEO_CANONICAL_TARGET_BYTES = 65_000_000/.test(
-        sources.mediaRules,
-      ) &&
-      /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES - 1/.test(
+      !/INR_MEDIA_VIDEO_(?:COMPRESSION_TRIGGER|CANONICAL_(?:TARGET|MAX))_BYTES/.test(
         sources.mediaRules,
       ),
   },

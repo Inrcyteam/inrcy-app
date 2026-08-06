@@ -44,7 +44,7 @@ test("strict workspace publication never falls back to body.video or a legacy co
   );
 });
 
-test("TikTok video readiness requires canonical v2 but not the Pinterest cover", () => {
+test("TikTok video readiness accepts the server-probed original without a cover", () => {
   const readiness = sliceBetween(
     preparation,
     "function hasReadyPublicationVariants",
@@ -52,16 +52,14 @@ test("TikTok video readiness requires canonical v2 but not the Pinterest cover",
   );
   assert.match(
     readiness,
-    /if \(!params\.canonicalMediaIds\.has\(params\.media\.mediaId\)\) return false/,
+    /isDirectPublicationVideo\(params\.media\) \|\|\s*params\.canonicalMediaIds\.has/,
   );
   assert.match(
     readiness,
-    /params\.media\.mediaType !== "video" \|\|\s*!params\.requiresVideoThumbnail \|\|\s*params\.videoThumbnailMediaIds\.has/,
+    /videoSourceReady &&\s*\(!params\.requiresVideoThumbnail \|\|\s*params\.videoThumbnailMediaIds\.has/,
   );
-  assert.match(
-    preparation,
-    /getVideoNormalizationSignature\("canonical"\)/,
-  );
+  assert.match(preparation, /function isDirectPublicationVideo/);
+  assert.match(preparation, /INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES/);
   assert.doesNotMatch(preparation, /videoChannels\?\.includes\("tiktok"\)/);
 });
 

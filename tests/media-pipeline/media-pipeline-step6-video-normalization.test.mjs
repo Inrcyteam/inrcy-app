@@ -30,33 +30,19 @@ test("la migration étape 6 est additive, idempotente et réservée au worker", 
   assert.doesNotMatch(sql, /\bdrop\s+(table|column)\b|\btruncate\b/i);
 });
 
-test("le normaliseur produit le canonique et tous les dérivés sans recadrage", () => {
+test("le normaliseur extrait seulement les artefacts utiles depuis l'original", () => {
   const source = read("lib/mediaVideoNormalizer.ts");
   assert.match(source, /ffmpeg-static/);
-  assert.match(source, /"libx264"/);
-  assert.match(source, /"aac"/);
-  assert.match(source, /"yuv420p"/);
-  assert.match(source, /"\+faststart"/);
-  assert.match(source, /"-map_metadata"[\s\S]*"-1"/);
-  assert.match(source, /"-map_chapters"[\s\S]*"-1"/);
+  assert.doesNotMatch(source, /"libx264"|"\+faststart"/);
   assert.match(source, /force_original_aspect_ratio=decrease/);
   assert.match(source, /force_divisible_by=2/);
-  assert.match(source, /without_enlargement:\s*true/);
-  assert.match(source, /key:\s*"canonical"/);
-  assert.match(source, /key:\s*"ai_preview"/);
+  assert.doesNotMatch(source, /key:\s*"canonical"|key:\s*"ai_preview"/);
   assert.match(source, /key:\s*"thumbnail"/);
   assert.match(source, /requestedFrameIndexes/);
   assert.match(source, /`frame_0\$\{index \+ 1\}`/);
   assert.match(source, /key:\s*"audio_track"/);
-  assert.match(source, /canFastPrepareCanonical/);
-  assert.match(source, /getVideoCanonicalTranscodeProfile/);
-  assert.match(source, /max_side:\s*canonicalMaxSide/);
-  assert.match(source, /mode:\s*copyAudio \? "stream_copy" : "video_copy_audio_transcode"/);
-  assert.match(source, /runFfmpegWithProgress/);
-  assert.match(source, /video_ffmpeg_stalled/);
-  assert.match(source, /FFMPEG_CANONICAL_TIMEOUT_MS = 1_380_000/);
+  assert.match(source, /FFMPEG_DERIVATIVE_TIMEOUT_MS = 75_000/);
   assert.match(source, /"-nostdin"/);
-  assert.match(source, /reason:\s*"ai_uses_server_frames_and_audio"/);
   assert.match(
     source,
     /thumbnailSize = await extractFrame\(\{[\s\S]*inputPath:\s*params\.inputPath[\s\S]*timestampSeconds:\s*captureTimes\[0\]/,
@@ -71,27 +57,18 @@ test("la piste audio est facultative et ne bloque pas une vidéo silencieuse", (
   assert.match(source, /available:\s*audioAvailable/);
 });
 
-test("l'upload conserve toute vidéo comme source et la préparation choisit ensuite les dérivés", () => {
+test("l'upload conserve l'original et lance seulement captures, audio ou miniature", () => {
   const event = read("app/api/media-pipeline/upload-event/route.ts");
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
   const prepare = read("app/api/media-pipeline/workspace/prepare/route.ts");
   assert.match(event, /sourceMetadataOnly/);
-  assert.match(
-    event,
-    /current\.data\.media_type === "video" &&[\s\S]{0,80}!directVideoSource/,
-  );
   assert.match(event, /reason:\s*"source_direct_ready"/);
-  assert.match(
-    event,
-    /mission:\s*sourceMetadataOnly[\s\S]{0,60}\? "publication_preparation"/,
-  );
-  assert.match(event, /after\(async \(\) =>[\s\S]*processVideoNormalizationJobsForMedia\(/);
-  assert.match(event, /workspaceAiNeedsSharedCanonical/);
+  assert.match(event, /processVideoNormalizationAfterUpload\(\{/);
   assert.match(
     event,
     /mission:\s*"ai_preparation"[\s\S]*mission:\s*"publication_preparation"/,
   );
-  assert.match(event, /ai_and_publication_preparation_queued/);
+  assert.doesNotMatch(event, /workspaceAiNeedsSharedCanonical|sharedCanonical/);
   assert.match(intent, /pipeline_mission:\s*"source_metadata"/);
   assert.match(intent, /preparation_scope:\s*"source_only"/);
   assert.doesNotMatch(intent, /enqueueVideoNormalization\(/);
@@ -100,7 +77,7 @@ test("l'upload conserve toute vidéo comme source et la préparation choisit ens
 });
 
 
-test("le cutover évite le travail dans le handler d'insertion mais préchauffe les grosses vidéos", () => {
+test("les captures locales commencent pour toute vidéo acceptée sans bloquer l'insertion", () => {
   const publishModal = read(
     "app/dashboard/booster/publier/PublishModal.tsx",
   );
@@ -110,10 +87,8 @@ test("le cutover évite le travail dans le handler d'insertion mais préchauffe 
   );
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoAudioFileForAI/);
-  assert.match(
-    publishModal,
-    /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
-  );
+  assert.match(publishModal, /void getOrPrepareVideoFramesForAI\(videoFile\)/);
+  assert.doesNotMatch(publishModal, /BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES/);
   assert.match(
     publishModal,
     /const framesResult = await settleOptionalMediaEnrichment\([\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
@@ -130,12 +105,9 @@ test("le worker télécharge la source privée et conserve l'original", () => {
   assert.doesNotMatch(worker, /readFile\(params\.normalized\.filePath\)/);
   assert.match(worker, /VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL/);
   assert.match(worker, /content_hash_sha256/);
-  assert.match(worker, /canonical_bucket_name/);
-  assert.match(
-    worker,
-    /!pendingVariants\.some\(\(variant\) => variant\.key === "canonical"\)/,
-  );
-  assert.match(worker, /canonicalMaster:\s*inputWasCanonical/);
+  assert.doesNotMatch(worker, /inputWasCanonical|canonicalMaster|outputs\.canonical/);
+  assert.match(worker, /const originalPublicationReady = canPublishOriginalVideo/);
+  assert.match(worker, /keys:\s*pendingVariants\.map/);
   assert.match(worker, /failed_retryable/);
   assert.match(worker, /retry_wait/);
   assert.doesNotMatch(worker, /\.remove\(\[media\.storage_path\]\)/);

@@ -31,7 +31,7 @@ test("publication consumption uses a compatible uploaded image without click-tim
   assert.doesNotMatch(publicationPath, /assertStoredImageVariantIsValid/);
 });
 
-test("publication always consumes the managed canonical video", async () => {
+test("publication consumes the validated original with legacy canonical fallback only", async () => {
   const source = await read("lib/mediaWorkspaceConsumption.ts");
   const start = source.indexOf(
     "export async function resolveWorkspacePublicationConsumption",
@@ -43,9 +43,9 @@ test("publication always consumes the managed canonical video", async () => {
   assert.ok(start >= 0 && end > start);
   const publicationPath = source.slice(start, end);
 
-  assert.match(publicationPath, /allowUploadedVideoSource:\s*false/);
-  assert.match(publicationPath, /const publicationVariant = canonical/);
-  assert.doesNotMatch(publicationPath, /directSourceReady/);
+  assert.match(publicationPath, /allowUploadedVideoSource:\s*true/);
+  assert.match(publicationPath, /const directSourceReady = canUseDirectWorkspaceVideoSource\(item\)/);
+  assert.match(publicationPath, /const publicationVariant = directSourceReady \? null : canonical/);
   assert.match(
     publicationPath,
     /bucket:\s*publicationVariant\?\.bucket \|\| item\.sourceBucket/,

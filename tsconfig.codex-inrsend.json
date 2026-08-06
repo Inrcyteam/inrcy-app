@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "app/dashboard/mails/MailboxClient.tsx",
+    "app/dashboard/mails/_lib/mailboxHistoryPreload.ts",
+    "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
+    "app/api/inrsend/history/route.ts",
+    "lib/browserModuleSnapshotCache.ts"
+  ],
+  "exclude": ["node_modules", ".next/types/app", ".next/dev/types/app"]
+}
