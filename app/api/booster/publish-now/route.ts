@@ -618,7 +618,24 @@ async function publishNowHandler(req: Request) {
             accountId: userId,
             workspaceId: mediaWorkspaceId,
             mediaTypes: activeRequestedMediaTypes,
+            videoChannels: activeRequestedMediaChannels.filter(
+              (channel) =>
+                String(
+                  rawRequestedModes[channel] || requestedMediaType,
+                ).trim() === "video",
+            ),
           });
+          if (
+            activeRequestedMediaChannels.includes("pinterest") &&
+            workspacePreparationState.terminalVideoThumbnailMediaIds.length > 0
+          ) {
+            terminalWorkspaceMediaChannels.add("pinterest");
+          } else if (
+            activeRequestedMediaChannels.includes("pinterest") &&
+            workspacePreparationState.pendingVideoThumbnailMediaIds.length > 0
+          ) {
+            deferredPreparationChannels.add("pinterest");
+          }
         }
         workspaceConsumption = await resolveWorkspacePublicationConsumption({
           accountId: userId,
@@ -811,13 +828,6 @@ async function publishNowHandler(req: Request) {
         )
       );
     };
-    const rawVideoFallbackPayload = asRecord(body.video);
-    const hasVideoFallbackPayload = Boolean(
-      rawVideoFallbackPayload.storagePath ||
-        rawVideoFallbackPayload.publicUrl ||
-        rawVideoFallbackPayload.url,
-    );
-
     if (strictMediaCutover) {
       selected.forEach((channel) => {
         const expectedMode = mediaModeByChannel[channel];
@@ -840,9 +850,6 @@ async function publishNowHandler(req: Request) {
         if (expectedMode === "images" && workspaceHasImages) return;
         if (expectedMode === "video" && workspaceHasVideo) return;
         if (expectedMode === "images" && hasImageFallbackForChannel(channel)) {
-          return;
-        }
-        if (expectedMode === "video" && hasVideoFallbackPayload) {
           return;
         }
         setPreflightFailure(channel, {
@@ -933,9 +940,10 @@ async function publishNowHandler(req: Request) {
       imageSettingsByChannel = preparedImageSettingsByChannel;
     }
 
-    // Même en cutover strict, le payload vidéo reste un secours légitime
-    // lorsqu'un workspace actif contient les images d'une publication mixte.
-    const legacyVideoResult = hasAnyVideoChannel
+    // En cutover strict, seule la vidéo canonique résolue depuis le workspace
+    // peut atteindre les fournisseurs. Le payload historique reste disponible
+    // uniquement lorsque le flag de rollback désactive le cutover.
+    const legacyVideoResult = hasAnyVideoChannel && !strictMediaCutover
       ? await normalizeVideoPayload(body.video)
       : {
           video: null as PersistedVideoAttachment | null,
@@ -959,15 +967,21 @@ async function publishNowHandler(req: Request) {
           ...workspaceVideoResult.video,
           thumbnailUrl:
             workspaceVideoResult.video.thumbnailUrl ||
-            legacyVideoResult.video?.thumbnailUrl ||
+            (!strictMediaCutover
+              ? legacyVideoResult.video?.thumbnailUrl
+              : null) ||
             null,
           thumbnailStoragePath:
             workspaceVideoResult.video.thumbnailStoragePath ||
-            legacyVideoResult.video?.thumbnailStoragePath ||
+            (!strictMediaCutover
+              ? legacyVideoResult.video?.thumbnailStoragePath
+              : null) ||
             null,
           thumbnailBucket:
             workspaceVideoResult.video.thumbnailBucket ||
-            legacyVideoResult.video?.thumbnailBucket ||
+            (!strictMediaCutover
+              ? legacyVideoResult.video?.thumbnailBucket
+              : null) ||
             null,
           transformedVariants: strictMediaCutover
             ? []
@@ -980,6 +994,7 @@ async function publishNowHandler(req: Request) {
     }
 
     if (
+      !strictMediaCutover &&
       internalAsyncPreparationDispatch &&
       hasAnyVideoChannel &&
       publicationVideo &&

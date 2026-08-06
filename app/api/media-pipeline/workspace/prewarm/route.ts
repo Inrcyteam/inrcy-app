@@ -25,6 +25,7 @@ import {
 } from "@/lib/googleBusinessMediaPolicy";
 import type { BoosterImageChannel } from "@/lib/boosterImageDecision";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,8 +140,11 @@ export async function POST(request: Request) {
       const video = consumption.video;
       const generateMissingVideoVariants =
         body?.generateMissingVideoVariants !== false;
+      const strictMediaCutover =
+        body?.mediaPipelineCutoverV1 === true &&
+        isLegacyMediaTransportCutoverEnabled();
       const allowOriginalVideoFallback =
-        body?.allowOriginalVideoFallback === true;
+        !strictMediaCutover && body?.allowOriginalVideoFallback === true;
       const settings = buildVideoSettingsByChannel({
         channels: selectedChannels,
         videoSettingsByChannel: body?.videoSettingsByChannel,

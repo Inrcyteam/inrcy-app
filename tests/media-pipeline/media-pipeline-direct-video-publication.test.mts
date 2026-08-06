@@ -124,7 +124,14 @@ test("publier finalise après le clic tandis que la programmation garde sa récu
   );
   assert.match(uploadEvent, /!directVideoSource/);
   assert.match(uploadEvent, /reason:\s*"source_direct_ready"/);
-  assert.match(prepareRoute, /function isDirectPublicationVideo/);
-  assert.match(prepareRoute, /if \(isDirectPublicationVideo\(params\.media\)\) return true/);
+  assert.match(
+    prepareRoute,
+    /Publication always consumes the managed canonical video/,
+  );
+  assert.match(
+    prepareRoute,
+    /return hasVariant\(params\.variants,\s*params\.media\.mediaId,\s*"canonical"\)/,
+  );
+  assert.doesNotMatch(prepareRoute, /function isDirectPublicationVideo/);
   assert.doesNotMatch(publishRoute, /oversizedPublicationVideo/);
 });

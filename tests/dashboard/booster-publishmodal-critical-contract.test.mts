@@ -86,17 +86,14 @@ test("legacy uploads stay disabled unless a mixed publication needs the media ty
   assert.match(publishModal, /uploadOriginalImagesForPublication\(/);
 });
 
-test("cutover records the format choice and defers every technical adaptation until publication", () => {
-  assert.match(publishModal, /canPublishVideoSourceDirectly\(/);
-  assert.match(
-    publishModal,
-    /const directOriginalAvailable =[\s\S]*canPublishVideoSourceDirectly\([\s\S]*requireCodecProof: true/,
-  );
+test("cutover records the format choice and requires the workspace master for scheduling", () => {
+  assert.doesNotMatch(publishModal, /directOriginalAvailable/);
   assert.match(persistentWorkspace, /preparePublicationMedia/);
   assert.doesNotMatch(publishModal, /prepareCutoverVideoVariants/);
+  assert.match(publishModal, /generateMissingVideoVariants:\s*false/);
   assert.match(
     publishModal,
-    /generateMissingVideoVariants:\s*false,[\s\S]*allowOriginalVideoFallback:\s*true/,
+    /mediaPipelineCutoverV1:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/,
   );
   assert.match(
     publishModal,

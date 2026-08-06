@@ -104,7 +104,7 @@ test("les aperçus locaux restent affichés pendant la préparation serveur", as
   assert.match(source, /makeImageKey\(currentFile\) !== expectedImageKey/);
 });
 
-test("le choix vidéo reste instantané et la finalisation technique attend Publier", async () => {
+test("le choix vidéo reste instantané et le canonique géré se finalise après Publier", async () => {
   const hook = await readSource(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
@@ -118,8 +118,11 @@ test("le choix vidéo reste instantané et la finalisation technique attend Publ
   assert.match(hook, /missionReadyRef/);
   assert.match(hook, /runPreparationMission\("publication_preparation"\)/);
   assert.match(hook, /loadMediaPublicationWorkspace\(/);
-  assert.match(prepareRoute, /function isDirectPublicationVideo/);
-  assert.match(prepareRoute, /if \(isDirectPublicationVideo\(params\.media\)\) return true/);
+  assert.doesNotMatch(prepareRoute, /function isDirectPublicationVideo/);
+  assert.match(
+    prepareRoute,
+    /Publication always consumes the managed canonical video[\s\S]{0,240}hasVariant\(params\.variants, params\.media\.mediaId, "canonical"\)/,
+  );
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);
   const immediatePublish = modal.slice(

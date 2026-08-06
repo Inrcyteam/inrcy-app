@@ -68,6 +68,22 @@ test("generation targets 30 seconds but keeps a 105-second safety window without
   assert.ok(requestBuildIndex > deadlineStartIndex);
 });
 
+test("a heavy-video compression never holds the Generate click beyond the shared grace window", () => {
+  assert.match(modal, /BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000/);
+  assert.match(
+    modal,
+    /waitForPersistentWorkspaceReadiness\([\s\S]*?"generate"[\s\S]*?Math\.max\(1_000, mediaPreparationDeadlineAt - Date\.now\(\)\)/,
+  );
+  assert.match(
+    modal,
+    /videoAiPreparationReady = await Promise\.race\(\[[\s\S]*?preparation[\s\S]*?mediaPreparationDeadlineAt - Date\.now\(\)/,
+  );
+  assert.doesNotMatch(
+    modal,
+    /heavyVideoNeedsCanonical\s*\?\s*await preparation/,
+  );
+});
+
 test("the server shares the route-entry deadline with transcription and generation", () => {
   assert.match(
     generationRoute,

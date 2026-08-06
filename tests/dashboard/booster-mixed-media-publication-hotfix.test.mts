@@ -27,24 +27,21 @@ test("mixed publications keep workspace media and build a fallback only for the 
   assert.match(modal, /workspaceCarriesVideoForSchedule/);
 });
 
-test("strict publish accepts an explicit stored fallback when the workspace carries the other media type", () => {
+test("strict publish keeps the image fallback but rejects every legacy video fallback", () => {
   assert.match(route, /hasImageFallbackForChannel/);
-  assert.match(route, /hasVideoFallbackPayload/);
   assert.match(
     route,
     /expectedMode === "images" && hasImageFallbackForChannel\(channel\)/,
   );
+  assert.doesNotMatch(route, /hasVideoFallbackPayload/);
   assert.match(
     route,
-    /expectedMode === "video" && hasVideoFallbackPayload/,
+    /const legacyVideoResult = hasAnyVideoChannel && !strictMediaCutover\s*\? await normalizeVideoPayload\(body\.video\)/,
   );
-  assert.match(
-    route,
-    /const legacyVideoResult = hasAnyVideoChannel\s*\? await normalizeVideoPayload\(body\.video\)/,
-  );
+  assert.match(route, /!strictMediaCutover &&\s*internalAsyncPreparationDispatch/);
 });
 
-test("compatible original video is a real fast path and does not require variant generation", () => {
+test("compatible original video remains a rollback-only prewarm fallback", () => {
   assert.match(
     prewarm,
     /allowOriginalVideoFallback\s*&&[\s\S]{0,100}allowsOriginalVideoFallback\(request\.channel\)\s*&&[\s\S]{0,80}sourceValidation\.ok/,
@@ -54,7 +51,12 @@ test("compatible original video is a real fast path and does not require variant
     /allowOriginalVideoFallback\s*&&\s*generateMissingVideoVariants\s*&&\s*allowsOriginalVideoFallback/,
   );
   assert.match(
-    modal,
-    /directOriginalAvailable[\s\S]*canPublishVideoSourceDirectly/,
+    prewarm,
+    /const strictMediaCutover =[\s\S]{0,120}body\?\.mediaPipelineCutoverV1 === true[\s\S]{0,120}isLegacyMediaTransportCutoverEnabled\(\)/,
   );
+  assert.match(
+    prewarm,
+    /const allowOriginalVideoFallback =[\s\S]{0,80}!strictMediaCutover && body\?\.allowOriginalVideoFallback === true/,
+  );
+  assert.doesNotMatch(modal, /directOriginalAvailable/);
 });

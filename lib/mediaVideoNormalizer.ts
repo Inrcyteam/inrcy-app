@@ -8,6 +8,7 @@ import {
   VIDEO_AI_PREVIEW_MAX_SIDE,
   VIDEO_AUDIO_TRACK_MAX_BYTES,
   VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
+  VIDEO_CANONICAL_FRAME_RATE,
   VIDEO_CANONICAL_MAX_BYTES,
   VIDEO_CANONICAL_MAX_SIDE,
   VIDEO_CANONICAL_TARGET_BYTES,
@@ -474,8 +475,7 @@ function canFastPrepareCanonical(params: {
   const pixelFormat = params.source.pixelFormat.toLowerCase();
   return (
     (codec === "h264" || codec === "avc1") &&
-    params.source.frameRate > 0 &&
-    params.source.frameRate <= 60 &&
+    Math.abs(params.source.frameRate - VIDEO_CANONICAL_FRAME_RATE) < 0.01 &&
     Boolean(pixelFormat && pixelFormat !== "unknown" && pixelFormat.startsWith("yuv420")) &&
     normalizedRotation(params.source.rotationDegrees) === 0 &&
     Math.max(params.source.orientedWidth, params.source.orientedHeight) <= VIDEO_CANONICAL_MAX_SIDE &&

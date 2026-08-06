@@ -5,7 +5,7 @@ import test from "node:test";
 const read = (path) =>
   readFile(new URL(`../../${path}`, import.meta.url), "utf8");
 
-test("normal publication keeps compatible originals and requires explicit adaptations", async () => {
+test("strict scheduling requires the workspace master while rollback keeps compatible originals", async () => {
   const [modal, prewarm, publishRoute, channelContext, workspaceHook] = await Promise.all([
     read("app/dashboard/booster/publier/PublishModal.tsx"),
     read("app/api/media-pipeline/workspace/prewarm/route.ts"),
@@ -16,11 +16,12 @@ test("normal publication keeps compatible originals and requires explicit adapta
   const publish = `${publishRoute}\n${channelContext}`;
 
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
+  assert.doesNotMatch(modal, /directOriginalAvailable/);
+  assert.match(modal, /generateMissingVideoVariants:\s*false/);
   assert.match(
     modal,
-    /const directOriginalAvailable =[\s\S]*canPublishVideoSourceDirectly/,
+    /mediaPipelineCutoverV1:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/,
   );
-  assert.match(modal, /generateMissingVideoVariants:\s*false,[\s\S]{0,140}allowOriginalVideoFallback:\s*true/);
   assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);
   const immediatePublish = modal.slice(
     modal.indexOf("const runPublish = async"),
@@ -34,6 +35,10 @@ test("normal publication keeps compatible originals and requires explicit adapta
   assert.match(
     prewarm,
     /allowsOriginalVideoFallback\(request\.channel\)[\s\S]{0,120}sourceValidation\.ok/,
+  );
+  assert.match(
+    prewarm,
+    /const allowOriginalVideoFallback =[\s\S]{0,80}!strictMediaCutover && body\?\.allowOriginalVideoFallback === true/,
   );
   assert.match(prewarm, /const ready = invalidChannels\.length === 0/);
   assert.doesNotMatch(publishRoute, /requiresPreparedNetworkVideoVariant/);

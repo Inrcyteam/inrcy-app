@@ -349,7 +349,7 @@ test("publish and schedule settle once, then freeze only their required families
   );
   assert.match(
     publishModal,
-    /waitForPersistentWorkspaceReadiness\([\s\S]{0,380}requiredPublishMediaTypes/,
+    /waitForPersistentWorkspaceReadiness\([\s\S]{0,800}requiredPublishMediaTypes/,
   );
   assert.match(
     publishModal,
@@ -357,7 +357,7 @@ test("publish and schedule settle once, then freeze only their required families
   );
   assert.match(
     publishModal,
-    /waitForPersistentWorkspaceReadiness\([\s\S]{0,380}requiredScheduleMediaTypes/,
+    /waitForPersistentWorkspaceReadiness\([\s\S]{0,800}requiredScheduleMediaTypes/,
   );
   assert.match(
     publishModal,

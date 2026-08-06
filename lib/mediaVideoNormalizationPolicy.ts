@@ -20,6 +20,7 @@ export const VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL =
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 
 export const VIDEO_CANONICAL_MAX_SIDE = 1920;
+export const VIDEO_CANONICAL_FRAME_RATE = 30;
 export const VIDEO_AI_PREVIEW_MAX_SIDE = 1280;
 export const VIDEO_FRAME_MAX_SIDE = 1280;
 export const VIDEO_THUMBNAIL_MAX_SIDE = 720;
@@ -114,7 +115,7 @@ export function getVideoCanonicalTranscodeProfile(params: {
     maxSide: longSource
       ? VIDEO_CANONICAL_LONG_TRANSCODE_MAX_SIDE
       : VIDEO_CANONICAL_MAX_SIDE,
-    fps: 30,
+    fps: VIDEO_CANONICAL_FRAME_RATE,
     qualityCrf: VIDEO_CANONICAL_QUALITY_CRF,
     maxVideoKbps: longSource
       ? VIDEO_CANONICAL_LONG_TRANSCODE_MAX_VIDEO_KBPS

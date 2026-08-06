@@ -31,9 +31,11 @@ test("generation targets 30 seconds and keeps a cached local fallback for heavy 
   );
   assert.match(modal, /generationDeadlineAt/);
   assert.match(modal, /controller\.abort\(\)/);
-  // Le workspace reste prioritaire. Pour les grosses vidéos uniquement, trois
-  // JPEG locaux préchauffés servent de filet de sécurité sans second upload.
-  assert.match(modal, /BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES = 70_000_000/);
+  // Le seuil partagé empêche tout décodage navigateur d'une vidéo lourde.
+  assert.match(
+    modal,
+    /BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES\s*=\s*\n?\s*INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES/,
+  );
   assert.match(
     modal,
     /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
@@ -77,7 +79,8 @@ test("publication isolates red channels and dispatches the ready subset for one 
     modal,
     /const publishableChannels = reviewItems[\s\S]*item\.blockers\.length === 0/,
   );
-  assert.match(modal, /Préparation de la vidéo/);
+  assert.match(modal, /Préparation des médias/);
+  assert.doesNotMatch(modal, /Préparation de la vidéo/);
   assert.match(modal, /mediaPreparationProgress/);
   assert.match(modal, /mapProgressRange\(progress, 0, 100, 60, 76\)/);
   assert.match(modal, /preflightFailedChannels,/);

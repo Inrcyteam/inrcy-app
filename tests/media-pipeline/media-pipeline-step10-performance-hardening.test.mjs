@@ -88,9 +88,10 @@ test("les sources partent en parallèle sans préparation lourde et les MP4 dire
   assert.match(hook, /target:\s*"workspace_source"/);
   assert.match(hook, /prepareAiMedia/);
   assert.match(hook, /preparePublicationMedia/);
+  assert.doesNotMatch(modal, /directOriginalAvailable/);
   assert.match(
     modal,
-    /const directOriginalAvailable =[\s\S]*canPublishVideoSourceDirectly\([\s\S]*requireCodecProof: true/,
+    /mediaPipelineCutoverV1:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/,
   );
   assert.match(hook, /loadMediaPublicationWorkspace\(/);
   assert.match(prepare, /processImageNormalizationJobsForMedia/);

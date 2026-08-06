@@ -42,7 +42,8 @@ test("Générer consomme les aperçus IA, captures et audio avec secours histori
   const resolver = read("lib/mediaWorkspaceConsumption.ts");
   const generate = read("app/api/booster/generate/route.ts");
   assert.match(resolver, /"ai_preview"/);
-  assert.match(resolver, /"video_frame"/);
+  assert.match(resolver, /\["frame_01", "frame_02", "frame_03"\] as const/);
+  assert.match(resolver, /getVideoNormalizationSignature\(key\)/);
   assert.match(resolver, /"audio_track"/);
   assert.match(resolver, /MAX_AI_IMAGE_COUNT = 5/);
   assert.match(generate, /resolveWorkspaceAiConsumption\(/);

@@ -52,8 +52,11 @@ test("Publier recrée images et vidéos côté serveur depuis le workspace", () 
   const videoServer = read("lib/boosterVideoVariantServer.ts");
   assert.match(publish, /prepareBoosterImagesByChannelOnServer\(/);
   assert.match(publish, /prepareBoosterVideoVariantsOnServer\(/);
-  assert.match(publish, /const legacyVideoResult = hasAnyVideoChannel/);
-  assert.match(publish, /hasVideoFallbackPayload/);
+  assert.match(
+    publish,
+    /const legacyVideoResult = hasAnyVideoChannel && !strictMediaCutover/,
+  );
+  assert.doesNotMatch(publish, /hasVideoFallbackPayload/);
   assert.match(publish, /code:\s*"media_workspace_required"/);
   assert.match(publish, /workspace_media_mismatch/);
   assert.match(publish, /workspace_image_preparation_failed/);

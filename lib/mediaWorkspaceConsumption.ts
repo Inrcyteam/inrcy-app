@@ -22,12 +22,13 @@ import {
   hasServerVideoProbeProvenance,
 } from "@/lib/mediaVideoSourceCompatibility";
 import {
+  getVideoNormalizationSignature,
+  type VideoNormalizationVariantKey,
+} from "@/lib/mediaVideoNormalizationPolicy";
+import {
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
 } from "@/lib/mediaRules";
-import {
-  VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES,
-} from "@/lib/mediaVideoNormalizationPolicy";
 import {
   buildWorkspaceAiFamilyDiagnostic,
   getWorkspaceAiMediaType,
@@ -650,6 +651,20 @@ function pickAllReadyVariants(
   );
 }
 
+function pickReadyVideoNormalizationVariant(
+  variants: readonly ReadyVariant[],
+  mediaId: string,
+  key: VideoNormalizationVariantKey,
+) {
+  const expectedSignature = getVideoNormalizationSignature(key);
+  return variants.find(
+    (variant) =>
+      variant.mediaId === mediaId &&
+      variant.signature === expectedSignature &&
+      Boolean(variant.storagePath),
+  );
+}
+
 async function downloadVariant(variant: ReadyVariant) {
   if (!variant.storagePath) {
     throw new MediaWorkspaceConsumptionError(
@@ -1140,7 +1155,7 @@ export async function resolveWorkspacePublicationConsumption(params: {
   const graph = await readWorkspaceGraph({
     ...params,
     allowUploadedImageSourceForPublication: true,
-    allowUploadedVideoSource: true,
+    allowUploadedVideoSource: false,
   });
   const { workspace, media, variants } = graph;
 
@@ -1250,23 +1265,27 @@ export async function resolveWorkspacePublicationConsumption(params: {
   let video: WorkspacePublicationVideo | null = null;
   if (videoItem) {
     const item = videoItem;
-    const canonical = pickReadyVariant(variants, item.mediaId, "canonical");
-    const directSourceReady = canUseDirectWorkspaceVideoSource(item);
-    if (!canonical && !directSourceReady) {
+    const canonical = pickReadyVideoNormalizationVariant(
+      variants,
+      item.mediaId,
+      "canonical",
+    );
+    if (!canonical) {
       throw new MediaWorkspaceConsumptionError(
         "La version canonique de la vidéo n'est pas prête.",
         "workspace_canonical_missing",
         409,
       );
     }
-    const preferSharedCanonical =
-      item.sourceSizeBytes >= VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES;
-    // Below 70 MB, a compatible source may remain byte-for-byte original.
-    // At or above that threshold, publication must consume the shared canonical.
-    // The original is retained for recovery but is never a provider fallback.
-    const publicationVariant =
-      directSourceReady && !preferSharedCanonical ? null : canonical;
-    const thumbnail = pickReadyVariant(variants, item.mediaId, "thumbnail");
+    // Every provider consumes the same managed MP4 master. Heavy sources are
+    // compressed below 70 MB; light sources are still normalized to H.264,
+    // 30 fps and receive the same durable thumbnail contract.
+    const publicationVariant = canonical;
+    const thumbnail = pickReadyVideoNormalizationVariant(
+      variants,
+      item.mediaId,
+      "thumbnail",
+    );
 
     const videoMimeType = normalizeMime(
       publicationVariant?.mimeType || item.detectedMimeType || item.sourceMimeType,
@@ -1463,9 +1482,18 @@ async function resolveWorkspaceAiVideoFamily(params: {
 
   // Le texte n'attend ni ai_preview ni canonical : l'original reste la
   // référence, tandis que les captures et l'audio enrichissent le prompt.
+  const aiPreview = pickReadyVideoNormalizationVariant(
+    params.variants,
+    item.mediaId,
+    "ai_preview",
+  );
   const preview =
-    pickReadyVariant(params.variants, item.mediaId, "ai_preview") ||
-    pickReadyVariant(params.variants, item.mediaId, "canonical");
+    aiPreview ||
+    pickReadyVideoNormalizationVariant(
+      params.variants,
+      item.mediaId,
+      "canonical",
+    );
   const videoReference = preview || {
     bucket: item.sourceBucket,
     storagePath: item.sourceStoragePath,
@@ -1474,11 +1502,17 @@ async function resolveWorkspaceAiVideoFamily(params: {
     durationSeconds: item.durationSeconds,
   };
 
-  const preparedFrameVariants = pickAllReadyVariants(
-    params.variants,
-    item.mediaId,
-    "video_frame",
+  const preparedFrameVariants = (
+    ["frame_01", "frame_02", "frame_03"] as const
   )
+    .flatMap((key) => {
+      const variant = pickReadyVideoNormalizationVariant(
+        params.variants,
+        item.mediaId,
+        key,
+      );
+      return variant ? [variant] : [];
+    })
     .filter((variant) => Boolean(variant.storagePath))
     .sort((a, b) => {
       const aIndex = Number(a.metadata.frame_index || 0);
@@ -1490,9 +1524,14 @@ async function resolveWorkspaceAiVideoFamily(params: {
   // les trois captures début/milieu/fin terminent en arrière-plan. `ai_preview`
   // est normalement une vidéo, mais d'anciennes lignes peuvent contenir une
   // image : on ne la retient que si son MIME est explicitement visuel.
+  const fallbackThumbnail = pickReadyVideoNormalizationVariant(
+    params.variants,
+    item.mediaId,
+    "thumbnail",
+  );
   const fallbackFrameVariants = [
-    ...pickAllReadyVariants(params.variants, item.mediaId, "thumbnail"),
-    ...pickAllReadyVariants(params.variants, item.mediaId, "ai_preview"),
+    ...(fallbackThumbnail ? [fallbackThumbnail] : []),
+    ...(aiPreview ? [aiPreview] : []),
   ].filter((variant) =>
     normalizeMime(variant.mimeType, "application/octet-stream").startsWith(
       "image/",
@@ -1569,11 +1608,11 @@ async function resolveWorkspaceAiVideoFamily(params: {
     });
   }
 
-  const audioVariant = pickAllReadyVariants(
+  const audioVariant = pickReadyVideoNormalizationVariant(
     params.variants,
     item.mediaId,
     "audio_track",
-  )[0];
+  );
   const audioAvailable =
     Boolean(audioVariant?.storagePath) &&
     audioVariant?.metadata.available !== false;

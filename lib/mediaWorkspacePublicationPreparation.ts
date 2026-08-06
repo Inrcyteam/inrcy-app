@@ -188,6 +188,41 @@ async function loadReadyCanonicalMediaIds(params: {
   );
 }
 
+async function loadReadyVideoThumbnailMediaIds(params: {
+  accountId: string;
+  mediaIds: string[];
+}) {
+  if (!params.mediaIds.length) return new Set<string>();
+  const result = await supabaseAdmin
+    .from("media_variants")
+    .select("media_id")
+    .eq("account_id", params.accountId)
+    .in("media_id", params.mediaIds)
+    .eq("purpose", "thumbnail")
+    .eq("signature", getVideoNormalizationSignature("thumbnail"))
+    .eq("status", "ready");
+  if (result.error) throw result.error;
+  return new Set(
+    (result.data || [])
+      .map((row: any) => String(row.media_id || ""))
+      .filter(Boolean),
+  );
+}
+
+function hasReadyPublicationVariants(params: {
+  media: WorkspacePublicationMedia;
+  canonicalMediaIds: ReadonlySet<string>;
+  videoThumbnailMediaIds: ReadonlySet<string>;
+  requiresVideoThumbnail: boolean;
+}) {
+  if (!params.canonicalMediaIds.has(params.media.mediaId)) return false;
+  return (
+    params.media.mediaType !== "video" ||
+    !params.requiresVideoThumbnail ||
+    params.videoThumbnailMediaIds.has(params.media.mediaId)
+  );
+}
+
 async function markCanonicalMediaReadyForPublication(params: {
   accountId: string;
   mediaIds: Iterable<string>;
@@ -367,7 +402,11 @@ export async function prepareWorkspaceMediaForPublication(params: {
   accountId: string;
   workspaceId: string;
   mediaTypes?: readonly ("image" | "video")[];
+  videoChannels?: readonly string[];
 }) {
+  const requiresVideoThumbnail = Boolean(
+    params.videoChannels?.includes("pinterest"),
+  );
   const requestedMediaTypes = params.mediaTypes?.length
     ? new Set(params.mediaTypes)
     : null;
@@ -382,6 +421,15 @@ export async function prepareWorkspaceMediaForPublication(params: {
     accountId: params.accountId,
     mediaIds: media.map((item) => item.mediaId).filter(Boolean),
   });
+  const videoThumbnailMediaIds = requiresVideoThumbnail
+    ? await loadReadyVideoThumbnailMediaIds({
+        accountId: params.accountId,
+        mediaIds: media
+          .filter((item) => item.mediaType === "video")
+          .map((item) => item.mediaId)
+          .filter(Boolean),
+      })
+    : new Set<string>();
   await markCanonicalMediaReadyForPublication({
     accountId: params.accountId,
     mediaIds: canonicalMediaIds,
@@ -395,7 +443,12 @@ export async function prepareWorkspaceMediaForPublication(params: {
       !item.mediaId ||
       item.uploadStatus !== "uploaded" ||
       isTerminalFailure(item) ||
-      canonicalMediaIds.has(item.mediaId)
+      hasReadyPublicationVariants({
+        media: item,
+        canonicalMediaIds,
+        videoThumbnailMediaIds,
+        requiresVideoThumbnail,
+      })
     ) {
       continue;
     }
@@ -413,23 +466,21 @@ export async function prepareWorkspaceMediaForPublication(params: {
       continue;
     }
 
-    if (isDirectPublicationVideo(item)) continue;
-    if (canBenefitFromDirectVideoProbe(item)) {
+    if (
+      !canonicalMediaIds.has(item.mediaId) &&
+      canBenefitFromDirectVideoProbe(item)
+    ) {
       try {
         ffmpegPath ||= await resolveVideoNormalizationFfmpegPath();
-        if (
-          await probePotentialDirectVideo({
-            accountId: params.accountId,
-            media: item,
-            ffmpegPath,
-          })
-        ) {
-          continue;
-        }
+        await probePotentialDirectVideo({
+          accountId: params.accountId,
+          media: item,
+          ffmpegPath,
+        });
       } catch {
         // The canonical worker performs its own bounded download/probe and
         // persists retryable/terminal diagnostics. Falling through keeps this
-        // helper crash-safe without treating an unproven MP4 as compatible.
+        // helper crash-safe.
       }
     }
 
@@ -470,6 +521,15 @@ export async function prepareWorkspaceMediaForPublication(params: {
     accountId: params.accountId,
     mediaIds: refreshedMedia.map((item) => item.mediaId).filter(Boolean),
   });
+  const refreshedVideoThumbnailMediaIds = requiresVideoThumbnail
+    ? await loadReadyVideoThumbnailMediaIds({
+        accountId: params.accountId,
+        mediaIds: refreshedMedia
+          .filter((item) => item.mediaType === "video")
+          .map((item) => item.mediaId)
+          .filter(Boolean),
+      })
+    : new Set<string>();
   await markCanonicalMediaReadyForPublication({
     accountId: params.accountId,
     mediaIds: refreshedCanonicalMediaIds,
@@ -481,10 +541,13 @@ export async function prepareWorkspaceMediaForPublication(params: {
     .filter(
       (item) =>
         isTerminalFailure(item) &&
-        !refreshedCanonicalMediaIds.has(item.mediaId) &&
-        !(item.mediaType === "video"
-          ? isDirectPublicationVideo(item)
-          : isDirectPublicationImage(item)),
+        !hasReadyPublicationVariants({
+          media: item,
+          canonicalMediaIds: refreshedCanonicalMediaIds,
+          videoThumbnailMediaIds: refreshedVideoThumbnailMediaIds,
+          requiresVideoThumbnail,
+        }) &&
+        !(item.mediaType === "image" && isDirectPublicationImage(item)),
     )
     .map((item) => item.mediaId)
     .filter(Boolean);
@@ -492,19 +555,42 @@ export async function prepareWorkspaceMediaForPublication(params: {
     .filter(
       (item) =>
         !(isTerminalFailure(item) &&
-          !refreshedCanonicalMediaIds.has(item.mediaId)) &&
+          !hasReadyPublicationVariants({
+            media: item,
+            canonicalMediaIds: refreshedCanonicalMediaIds,
+            videoThumbnailMediaIds: refreshedVideoThumbnailMediaIds,
+            requiresVideoThumbnail,
+          })) &&
         (item.uploadStatus !== "uploaded" ||
-          (!refreshedCanonicalMediaIds.has(item.mediaId) &&
-            !(item.mediaType === "video"
-              ? isDirectPublicationVideo(item)
-              : isDirectPublicationImage(item)))),
+          (!hasReadyPublicationVariants({
+            media: item,
+            canonicalMediaIds: refreshedCanonicalMediaIds,
+            videoThumbnailMediaIds: refreshedVideoThumbnailMediaIds,
+            requiresVideoThumbnail,
+          }) &&
+            !(item.mediaType === "image" && isDirectPublicationImage(item)))),
     )
     .map((item) => item.mediaId)
     .filter(Boolean);
+  const videoThumbnailMissingMedia = requiresVideoThumbnail
+    ? refreshedMedia.filter(
+        (item) =>
+          item.mediaType === "video" &&
+          !refreshedVideoThumbnailMediaIds.has(item.mediaId),
+      )
+    : [];
   return {
     mediaCount: refreshedMedia.length,
     queuedMediaIds: pendingMediaIds,
     pendingMediaIds: stillPendingMediaIds,
     terminalMediaIds,
+    pendingVideoThumbnailMediaIds: videoThumbnailMissingMedia
+      .filter((item) => !isTerminalFailure(item))
+      .map((item) => item.mediaId)
+      .filter(Boolean),
+    terminalVideoThumbnailMediaIds: videoThumbnailMissingMedia
+      .filter((item) => isTerminalFailure(item))
+      .map((item) => item.mediaId)
+      .filter(Boolean),
   };
 }

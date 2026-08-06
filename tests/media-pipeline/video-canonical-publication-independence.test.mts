@@ -6,7 +6,7 @@ import test from "node:test";
 const ROOT = process.cwd();
 const read = (file: string) => readFileSync(resolve(ROOT, file), "utf8");
 
-test("a ready current canonical remains publishable when optional AI derivatives fail", () => {
+test("a ready canonical remains publishable outside Pinterest when optional AI derivatives fail", () => {
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
   const preparation = read("lib/mediaWorkspacePublicationPreparation.ts");
   const workspaceStatus = read("lib/mediaWorkspaceServer.ts");
@@ -26,7 +26,15 @@ test("a ready current canonical remains publishable when optional AI derivatives
   );
   assert.match(
     preparation,
-    /isTerminalFailure\(item\)[\s\S]*?!refreshedCanonicalMediaIds\.has\(item\.mediaId\)/,
+    /if \(!params\.canonicalMediaIds\.has\(params\.media\.mediaId\)\) return false/,
+  );
+  assert.match(
+    preparation,
+    /params\.media\.mediaType !== "video" \|\|\s*!params\.requiresVideoThumbnail/,
+  );
+  assert.match(
+    preparation,
+    /isTerminalFailure\(item\) &&\s*!hasReadyPublicationVariants/,
   );
   assert.match(
     workspaceStatus,

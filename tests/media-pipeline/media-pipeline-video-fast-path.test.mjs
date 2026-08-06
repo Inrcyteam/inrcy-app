@@ -40,6 +40,6 @@ test("l'analyse IA utilise les captures et l'audio sans fabriquer un second film
   assert.match(normalizer, /inputPath:\s*params\.inputPath/);
   assert.match(
     consumption,
-    /pickReadyVariant\(params\.variants, item\.mediaId, "ai_preview"\) \|\|[\s\S]*pickReadyVariant\(params\.variants, item\.mediaId, "canonical"\)/,
+    /const aiPreview = pickReadyVideoNormalizationVariant\([\s\S]*"ai_preview"[\s\S]*const preview =\s*aiPreview \|\|[\s\S]*pickReadyVideoNormalizationVariant\([\s\S]*"canonical"/,
   );
 });

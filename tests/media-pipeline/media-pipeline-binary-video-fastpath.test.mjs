@@ -24,7 +24,7 @@ test("les images historiques illisibles sont réparées depuis leur source", () 
   assert.match(consumption, /toExactStorageArrayBuffer\(output\.buffer\)/);
 });
 
-test("la génération vidéo utilise les captures locales tandis que publier garde le fast path source", () => {
+test("la génération vidéo utilise les captures locales tandis que programmer exige le workspace", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
   const generate = read("app/api/booster/generate/route.ts");
   assert.match(
@@ -33,7 +33,11 @@ test("la génération vidéo utilise les captures locales tandis que publier gar
   );
   assert.match(modal, /getOrPrepareVideoFramesForAI\(videoFile\)/);
   assert.doesNotMatch(modal, /transcribeVideoAudioForAI\(/);
-  assert.match(modal, /directOriginalAvailable[\s\S]*canPublishVideoSourceDirectly/);
+  assert.doesNotMatch(modal, /directOriginalAvailable/);
+  assert.match(
+    modal,
+    /mediaPipelineCutoverV1:\s*true,[\s\S]{0,100}allowOriginalVideoFallback:\s*false/,
+  );
   assert.match(generate, /workspace_verified_client_ai_preview/);
   assert.match(generate, /existingVideoFrames\.length/);
 });

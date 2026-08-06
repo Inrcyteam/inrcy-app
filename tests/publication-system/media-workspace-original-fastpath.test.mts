@@ -31,7 +31,7 @@ test("publication consumption uses a compatible uploaded image without click-tim
   assert.doesNotMatch(publicationPath, /assertStoredImageVariantIsValid/);
 });
 
-test("publication keeps a compatible original below 70 MB and always uses the shared master at the threshold", async () => {
+test("publication always consumes the managed canonical video", async () => {
   const source = await read("lib/mediaWorkspaceConsumption.ts");
   const start = source.indexOf(
     "export async function resolveWorkspacePublicationConsumption",
@@ -43,19 +43,9 @@ test("publication keeps a compatible original below 70 MB and always uses the sh
   assert.ok(start >= 0 && end > start);
   const publicationPath = source.slice(start, end);
 
-  assert.match(source, /directVideoProofForMedia/);
-  assert.match(source, /canUseDirectWorkspaceVideoSource/);
-  assert.match(source, /media\.mediaMetadata\.video_normalization/);
-  assert.match(source, /\.\.\.uploadedSource, \.\.\.normalizationSource/);
-  assert.match(
-    publicationPath,
-    /item\.sourceSizeBytes >= VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES/,
-  );
-  assert.doesNotMatch(publicationPath, /canonicalIsMateriallySmaller/);
-  assert.match(
-    publicationPath,
-    /directSourceReady && !preferSharedCanonical \? null : canonical/,
-  );
+  assert.match(publicationPath, /allowUploadedVideoSource:\s*false/);
+  assert.match(publicationPath, /const publicationVariant = canonical/);
+  assert.doesNotMatch(publicationPath, /directSourceReady/);
   assert.match(
     publicationPath,
     /bucket:\s*publicationVariant\?\.bucket \|\| item\.sourceBucket/,

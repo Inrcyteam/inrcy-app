@@ -388,6 +388,7 @@ export async function prewarmMediaPublicationWorkspace(params: {
   imageSettingsByChannel?: Record<string, unknown>;
   videoSettingsByChannel?: Record<string, unknown>;
   generateMissingVideoVariants?: boolean;
+  mediaPipelineCutoverV1?: boolean;
   allowOriginalVideoFallback?: boolean;
   signal?: AbortSignal;
 }) {
@@ -404,6 +405,7 @@ export async function prewarmMediaPublicationWorkspace(params: {
           videoSettingsByChannel: params.videoSettingsByChannel || {},
           generateMissingVideoVariants:
             params.generateMissingVideoVariants !== false,
+          mediaPipelineCutoverV1: params.mediaPipelineCutoverV1 === true,
           allowOriginalVideoFallback:
             params.allowOriginalVideoFallback === true,
         }),

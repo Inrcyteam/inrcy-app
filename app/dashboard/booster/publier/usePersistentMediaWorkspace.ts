@@ -64,6 +64,7 @@ type PublicationPreparationSettings = {
   requestedMediaType?: "images" | "video";
   deferUntilReady?: boolean;
   generateMissingVideoVariants?: boolean;
+  mediaPipelineCutoverV1?: boolean;
   allowOriginalVideoFallback?: boolean;
 };
 
@@ -582,6 +583,7 @@ export default function usePersistentMediaWorkspace({
           mission,
           dispatchWorker: true,
         });
+        onPreparedMediaRef.current?.(result.media);
         const deadlineAt = Date.now() + MEDIA_PREPARATION_MAX_WAIT_MS;
 
         // The first request only commits and kicks durable work. Keep one
@@ -696,6 +698,7 @@ export default function usePersistentMediaWorkspace({
         videoSettingsByChannel: videoSettingsByChannelRef.current,
         generateMissingVideoVariants:
           settings?.generateMissingVideoVariants,
+        mediaPipelineCutoverV1: settings?.mediaPipelineCutoverV1,
         allowOriginalVideoFallback: settings?.allowOriginalVideoFallback,
       });
     },

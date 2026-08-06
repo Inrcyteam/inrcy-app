@@ -7,18 +7,16 @@ const source = readFileSync(
   "utf8",
 );
 
-test("videos at or above 70 MB always use the canonical shared master", () => {
-  assert.match(
-    source,
-    /item\.sourceSizeBytes >= VIDEO_SHARED_CANONICAL_PREFERRED_SOURCE_BYTES/,
-  );
-  assert.match(
-    source,
-    /directSourceReady && !preferSharedCanonical \? null : canonical/,
-  );
+test("heavy and light videos always use the canonical shared master", () => {
+  assert.match(source, /allowUploadedVideoSource:\s*false/);
+  assert.match(source, /const publicationVariant = canonical/);
+  assert.doesNotMatch(source, /directSourceReady && !preferSharedCanonical/);
 });
 
-test("a compatible small source still publishes the professional original", () => {
-  assert.match(source, /Below 70 MB/);
-  assert.match(source, /The original is retained/);
+test("the managed master carries the durable thumbnail contract", () => {
+  assert.match(
+    source,
+    /pickReadyVideoNormalizationVariant\(\s*variants,\s*item\.mediaId,\s*"thumbnail"/,
+  );
+  assert.match(source, /thumbnailStoragePath:\s*thumbnail\?\.storagePath/);
 });

@@ -69,7 +69,6 @@ import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
-  BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
   BOOSTER_VIDEO_ACCEPT,
   BOOSTER_VIDEO_FORMATS_LABEL,
   CHANNEL_LABELS,
@@ -180,7 +179,8 @@ import usePersistentMediaWorkspace, {
 } from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
-import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES } from "@/lib/mediaRules";
+import { resolveMediaPreparationDisplayPhase } from "@/lib/mediaPreparationDisplay";
 import {
   getBoosterCreationWorkflow,
   getBoosterPublicationWorkflowSteps,
@@ -232,7 +232,8 @@ const BOOSTER_VIDEO_AI_PREPARATION_GRACE_MS = 12_000;
 // décodeur vidéo ne peut retenir la rédaction IA au-delà. Pour une vidéo lourde,
 // les captures commencent dès l'insertion et sont seulement relues au clic.
 const BOOSTER_LOCAL_MEDIA_ENRICHMENT_BUDGET_MS = 2_500;
-const BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES = 70_000_000;
+const BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES =
+  INR_MEDIA_VIDEO_COMPRESSION_TRIGGER_BYTES;
 // Le clic accepte l'opération immédiatement, puis cette fenêtre laisse le TUS
 // et le worker durable terminer le master léger sans demander un second clic.
 const BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS = 30 * 60 * 1_000;
@@ -287,6 +288,8 @@ export default function PublishModal({
   const [generationPhaseIndex, setGenerationPhaseIndex] = useState(0);
   const [generationPhaseLabel, setGenerationPhaseLabel] = useState("");
   const [generationStage, setGenerationStage] = useState("");
+  const [videoPreparationDisplayPhase, setVideoPreparationDisplayPhase] =
+    useState<"compression" | "preparation" | null>(null);
   const generationProgressTargetRef = useRef(0);
   const generationPhaseIndexRef = useRef(0);
   const generationRequestPhaseTimerRef = useRef<number | null>(null);
@@ -1289,6 +1292,27 @@ export default function PublishModal({
 
   const handlePreparedWorkspaceMedia = useCallback(
     (preparedMedia: readonly MediaWorkspaceMediaSummary[]) => {
+      const preparedVideos = preparedMedia.filter(
+        (item) => item.mediaType === "video",
+      );
+      const preparationPhase = preparedVideos.length
+        ? resolveMediaPreparationDisplayPhase(preparedVideos)
+        : null;
+      setVideoPreparationDisplayPhase(preparationPhase);
+
+      if (
+        generating &&
+        preparedVideos.length > 0
+      ) {
+        setGenerationProgressPhase(
+          "media_analysis",
+          preparationPhase === "compression"
+            ? "Compression des médias"
+            : "Préparation des médias",
+          preparationPhase === "compression" ? 34 : 37,
+        );
+      }
+
       const preparedImages = preparedMedia.filter(
         (item) =>
           item.mediaType === "image" &&
@@ -1342,7 +1366,7 @@ export default function PublishModal({
         return next;
       });
     },
-    [images],
+    [generating, images, setGenerationProgressPhase],
   );
 
   const {
@@ -1418,6 +1442,13 @@ export default function PublishModal({
     setPublishProgress: setContextualPublishProgress,
     setPublishProgressLabel: setContextualPublishProgressLabel,
   });
+
+  useEffect(() => {
+    // A new local source must start with a fresh server-side preparation state.
+    // Heavy files show compression immediately; the workspace snapshot switches
+    // the wording to the universal preparation label as soon as compression ends.
+    setVideoPreparationDisplayPhase(null);
+  }, [videoFile?.lastModified, videoFile?.name, videoFile?.size]);
 
   useEffect(() => {
     if (
@@ -1696,42 +1727,10 @@ export default function PublishModal({
     >,
     options?: {
       generateMissingVideoVariants?: boolean;
-      allowOriginalVideoFallback?: boolean;
       allowPartialChannelFailures?: boolean;
     },
   ) {
     if (!mediaPipelineCutoverEnabled || !channels.length) return null;
-
-    const originalSelectedForEveryChannel = channels.every(
-      (channel) => (settingsByChannel[channel]?.format || "original") === "original",
-    );
-    const directOriginalAvailable =
-      Boolean(videoFile) &&
-      canPublishVideoSourceDirectly({
-        name: videoFile?.name,
-        type: videoFile?.type,
-        sizeBytes: videoFile?.size,
-        maxBytes: BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
-        videoCodec: videoSourceMetadata?.videoCodec,
-        audioCodec: videoSourceMetadata?.audioCodec,
-        frameRate: videoSourceMetadata?.frameRate,
-        hasAudio: videoSourceMetadata?.hasAudio,
-        containerFormats: videoSourceMetadata?.containerFormats,
-        pixelFormat: videoSourceMetadata?.pixelFormat,
-        requireCodecProof: true,
-      });
-    if (
-      options?.allowOriginalVideoFallback === true &&
-      originalSelectedForEveryChannel &&
-      directOriginalAvailable
-    ) {
-      return {
-        ok: true,
-        status: "ready",
-        source: "original",
-        invalidChannels: [],
-      };
-    }
 
     await waitForPersistentWorkspaceIdle(undefined, {
       mediaTypes: ["video"],
@@ -1747,14 +1746,12 @@ export default function PublishModal({
       videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
       generateMissingVideoVariants:
         options?.generateMissingVideoVariants !== false,
-      allowOriginalVideoFallback:
-        options?.allowOriginalVideoFallback === true,
+      mediaPipelineCutoverV1: true,
+      allowOriginalVideoFallback: false,
     });
-    // Fast path first: use an existing optimized variant or the original when
-    // the channel accepts it. If cache v6 invalidated an older variant, a MOV
-    // needs conversion, or metadata must be probed, regenerate exactly once.
-    // This keeps normal publications instant without ever blocking a valid
-    // publication merely because a derived variant is absent.
+    // Fast path first: reuse an existing server variant. If cache v6
+    // invalidated it, regenerate exactly once from the canonical v2 workspace
+    // master; the browser original never authorizes a scheduled publication.
     if (
       !isVideoPreparationReady(result) &&
       options?.generateMissingVideoVariants === false &&
@@ -1770,8 +1767,8 @@ export default function PublishModal({
         selectedChannels: channels,
         videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
         generateMissingVideoVariants: true,
-        allowOriginalVideoFallback:
-          options?.allowOriginalVideoFallback === true,
+        mediaPipelineCutoverV1: true,
+        allowOriginalVideoFallback: false,
       });
     }
 
@@ -2894,6 +2891,9 @@ export default function PublishModal({
       storage: videoStorageContext,
     });
     const hasVideoForGeneration = !!videoGenerationContext?.enabled;
+    const heavyVideoCompressionRequired =
+      Boolean(videoFile) &&
+      (videoFile?.size || 0) >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES;
     const shouldUseImagesForAI =
       !hasVideoForGeneration && images.length > 0 && useImagesForAI;
     const shouldPrepareMediaForAi = shouldPrepareBoosterMediaForAi({
@@ -2943,7 +2943,9 @@ export default function PublishModal({
               }
               setGenerationProgressPhase(
                 "media_analysis",
-                publicationMediaType === "video"
+                heavyVideoCompressionRequired
+                  ? "Compression des médias"
+                  : publicationMediaType === "video"
                   ? "Analyse de la vidéo en cours"
                   : images.length > 1
                     ? "Analyse des images en cours"
@@ -2952,11 +2954,7 @@ export default function PublishModal({
               );
             },
             hasVideoForGeneration ? ["video"] : ["image"],
-            hasVideoForGeneration &&
-            videoFile &&
-            videoFile.size >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES
-              ? BOOSTER_HEAVY_VIDEO_WORKSPACE_READINESS_TIMEOUT_MS
-              : Math.max(1_000, mediaPreparationDeadlineAt - Date.now()),
+            Math.max(1_000, mediaPreparationDeadlineAt - Date.now()),
           );
         } catch (workspaceError) {
           console.warn(
@@ -2985,7 +2983,9 @@ export default function PublishModal({
       ) {
         setGenerationProgressPhase(
           "media_analysis",
-          "Préparation des captures vidéo pour l’IA",
+          heavyVideoCompressionRequired
+            ? "Compression des médias"
+            : "Préparation des captures vidéo pour l’IA",
           34,
         );
         // La mission est dédupliquée par le hook et travaille directement
@@ -3015,20 +3015,15 @@ export default function PublishModal({
             );
             return false;
           });
-        const heavyVideoNeedsCanonical =
-          (videoFile?.size || 0) >=
-          BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES;
-        videoAiPreparationReady = heavyVideoNeedsCanonical
-          ? await preparation
-          : await Promise.race([
-              preparation,
-              new Promise<boolean>((resolve) => {
-                graceTimeoutId = window.setTimeout(
-                  () => resolve(false),
-                  Math.max(0, mediaPreparationDeadlineAt - Date.now()),
-                );
-              }),
-            ]);
+        videoAiPreparationReady = await Promise.race([
+          preparation,
+          new Promise<boolean>((resolve) => {
+            graceTimeoutId = window.setTimeout(
+              () => resolve(false),
+              Math.max(0, mediaPreparationDeadlineAt - Date.now()),
+            );
+          }),
+        ]);
         if (graceTimeoutId !== null) window.clearTimeout(graceTimeoutId);
       }
 
@@ -3038,7 +3033,9 @@ export default function PublishModal({
           hasVideoForGeneration
             ? videoAiPreparationReady
               ? "Vidéo et captures prêtes pour l’analyse IA"
-              : "Vidéo prête · captures finalisées en arrière-plan"
+              : heavyVideoCompressionRequired
+                ? "Compression des médias poursuivie en arrière-plan"
+                : "Vidéo prête · captures finalisées en arrière-plan"
             : shouldUseImagesForAI
               ? "Visuels prêts pour l’analyse IA"
               : "Média prêt pour l’analyse IA",
@@ -4132,6 +4129,15 @@ export default function PublishModal({
     const hasAnyImagePublish = publishableChannels.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
+    const heavyVideoCompressionRequiredForPublish =
+      hasAnyVideoPublish &&
+      Boolean(videoFile) &&
+      (videoFile?.size || 0) >= BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES;
+    const pendingMediaPreparationLabel =
+      heavyVideoCompressionRequiredForPublish &&
+      videoPreparationDisplayPhase !== "preparation"
+        ? "Compression des médias"
+        : "Préparation des médias";
     const requiredPublishMediaTypes = [
       ...(hasAnyImagePublish ? (["image"] as const) : []),
       ...(hasAnyVideoPublish ? (["video"] as const) : []),
@@ -4277,6 +4283,14 @@ export default function PublishModal({
             Math.max(0, Number(mediaPreparation.progress || 0)),
           )
         : null;
+      const mediaCompressionInProgress =
+        String(mediaPreparation?.phase || "") === "compression";
+      const mediaPreparationLabelProgress = mediaCompressionInProgress
+        ? Math.min(
+            100,
+            Math.max(0, Number(mediaPreparation?.phaseProgress || 0)),
+          )
+        : mediaPreparationProgress;
       const entries = Array.isArray(summary.entries)
         ? (summary.entries.filter(
             (entry): entry is Record<string, any> =>
@@ -4313,9 +4327,21 @@ export default function PublishModal({
         preparingCount > 0 ||
         String(payload.status || "").toLowerCase() === "preparing" ||
         (mediaPreparationProgress !== null && mediaPreparationProgress < 100);
+      if (update.stage === "request_accepted") {
+        setPublicationProgressPhase(
+          "verification",
+          "Demande de publication prise en charge",
+          7,
+        );
+        return;
+      }
       if (mediaPreparationInProgress) {
         const progress = mediaPreparationProgress ?? 0;
-        const label = `Préparation de la vidéo${mediaPreparationProgress === null ? "" : ` · ${Math.round(progress)} %`}`;
+        const label = `${
+          mediaCompressionInProgress
+            ? "Compression des médias"
+            : "Préparation des médias"
+        }${mediaPreparationLabelProgress === null ? "" : ` · ${Math.round(mediaPreparationLabelProgress)} %`}`;
         // The request may already have crossed the local file-preparation
         // phases before the durable worker reports its first status. Keep the
         // technical phase monotonic, but show the truthful media stage and map
@@ -4327,14 +4353,6 @@ export default function PublishModal({
         );
         setPublishProgressPhaseIndex(2);
         setPublishProgressPhaseLabel("Finalisation des médias");
-        return;
-      }
-      if (update.stage === "request_accepted") {
-        setPublicationProgressPhase(
-          "verification",
-          "Demande de publication prise en charge",
-          7,
-        );
         return;
       }
       if (update.stage === "released_to_background") {
@@ -4380,7 +4398,9 @@ export default function PublishModal({
           (progress) => {
             setPublicationProgressPhase(
               "media_preparation",
-              "Finalisation des médias",
+              progress > 24
+                ? pendingMediaPreparationLabel
+                : "Finalisation des médias",
               progress <= 24
                 ? mapProgressRange(progress, 6, 24, 9, 26)
                 : 27,
@@ -4392,7 +4412,7 @@ export default function PublishModal({
 
       setPublicationProgressPhase(
         "channel_compatibility",
-        "Finalisation des médias",
+        pendingMediaPreparationLabel,
         41,
       );
 
@@ -4400,13 +4420,13 @@ export default function PublishModal({
       // adaptation explicite doit, elle, être prête avant d'arriver ici.
       setPublicationProgressPhase(
         "channel_compatibility",
-        "Finalisation des médias",
+        pendingMediaPreparationLabel,
         42,
       );
 
       setPublicationProgressPhase(
         "file_preparation",
-        "Finalisation des médias",
+        pendingMediaPreparationLabel,
         44,
       );
 
@@ -5144,7 +5164,6 @@ export default function PublishModal({
           scheduleVideoSettingsByChannel,
           {
             generateMissingVideoVariants: false,
-            allowOriginalVideoFallback: true,
             allowPartialChannelFailures: true,
           },
         );

@@ -40,7 +40,7 @@ test("queued publication opens a useful balance by 60 seconds, then continues in
   assert.doesNotMatch(layer, /finally \{\s*await refreshMetrics\(\)/);
 });
 
-test("YouTube respects the selected original instead of forcing 9:16", () => {
+test("YouTube preserves the selected framing while using the managed master", () => {
   assert.deepEqual(
     getAutomaticVideoSettingsForPublication({
       channel: "youtube_shorts",
@@ -53,8 +53,9 @@ test("YouTube respects the selected original instead of forcing 9:16", () => {
     publishModal,
     /current\.youtube_shorts === "9_16"[\s\S]*setVideoAdaptationModeByChannel/,
   );
-  assert.match(publishModal, /originalSelectedForEveryChannel/);
-  assert.match(publishModal, /source: "original"/);
+  assert.match(publishModal, /mediaPipelineCutoverV1: true/);
+  assert.match(publishModal, /allowOriginalVideoFallback: false/);
+  assert.doesNotMatch(publishModal, /source: "original"/);
 });
 
 test("YouTube streams the stored source instead of buffering the full video", () => {
@@ -64,9 +65,10 @@ test("YouTube streams the stored source instead of buffering the full video", ()
   assert.doesNotMatch(youtube, /const blob = await fetchVideoBlob/);
 });
 
-test("media finalization exposes the real video preparation progress", () => {
+test("media finalization exposes universal media preparation progress", () => {
   assert.match(publishModal, /Finalisation des médias/);
-  assert.match(publishModal, /Préparation de la vidéo/);
+  assert.match(publishModal, /Préparation des médias/);
+  assert.doesNotMatch(publishModal, /Préparation de la vidéo/);
   assert.match(publishModal, /mediaPreparationProgress/);
   assert.match(
     publishModal,
