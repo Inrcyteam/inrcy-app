@@ -1,7 +1,10 @@
 import { rm, stat } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import { MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES } from "@/lib/mediaLibraryOptimizationPolicy";
+import {
+  MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES,
+  normalizeMediaLibraryOptimizationTarget,
+} from "@/lib/mediaLibraryOptimizationPolicy";
 
 export type MediaLibraryImageOptimizationResult = {
   outputPath: string;
@@ -14,16 +17,23 @@ export type MediaLibraryImageOptimizationResult = {
 };
 
 const IMAGE_PROFILES = [
-  { maxSide: 8_000, quality: 86 },
-  { maxSide: 6_000, quality: 76 },
-  { maxSide: 4_096, quality: 68 },
+  { maxSide: 8_000, quality: 90 },
+  { maxSide: 6_000, quality: 82 },
+  { maxSide: 4_096, quality: 74 },
+  { maxSide: 3_072, quality: 66 },
+  { maxSide: 2_048, quality: 58 },
 ] as const;
 
 export async function optimizeMediaLibraryImage(params: {
   inputPath: string;
   outputDirectory: string;
+  targetBytes?: number | null;
   onProgress?: (progress: number, stage: string) => void;
 }): Promise<MediaLibraryImageOptimizationResult> {
+  const targetBytes = normalizeMediaLibraryOptimizationTarget({
+    mediaType: "image",
+    targetBytes: params.targetBytes,
+  });
   const metadata = await sharp(params.inputPath, {
     failOn: "error",
     limitInputPixels: 268_402_689,
@@ -36,13 +46,13 @@ export async function optimizeMediaLibraryImage(params: {
     const profile = IMAGE_PROFILES[index];
     const outputPath = path.join(
       params.outputDirectory,
-      `optimized-${index + 1}.jpg`,
+      `compressed-${index + 1}.jpg`,
     );
     params.onProgress?.(
-      25 + index * 22,
+      25 + index * 13,
       index === 0
-        ? "Optimisation de l’image"
-        : "Réduction complémentaire de l’image",
+        ? "Compression de l’image"
+        : "Ajustement de la compression",
     );
 
     const info = await sharp(params.inputPath, {
@@ -61,13 +71,17 @@ export async function optimizeMediaLibraryImage(params: {
         quality: profile.quality,
         progressive: true,
         mozjpeg: true,
-        chromaSubsampling: "4:4:4",
+        chromaSubsampling: "4:2:0",
       })
       .toFile(outputPath);
 
     const sizeBytes = Number((await stat(outputPath)).size || 0);
-    if (sizeBytes > 0 && sizeBytes <= MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES) {
-      params.onProgress?.(88, "Vérification de l’image optimisée");
+    if (
+      sizeBytes > 0 &&
+      sizeBytes <= targetBytes &&
+      sizeBytes <= MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES
+    ) {
+      params.onProgress?.(88, "Vérification de l’image compressée");
       return {
         outputPath,
         sizeBytes,

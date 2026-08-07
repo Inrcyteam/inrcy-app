@@ -5,7 +5,7 @@ import { INR_MEDIA_IMAGE_MAX_BYTES, INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./m
  * optimizer creates a second, publication-ready file and never mutates the
  * source selected by the professional.
  */
-export const MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION = 1;
+export const MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION = 2;
 export const MEDIA_LIBRARY_VIDEO_OPTIMIZATION_JOB_TYPE =
   "media_library_video_compress_v1";
 export const MEDIA_LIBRARY_IMAGE_OPTIMIZATION_JOB_TYPE =
@@ -21,11 +21,19 @@ export const MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES = 300 * 1024 * 1024;
 export const MEDIA_LIBRARY_IMAGE_SOURCE_MAX_MB_LABEL = "300 Mo";
 export const MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES =
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
-export const MEDIA_LIBRARY_VIDEO_TARGET_BYTES = 68_000_000;
+export const MEDIA_LIBRARY_VIDEO_TARGET_BYTES = MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES;
 export const MEDIA_LIBRARY_VIDEO_RETRY_TARGET_BYTES = 58_000_000;
 
-export const MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
-export const MEDIA_LIBRARY_IMAGE_TARGET_BYTES = 46_000_000;
+// The business-facing compressor uses decimal megabytes so 75 Mo is displayed
+// as 75 Mo (and not ~72 MiB). Booster still keeps its exact historical byte
+// ceiling for videos.
+export const MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES = Math.min(
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  50_000_000,
+);
+export const MEDIA_LIBRARY_IMAGE_TARGET_BYTES = MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES;
+export const MEDIA_LIBRARY_EMAIL_TARGET_BYTES = 20_000_000;
+export const MEDIA_LIBRARY_MIN_TARGET_BYTES = 5_000_000;
 
 export const MEDIA_LIBRARY_OPTIMIZATION_WORKER_LEASE_SECONDS = 1_800;
 export const MEDIA_LIBRARY_OPTIMIZATION_MAX_ATTEMPTS = 3;
@@ -50,27 +58,46 @@ export function getMediaLibraryOptimizationOutputLimit(
     : MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES;
 }
 
+export function normalizeMediaLibraryOptimizationTarget(params: {
+  mediaType: MediaLibraryOptimizationMediaType;
+  targetBytes?: number | null;
+}) {
+  const maxBytes = getMediaLibraryOptimizationOutputLimit(params.mediaType);
+  const requested = Math.round(Number(params.targetBytes || maxBytes));
+  return Math.max(MEDIA_LIBRARY_MIN_TARGET_BYTES, Math.min(maxBytes, requested));
+}
+
 export function needsMediaLibraryOptimization(params: {
   mediaType: MediaLibraryOptimizationMediaType;
   sizeBytes: number | null | undefined;
+  targetBytes?: number | null;
 }) {
   const sizeBytes = Math.max(0, Number(params.sizeBytes || 0));
-  return sizeBytes > getMediaLibraryOptimizationOutputLimit(params.mediaType);
+  const targetBytes = normalizeMediaLibraryOptimizationTarget({
+    mediaType: params.mediaType,
+    targetBytes: params.targetBytes,
+  });
+  return sizeBytes > targetBytes;
 }
 
 export function buildMediaLibraryOptimizationIdempotencyKey(params: {
   mediaId: string;
   mediaType: MediaLibraryOptimizationMediaType;
+  targetBytes?: number | null;
 }) {
-  return `media-library-${params.mediaType}-optimize-v${MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION}:${params.mediaId}`;
+  const targetBytes = normalizeMediaLibraryOptimizationTarget({
+    mediaType: params.mediaType,
+    targetBytes: params.targetBytes,
+  });
+  return `media-library-${params.mediaType}-compress-v${MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION}:${params.mediaId}:${targetBytes}`;
 }
 
 export function buildOptimizedMediaTitle(title: unknown) {
   const clean = String(title || "Média iNrCy")
     .trim()
-    .replace(/\s+[—-]\s+optimis[ée]e? pour Booster$/i, "")
+    .replace(/\s+[—-]\s+(?:optimis[ée]e? pour Booster|compress[ée]e?)$/i, "")
     .slice(0, 145);
-  return `${clean || "Média iNrCy"} — optimisé pour Booster`;
+  return `${clean || "Média iNrCy"} — compressé`;
 }
 
 export function buildOptimizedFileStem(value: unknown) {
@@ -111,13 +138,10 @@ export function buildVideoCompressionProfile(params: {
   targetBytes?: number;
 }): VideoCompressionProfile {
   const durationSeconds = Math.max(1, Number(params.durationSeconds || 0));
-  const targetBytes = Math.max(
-    4_000_000,
-    Math.min(
-      MEDIA_LIBRARY_VIDEO_TARGET_BYTES,
-      Number(params.targetBytes || MEDIA_LIBRARY_VIDEO_TARGET_BYTES),
-    ),
-  );
+  const targetBytes = normalizeMediaLibraryOptimizationTarget({
+    mediaType: "video",
+    targetBytes: params.targetBytes,
+  });
   // Keep 4% for MP4 container overhead and faststart metadata.
   const totalBitrate = Math.max(
     120_000,
@@ -151,8 +175,8 @@ export function mapMediaLibraryOptimizationStage(progress: number) {
   const safe = Math.max(0, Math.min(100, Math.round(progress)));
   if (safe < 8) return "Préparation du média";
   if (safe < 18) return "Lecture du fichier original";
-  if (safe < 90) return "Optimisation pour Booster";
+  if (safe < 90) return "Compression du média";
   if (safe < 96) return "Vérification du fichier";
   if (safe < 100) return "Enregistrement dans la Médiathèque";
-  return "Copie compatible créée";
+  return "Copie compressée créée";
 }

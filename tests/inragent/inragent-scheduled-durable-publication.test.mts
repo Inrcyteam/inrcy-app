@@ -164,7 +164,9 @@ test("running idempotency resumes safely and accepts a known durable parent", ()
 });
 
 test("cron and execute-now share the durable request and own their claims", () => {
-  assert.match(scheduleRoute, /payload:\s*asRecord\(record\?\.payload\) \|\| \{\}/);
+  assert.match(scheduleRoute, /const scheduledPayload = \{/);
+  assert.match(scheduleRoute, /\.\.\.\(scheduleRequestId \? \{ scheduleRequestId \} : \{\}\)/);
+  assert.match(scheduleRoute, /payload:\s*scheduledPayload/);
   assert.match(cronRoute, /buildScheduledPublicationRequest\(row\)/);
   assert.match(cronRoute, /interpretScheduledPublicationResponse\(\{/);
   assert.match(cronRoute, /status: result\.status/);

@@ -2,8 +2,7 @@ import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import {
   MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES,
-  MEDIA_LIBRARY_VIDEO_RETRY_TARGET_BYTES,
-  MEDIA_LIBRARY_VIDEO_TARGET_BYTES,
+  normalizeMediaLibraryOptimizationTarget,
   buildVideoCompressionProfile,
   type VideoCompressionProfile,
 } from "@/lib/mediaLibraryOptimizationPolicy";
@@ -28,6 +27,13 @@ function compactError(value: unknown) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 2_000);
+}
+
+function encoderPreset(source: VideoSourceProbe, profile: VideoCompressionProfile) {
+  // Long videos are where the old `veryfast` preset was most expensive.
+  // `superfast` keeps H.264 compatibility while materially reducing CPU time.
+  if (source.durationSeconds >= 180 || profile.maxSide >= 1280) return "superfast";
+  return "veryfast";
 }
 
 async function runFfmpegCompression(params: {
@@ -61,7 +67,9 @@ async function runFfmpegCompression(params: {
     "-c:v",
     "libx264",
     "-preset",
-    "veryfast",
+    encoderPreset(params.source, params.profile),
+    "-threads",
+    "0",
     "-profile:v",
     "high",
     "-level",
@@ -71,7 +79,7 @@ async function runFfmpegCompression(params: {
     "-b:v",
     String(params.profile.videoBitrate),
     "-maxrate",
-    String(Math.max(params.profile.videoBitrate, Math.round(params.profile.videoBitrate * 1.2))),
+    String(Math.max(params.profile.videoBitrate, Math.round(params.profile.videoBitrate * 1.15))),
     "-bufsize",
     String(Math.max(144_000, params.profile.videoBitrate * 2)),
   ];
@@ -155,6 +163,7 @@ async function runFfmpegCompression(params: {
 export async function compressMediaLibraryVideo(params: {
   inputPath: string;
   outputPath: string;
+  targetBytes?: number | null;
   fallbackWidth?: number | null;
   fallbackHeight?: number | null;
   fallbackDurationSeconds?: number | null;
@@ -171,17 +180,45 @@ export async function compressMediaLibraryVideo(params: {
     timeoutMs: 60_000,
   });
 
-  const targets = [
-    MEDIA_LIBRARY_VIDEO_TARGET_BYTES,
-    MEDIA_LIBRARY_VIDEO_RETRY_TARGET_BYTES,
-  ];
-  let selectedProfile: VideoCompressionProfile | null = null;
-  let sizeBytes = 0;
-  for (let index = 0; index < targets.length; index += 1) {
-    const profile = buildVideoCompressionProfile({
+  const requestedTargetBytes = normalizeMediaLibraryOptimizationTarget({
+    mediaType: "video",
+    targetBytes: params.targetBytes,
+  });
+  let profile = buildVideoCompressionProfile({
+    durationSeconds: source.durationSeconds,
+    hasAudio: source.hasAudio,
+    // buildVideoCompressionProfile already reserves container overhead, so the
+    // first encode stays close to the professional's requested weight.
+    targetBytes: requestedTargetBytes,
+  });
+
+  await runFfmpegCompression({
+    ffmpegPath,
+    inputPath: params.inputPath,
+    outputPath: params.outputPath,
+    source,
+    profile,
+    progressStart: 20,
+    progressEnd: 86,
+    onProgress: params.onProgress,
+  });
+
+  let sizeBytes = Number((await stat(params.outputPath)).size || 0);
+  if (!sizeBytes) throw new Error("video_output_empty");
+
+  // Normally one encode is enough. If muxing/codec overhead still overshoots,
+  // retry once using the measured result instead of a fixed second target.
+  if (sizeBytes > requestedTargetBytes) {
+    params.onProgress?.(72, "Ajustement final de la compression");
+    const correctionRatio = requestedTargetBytes / sizeBytes;
+    const retryTarget = Math.max(
+      5_000_000,
+      Math.floor(profile.targetBytes * correctionRatio * 0.94),
+    );
+    profile = buildVideoCompressionProfile({
       durationSeconds: source.durationSeconds,
       hasAudio: source.hasAudio,
-      targetBytes: targets[index],
+      targetBytes: retryTarget,
     });
     await runFfmpegCompression({
       ffmpegPath,
@@ -189,21 +226,17 @@ export async function compressMediaLibraryVideo(params: {
       outputPath: params.outputPath,
       source,
       profile,
-      progressStart: index === 0 ? 20 : 72,
-      progressEnd: index === 0 ? 82 : 88,
+      progressStart: 72,
+      progressEnd: 88,
       onProgress: params.onProgress,
     });
     sizeBytes = Number((await stat(params.outputPath)).size || 0);
-    if (sizeBytes > 0 && sizeBytes <= MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES) {
-      selectedProfile = profile;
-      break;
-    }
-    params.onProgress?.(72, "Ajustement final de la compression");
   }
 
-  if (!selectedProfile || !sizeBytes) {
+  if (!sizeBytes || sizeBytes > requestedTargetBytes || sizeBytes > MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES) {
     throw new Error(`video_output_too_large:${sizeBytes}`);
   }
+
   params.onProgress?.(90, "Vérification de la vidéo compressée");
   const output = await probeVideoSource({
     ffmpegPath,
@@ -222,7 +255,7 @@ export async function compressMediaLibraryVideo(params: {
     sizeBytes,
     source,
     output,
-    profile: selectedProfile,
+    profile,
     mimeType: "video/mp4",
     extension: "mp4",
   };

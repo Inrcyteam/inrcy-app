@@ -18,6 +18,7 @@ const modalLayer = read(
   "app/dashboard/_components/DashboardBoosterModalLayer.tsx",
 );
 const publishClient = read("lib/boosterPublishClient.ts");
+const scheduleClient = read("lib/boosterScheduleClient.ts");
 const publishRoute = read("app/api/booster/publish-now/route.ts");
 const generationRoute = read("app/api/booster/generate/route.ts");
 const statusRoute = read(
@@ -190,7 +191,9 @@ test("manual publication remains idempotent, asynchronous and partially retryabl
 });
 
 test("scheduling preserves the workspace and separates immediate channels", () => {
-  assert.match(publishModal, /\/api\/agent\/scheduled-actions/);
+  assert.match(publishModal, /postBoosterScheduledAction\(/);
+  assert.match(scheduleClient, /\/api\/agent\/scheduled-actions/);
+  assert.match(scheduleClient, /scheduleRequestId/);
   assert.match(publishModal, /timezone:\s*"Europe\/Paris"/);
   assert.match(publishModal, /scheduleGroups/);
   assert.match(publishModal, /immediateChannelsToPublish/);

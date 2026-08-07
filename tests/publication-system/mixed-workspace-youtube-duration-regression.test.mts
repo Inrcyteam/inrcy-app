@@ -244,7 +244,7 @@ test("une source de 75 Mo est probée par ranges bornés, jamais chargée en Buf
   assert.match(server, /attestationSource:\s*"registry"/);
 });
 
-test("l'attestation fallback démarre à l'upload et la vidéo ne retient pas les images", () => {
+test("l'attestation fallback démarre à l'upload et une publication mixte attend les médias avant dispatch", () => {
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
   const uploadEvent = read("app/api/media-pipeline/upload-event/route.ts");
   const publish = read("app/api/booster/publish-now/route.ts");
@@ -263,11 +263,11 @@ test("l'attestation fallback démarre à l'upload et la vidéo ne retient pas le
   );
   assert.match(
     publish,
-    /shouldDeferMixedVideoPreparation\(\{[\s\S]{0,240}imageChannelCount:\s*requestedImageChannels\.length,[\s\S]{0,100}videoChannelCount:\s*requestedVideoChannels\.length/,
+    /shouldPrepareMixedMediaBeforeDispatch\(\{[\s\S]{0,240}imageChannelCount:\s*requestedImageChannels\.length,[\s\S]{0,100}videoChannelCount:\s*requestedVideoChannels\.length/,
   );
   assert.match(
     publish,
-    /requestedVideoChannels\.forEach\(\(channel\) =>[\s\S]{0,80}deferredPreparationChannels\.add\(channel\)/,
+    /mixedMediaStillPending[\s\S]{0,320}requestedMediaChannels\.forEach\(\(channel\) =>[\s\S]{0,160}deferredPreparationChannels\.add\(channel\)/,
   );
   assert.match(
     publish,

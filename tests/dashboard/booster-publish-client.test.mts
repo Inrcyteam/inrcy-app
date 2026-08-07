@@ -37,6 +37,96 @@ test("publication retries a lost mobile response with the same idempotency key",
   );
 });
 
+test("publication recovers its durable status when every POST response is lost", async () => {
+  let now = 0;
+  let publishCalls = 0;
+  let recoveryCalls = 0;
+  let statusCalls = 0;
+  const result = await postBoosterPublication(
+    { channels: ["facebook"] },
+    {
+      maxAttempts: 1,
+      nowImpl: () => now,
+      sleepImpl: async (ms) => {
+        now += ms;
+      },
+      fetchImpl: async (input) => {
+        const url = String(input);
+        if (url === "/api/booster/publish-now") {
+          publishCalls += 1;
+          throw new TypeError("Failed to fetch");
+        }
+        if (url.startsWith("/api/booster/publications/recover?")) {
+          recoveryCalls += 1;
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              done: false,
+              queued: true,
+              recoveredAfterTransportLoss: true,
+              publication_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        statusCalls += 1;
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            done: true,
+            queued: false,
+            publication_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            summary: { successCount: 1, failureCount: 0, pendingCount: 0 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    },
+  );
+
+  assert.equal(publishCalls, 1);
+  assert.equal(recoveryCalls, 1);
+  assert.equal(statusCalls, 1);
+  assert.equal(result.done, true);
+  assert.equal((result.summary as Record<string, unknown>).successCount, 1);
+});
+
+test("a suspended publication request recovers the durable result", async () => {
+  let recoveryCalls = 0;
+  const result = await postBoosterPublication(
+    { channels: ["linkedin"] },
+    {
+      maxAttempts: 1,
+      maxPollingMs: 5_000,
+      requestTimeoutMs: 5,
+      recoveryTimeoutMs: 50,
+      sleepImpl: async () => undefined,
+      fetchImpl: async (input) => {
+        const url = String(input);
+        if (url === "/api/booster/publish-now") {
+          return await new Promise<Response>(() => undefined);
+        }
+        recoveryCalls += 1;
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            done: true,
+            queued: false,
+            recoveredAfterTransportLoss: true,
+            publication_id: "abababab-abab-4bab-8bab-abababababab",
+            summary: { successCount: 1, failureCount: 0, pendingCount: 0 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    },
+  );
+
+  assert.equal(recoveryCalls, 1);
+  assert.equal(result.done, true);
+  assert.equal((result.summary as Record<string, unknown>).successCount, 1);
+});
+
 test("publication reuses the same lock while the first server execution is still running", async () => {
   const keys: string[] = [];
   let attempt = 0;

@@ -576,6 +576,36 @@ export async function prepareWorkspaceMediaForPublication(params: {
     )
     .map((item) => item.mediaId)
     .filter(Boolean);
+  const terminalMediaIdSet = new Set(terminalMediaIds);
+  const pendingMediaIdSet = new Set(stillPendingMediaIds);
+  const terminalImageMediaIds = refreshedMedia
+    .filter(
+      (item) =>
+        item.mediaType === "image" && terminalMediaIdSet.has(item.mediaId),
+    )
+    .map((item) => item.mediaId)
+    .filter(Boolean);
+  const terminalVideoMediaIds = refreshedMedia
+    .filter(
+      (item) =>
+        item.mediaType === "video" && terminalMediaIdSet.has(item.mediaId),
+    )
+    .map((item) => item.mediaId)
+    .filter(Boolean);
+  const pendingImageMediaIds = refreshedMedia
+    .filter(
+      (item) =>
+        item.mediaType === "image" && pendingMediaIdSet.has(item.mediaId),
+    )
+    .map((item) => item.mediaId)
+    .filter(Boolean);
+  const pendingVideoMediaIds = refreshedMedia
+    .filter(
+      (item) =>
+        item.mediaType === "video" && pendingMediaIdSet.has(item.mediaId),
+    )
+    .map((item) => item.mediaId)
+    .filter(Boolean);
   const videoThumbnailMissingMedia = requiresVideoThumbnail
     ? refreshedMedia.filter(
         (item) =>
@@ -587,7 +617,11 @@ export async function prepareWorkspaceMediaForPublication(params: {
     mediaCount: refreshedMedia.length,
     queuedMediaIds: pendingMediaIds,
     pendingMediaIds: stillPendingMediaIds,
+    pendingImageMediaIds,
+    pendingVideoMediaIds,
     terminalMediaIds,
+    terminalImageMediaIds,
+    terminalVideoMediaIds,
     pendingVideoThumbnailMediaIds: videoThumbnailMissingMedia
       .filter((item) => !isTerminalFailure(item))
       .map((item) => item.mediaId)

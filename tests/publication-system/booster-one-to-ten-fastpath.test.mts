@@ -78,7 +78,7 @@ test("publication isolates red channels and dispatches the ready subset for one 
   assert.match(modal, /Préparation des médias/);
   assert.doesNotMatch(modal, /Préparation de la vidéo/);
   assert.match(modal, /mediaPreparationProgress/);
-  assert.match(modal, /mapProgressRange\(progress, 0, 100, 60, 76\)/);
+  assert.match(modal, /mapProgressRange\(progress, 0, 100, 23, 39\)/);
   assert.match(modal, /preflightFailedChannels,/);
   assert.match(
     publishRoute,

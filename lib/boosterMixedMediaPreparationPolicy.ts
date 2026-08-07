@@ -9,18 +9,21 @@ export function resolveChannelDispatchMediaType(
   return mediaMode === "video" ? "video" : "images";
 }
 
-export function shouldDeferMixedVideoPreparation(params: {
+/**
+ * Une publication mixte photos + vidéo doit d'abord laisser le serveur
+ * attester l'original vidéo. Si l'original est directement publiable, tous les
+ * canaux partent ensemble. S'il faut réellement préparer la vidéo, la tentative
+ * durable reste en préparation et aucun canal média n'est publié avant que les
+ * médias soient prêts.
+ */
+export function shouldPrepareMixedMediaBeforeDispatch(params: {
   internalAsyncPreparationDispatch: boolean;
   preparationAttempt: unknown;
   imageChannelCount: number;
   videoChannelCount: number;
 }) {
-  const preparationAttempt = normalizeAsyncPreparationAttempt(
-    params.preparationAttempt,
-  );
   return Boolean(
     params.internalAsyncPreparationDispatch &&
-      preparationAttempt === 1 &&
       params.imageChannelCount > 0 &&
       params.videoChannelCount > 0,
   );

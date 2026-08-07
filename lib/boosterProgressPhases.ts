@@ -7,26 +7,29 @@ export type ProgressPhaseDefinition<Key extends string = string> = Readonly<{
 
 export const GENERATION_PROGRESS_PHASES = [
   { key: "initialization", label: "Initialisation", start: 1, cap: 7 },
-  { key: "media_security", label: "Sécurisation des médias", start: 7, cap: 22 },
-  { key: "media_analysis", label: "Analyse des médias", start: 22, cap: 40 },
-  { key: "request_understanding", label: "Compréhension de la demande", start: 40, cap: 50 },
-  { key: "ai_writing", label: "Rédaction IA", start: 50, cap: 72 },
-  { key: "channel_adaptation", label: "Adaptation multicanale", start: 72, cap: 86 },
-  { key: "quality_control", label: "Contrôle qualité", start: 86, cap: 95 },
-  { key: "editor_preparation", label: "Préparation de l’éditeur", start: 95, cap: 99 },
+  { key: "media_security", label: "Sécurisation des médias", start: 7, cap: 20 },
+  { key: "media_analysis", label: "Analyse des médias", start: 20, cap: 38 },
+  { key: "request_understanding", label: "Compréhension de la demande", start: 38, cap: 48 },
+  { key: "ai_writing", label: "Rédaction IA", start: 48, cap: 68 },
+  { key: "channel_adaptation", label: "Adaptation multicanale", start: 68, cap: 82 },
+  { key: "quality_control", label: "Contrôle qualité", start: 82, cap: 92 },
+  { key: "editor_preparation", label: "Préparation de l’éditeur", start: 92, cap: 95 },
+  { key: "final_wait", label: "Encore quelques secondes…", start: 95, cap: 99 },
   { key: "complete", label: "Contenus prêts", start: 100, cap: 100 },
 ] as const satisfies readonly ProgressPhaseDefinition[];
 
 export const PUBLICATION_PROGRESS_PHASES = [
-  { key: "verification", label: "Finalisation des médias", start: 1, cap: 8 },
-  { key: "media_preparation", label: "Finalisation des médias", start: 8, cap: 28 },
-  { key: "channel_compatibility", label: "Finalisation des médias", start: 28, cap: 42 },
-  { key: "file_preparation", label: "Finalisation des médias", start: 42, cap: 58 },
-  { key: "channel_dispatch", label: "Publication sur les canaux", start: 58, cap: 72 },
-  { key: "publication_finalization", label: "Publication sur les canaux", start: 72, cap: 84 },
-  { key: "status_collection", label: "Vérification des publications", start: 84, cap: 93 },
-  { key: "inrsend_recording", label: "Enregistrement dans iNr’Send", start: 93, cap: 99 },
-  { key: "complete", label: "Bilan prêt", start: 100, cap: 100 },
+  { key: "verification", label: "Demande prise en charge", start: 1, cap: 5 },
+  { key: "channel_verification", label: "Vérification des canaux", start: 5, cap: 12 },
+  { key: "media_verification", label: "Vérification des médias", start: 12, cap: 22 },
+  { key: "media_preparation", label: "Préparation des médias", start: 22, cap: 40 },
+  { key: "file_preparation", label: "Préparation des envois", start: 40, cap: 50 },
+  { key: "channel_dispatch", label: "Publication sur les canaux", start: 50, cap: 66 },
+  { key: "publication_finalization", label: "Publication sur les canaux", start: 66, cap: 82 },
+  { key: "status_collection", label: "Confirmation des plateformes", start: 82, cap: 94 },
+  { key: "inrsend_recording", label: "Enregistrement dans iNr’Send", start: 94, cap: 96 },
+  { key: "final_wait", label: "Encore quelques secondes…", start: 96, cap: 99 },
+  { key: "complete", label: "Publication terminée", start: 100, cap: 100 },
 ] as const satisfies readonly ProgressPhaseDefinition[];
 
 export type GenerationProgressPhaseKey =
@@ -34,49 +37,50 @@ export type GenerationProgressPhaseKey =
 export type PublicationProgressPhaseKey =
   (typeof PUBLICATION_PROGRESS_PHASES)[number]["key"];
 
-// Les phases techniques ci-dessus gardent des plafonds précis. L'interface
-// les regroupe en étapes compréhensibles par le pro.
+// Les phases techniques gardent des plafonds précis. L'interface les regroupe
+// en étapes factuelles et chronologiques pour le pro.
 export const PUBLICATION_PROGRESS_STAGES = [
   { index: 1, label: "Demande prise en charge" },
-  { index: 2, label: "Finalisation des médias" },
-  { index: 3, label: "Publication sur les canaux" },
-  { index: 4, label: "Vérification des publications" },
-  { index: 5, label: "Enregistrement dans iNr’Send" },
+  { index: 2, label: "Vérification des canaux" },
+  { index: 3, label: "Vérification des médias" },
+  { index: 4, label: "Préparation des médias" },
+  { index: 5, label: "Préparation des envois" },
+  { index: 6, label: "Publication sur les canaux" },
+  { index: 7, label: "Confirmation des plateformes" },
+  { index: 8, label: "Enregistrement dans iNr’Send" },
+  { index: 9, label: "Encore quelques secondes…" },
+  { index: 10, label: "Publication terminée" },
 ] as const;
 
 export function getPublicationProgressStage(
   key: PublicationProgressPhaseKey,
 ) {
   if (key === "verification") return PUBLICATION_PROGRESS_STAGES[0];
-  if (
-    key === "media_preparation" ||
-    key === "channel_compatibility" ||
-    key === "file_preparation"
-  ) {
-    return PUBLICATION_PROGRESS_STAGES[1];
-  }
+  if (key === "channel_verification") return PUBLICATION_PROGRESS_STAGES[1];
+  if (key === "media_verification") return PUBLICATION_PROGRESS_STAGES[2];
+  if (key === "media_preparation") return PUBLICATION_PROGRESS_STAGES[3];
+  if (key === "file_preparation") return PUBLICATION_PROGRESS_STAGES[4];
   if (key === "channel_dispatch" || key === "publication_finalization") {
-    return PUBLICATION_PROGRESS_STAGES[2];
+    return PUBLICATION_PROGRESS_STAGES[5];
   }
-  if (key === "status_collection") return PUBLICATION_PROGRESS_STAGES[3];
-  return PUBLICATION_PROGRESS_STAGES[4];
+  if (key === "status_collection") return PUBLICATION_PROGRESS_STAGES[6];
+  if (key === "inrsend_recording") return PUBLICATION_PROGRESS_STAGES[7];
+  if (key === "final_wait") return PUBLICATION_PROGRESS_STAGES[8];
+  return PUBLICATION_PROGRESS_STAGES[9];
 }
 
 export function getPublicationProgressStageForValue(value: number) {
   const progress = clampProgress(value);
-  if (progress < PUBLICATION_PROGRESS_PHASES[1].start) {
-    return PUBLICATION_PROGRESS_STAGES[0];
-  }
-  if (progress < PUBLICATION_PROGRESS_PHASES[4].start) {
-    return PUBLICATION_PROGRESS_STAGES[1];
-  }
-  if (progress < PUBLICATION_PROGRESS_PHASES[6].start) {
-    return PUBLICATION_PROGRESS_STAGES[2];
-  }
-  if (progress < PUBLICATION_PROGRESS_PHASES[7].start) {
-    return PUBLICATION_PROGRESS_STAGES[3];
-  }
-  return PUBLICATION_PROGRESS_STAGES[4];
+  if (progress < 5) return PUBLICATION_PROGRESS_STAGES[0];
+  if (progress < 12) return PUBLICATION_PROGRESS_STAGES[1];
+  if (progress < 22) return PUBLICATION_PROGRESS_STAGES[2];
+  if (progress < 40) return PUBLICATION_PROGRESS_STAGES[3];
+  if (progress < 50) return PUBLICATION_PROGRESS_STAGES[4];
+  if (progress < 82) return PUBLICATION_PROGRESS_STAGES[5];
+  if (progress < 94) return PUBLICATION_PROGRESS_STAGES[6];
+  if (progress < 96) return PUBLICATION_PROGRESS_STAGES[7];
+  if (progress < 100) return PUBLICATION_PROGRESS_STAGES[8];
+  return PUBLICATION_PROGRESS_STAGES[9];
 }
 
 export function clampProgress(value: number, minimum = 0, maximum = 100) {

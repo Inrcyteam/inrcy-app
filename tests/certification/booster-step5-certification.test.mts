@@ -272,7 +272,8 @@ test("12 - une incompatibilité réelle demande une conversion minimale", () => 
 test("13 - publication immédiate utilise le moteur final commun", () => {
   assert.equal((modal.match(/<PublishFooterActions/g) || []).length, 1);
   assert.match(modal, /trackEvent\("publish"/);
-  assert.match(publishClient, /fetchImpl\("\/api\/booster\/publish-now"/);
+  assert.match(publishClient, /fetchWithBrowserDeadline\(\{/);
+  assert.match(publishClient, /input:\s*"\/api\/booster\/publish-now"/);
   assert.match(publishRoute, /invalidVideoChannels\.forEach/);
   assert.match(publishRoute, /setPreflightFailure\(invalid\.channel/);
 });
@@ -303,5 +304,8 @@ test("16 - iNrAgent et iNrSend conservent le workspace et les variantes", () => 
     mailboxDetails,
     /iNrSend conserve la vidéo originale comme source de travail/,
   );
-  assert.match(mailboxDetails, /utilise sa propre variante vidéo préparée par iNrCy/);
+  assert.match(
+    mailboxDetails,
+    /activeVideoDisplayAttachment = activeSourceVideoAttachment \|\| activeVideoAttachment/,
+  );
 });

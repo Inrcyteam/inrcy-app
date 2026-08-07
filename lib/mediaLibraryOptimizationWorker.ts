@@ -21,6 +21,7 @@ import {
   getMediaLibraryOptimizationOutputLimit,
   mapMediaLibraryOptimizationStage,
   needsMediaLibraryOptimization,
+  normalizeMediaLibraryOptimizationTarget,
   type MediaLibraryOptimizationJobType,
   type MediaLibraryOptimizationMediaType,
 } from "@/lib/mediaLibraryOptimizationPolicy";
@@ -127,8 +128,20 @@ function mediaTypeForJob(jobType: string): MediaLibraryOptimizationMediaType {
     : "image";
 }
 
+function targetBytesForJob(
+  job: OptimizationJob,
+  mediaType: MediaLibraryOptimizationMediaType,
+) {
+  return normalizeMediaLibraryOptimizationTarget({
+    mediaType,
+    targetBytes: Number(job.payload?.targetBytes || 0) || null,
+  });
+}
+
 function outputClientKey(job: OptimizationJob) {
-  return `media-library-optimization-v${MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION}:${job.media_id}`;
+  const mediaType = mediaTypeForJob(String(job.payload?.jobType || ""));
+  const targetBytes = targetBytesForJob(job, mediaType);
+  return `media-library-compression-v${MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION}:${job.media_id}:${targetBytes}`;
 }
 
 async function loadMedia(job: OptimizationJob): Promise<OptimizationMedia> {
@@ -192,10 +205,11 @@ function validateMedia(job: OptimizationJob, media: OptimizationMedia) {
       false,
     );
   }
-  if (!needsMediaLibraryOptimization({ mediaType, sizeBytes })) {
+  const targetBytes = targetBytesForJob(job, mediaType);
+  if (!needsMediaLibraryOptimization({ mediaType, sizeBytes, targetBytes })) {
     throw new MediaLibraryOptimizationError(
-      "media_library_already_compatible",
-      "Ce média respecte déjà les limites de Booster.",
+      "media_library_already_below_target",
+      "Ce média est déjà inférieur ou égal au poids cible demandé.",
       false,
     );
   }
@@ -398,10 +412,15 @@ async function uploadAndRegisterOutput(params: {
     jobId: params.job.id,
   });
   const fileSize = Number((await stat(params.outputPath)).size || 0);
-  if (!fileSize || fileSize > getMediaLibraryOptimizationOutputLimit(mediaType)) {
+  const targetBytes = targetBytesForJob(params.job, mediaType);
+  if (
+    !fileSize ||
+    fileSize > targetBytes ||
+    fileSize > getMediaLibraryOptimizationOutputLimit(mediaType)
+  ) {
     throw new MediaLibraryOptimizationError(
       "media_library_output_size_invalid",
-      "La copie optimisée ne respecte pas la limite de Booster.",
+      "La copie compressée dépasse le poids cible demandé.",
       false,
     );
   }
@@ -429,7 +448,8 @@ async function uploadAndRegisterOutput(params: {
   }
 
   const now = new Date().toISOString();
-  const outputName = `${path.basename(originalName, path.extname(originalName)) || "media"}-booster.${params.output.extension}`;
+  const targetMb = Math.max(1, Math.round(targetBytes / 1_000_000));
+  const outputName = `${path.basename(originalName, path.extname(originalName)) || "media"}-compresse-${targetMb}mo.${params.output.extension}`;
   const insert = await supabaseAdmin
     .from("pro_media_library")
     .insert({
@@ -470,6 +490,7 @@ async function uploadAndRegisterOutput(params: {
           output_sha256: outputSha256,
           source_size_bytes: Number(params.media.size_bytes || 0),
           output_size_bytes: fileSize,
+          target_bytes: targetBytes,
           job_id: params.job.id,
           completed_at: now,
           ...params.output.metadata,
@@ -507,7 +528,7 @@ async function markSucceeded(params: {
       status: "succeeded",
       progress: 100,
       result: {
-        stage: "Copie compatible créée",
+        stage: "Copie compressée créée",
         outputMediaId: params.outputMedia.id,
         outputSizeBytes: Number(params.outputMedia.size_bytes || 0),
         sourceSizeBytes: params.sourceSizeBytes,
@@ -555,7 +576,10 @@ async function markCancelled(job: OptimizationJob, error: MediaLibraryOptimizati
 
 async function markFailed(job: OptimizationJob, rawError: unknown) {
   const error = normalizeWorkerError(rawError);
-  if (error.code === "media_library_already_compatible") {
+  if (
+    error.code === "media_library_already_compatible" ||
+    error.code === "media_library_already_below_target"
+  ) {
     return markCancelled(job, error);
   }
   const retryable = error.retryable && job.attempt_count < job.max_attempts;
@@ -646,6 +670,7 @@ async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSumm
         outputPath,
         fallbackWidth: media.width,
         fallbackHeight: media.height,
+        targetBytes: targetBytesForJob(job, "video"),
         fallbackDurationSeconds: media.duration_seconds,
         onProgress: queueProgress,
       });
@@ -671,6 +696,7 @@ async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSumm
       const optimized = await optimizeMediaLibraryImage({
         inputPath: downloaded.inputPath,
         outputDirectory: workDir,
+        targetBytes: targetBytesForJob(job, "image"),
         onProgress: queueProgress,
       });
       outputPath = optimized.outputPath;
@@ -690,7 +716,7 @@ async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSumm
 
     await progressChain;
     if (progressError) throw progressError;
-    await updateJobProgress(job, 94, "Vérification du fichier compatible");
+    await updateJobProgress(job, 94, "Vérification du fichier compressé");
     const outputMedia = await uploadAndRegisterOutput({
       job,
       media,

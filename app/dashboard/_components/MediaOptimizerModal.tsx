@@ -13,8 +13,10 @@ import {
   selectUniversalMediaUploadProtocol,
 } from "@/lib/mediaUploadPolicy";
 import {
+  MEDIA_LIBRARY_EMAIL_TARGET_BYTES,
   MEDIA_LIBRARY_IMAGE_OPTIMIZATION_JOB_TYPE,
   MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES,
+  MEDIA_LIBRARY_MIN_TARGET_BYTES,
   MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
   MEDIA_LIBRARY_VIDEO_OPTIMIZATION_JOB_TYPE,
   MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES,
@@ -59,8 +61,8 @@ type PreparedUpload = {
 function formatBytes(value: number | null | undefined) {
   const bytes = Number(value || 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return "—";
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
-  const mb = bytes / (1024 * 1024);
+  if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} Ko`;
+  const mb = bytes / 1_000_000;
   return `${mb.toFixed(mb >= 10 ? 0 : 1)} Mo`;
 }
 
@@ -258,7 +260,7 @@ async function uploadSourceToLibrary(
       mode: "finalize",
       title: file.name.replace(/\.[^.]+$/, ""),
       tags: [],
-      source: "booster_optimizer",
+      source: "media_optimizer",
       uploads: [
         {
           client_id: clientId,
@@ -327,6 +329,7 @@ export default function MediaOptimizerModal({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [outputItem, setOutputItem] = useState<MediaOptimizerItem | null>(null);
+  const [targetBytes, setTargetBytes] = useState(0);
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -340,6 +343,7 @@ export default function MediaOptimizerModal({
     setError("");
     setNotice("");
     setOutputItem(null);
+    setTargetBytes(0);
   }, [open, sourceFile, sourceItem]);
 
   const mediaType = useMemo<"image" | "video" | null>(() => {
@@ -354,14 +358,21 @@ export default function MediaOptimizerModal({
 
   const currentSize = Number(workingItem?.size_bytes || sourceFile?.size || 0);
   const limit = mediaType ? outputLimit(mediaType) : 0;
-  const title = mediaType === "video" ? "Compresser le média" : "Optimiser le média";
-  const existingOptimizationStatus = String(workingItem?.optimization?.status || "");
-  const hasExistingCompatibleCopy =
-    existingOptimizationStatus === "succeeded" &&
-    Boolean(String(workingItem?.optimization?.result?.outputMediaId || "").trim());
-  const isExistingOptimizationRunning = ["queued", "processing", "retry_wait"].includes(
-    existingOptimizationStatus,
-  );
+  const maxTargetBytes = Math.max(0, Math.min(currentSize || limit, limit));
+  const minTargetBytes = Math.min(MEDIA_LIBRARY_MIN_TARGET_BYTES, maxTargetBytes || MEDIA_LIBRARY_MIN_TARGET_BYTES);
+  const title = "Compresser le média";
+  useEffect(() => {
+    if (!open || !mediaType || !maxTargetBytes || busy || progress > 0) return;
+    setTargetBytes((current) => {
+      if (current >= minTargetBytes && current <= maxTargetBytes) return current;
+      return maxTargetBytes;
+    });
+  }, [busy, maxTargetBytes, mediaType, minTargetBytes, open, progress]);
+
+  const compressionRatio = currentSize > 0 && targetBytes > 0 ? targetBytes / currentSize : 1;
+  const aggressiveCompression = compressionRatio <= 0.25;
+  const targetMb = Math.max(0, Math.round(targetBytes / 1_000_000));
+  const maxTargetMb = Math.max(0, Math.round(maxTargetBytes / 1_000_000));
 
   const handleOptimize = async () => {
     if (busy || !mediaType) return;
@@ -384,15 +395,15 @@ export default function MediaOptimizerModal({
       }
 
       setProgress((current) => Math.max(current, 46));
-      setStage(mediaType === "video" ? "Préparation de la compression…" : "Préparation de l’optimisation…");
+      setStage("Préparation de la compression…");
       const queueResponse = await fetch("/api/media-library/optimization", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mediaId: source.id }),
+        body: JSON.stringify({ mediaId: source.id, targetBytes }),
       });
       const queueJson = await queueResponse.json().catch(() => null);
       if (!queueResponse.ok && queueResponse.status !== 202) {
-        throw new Error(String(queueJson?.error || "Optimisation impossible."));
+        throw new Error(String(queueJson?.error || "Compression impossible."));
       }
 
       const queuedJobType = String(queueJson?.job?.job_type || "") || jobTypeFor(mediaType);
@@ -427,7 +438,7 @@ export default function MediaOptimizerModal({
           }
           if (status === "failed" || status === "cancelled") {
             throw new Error(
-              String(optimization?.error_message || "L’optimisation du média a échoué."),
+              String(optimization?.error_message || "La compression du média a échoué."),
             );
           }
         }
@@ -439,13 +450,13 @@ export default function MediaOptimizerModal({
         outputMediaId = String(refreshed.optimization?.result?.outputMediaId || "").trim();
       }
       if (!outputMediaId) {
-        throw new Error("La copie optimisée n’a pas encore été créée. Réessayez dans quelques instants.");
+        throw new Error("La copie compressée n’a pas encore été créée. Réessayez dans quelques instants.");
       }
 
       const optimized = await loadMediaItem(outputMediaId);
       setOutputItem(optimized);
       setProgress(100);
-      setStage("Copie compatible Booster créée");
+      setStage("Copie compressée créée");
 
       let retentionMessage = "Original conservé dans la Médiathèque.";
       if (!keepOriginal) {
@@ -459,12 +470,12 @@ export default function MediaOptimizerModal({
         await onOptimized(optimized);
         setNotice(
           origin === "booster"
-            ? `Copie optimisée ajoutée au Booster. ${retentionMessage}`
+            ? `Copie compressée ajoutée au Booster. ${retentionMessage}`
             : retentionMessage,
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Optimisation impossible.");
+      setError(err instanceof Error ? err.message : "Compression impossible.");
     } finally {
       if (openRef.current) setBusy(false);
     }
@@ -529,7 +540,7 @@ export default function MediaOptimizerModal({
             </div>
             <h2 style={{ margin: "3px 0 0", fontSize: 22 }}>{title}</h2>
             <p style={{ margin: "5px 0 0", color: "#aebcdb", fontSize: 13, lineHeight: 1.45 }}>
-              Une copie compatible Booster est créée sans modifier votre fichier original.
+              Choisissez le poids cible. iNrCy crée une copie compressée sans modifier votre fichier original.
             </p>
           </div>
           <button
@@ -579,18 +590,71 @@ export default function MediaOptimizerModal({
               padding: "7px 10px",
               fontSize: 11,
               fontWeight: 900,
-              color: currentSize > limit ? "#ffe6a8" : "#bbf7d0",
-              border: currentSize > limit
-                ? "1px solid rgba(251,191,36,.30)"
-                : "1px solid rgba(74,222,128,.28)",
-              background: currentSize > limit
-                ? "rgba(120,53,15,.20)"
-                : "rgba(22,101,52,.18)",
+              color: "#dbeafe",
+              border: "1px solid rgba(96,165,250,.28)",
+              background: "rgba(30,64,175,.16)",
               whiteSpace: "nowrap",
             }}
           >
-            Limite Booster : {formatBytes(limit)}
+            {mediaType === "video" ? "Vidéo" : "Image"} : {formatBytes(limit)} max
           </span>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            padding: "13px 14px",
+            borderRadius: 16,
+            border: "1px solid rgba(105,239,255,.14)",
+            background: "rgba(4,12,30,.52)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+            <strong style={{ fontSize: 13 }}>Objectif de poids</strong>
+            <strong style={{ fontSize: 18, color: "#84e9ff" }}>{targetMb} Mo</strong>
+          </div>
+          <input
+            type="range"
+            min={minTargetBytes}
+            max={Math.max(minTargetBytes, maxTargetBytes)}
+            step={1_000_000}
+            value={Math.max(minTargetBytes, Math.min(targetBytes || maxTargetBytes, Math.max(minTargetBytes, maxTargetBytes)))}
+            onChange={(event) => setTargetBytes(Number(event.target.value))}
+            disabled={busy || !maxTargetBytes}
+            aria-label="Poids cible de compression"
+            style={{ width: "100%", accentColor: "#38d8ff" }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#8092b5", fontSize: 11 }}>
+            <span>{Math.round(minTargetBytes / 1_000_000)} Mo</span>
+            <span>{maxTargetMb} Mo</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setTargetBytes(Math.min(MEDIA_LIBRARY_EMAIL_TARGET_BYTES, maxTargetBytes))}
+              disabled={busy || !maxTargetBytes}
+              style={{ borderRadius: 999, padding: "7px 10px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#dbeafe", fontWeight: 800, cursor: busy ? "default" : "pointer" }}
+            >
+              ✉️ Email 20 Mo
+            </button>
+            <button
+              type="button"
+              onClick={() => setTargetBytes(maxTargetBytes)}
+              disabled={busy || !maxTargetBytes}
+              style={{ borderRadius: 999, padding: "7px 10px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#dbeafe", fontWeight: 800, cursor: busy ? "default" : "pointer" }}
+            >
+              {mediaType === "video" ? "🎥 Publication 75 Mo" : "🖼️ Publication 50 Mo"}
+            </button>
+          </div>
+          <div style={{ color: "#9fb0d2", fontSize: 11, lineHeight: 1.45 }}>
+            Repères : email ≤ 20 Mo · {mediaType === "video" ? "vidéo pour Booster ≤ 75 Mo" : "image pour Booster ≤ 50 Mo"}.
+          </div>
+          {aggressiveCompression ? (
+            <div role="status" style={{ padding: "9px 10px", borderRadius: 12, border: "1px solid rgba(251,191,36,.28)", background: "rgba(120,53,15,.18)", color: "#fde68a", fontSize: 12, lineHeight: 1.4 }}>
+              ⚠️ Compression forte : passer de {formatBytes(currentSize)} à {targetMb} Mo peut réduire sensiblement la qualité.
+            </div>
+          ) : null}
         </div>
 
         <label
@@ -647,7 +711,7 @@ export default function MediaOptimizerModal({
 
         {outputItem && !error ? (
           <div role="status" style={{ padding: "10px 12px", borderRadius: 13, border: "1px solid rgba(74,222,128,.28)", background: "rgba(22,101,52,.18)", color: "#d1fae5", fontSize: 13 }}>
-            ✓ Copie compatible créée : <strong>{formatBytes(outputItem.size_bytes)}</strong>. {notice}
+            ✓ Copie compressée : <strong>{formatBytes(outputItem.size_bytes)}</strong>. {notice}
           </div>
         ) : notice && !error ? (
           <div role="status" style={{ color: "#c9d8f4", fontSize: 12 }}>{notice}</div>
@@ -675,7 +739,7 @@ export default function MediaOptimizerModal({
             <button
               type="button"
               onClick={() => void handleOptimize()}
-              disabled={busy || !mediaType || !currentSize || currentSize > sourceLimit(mediaType || "image")}
+              disabled={busy || !mediaType || !currentSize || !targetBytes || targetBytes >= currentSize || currentSize > sourceLimit(mediaType || "image")}
               style={{
                 borderRadius: 999,
                 padding: "10px 16px",
@@ -687,19 +751,7 @@ export default function MediaOptimizerModal({
                 opacity: busy ? 0.65 : 1,
               }}
             >
-              {busy
-                ? mediaType === "video"
-                  ? "Compression en cours…"
-                  : "Optimisation en cours…"
-                : hasExistingCompatibleCopy
-                  ? origin === "booster"
-                    ? "Utiliser la copie compatible"
-                    : "Voir la copie compatible"
-                  : isExistingOptimizationRunning
-                    ? "Suivre l’optimisation"
-                    : mediaType === "video"
-                      ? "Compresser pour Booster"
-                      : "Optimiser pour Booster"}
+              {busy ? "Compression en cours…" : "Compresser"}
             </button>
           ) : null}
         </footer>

@@ -54,7 +54,7 @@ test("baseline publication immédiate prépare les médias avant trackEvent publ
 
 test("baseline programmation prépare les mêmes médias avant scheduled-actions", () => {
   const source = modal();
-  const scheduleIndex = source.indexOf('fetch("/api/agent/scheduled-actions"');
+  const scheduleIndex = source.indexOf("postBoosterScheduledAction(");
   assert.ok(scheduleIndex >= 0, "La route de programmation doit exister");
   const beforeSchedule = source.slice(Math.max(0, scheduleIndex - 16000), scheduleIndex);
   assert.match(beforeSchedule, /buildChannelImagesPayload\(/);

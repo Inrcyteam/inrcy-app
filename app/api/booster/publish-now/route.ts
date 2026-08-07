@@ -150,7 +150,7 @@ import { applyServerVideoFallbackAttestation } from "@/lib/boosterVideoFallbackA
 import {
   normalizeAsyncPreparationAttempt,
   resolveChannelDispatchMediaType,
-  shouldDeferMixedVideoPreparation,
+  shouldPrepareMixedMediaBeforeDispatch,
 } from "@/lib/boosterMixedMediaPreparationPolicy";
 import {
   YOUTUBE_LONG_UPLOAD_THRESHOLD_SECONDS,
@@ -556,6 +556,12 @@ async function publishNowHandler(req: Request) {
       ).trim();
       return mode === "video";
     });
+    const prepareMixedMediaBeforeDispatch = shouldPrepareMixedMediaBeforeDispatch({
+      internalAsyncPreparationDispatch,
+      preparationAttempt: body._asyncPreparationAttempt,
+      imageChannelCount: requestedImageChannels.length,
+      videoChannelCount: requestedVideoChannels.length,
+    });
     let workspaceConsumption: WorkspacePublicationConsumption | null = null;
     let workspaceFallbackCode = "";
     let workspacePreparationState: Awaited<
@@ -577,19 +583,6 @@ async function publishNowHandler(req: Request) {
       requestedMediaChannels.forEach((channel) =>
         deferredPreparationChannels.add(channel),
       );
-    } else if (
-      shouldDeferMixedVideoPreparation({
-        internalAsyncPreparationDispatch,
-        preparationAttempt: body._asyncPreparationAttempt,
-        imageChannelCount: requestedImageChannels.length,
-        videoChannelCount: requestedVideoChannels.length,
-      })
-    ) {
-      // A remote video attestation/preparation must never hold image channels.
-      // Attempt 1 materializes images; the durable next attempt owns video.
-      requestedVideoChannels.forEach((channel) =>
-        deferredPreparationChannels.add(channel),
-      );
     }
 
     const hasActiveRequestedMedia = requestedMediaChannels.some(
@@ -608,6 +601,8 @@ async function publishNowHandler(req: Request) {
         ),
       ),
     );
+    let consumableRequestedMediaChannels = activeRequestedMediaChannels;
+    let consumableRequestedMediaTypes = activeRequestedMediaTypes;
     if (mediaWorkspaceId && hasActiveRequestedMedia) {
       try {
         if (
@@ -637,13 +632,60 @@ async function publishNowHandler(req: Request) {
           ) {
             deferredPreparationChannels.add("pinterest");
           }
+
+          if (prepareMixedMediaBeforeDispatch) {
+            if (workspacePreparationState.terminalImageMediaIds.length > 0) {
+              requestedImageChannels.forEach((channel) =>
+                terminalWorkspaceMediaChannels.add(channel),
+              );
+            }
+            if (workspacePreparationState.terminalVideoMediaIds.length > 0) {
+              requestedVideoChannels.forEach((channel) =>
+                terminalWorkspaceMediaChannels.add(channel),
+              );
+            }
+
+            const mixedMediaStillPending = Boolean(
+              workspacePreparationState.pendingMediaIds.length > 0 ||
+                workspacePreparationState.pendingVideoThumbnailMediaIds.length > 0,
+            );
+            if (mixedMediaStillPending) {
+              // Une publication mixte reste groupée tant qu'un média doit
+              // réellement être préparé. Ainsi l'UI ne publie plus les photos,
+              // puis ne revient plus tard à une préparation vidéo avant YouTube.
+              requestedMediaChannels.forEach((channel) => {
+                if (!terminalWorkspaceMediaChannels.has(channel)) {
+                  deferredPreparationChannels.add(channel);
+                }
+              });
+            }
+          }
         }
-        workspaceConsumption = await resolveWorkspacePublicationConsumption({
-          accountId: userId,
-          workspaceId: mediaWorkspaceId,
-          purpose: workspacePurpose,
-          mediaTypes: activeRequestedMediaTypes,
-        });
+
+        consumableRequestedMediaChannels = activeRequestedMediaChannels.filter(
+          (channel) =>
+            !deferredPreparationChannels.has(channel) &&
+            !terminalWorkspaceMediaChannels.has(channel),
+        );
+        consumableRequestedMediaTypes = Array.from(
+          new Set(
+            consumableRequestedMediaChannels.map((channel) =>
+              String(rawRequestedModes[channel] || requestedMediaType).trim() ===
+              "video"
+                ? ("video" as const)
+                : ("image" as const),
+            ),
+          ),
+        );
+
+        if (consumableRequestedMediaTypes.length > 0) {
+          workspaceConsumption = await resolveWorkspacePublicationConsumption({
+            accountId: userId,
+            workspaceId: mediaWorkspaceId,
+            purpose: workspacePurpose,
+            mediaTypes: consumableRequestedMediaTypes,
+          });
+        }
       } catch (workspaceError) {
         workspaceFallbackCode =
           workspaceError instanceof MediaWorkspaceConsumptionError
@@ -660,7 +702,7 @@ async function publishNowHandler(req: Request) {
         });
         if (strictMediaCutover) {
           if (internalAsyncPreparationDispatch) {
-            const mediaChannels = activeRequestedMediaChannels;
+            const mediaChannels = consumableRequestedMediaChannels;
             const terminalMediaFailure = Boolean(
               workspacePreparationState?.terminalMediaIds.length,
             );

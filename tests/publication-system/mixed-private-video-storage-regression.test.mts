@@ -5,7 +5,7 @@ import test from "node:test";
 import {
   normalizeAsyncPreparationAttempt,
   resolveChannelDispatchMediaType,
-  shouldDeferMixedVideoPreparation,
+  shouldPrepareMixedMediaBeforeDispatch,
 } from "../../lib/boosterMixedMediaPreparationPolicy.ts";
 import { applyServerVideoFallbackAttestation } from "../../lib/boosterVideoFallbackAttestation.ts";
 import { authorizeStoredVideoProbeSource } from "../../lib/boosterStoredVideoProbePolicy.ts";
@@ -134,23 +134,23 @@ test("une préparation mixte ne redescend jamais à la tentative zéro", () => {
   );
 });
 
-test("la tentative 1 libère les images et la tentative 2 prend la vidéo", () => {
+test("une publication mixte garde photos et vidéo groupées jusqu’à préparation complète", () => {
   const common = {
     internalAsyncPreparationDispatch: true,
     imageChannelCount: 3,
     videoChannelCount: 1,
   };
   assert.equal(
-    shouldDeferMixedVideoPreparation({ ...common, preparationAttempt: 1 }),
+    shouldPrepareMixedMediaBeforeDispatch({ ...common, preparationAttempt: 1 }),
     true,
   );
   assert.equal(
-    shouldDeferMixedVideoPreparation({ ...common, preparationAttempt: 2 }),
-    false,
+    shouldPrepareMixedMediaBeforeDispatch({ ...common, preparationAttempt: 2 }),
+    true,
   );
   assert.equal(
-    shouldDeferMixedVideoPreparation({ ...common, preparationAttempt: 3 }),
-    false,
+    shouldPrepareMixedMediaBeforeDispatch({ ...common, preparationAttempt: 3 }),
+    true,
   );
 });
 

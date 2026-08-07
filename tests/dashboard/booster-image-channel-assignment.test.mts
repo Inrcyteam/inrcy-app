@@ -253,8 +253,9 @@ test("drafts and scheduled publications preserve channel imageKeys mappings", ()
   const schedule = between(
     publishModal,
     "const scheduleGroups",
-    "const result = await response.json",
+    "setChannels((prev) =>",
   );
+  assert.match(schedule, /postBoosterScheduledAction\(/);
   assert.match(
     schedule,
     /imageSettingsByChannel: buildChannelRecord\([\s\S]{0,80}channelSettings,[\s\S]{0,80}groupChannels/,

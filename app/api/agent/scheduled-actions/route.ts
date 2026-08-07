@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 
 const SCHEDULED_ACTION_SELECT = "id, automation_key, action_type, target_tool, source, title, summary, scheduled_at, timezone, channels, payload, status, attempt_count, last_error, executed_at, created_at, updated_at";
 const VISIBLE_SCHEDULED_STATUSES = ["scheduled", "running", "failed", "done", "cancelled"];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isMissingTableError(error: { code?: string; message?: string } | null | undefined) {
   const message = String(error?.message || "").toLowerCase();
@@ -24,6 +25,13 @@ function isMissingTableError(error: { code?: string; message?: string } | null |
     error?.code === "42703" ||
     error?.code === "PGRST205" ||
     message.includes("inr_agent_scheduled_actions")
+  );
+}
+
+function isUniqueViolation(error: { code?: string; message?: string } | null | undefined) {
+  return (
+    error?.code === "23505" ||
+    String(error?.message || "").toLowerCase().includes("duplicate key")
   );
 }
 
@@ -51,6 +59,11 @@ function sanitizeFutureDate(value: unknown) {
   return date.toISOString();
 }
 
+function sanitizeScheduleRequestId(value: unknown) {
+  const requestId = String(value || "").trim();
+  return UUID_PATTERN.test(requestId) ? requestId : "";
+}
+
 function isCampaignSchedule(row: ReturnType<typeof scheduledActionToDbRow>) {
   const payload = asRecord(row.payload) || {};
   const kind = String(payload.kind || "").trim().toLowerCase();
@@ -65,9 +78,55 @@ function isCampaignSchedule(row: ReturnType<typeof scheduledActionToDbRow>) {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
+
+  const url = new URL(request.url);
+  const rawRequestId = url.searchParams.get("requestId");
+  const requestId = sanitizeScheduleRequestId(rawRequestId);
+  if (rawRequestId !== null && !requestId) {
+    return NextResponse.json(
+      { error: "Reçu de programmation invalide" },
+      { status: 400 },
+    );
+  }
+
+  if (requestId) {
+    const exact = await supabaseAdmin
+      .from("inr_agent_scheduled_actions")
+      .select(SCHEDULED_ACTION_SELECT)
+      .eq("id", requestId)
+      .eq("user_id", activeUserId)
+      .maybeSingle();
+    if (exact.error) {
+      if (isMissingTableError(exact.error)) {
+        return NextResponse.json(
+          { scheduledAction: null, tableMissing: true },
+          { status: 404 },
+        );
+      }
+      throw exact.error;
+    }
+    if (!exact.data) {
+      return NextResponse.json(
+        { scheduledAction: null, tableMissing: false },
+        {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+    return NextResponse.json(
+      {
+        scheduledAction: rowToInrAgentScheduledAction(exact.data),
+        tableMissing: false,
+        recoveredByRequestId: true,
+        scheduleRequestId: requestId,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   const { data, error } = await supabaseAdmin
     .from("inr_agent_scheduled_actions")
@@ -102,6 +161,9 @@ export async function POST(request: Request) {
   }
 
   const record = asRecord(body);
+  const scheduleRequestId = sanitizeScheduleRequestId(
+    record?.scheduleRequestId ?? record?.requestId,
+  );
   const scheduledAt = sanitizeFutureDate(record?.scheduledAt ?? record?.scheduled_at);
   if (!scheduledAt) {
     return NextResponse.json({ error: "Date de programmation invalide" }, { status: 400 });
@@ -118,6 +180,10 @@ export async function POST(request: Request) {
     : "agent";
   const source: InrAgentScheduledActionSource = record?.source === "automatic" ? "automatic" : "manual";
 
+  const scheduledPayload = {
+    ...(asRecord(record?.payload) || {}),
+    ...(scheduleRequestId ? { scheduleRequestId } : {}),
+  };
   const row = scheduledActionToDbRow({
     userId: activeUserId,
     automationKey,
@@ -129,8 +195,26 @@ export async function POST(request: Request) {
     scheduledAt,
     timezone: sanitizeText(record?.timezone, "Europe/Paris", 80),
     channels: sanitizeStringArray(record?.channels),
-    payload: asRecord(record?.payload) || {},
+    payload: scheduledPayload,
   });
+
+  if (scheduleRequestId) {
+    const existing = await supabaseAdmin
+      .from("inr_agent_scheduled_actions")
+      .select(SCHEDULED_ACTION_SELECT)
+      .eq("id", scheduleRequestId)
+      .eq("user_id", activeUserId)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    if (existing.data) {
+      return NextResponse.json({
+        scheduledAction: rowToInrAgentScheduledAction(existing.data),
+        tableMissing: false,
+        idempotent: true,
+        scheduleRequestId,
+      });
+    }
+  }
 
   if (row.action_type === "publication" && row.target_tool === "booster") {
     const duplicate = await findSimilarScheduledPublication({
@@ -139,6 +223,7 @@ export async function POST(request: Request) {
       scheduledAt,
       channels: row.channels,
       payload: row.payload,
+      excludeId: scheduleRequestId || null,
     });
 
     if (duplicate.duplicate) {
@@ -159,6 +244,7 @@ export async function POST(request: Request) {
       userId: activeUserId,
       scheduledAt,
       payload: row.payload,
+      excludeId: scheduleRequestId || null,
     });
 
     if (duplicate.duplicate) {
@@ -175,7 +261,7 @@ export async function POST(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("inr_agent_scheduled_actions")
-    .insert(row)
+    .insert(scheduleRequestId ? { ...row, id: scheduleRequestId } : row)
     .select(SCHEDULED_ACTION_SELECT)
     .single();
 
@@ -184,15 +270,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "La table inr_agent_scheduled_actions doit être créée dans Supabase.", tableMissing: true }, { status: 500 });
     }
 
+    if (scheduleRequestId && isUniqueViolation(error)) {
+      const existing = await supabaseAdmin
+        .from("inr_agent_scheduled_actions")
+        .select(SCHEDULED_ACTION_SELECT)
+        .eq("id", scheduleRequestId)
+        .eq("user_id", activeUserId)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      if (existing.data) {
+        return NextResponse.json({
+          scheduledAction: rowToInrAgentScheduledAction(existing.data),
+          tableMissing: false,
+          idempotent: true,
+          scheduleRequestId,
+        });
+      }
+    }
+
     console.warn("[inr-agent-scheduled-actions] insert failed", error);
     return NextResponse.json({ error: "Programmation de l’action impossible" }, { status: 500 });
   }
 
   if (row.action_type === "publication" && row.target_tool === "booster") {
-    const scheduledPayload = asRecord(row.payload) || {};
-    const publishPayload = asRecord(scheduledPayload.publishPayload) || {};
+    const storedScheduledPayload = asRecord(row.payload) || {};
+    const publishPayload = asRecord(storedScheduledPayload.publishPayload) || {};
     const mediaWorkspaceId = String(
-      publishPayload.mediaWorkspaceId || scheduledPayload.mediaWorkspaceId || "",
+      publishPayload.mediaWorkspaceId || storedScheduledPayload.mediaWorkspaceId || "",
     ).trim();
 
     if (mediaWorkspaceId) {
@@ -234,5 +338,10 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ scheduledAction: rowToInrAgentScheduledAction(data), tableMissing: false });
+  return NextResponse.json({
+    scheduledAction: rowToInrAgentScheduledAction(data),
+    tableMissing: false,
+    idempotent: false,
+    ...(scheduleRequestId ? { scheduleRequestId } : {}),
+  });
 }

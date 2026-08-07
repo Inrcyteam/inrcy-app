@@ -164,7 +164,7 @@ test("la finalisation serveur valide chaque canal et isole les adaptations", asy
   const variants = await readSource("lib/boosterVideoVariantServer.ts");
 
   assert.match(modal, /async function ensureCutoverVideoVariantsReady/);
-  assert.match(modal, /Finalisation des médias/);
+  assert.match(modal, /Vérification des médias/);
   assert.match(modal, /setPublishProgressLabel\("Préparation des médias"\)/);
   assert.doesNotMatch(modal, /Compression des médias/);
   assert.match(controller, /validateVideoPublicationForChannel/);

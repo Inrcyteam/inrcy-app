@@ -6,6 +6,7 @@ import {
   buildMediaLibraryOptimizationIdempotencyKey,
   getMediaLibraryOptimizationJobType,
   needsMediaLibraryOptimization,
+  normalizeMediaLibraryOptimizationTarget,
   type MediaLibraryOptimizationMediaType,
 } from "@/lib/mediaLibraryOptimizationPolicy";
 import { requireUser } from "@/lib/requireUser";
@@ -60,11 +61,15 @@ export async function POST(request: NextRequest) {
   }
 
   const sizeBytes = Number(mediaResult.data.size_bytes || 0);
-  if (!needsMediaLibraryOptimization({ mediaType, sizeBytes })) {
+  const targetBytes = normalizeMediaLibraryOptimizationTarget({
+    mediaType,
+    targetBytes: Number(body?.targetBytes || 0) || null,
+  });
+  if (!needsMediaLibraryOptimization({ mediaType, sizeBytes, targetBytes })) {
     return jsonError(
-      "Ce média respecte déjà les limites de Booster.",
+      "Ce média est déjà inférieur ou égal au poids cible demandé.",
       409,
-      "media_already_compatible",
+      "media_already_below_target",
     );
   }
   const sourceLimit =
@@ -83,6 +88,7 @@ export async function POST(request: NextRequest) {
   const idempotencyKey = buildMediaLibraryOptimizationIdempotencyKey({
     mediaId,
     mediaType,
+    targetBytes,
   });
   const existing = await supabaseAdmin
     .from("media_processing_jobs")
@@ -116,6 +122,7 @@ export async function POST(request: NextRequest) {
             mediaType,
             authUserId: user?.id || null,
             requestedAt: now,
+            targetBytes,
           },
           result: { stage: "En attente" },
           available_at: now,
@@ -162,6 +169,7 @@ export async function POST(request: NextRequest) {
         mediaType,
         authUserId: user?.id || null,
         requestedAt: now,
+        targetBytes,
       },
       result: { stage: "En attente" },
       available_at: now,

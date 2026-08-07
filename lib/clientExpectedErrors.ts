@@ -10,6 +10,9 @@ const TRANSIENT_NETWORK_PATTERNS = [
   "failed to fetch",
   "networkerror when attempting to fetch resource",
   "network request failed",
+  "the network connection was lost",
+  "not connected to the internet",
+  "internet connection was lost",
   "the internet connection appears to be offline",
 ] as const;
 

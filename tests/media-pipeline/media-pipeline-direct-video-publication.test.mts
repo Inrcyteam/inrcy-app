@@ -7,6 +7,7 @@ import { canPublishVideoSourceDirectly } from "../../lib/mediaVideoSourceCompati
 import {
   buildTikTokVideoUploadPlan,
   TIKTOK_DEFAULT_CHUNK_BYTES,
+  TIKTOK_VIDEO_UPLOAD_MAX_BYTES,
 } from "../../lib/tiktokUploadPlan.ts";
 
 const ROOT = process.cwd();
@@ -72,9 +73,9 @@ test("TikTok découpe la limite exacte de 75 Mo sans modifier la vidéo", () => 
   });
 });
 
-test("TikTok refuse une vidéo au-dessus du plafond Booster", () => {
+test("TikTok refuse une vidéo au-dessus du plafond de transport du fournisseur", () => {
   assert.throws(
-    () => buildTikTokVideoUploadPlan(75_000_001),
+    () => buildTikTokVideoUploadPlan(TIKTOK_VIDEO_UPLOAD_MAX_BYTES + 1),
     /tiktok_video_source_too_large/,
   );
 });

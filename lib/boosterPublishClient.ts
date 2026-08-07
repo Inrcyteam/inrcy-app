@@ -1,3 +1,5 @@
+import { fetchWithBrowserDeadline } from "./browserFetchDeadline.ts";
+
 type JsonRecord = Record<string, unknown>;
 
 type FetchLike = (
@@ -25,6 +27,9 @@ type BoosterPublishRequestOptions = {
   maxPollingMs?: number;
   nowImpl?: () => number;
   onProgress?: (update: BoosterPublishProgressUpdate) => void;
+  requestTimeoutMs?: number;
+  statusTimeoutMs?: number;
+  recoveryTimeoutMs?: number;
 };
 
 export class BoosterPublishError extends Error {
@@ -54,6 +59,11 @@ export const BOOSTER_PUBLISH_RESULT_GRACE_MS = 60_000;
 const TRANSIENT_STATUS_CODES = new Set([425, 502, 503, 504]);
 const BOOSTER_PUBLISH_INITIAL_POLL_MS = 1_500;
 const BOOSTER_PUBLISH_MAX_POLL_MS = 8_000;
+const BOOSTER_PUBLISH_RECOVERY_MAX_ATTEMPTS = 8;
+const BOOSTER_PUBLISH_RECOVERY_MAX_MS = 25_000;
+const BOOSTER_PUBLISH_REQUEST_TIMEOUT_MS = 35_000;
+const BOOSTER_PUBLISH_STATUS_TIMEOUT_MS = 8_000;
+const BOOSTER_PUBLISH_RECOVERY_TIMEOUT_MS = 5_000;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -118,6 +128,7 @@ async function pollQueuedPublication(
     Pick<BoosterPublishRequestOptions, "fetchImpl" | "sleepImpl" | "nowImpl">
   > & {
     maxPollingMs: number;
+    statusTimeoutMs: number;
     onProgress?: BoosterPublishRequestOptions["onProgress"];
   },
 ) {
@@ -144,10 +155,13 @@ async function pollQueuedPublication(
     const elapsedAfterSleep = options.nowImpl() - startedAt;
 
     try {
-      const response = await options.fetchImpl(
-        `/api/booster/publications/${encodeURIComponent(publicationId)}/status`,
-        { method: "GET", cache: "no-store" },
-      );
+      const response = await fetchWithBrowserDeadline({
+        fetchImpl: options.fetchImpl,
+        input: `/api/booster/publications/${encodeURIComponent(publicationId)}/status`,
+        init: { method: "GET", cache: "no-store" },
+        timeoutMs: options.statusTimeoutMs,
+        timeoutCode: "booster_publication_status_timeout",
+      });
       const payload = asRecord(await response.json().catch(() => ({})));
       if (response.ok && payload.done === true) {
         notifyProgress(options.onProgress, {
@@ -211,6 +225,86 @@ async function pollQueuedPublication(
   return releasedPayload;
 }
 
+async function recoverPublicationByIdempotencyKey(
+  idempotencyKey: string,
+  options: Required<
+    Pick<BoosterPublishRequestOptions, "fetchImpl" | "sleepImpl" | "nowImpl">
+  > & { maxRecoveryMs: number; recoveryTimeoutMs: number },
+) {
+  const startedAt = options.nowImpl();
+  for (
+    let attempt = 0;
+    attempt < BOOSTER_PUBLISH_RECOVERY_MAX_ATTEMPTS;
+    attempt += 1
+  ) {
+    const elapsedMs = options.nowImpl() - startedAt;
+    if (elapsedMs >= options.maxRecoveryMs) break;
+    if (attempt > 0) {
+      const delayMs = Math.min(5_000, 800 * 2 ** (attempt - 1));
+      await options.sleepImpl(
+        Math.min(delayMs, Math.max(0, options.maxRecoveryMs - elapsedMs)),
+      );
+    }
+
+    try {
+      const query = new URLSearchParams({ idempotencyKey });
+      const response = await fetchWithBrowserDeadline({
+        fetchImpl: options.fetchImpl,
+        input: `/api/booster/publications/recover?${query}`,
+        init: { method: "GET", cache: "no-store" },
+        timeoutMs: options.recoveryTimeoutMs,
+        timeoutCode: "booster_publication_recovery_timeout",
+      });
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (
+        response.ok &&
+        !(
+          response.status === 202 &&
+          String(payload.status || "") === "pending"
+        )
+      ) {
+        return payload;
+      }
+      if ([400, 401, 403].includes(response.status)) break;
+      if (response.status === 409) {
+        throw new BoosterPublishError(
+          String(payload.error || "La publication a échoué."),
+          response.status,
+          payload,
+        );
+      }
+    } catch (error) {
+      if (error instanceof BoosterPublishError) throw error;
+      // La lecture est volontairement répétée : elle ne publie rien et peut
+      // traverser le retour du Wi-Fi ou du réseau mobile.
+    }
+  }
+  return null;
+}
+
+function reportPublicationResponseLoss(params: {
+  recovered: boolean;
+  idempotencyKey: string;
+}) {
+  console.warn("[booster-publication] response lost", {
+    recovered: params.recovered,
+    idempotencyKey: params.idempotencyKey,
+    browserOnline:
+      typeof navigator === "undefined" ? null : navigator.onLine,
+  });
+  if (typeof window === "undefined") return;
+  void import("@sentry/nextjs")
+    .then((Sentry) => {
+      Sentry.withScope((scope) => {
+        scope.setLevel("warning");
+        scope.setTag("booster.operation", "publication");
+        scope.setTag("booster.recovered", String(params.recovered));
+        Sentry.captureMessage("booster_publication_response_lost", "warning");
+      });
+    })
+    .catch(() => undefined);
+}
+
 export async function postBoosterPublication(
   payload: Record<string, unknown>,
   options: BoosterPublishRequestOptions = {},
@@ -224,6 +318,27 @@ export async function postBoosterPublication(
     options.maxPollingMs ?? BOOSTER_PUBLISH_RESULT_GRACE_MS,
   );
   const maxAttempts = Math.max(1, Math.min(4, options.maxAttempts || 3));
+  const requestTimeoutMs = Math.max(
+    1,
+    Math.min(
+      90_000,
+      options.requestTimeoutMs || BOOSTER_PUBLISH_REQUEST_TIMEOUT_MS,
+    ),
+  );
+  const statusTimeoutMs = Math.max(
+    1,
+    Math.min(
+      20_000,
+      options.statusTimeoutMs || BOOSTER_PUBLISH_STATUS_TIMEOUT_MS,
+    ),
+  );
+  const recoveryTimeoutMs = Math.max(
+    1,
+    Math.min(
+      15_000,
+      options.recoveryTimeoutMs || BOOSTER_PUBLISH_RECOVERY_TIMEOUT_MS,
+    ),
+  );
   const idempotencyKey = String(
     payload.idempotencyKey || payload.idempotency_key || createBoosterPublishIdempotencyKey(),
   ).trim();
@@ -237,15 +352,82 @@ export async function postBoosterPublication(
     },
   };
 
+  const acceptPublicationPayload = async (json: JsonRecord) => {
+    if (json.queued === true && typeof json.publication_id === "string") {
+      notifyProgress(options.onProgress, {
+        stage: "request_accepted",
+        publicationId: String(json.publication_id),
+        payload: json,
+        pollAttempt: 0,
+      });
+      const elapsedBeforePollingMs = Math.max(
+        0,
+        nowImpl() - requestStartedAt,
+      );
+      return pollQueuedPublication(String(json.publication_id), json, {
+        fetchImpl,
+        sleepImpl,
+        // La fenêtre de bilan inclut l'accusé initial. Les canaux encore
+        // lents sont ensuite libérés vers le worker durable et restent
+        // consultables dans iNr’Send.
+        maxPollingMs: Math.max(0, resultGraceMs - elapsedBeforePollingMs),
+        statusTimeoutMs,
+        nowImpl,
+        onProgress: options.onProgress,
+      });
+    }
+    notifyProgress(options.onProgress, {
+      stage: "completed",
+      publicationId:
+        typeof json.publication_id === "string"
+          ? String(json.publication_id)
+          : null,
+      payload: json,
+      pollAttempt: 0,
+    });
+    return json;
+  };
+
+  const recoverLostPublicationResponse = async () => {
+    const elapsedMs = Math.max(0, nowImpl() - requestStartedAt);
+    const recovered = await recoverPublicationByIdempotencyKey(
+      idempotencyKey,
+      {
+        fetchImpl,
+        sleepImpl,
+        nowImpl,
+        recoveryTimeoutMs,
+        maxRecoveryMs: Math.max(
+          3_000,
+          Math.min(
+            BOOSTER_PUBLISH_RECOVERY_MAX_MS,
+            Math.max(0, resultGraceMs - elapsedMs),
+          ),
+        ),
+      },
+    );
+    reportPublicationResponseLoss({
+      recovered: Boolean(recovered),
+      idempotencyKey,
+    });
+    return recovered ? await acceptPublicationPayload(recovered) : null;
+  };
+
   let lastNetworkError: unknown = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let response: Response;
     try {
-      response = await fetchImpl("/api/booster/publish-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestPayload),
+      response = await fetchWithBrowserDeadline({
+        fetchImpl,
+        input: "/api/booster/publish-now",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestPayload),
+        },
+        timeoutMs: requestTimeoutMs,
+        timeoutCode: "booster_publication_request_timeout",
       });
     } catch (error) {
       lastNetworkError = error;
@@ -253,46 +435,14 @@ export async function postBoosterPublication(
         await sleepImpl(Math.min(4_000, 1_200 * (attempt + 1)));
         continue;
       }
+      const recovered = await recoverLostPublicationResponse();
+      if (recovered) return recovered;
       throw buildConnectionInterruptedError();
     }
 
     const json = asRecord(await response.json().catch(() => ({})));
     if (response.ok) {
-      if (json.queued === true && typeof json.publication_id === "string") {
-        notifyProgress(options.onProgress, {
-          stage: "request_accepted",
-          publicationId: String(json.publication_id),
-          payload: json,
-          pollAttempt: 0,
-        });
-        const elapsedBeforePollingMs = Math.max(
-          0,
-          nowImpl() - requestStartedAt,
-        );
-        return pollQueuedPublication(String(json.publication_id), json, {
-          fetchImpl,
-          sleepImpl,
-          // La fenêtre de bilan inclut l'accusé initial. Les canaux encore
-          // lents sont ensuite libérés vers le worker durable et restent
-          // consultables dans iNr’Send.
-          maxPollingMs: Math.max(
-            0,
-            resultGraceMs - elapsedBeforePollingMs,
-          ),
-          nowImpl,
-          onProgress: options.onProgress,
-        });
-      }
-      notifyProgress(options.onProgress, {
-        stage: "completed",
-        publicationId:
-          typeof json.publication_id === "string"
-            ? String(json.publication_id)
-            : null,
-        payload: json,
-        pollAttempt: 0,
-      });
-      return json;
+      return await acceptPublicationPayload(json);
     }
 
     const isPendingIdempotentExecution =
@@ -308,6 +458,8 @@ export async function postBoosterPublication(
     }
 
     if (isPendingIdempotentExecution) {
+      const recovered = await recoverLostPublicationResponse();
+      if (recovered) return recovered;
       throw new BoosterPublishError(
         String(
           json.message ||
@@ -319,6 +471,8 @@ export async function postBoosterPublication(
     }
 
     if (TRANSIENT_STATUS_CODES.has(response.status)) {
+      const recovered = await recoverLostPublicationResponse();
+      if (recovered) return recovered;
       throw buildConnectionInterruptedError();
     }
 

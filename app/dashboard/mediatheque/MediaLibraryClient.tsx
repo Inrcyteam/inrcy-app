@@ -29,6 +29,7 @@ import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
 import {
   MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES,
   MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
+  MEDIA_LIBRARY_MIN_TARGET_BYTES,
   MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES,
   MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
   needsMediaLibraryOptimization,
@@ -291,6 +292,10 @@ function mediaNeedsOptimization(item: MediaItem) {
     mediaType: item.media_type,
     sizeBytes: item.size_bytes,
   });
+}
+
+function mediaCanBeCompressed(item: MediaItem) {
+  return Number(item.size_bytes || 0) > MEDIA_LIBRARY_MIN_TARGET_BYTES;
 }
 
 
@@ -1258,11 +1263,15 @@ export default function MediaLibraryClient() {
                       <div className={styles.mediaRowMain}>
                         <strong>{item.title || "Média sans titre"}</strong>
                         <span>{tagsToText(item.tags) || "Aucun tag"}</span>
-                        {mediaNeedsOptimization(item) ? (
+                        {mediaCanBeCompressed(item) ? (
                           <div className={styles.mediaRowOptimizationActions}>
-                            <span className={styles.optimizationBadge}>
-                              Hors limite Booster · {formatBytes(item.size_bytes)} / {formatBytes(mediaOptimizationLimit(item))}
-                            </span>
+                            {mediaNeedsOptimization(item) ? (
+                              <span className={styles.optimizationBadge}>
+                                Hors limite Booster · {formatBytes(item.size_bytes)} / {formatBytes(mediaOptimizationLimit(item))}
+                              </span>
+                            ) : item.source === "mediatheque_optimization" ? (
+                              <span className={styles.compatibleCopyBadge}>✓ Copie compressée</span>
+                            ) : null}
                             <button
                               type="button"
                               className={styles.optimizeButton}
@@ -1271,19 +1280,15 @@ export default function MediaLibraryClient() {
                                 setOptimizerItem(item as MediaOptimizerItem);
                               }}
                             >
-                              {item.optimization?.status === "succeeded"
-                                ? "Voir la copie"
-                                : ["queued", "processing", "retry_wait"].includes(
-                                      String(item.optimization?.status || ""),
-                                    )
-                                  ? `Suivre · ${Math.max(0, Math.min(99, Number(item.optimization?.progress || 0)))} %`
-                                  : item.media_type === "video"
-                                    ? "Compresser"
-                                    : "Optimiser"}
+                              {["queued", "processing", "retry_wait"].includes(
+                                String(item.optimization?.status || ""),
+                              )
+                                ? `Compression · ${Math.max(0, Math.min(99, Number(item.optimization?.progress || 0)))} %`
+                                : "Compresser"}
                             </button>
                           </div>
                         ) : item.source === "mediatheque_optimization" ? (
-                          <span className={styles.compatibleCopyBadge}>✓ Compatible Booster</span>
+                          <span className={styles.compatibleCopyBadge}>✓ Copie compressée</span>
                         ) : null}
                       </div>
                     </div>

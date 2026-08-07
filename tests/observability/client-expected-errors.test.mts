@@ -31,6 +31,18 @@ test("the expected 429 message is recognized without weakening the limiter", () 
 test("Safari generic network interruptions are recognized narrowly", () => {
   assert.equal(isTransientBrowserNetworkError(new TypeError("Load failed")), true);
   assert.equal(isTransientBrowserNetworkError(new TypeError("Failed to fetch")), true);
+  assert.equal(
+    isTransientBrowserNetworkError(
+      new TypeError("The network connection was lost."),
+    ),
+    true,
+  );
+  assert.equal(
+    isTransientBrowserNetworkError(
+      new TypeError("NetworkError when attempting to fetch resource."),
+    ),
+    true,
+  );
   assert.equal(isTransientBrowserNetworkError(new Error("Validation failed")), false);
 });
 

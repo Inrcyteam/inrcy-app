@@ -12,6 +12,13 @@ import { createClient } from "@/lib/supabaseClient";
 import { prewarmBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 import { buildBoosterGenerationRequest } from "@/lib/boosterGenerationTransportClient";
 import {
+  createBoosterGenerationRequestId,
+  isBoosterGenerationTransportLoss,
+  recoverBoosterGenerationResult,
+  reportBoosterGenerationResponseLoss,
+} from "@/lib/boosterGenerationRecoveryClient";
+import { postBoosterScheduledAction } from "@/lib/boosterScheduleClient";
+import {
   getBoosterGenerationSpecialErrorMessage,
   isAutomaticBoosterGenerationRetryEligible,
 } from "@/lib/boosterGenerationErrorPolicy";
@@ -3155,8 +3162,26 @@ export default function PublishModal({
         publicationInstruction.trim()
           ? "Analyse de votre intention et de vos consignes"
           : "Analyse de votre intention de publication",
-        49,
+        47,
       );
+
+      // Un workspace vide sert aussi de reçu durable pour une génération sans
+      // média. Sa création reste un filet de sécurité best effort : si elle
+      // échoue, le moteur IA normal continue exactement comme auparavant.
+      let generationWorkspaceId = unifiedMediaConsumptionClientAvailable
+        ? readyMediaWorkspaceId || mediaWorkspaceId || undefined
+        : undefined;
+      if (unifiedMediaConsumptionClientAvailable && !generationWorkspaceId) {
+        try {
+          const recoveryWorkspace = await ensurePersistentMediaWorkspace();
+          generationWorkspaceId = recoveryWorkspace?.workspaceId || undefined;
+        } catch (workspaceError) {
+          console.warn(
+            "[booster-generate] recovery receipt workspace unavailable",
+            workspaceError,
+          );
+        }
+      }
 
       // Uploading and verifying the workspace is media preparation, not AI
       // generation. Start the generation safety window only once the request is
@@ -3164,13 +3189,12 @@ export default function PublishModal({
       // deadline before the AI is even called.
       const generationDeadlineAt =
         Date.now() + BOOSTER_GENERATION_SAFETY_BUDGET_MS;
+      const generationRequestId = createBoosterGenerationRequestId();
       const generationPayload = {
         creationMode: "ai" as const,
+        generationRequestId,
         generationDeadlineAt,
-        mediaWorkspaceId:
-          unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId
-            ? readyMediaWorkspaceId
-            : undefined,
+        mediaWorkspaceId: generationWorkspaceId,
         mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
         useWorkspaceMediaForAI:
           unifiedMediaConsumptionClientAvailable &&
@@ -3243,18 +3267,71 @@ export default function PublishModal({
           window.clearTimeout(timeoutId);
         }
       };
+      let generationRecoveredAfterTransportLoss = false;
+      const executeGenerationRequestWithRecovery = async (
+        engine: AiPreferredEngine,
+      ) => {
+        try {
+          return await executeGenerationRequest(engine);
+        } catch (requestError) {
+          if (
+            !generationWorkspaceId ||
+            !isBoosterGenerationTransportLoss(requestError)
+          ) {
+            throw requestError;
+          }
+
+          clearGenerationTimers();
+          setGenerationProgressPhase(
+            "final_wait",
+            "Connexion interrompue · récupération du résultat enregistré",
+            99,
+          );
+          const recovery = await recoverBoosterGenerationResult({
+            workspaceId: generationWorkspaceId,
+            requestId: generationRequestId,
+            maxWaitMs: Math.max(
+              20_000,
+              Math.min(70_000, generationDeadlineAt - Date.now() + 8_000),
+            ),
+          });
+          const recovered = recovery.status === "ready";
+          reportBoosterGenerationResponseLoss({
+            error: requestError,
+            recovered,
+            attempts: recovery.attempts,
+            elapsedMs: recovery.elapsedMs,
+            channelCount: selectedForGeneration.length,
+            mediaType: hasVideoForGeneration ? "video" : "images",
+            engine,
+          });
+
+          if (!recovered) {
+            throw new Error(
+              "La connexion a été interrompue avant la réception du résultat. Aucun nouvel appel IA n’a été lancé. Vérifiez votre connexion puis réessayez.",
+            );
+          }
+
+          generationRecoveredAfterTransportLoss = true;
+          return {
+            response: null,
+            responseJson: recovery.payload,
+          };
+        }
+      };
 
       setGenerationProgressPhase(
         "ai_writing",
         hasVideoForGeneration
           ? `Rédaction avec ${selectedAiEngineOption.shortLabel} à partir de votre vidéo`
           : `Rédaction avec ${selectedAiEngineOption.shortLabel}`,
-        71,
+        67,
       );
       let generationRequestVisualPhase:
         | "ai_writing"
         | "channel_adaptation"
-        | "quality_control" = "ai_writing";
+        | "quality_control"
+        | "final_wait" = "ai_writing";
       let lastGenerationRequestVisualChangeAt = Date.now();
       clearGenerationTimers();
       generationRequestPhaseTimerRef.current = window.setInterval(() => {
@@ -3265,7 +3342,7 @@ export default function PublishModal({
           setGenerationProgressPhase(
             "channel_adaptation",
             `Adaptation des contenus pour ${selectedForGeneration.length} ${selectedForGeneration.length > 1 ? "canaux" : "canal"}`,
-            85,
+            81,
           );
           return;
         }
@@ -3274,19 +3351,30 @@ export default function PublishModal({
           setGenerationProgressPhase(
             "quality_control",
             "Vérification de la cohérence et de la mise en forme",
-            94,
+            91,
           );
+          return;
+        }
+        if (generationRequestVisualPhase === "quality_control") {
+          generationRequestVisualPhase = "final_wait";
+          setGenerationProgressPhase(
+            "final_wait",
+            "Encore quelques secondes… Finalisation de votre contenu",
+            99,
+          );
+          clearGenerationTimers();
         }
       }, 500);
 
       let { response: res, responseJson: json } =
-        await executeGenerationRequest(selectedAiPreferredEngine);
+        await executeGenerationRequestWithRecovery(selectedAiPreferredEngine);
       clearGenerationTimers();
       let automaticRetry:
         | { primaryEngine: AiPreferredEngine; finalEngine: AiPreferredEngine }
         | null = null;
 
       if (
+        res &&
         !res.ok &&
         isAutomaticBoosterGenerationRetryEligible(res.status, json)
       ) {
@@ -3305,14 +3393,14 @@ export default function PublishModal({
         setGenerationProgressPhase(
           "quality_control",
           `${primaryLabel} n'a pas répondu, secours automatique avec ${retryLabel}`,
-          94,
+          91,
         );
 
         ({ response: res, responseJson: json } =
-          await executeGenerationRequest(retryEngine));
+          await executeGenerationRequestWithRecovery(retryEngine));
       }
 
-      if (!res.ok) {
+      if (res && !res.ok) {
         const specialMessage = getBoosterGenerationSpecialErrorMessage({
           status: res.status,
           payload: json,
@@ -3328,11 +3416,13 @@ export default function PublishModal({
         return;
       }
 
-      setGenerationProgressPhase(
-        "editor_preparation",
-        "Installation des contenus dans l’éditeur",
-        99,
-      );
+      if (generationPhaseIndexRef.current < 9) {
+        setGenerationProgressPhase(
+          "editor_preparation",
+          "Installation des contenus dans l’éditeur",
+          95,
+        );
+      }
       const versions = json?.versions || {};
       setPostsByChannel(sanitizePostsForEditor(versions));
       setContentWorkspaceOpen(true);
@@ -3350,7 +3440,11 @@ export default function PublishModal({
         serverMediaFallbackNotice || mediaFallbackNotice,
       );
       const aiFallback = json?.aiFallback;
-      if (aiFallback?.used) {
+      if (generationRecoveredAfterTransportLoss) {
+        setGenerationNotice(
+          "La connexion a été interrompue, mais iNrCy a récupéré automatiquement les contenus déjà générés, sans second appel IA.",
+        );
+      } else if (aiFallback?.used) {
         const primaryLabel = String(
           aiFallback.primaryEngineLabel || "Le moteur sélectionné",
         ).trim();
@@ -3375,7 +3469,14 @@ export default function PublishModal({
           `${primaryLabel} n'a pas répondu au premier essai. iNrCy a automatiquement terminé la génération avec ${finalLabel}, sans modifier votre moteur par défaut.`,
         );
       }
+      setGenerationProgressPhase(
+        "final_wait",
+        "Encore quelques secondes… Finalisation de votre contenu",
+        99,
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 540));
       completeGenerationProgress("Les contenus sont prêts à être relus");
+      await new Promise((resolve) => window.setTimeout(resolve, 320));
     } catch (error) {
       // Toute analyse média optionnelle a déjà été isolée ci-dessus. Une
       // erreur rouge correspond donc uniquement à l'échec de la génération.
@@ -4077,11 +4178,17 @@ export default function PublishModal({
     setPublicationProgressPhase(
       "verification",
       "Demande prise en charge",
-      7,
+      5,
     );
     let publishDispatchStarted = false;
+    let publicationFinalWaitTimeoutId: number | null = null;
 
     try {
+      setPublicationProgressPhase(
+        "channel_verification",
+        "Vérification des canaux sélectionnés",
+        11,
+      );
       const requestedWorkspaceMediaTypes = [
         ...(publishTargetChannels.some(
           (channel) => resolveChannelMediaMode(channel) === "images",
@@ -4098,9 +4205,9 @@ export default function PublishModal({
         ? await waitForPersistentWorkspaceIdle(
             (progress, label) => {
               setPublicationProgressPhase(
-                "media_preparation",
-                label || "Finalisation des médias",
-                mapProgressRange(progress, 0, 100, 9, 27),
+                "media_verification",
+                label || "Vérification des médias",
+                mapProgressRange(progress, 0, 100, 13, 21),
               );
             },
             {
@@ -4113,6 +4220,11 @@ export default function PublishModal({
         preparedPostsByChannel,
         publishTargetChannels,
         settledWorkspaceStates,
+      );
+      setPublicationProgressPhase(
+        "media_verification",
+        "Canaux et médias vérifiés",
+        21,
       );
     const preflightFailedChannels = reviewItems
       .filter((item) => item.blockers.length > 0)
@@ -4289,6 +4401,27 @@ export default function PublishModal({
     const preflightFailureChannels = new Set(
       preflightFailedChannels.map((failure) => failure.channel),
     );
+    let dispatchPreparationShown = false;
+    let publicationDispatchShown = false;
+    let mediaPreparationProgressUpdates = 0;
+    const videoChannelsUseOriginal = publishableChannels
+      .filter((channel) => publishMediaModeByChannel[channel] === "video")
+      .every(
+        (channel) =>
+          (publishVideoSettingsByChannel[channel]?.format || "original") ===
+          "original",
+      );
+    const armPublicationFinalWait = () => {
+      if (publicationFinalWaitTimeoutId !== null) return;
+      publicationFinalWaitTimeoutId = window.setTimeout(() => {
+        publicationFinalWaitTimeoutId = null;
+        setPublicationProgressPhase(
+          "final_wait",
+          "Encore quelques secondes… Finalisation de la publication",
+          99,
+        );
+      }, 8_000);
+    };
 
     const onPublicationProgress = (update: BoosterPublishProgressUpdate) => {
       const payload =
@@ -4344,36 +4477,41 @@ export default function PublishModal({
         preparingCount > 0 ||
         String(payload.status || "").toLowerCase() === "preparing" ||
         (mediaPreparationProgress !== null && mediaPreparationProgress < 100);
-      if (update.stage === "request_accepted") {
-        setPublicationProgressPhase(
-          "verification",
-          "Demande de publication prise en charge",
-          7,
-        );
-        return;
-      }
       if (mediaPreparationInProgress) {
+        mediaPreparationProgressUpdates += 1;
         const progress = mediaPreparationProgress ?? 0;
-        const label = `Préparation des médias${
+        const preparationLabel =
+          hasAnyVideoPublish &&
+          videoChannelsUseOriginal &&
+          mediaPreparationProgressUpdates === 1
+            ? "Vérification de la vidéo"
+            : "Préparation des médias";
+        const label = `${preparationLabel}${
           mediaPreparationLabelProgress === null
             ? ""
             : ` · ${Math.round(mediaPreparationLabelProgress)} %`
         }`;
-        // The durable worker can report preparation after the dispatch request
-        // has started. Keep the technical phase monotonic while preserving the
-        // truthful, media-neutral label. The visible percentage stays smooth.
         setPublicationProgressPhase(
-          "channel_dispatch",
+          "media_preparation",
           label,
-          mapProgressRange(progress, 0, 100, 60, 76),
+          mapProgressRange(progress, 0, 100, 23, 39),
         );
+        return;
+      }
+      if (update.stage === "request_accepted") {
+        setPublicationProgressPhase(
+          "file_preparation",
+          "Préparation des envois",
+          49,
+        );
+        dispatchPreparationShown = true;
         return;
       }
       if (update.stage === "released_to_background") {
         setPublicationProgressPhase(
           "status_collection",
-          `${Math.max(0, totalCount - terminalCount)} ${totalCount - terminalCount > 1 ? "canaux finalisent" : "canal finalise"} · Vérification des publications`,
-          92,
+          `${Math.max(0, totalCount - terminalCount)} ${totalCount - terminalCount > 1 ? "canaux finalisent" : "canal finalise"} · Confirmation des plateformes`,
+          93,
         );
         return;
       }
@@ -4381,17 +4519,27 @@ export default function PublishModal({
         setPublicationProgressPhase(
           "inrsend_recording",
           "Enregistrement dans iNr’Send",
-          99,
+          96,
         );
         return;
       }
       if (terminalCount >= totalCount) {
         setPublicationProgressPhase(
           "status_collection",
-          `Vérification des publications · ${totalCount}/${totalCount} confirmations`,
-          92,
+          `Confirmation des plateformes · ${totalCount}/${totalCount}`,
+          93,
         );
       } else if (terminalCount > 0) {
+        if (!dispatchPreparationShown) {
+          setPublicationProgressPhase(
+            "file_preparation",
+            "Préparation des envois",
+            49,
+          );
+          dispatchPreparationShown = true;
+          return;
+        }
+        armPublicationFinalWait();
         const nextChannel = publishTargetChannels.find(
           (channel) => !terminalChannels.has(channel),
         );
@@ -4401,9 +4549,20 @@ export default function PublishModal({
         setPublicationProgressPhase(
           "publication_finalization",
           `${Math.min(totalCount, terminalCount + 1)}/${totalCount} · Publication sur ${nextChannelLabel}`,
-          mapProgressRange(terminalCount, 0, totalCount, 73, 83),
+          mapProgressRange(terminalCount, 0, totalCount, 67, 81),
         );
+        publicationDispatchShown = true;
       } else {
+        if (!dispatchPreparationShown) {
+          setPublicationProgressPhase(
+            "file_preparation",
+            "Préparation des envois",
+            49,
+          );
+          dispatchPreparationShown = true;
+          return;
+        }
+        armPublicationFinalWait();
         const firstChannel = publishTargetChannels[0];
         const firstChannelLabel = firstChannel
           ? CHANNEL_LABELS[firstChannel] || firstChannel
@@ -4411,8 +4570,9 @@ export default function PublishModal({
         setPublicationProgressPhase(
           "channel_dispatch",
           `1/${totalCount} · Publication sur ${firstChannelLabel}`,
-          mapProgressRange(update.pollAttempt, 0, 12, 60, 71),
+          mapProgressRange(update.pollAttempt, 0, 12, 51, 65),
         );
+        publicationDispatchShown = true;
       }
     };
 
@@ -4424,10 +4584,10 @@ export default function PublishModal({
               "media_preparation",
               progress > 24
                 ? pendingMediaPreparationLabel
-                : "Finalisation des médias",
+                : "Vérification et préparation des médias",
               progress <= 24
-                ? mapProgressRange(progress, 6, 24, 9, 26)
-                : 27,
+                ? mapProgressRange(progress, 6, 24, 23, 34)
+                : 35,
             );
           },
           requiredPublishMediaTypes,
@@ -4435,23 +4595,17 @@ export default function PublishModal({
         );
 
       setPublicationProgressPhase(
-        "channel_compatibility",
+        "media_preparation",
         pendingMediaPreparationLabel,
-        41,
+        37,
       );
 
       // Les formats originaux sont déjà validés dans le bloc Médias. Une
       // adaptation explicite doit, elle, être prête avant d'arriver ici.
       setPublicationProgressPhase(
-        "channel_compatibility",
+        "media_preparation",
         pendingMediaPreparationLabel,
-        42,
-      );
-
-      setPublicationProgressPhase(
-        "file_preparation",
-        pendingMediaPreparationLabel,
-        44,
+        38,
       );
 
       const emptyChannelImages = {} as ChannelImagePayload;
@@ -4469,17 +4623,17 @@ export default function PublishModal({
           : await buildChannelImagesPayload((current, total) => {
             if (!total) {
               setPublicationProgressPhase(
-                "file_preparation",
-                "Finalisation des médias",
-                46,
+                "media_preparation",
+                "Préparation des médias",
+                38,
               );
               return;
             }
             const ratio = current / total;
             setPublicationProgressPhase(
-              "file_preparation",
-              `Finalisation des médias · ${clampPercent(ratio * 100)} %`,
-              mapProgressRange(ratio, 0, 1, 44, 49),
+              "media_preparation",
+              `Préparation des médias · ${clampPercent(ratio * 100)} %`,
+              mapProgressRange(ratio, 0, 1, 35, 38),
             );
           });
 
@@ -4488,18 +4642,18 @@ export default function PublishModal({
           ? {}
           : await (async () => {
               setPublicationProgressPhase(
-                "file_preparation",
-                "Finalisation des médias",
-                50,
+                "media_preparation",
+                "Préparation des médias",
+                38,
               );
               return await uploadOriginalImagesForPublication(
                 (current, total) => {
                   if (!total) return;
                   const ratio = current / total;
                   setPublicationProgressPhase(
-                    "file_preparation",
-                    `Finalisation des médias · ${clampPercent(ratio * 100)} %`,
-                    mapProgressRange(ratio, 0, 1, 50, 53),
+                    "media_preparation",
+                    `Préparation des médias · ${clampPercent(ratio * 100)} %`,
+                    mapProgressRange(ratio, 0, 1, 36, 39),
                   );
                 },
               );
@@ -4507,9 +4661,9 @@ export default function PublishModal({
 
       if (hasAnyImagePublish) {
         setPublicationProgressPhase(
-          "file_preparation",
-          "Finalisation des médias",
-          53,
+          "media_preparation",
+          "Préparation des médias",
+          39,
         );
       }
 
@@ -4535,9 +4689,9 @@ export default function PublishModal({
                 uploadedCount += 1;
                 const ratio = uploadTargets ? uploadedCount / uploadTargets : 1;
                 setPublicationProgressPhase(
-                  "file_preparation",
-                  `Finalisation des médias · ${clampPercent(ratio * 100)} %`,
-                  mapProgressRange(ratio, 0, 1, 53, 57),
+                  "media_preparation",
+                  `Préparation des médias · ${clampPercent(ratio * 100)} %`,
+                  mapProgressRange(ratio, 0, 1, 37, 39),
                 );
               },
             );
@@ -4579,9 +4733,9 @@ export default function PublishModal({
       let publicationVideo: any = null;
       if (shouldBuildVideoFallbackPayload) {
         setPublicationProgressPhase(
-          "file_preparation",
-          "Finalisation des médias",
-          52,
+          "media_preparation",
+          "Préparation des médias",
+          39,
         );
         publicationVideo = await uploadPublicationVideoForPublish();
         if (!publicationVideo?.publicUrl && !publicationVideo?.url) {
@@ -4596,12 +4750,6 @@ export default function PublishModal({
           { settingsByChannel: publishVideoSettingsByChannel },
         );
       }
-
-      setPublicationProgressPhase(
-        "channel_dispatch",
-        `1/${Math.max(1, publishableChannels.length)} · Publication sur ${CHANNEL_LABELS[publishableChannels[0]] || "le canal sélectionné"}`,
-        60,
-      );
 
       publishDispatchStarted = true;
       const result = await trackEvent("publish", {
@@ -4666,6 +4814,26 @@ export default function PublishModal({
           : null,
       });
 
+      if (!dispatchPreparationShown) {
+        setPublicationProgressPhase(
+          "file_preparation",
+          "Préparation des envois",
+          49,
+        );
+        dispatchPreparationShown = true;
+        await new Promise((resolve) => window.setTimeout(resolve, 180));
+      }
+      if (!publicationDispatchShown) {
+        setPublicationProgressPhase(
+          "publication_finalization",
+          "Publication sur les canaux",
+          81,
+        );
+        publicationDispatchShown = true;
+        armPublicationFinalWait();
+        await new Promise((resolve) => window.setTimeout(resolve, 240));
+      }
+
       // trackEvent attend jusqu’au premier des deux événements : tous les
       // canaux sont terminés, ou la fenêtre visible est écoulée. Dans ce
       // second cas, le bilan s’ouvre avec les canaux encore en traitement et
@@ -4720,18 +4888,29 @@ export default function PublishModal({
         "status_collection",
         pendingCount > 0
           ? pendingCount > 1
-            ? `Vérification des publications · ${pendingCount} canaux poursuivent le traitement`
-            : "Vérification des publications · 1 canal poursuit le traitement"
-          : `Vérification des publications · ${publishableChannels.length}/${publishableChannels.length} confirmations`,
-        92,
+            ? `Confirmation des plateformes · ${pendingCount} canaux poursuivent le traitement`
+            : "Confirmation des plateformes · 1 canal poursuit le traitement"
+          : `Confirmation des plateformes · ${publishableChannels.length}/${publishableChannels.length}`,
+        93,
       );
-      await new Promise((resolve) => window.setTimeout(resolve, 280));
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
       setPublicationProgressPhase(
         "inrsend_recording",
         "Enregistrement dans iNr’Send",
+        96,
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+
+      if (publicationFinalWaitTimeoutId !== null) {
+        window.clearTimeout(publicationFinalWaitTimeoutId);
+        publicationFinalWaitTimeoutId = null;
+      }
+      setPublicationProgressPhase(
+        "final_wait",
+        "Encore quelques secondes… Finalisation du bilan",
         99,
       );
-      await new Promise((resolve) => window.setTimeout(resolve, 280));
+      await new Promise((resolve) => window.setTimeout(resolve, 540));
 
       completePublicationProgress(
         bilanProgress.backgroundFinalization
@@ -4746,6 +4925,7 @@ export default function PublishModal({
                 ? "Bilan prêt avec avertissement"
                 : "Bilan prêt — publication finalisée sur tous les canaux",
       );
+      await new Promise((resolve) => window.setTimeout(resolve, 320));
       if (publicationAccepted) {
         onUnsavedChange?.(false);
       }
@@ -4789,6 +4969,10 @@ export default function PublishModal({
         onClose();
       }
     } catch (e) {
+      if (publicationFinalWaitTimeoutId !== null) {
+        window.clearTimeout(publicationFinalWaitTimeoutId);
+        publicationFinalWaitTimeoutId = null;
+      }
       setPublishProgress(0);
       setPublishProgressLabel("");
       resetPublicationProgressPhases();
@@ -4809,6 +4993,10 @@ export default function PublishModal({
         throw new Error(message);
       }
     } finally {
+      if (publicationFinalWaitTimeoutId !== null) {
+        window.clearTimeout(publicationFinalWaitTimeoutId);
+        publicationFinalWaitTimeoutId = null;
+      }
       publishStartGuardRef.current = false;
       phasedPublicationProgressRef.current = false;
       setSaving(false);
@@ -5356,24 +5544,21 @@ export default function PublishModal({
           .map((channel) => CHANNEL_LABELS[channel] || channel)
           .join(", ");
         const isMultichannel = groupChannels.length > 1;
-        const response = await fetch("/api/agent/scheduled-actions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            automationKey: "publish",
-            actionType: "publication",
-            targetTool: "booster",
-            source: "manual",
-            title: isMultichannel
-              ? `Publication multicanale (${groupChannels.length} canaux)`
-              : `Publication ${labels}`,
-            summary: isMultichannel
-              ? `Publication programmée sur ${labels}`
-              : `Publication programmée sur ${labels}`,
-            scheduledAt,
-            timezone: "Europe/Paris",
-            channels: groupChannels,
-            payload: {
+        await postBoosterScheduledAction({
+          automationKey: "publish",
+          actionType: "publication",
+          targetTool: "booster",
+          source: "manual",
+          title: isMultichannel
+            ? `Publication multicanale (${groupChannels.length} canaux)`
+            : `Publication ${labels}`,
+          summary: isMultichannel
+            ? `Publication programmée sur ${labels}`
+            : `Publication programmée sur ${labels}`,
+          scheduledAt,
+          timezone: "Europe/Paris",
+          channels: groupChannels,
+          payload: {
               creationMode,
               origin: {
                 source: "booster_scheduled",
@@ -5450,17 +5635,8 @@ export default function PublishModal({
                   ? { boardId: pinterestBoardId, boardName: pinterestBoardName }
                   : null,
               },
-            },
-          }),
+          },
         });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(
-            String(
-              result?.error || "Programmation de la publication impossible.",
-            ),
-          );
-        }
         setPublishProgress(
           clampPercent(76 + ((index + 1) / scheduleGroups.length) * 20),
         );

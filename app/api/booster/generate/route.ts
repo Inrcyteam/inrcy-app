@@ -37,6 +37,7 @@ import {
 } from "@/lib/mediaWorkspaceConsumption";
 import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import type { WorkspaceAiConsumptionDiagnostics } from "@/lib/workspaceAiMixedConsumption";
+import { normalizeBoosterGenerationRequestId } from "@/lib/boosterGenerationRecovery";
 
 export const maxDuration = 120;
 
@@ -49,6 +50,7 @@ const BOOSTER_MEDIA_CONTEXT_SAFETY_BUDGET_MS = 7_500;
 
 type Payload = {
   creationMode?: "ai" | "manual";
+  generationRequestId?: string;
   generationDeadlineAt?: number;
   mediaWorkspaceId?: string;
   mediaPipelineCutoverV1?: boolean;
@@ -448,6 +450,7 @@ const handler = async (req: Request) => {
     requestTransport?: "json" | "multipart";
     requestParseMs?: number;
     requestContentLength?: number;
+    generationRequestId?: string;
     videoContextLoadMs?: number;
     videoContextReferenceSource?: "none" | "hit" | "invalid";
     mediaWorkspaceId?: string;
@@ -491,6 +494,9 @@ const handler = async (req: Request) => {
     const requestParseStartedAt = Date.now();
     const parsedRequest = await readBoosterGenerationRequest(req);
     const body = parsedRequest.body as Payload;
+    const generationRequestId = normalizeBoosterGenerationRequestId(
+      body.generationRequestId,
+    );
     // Never clamp a server deadline with an absolute browser timestamp. The
     // client clock can drift and its media preparation happens before this
     // route starts. The browser keeps its own AbortController UX deadline;
@@ -498,6 +504,7 @@ const handler = async (req: Request) => {
     assertGenerationBudget(generationDeadlineAt);
     timingContext.requestTransport = parsedRequest.transport;
     timingContext.requestParseMs = Date.now() - requestParseStartedAt;
+    timingContext.generationRequestId = generationRequestId || undefined;
     if (body.creationMode === "manual") {
       return NextResponse.json(
         {
@@ -1028,6 +1035,7 @@ const handler = async (req: Request) => {
     const { versions, recoveredChannels, aiFallback } = generationResult;
 
     if (mediaWorkspaceId) {
+      const generatedAt = new Date().toISOString();
       after(async () => {
         try {
           await withinMediaContextBudget(
@@ -1040,7 +1048,21 @@ const handler = async (req: Request) => {
               selectedChannels: channels,
               generatedContent: {
                 postByChannel: versions,
-                generatedAt: new Date().toISOString(),
+                generatedAt,
+                ...(generationRequestId
+                  ? {
+                      boosterGenerationReceipt: {
+                        requestId: generationRequestId,
+                        status: "ready",
+                        generatedAt,
+                        recoveredChannels,
+                        ...(aiFallback ? { aiFallback } : {}),
+                        ...(mediaAnalysisFallback
+                          ? { mediaAnalysisFallback }
+                          : {}),
+                      },
+                    }
+                  : {}),
               },
               generationOptions: {
                 style,
@@ -1062,6 +1084,7 @@ const handler = async (req: Request) => {
         } catch (workspaceSyncError) {
           console.warn("[booster-generate] workspace context sync skipped", {
             workspaceId: mediaWorkspaceId,
+            generationRequestId: generationRequestId || undefined,
             message:
               workspaceSyncError instanceof Error
                 ? workspaceSyncError.message
@@ -1084,6 +1107,7 @@ const handler = async (req: Request) => {
     return NextResponse.json({
       versions,
       recoveredChannels,
+      ...(generationRequestId ? { generationRequestId } : {}),
       ...(aiFallback ? { aiFallback } : {}),
       ...(mediaAnalysisFallback ? { mediaAnalysisFallback } : {}),
     });
