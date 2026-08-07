@@ -33,10 +33,12 @@ test("la migration étape 6 est additive, idempotente et réservée au worker", 
 test("le normaliseur extrait seulement les artefacts utiles depuis l'original", () => {
   const source = read("lib/mediaVideoNormalizer.ts");
   assert.match(source, /ffmpeg-static/);
-  assert.doesNotMatch(source, /"libx264"|"\+faststart"/);
+  assert.match(source, /"libx264"/);
+  assert.match(source, /"\+faststart"/);
   assert.match(source, /force_original_aspect_ratio=decrease/);
   assert.match(source, /force_divisible_by=2/);
-  assert.doesNotMatch(source, /key:\s*"canonical"|key:\s*"ai_preview"/);
+  assert.match(source, /key:\s*"canonical"/);
+  assert.doesNotMatch(source, /key:\s*"ai_preview"/);
   assert.match(source, /key:\s*"thumbnail"/);
   assert.match(source, /requestedFrameIndexes/);
   assert.match(source, /`frame_0\$\{index \+ 1\}`/);
@@ -105,7 +107,7 @@ test("le worker télécharge la source privée et conserve l'original", () => {
   assert.doesNotMatch(worker, /readFile\(params\.normalized\.filePath\)/);
   assert.match(worker, /VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL/);
   assert.match(worker, /content_hash_sha256/);
-  assert.doesNotMatch(worker, /inputWasCanonical|canonicalMaster|outputs\.canonical/);
+  assert.match(worker, /outputs\.canonical/);
   assert.match(worker, /const originalPublicationReady = canPublishOriginalVideo/);
   assert.match(worker, /keys:\s*pendingVariants\.map/);
   assert.match(worker, /failed_retryable/);

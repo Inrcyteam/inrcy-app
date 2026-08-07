@@ -305,7 +305,8 @@ test("un workspace source-only inconnu se prÃ©chauffe puis s'auto-rÃ©pare du
   assert.match(normalizer, /frameRate:\s*stream\.frameRate/);
   assert.match(normalizer, /source_frame_rate:\s*source\.frameRate/);
   assert.match(normalizer, /source_container_formats:\s*source\.containerFormats/);
-  assert.doesNotMatch(normalizer, /libx264|canonicalOutputFrameRate|output_container_format/);
+  assert.match(normalizer, /libx264/);
+  assert.match(normalizer, /output_container_format/);
   assert.match(worker, /source:\s*normalized\.source/);
   assert.match(worker, /width:\s*params\.normalized\.source\.orientedWidth/);
   assert.match(worker, /height:\s*params\.normalized\.source\.orientedHeight/);

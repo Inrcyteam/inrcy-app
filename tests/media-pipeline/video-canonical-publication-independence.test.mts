@@ -10,12 +10,13 @@ test("the verified original remains publishable when optional AI artifacts fail"
   const worker = read("lib/mediaVideoNormalizationWorker.ts");
   const consumption = read("lib/mediaWorkspaceConsumption.ts");
 
-  assert.match(worker, /const publicationMediaReady = originalReady/);
+  assert.match(worker, /const publicationMediaReady = originalReady \|\| canonicalReady/);
   assert.match(
     worker,
     /Captures\/audio IA are best-effort and never invalidate a compatible/,
   );
-  assert.doesNotMatch(worker, /outputs\.canonical|libx264/);
+  assert.match(worker, /outputs\.canonical/);
+  assert.match(worker, /canonicalPublicationReady/);
   assert.match(
     consumption,
     /const publicationVariant = directSourceReady \? null : canonical/,

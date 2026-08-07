@@ -5,6 +5,9 @@ import { promisify } from "node:util";
 import ffmpegStaticPath from "ffmpeg-static";
 import {
   VIDEO_AUDIO_TRACK_MAX_BYTES,
+  VIDEO_CANONICAL_AUDIO_BITRATE_KBPS,
+  VIDEO_CANONICAL_MAX_BYTES,
+  VIDEO_CANONICAL_MAX_SIDE,
   VIDEO_FRAME_MAX_BYTES,
   VIDEO_FRAME_MAX_SIDE,
   VIDEO_THUMBNAIL_MAX_SIDE,
@@ -12,16 +15,19 @@ import {
   fitVideoWithinMaxSide,
   getOrientedVideoDimensions,
   getVideoNormalizationPurpose,
+  getVideoTargetBitrateKbps,
   type VideoNormalizationPurpose,
   type VideoNormalizationVariantKey,
-} from "@/lib/mediaVideoNormalizationPolicy";
-import { parseFfmpegVideoStreamMetadata } from "@/lib/mediaVideoProbeMetadata";
+} from "./mediaVideoNormalizationPolicy.ts";
+import { parseFfmpegVideoStreamMetadata } from "./mediaVideoProbeMetadata.ts";
 
 const execFileAsync = promisify(execFile);
 const FFMPEG_PROBE_TIMEOUT_MS = 30_000;
+const FFMPEG_CANONICAL_TIMEOUT_MS = 15 * 60_000;
 const FFMPEG_DERIVATIVE_TIMEOUT_MS = 75_000;
 
 const BOOSTER_VIDEO_DERIVATIVE_KEYS = new Set<VideoNormalizationVariantKey>([
+  "canonical",
   "thumbnail",
   "frame_01",
   "frame_02",
@@ -256,6 +262,250 @@ async function outputSize(filePath: string) {
   return Number((await stat(filePath)).size || 0);
 }
 
+type CanonicalPreparation = {
+  sizeBytes: number;
+  mode: "stream_copy" | "video_copy_audio_transcode" | "full_transcode";
+  bitrateKbps: number | null;
+  attempts: number;
+  probe: VideoSourceProbe;
+};
+
+function normalizedRotation(value: number) {
+  return ((Math.round(Number(value || 0)) % 360) + 360) % 360;
+}
+
+function isH264Codec(value: string) {
+  const codec = String(value || "").toLowerCase();
+  return codec === "h264" || codec === "avc" || codec === "avc1";
+}
+
+function isAacCodec(value: string) {
+  const codec = String(value || "").toLowerCase();
+  return codec.startsWith("aac") || codec.startsWith("mp4a");
+}
+
+function canCopyCanonicalVideo(params: {
+  source: VideoSourceProbe;
+  sourceSizeBytes: number;
+}) {
+  return (
+    isH264Codec(params.source.videoCodec) &&
+    String(params.source.pixelFormat || "").toLowerCase().startsWith("yuv420") &&
+    params.source.frameRate > 0 &&
+    params.source.frameRate <= 60 &&
+    normalizedRotation(params.source.rotationDegrees) === 0 &&
+    Math.max(params.source.orientedWidth, params.source.orientedHeight) <=
+      VIDEO_CANONICAL_MAX_SIDE &&
+    params.sourceSizeBytes > 0 &&
+    params.sourceSizeBytes <= VIDEO_CANONICAL_MAX_BYTES
+  );
+}
+
+async function verifyCanonicalOutput(params: {
+  ffmpegPath: string;
+  outputPath: string;
+  expectedAudio: boolean;
+}) {
+  const sizeBytes = await outputSize(params.outputPath);
+  if (!sizeBytes) throw new Error("video_canonical_empty");
+  if (sizeBytes > VIDEO_CANONICAL_MAX_BYTES) {
+    throw new Error(`video_canonical_too_large:${sizeBytes}`);
+  }
+  const probe = await probeVideoSource({
+    ffmpegPath: params.ffmpegPath,
+    inputPath: params.outputPath,
+  });
+  if (
+    !isH264Codec(probe.videoCodec) ||
+    !String(probe.pixelFormat || "").toLowerCase().startsWith("yuv420") ||
+    probe.frameRate <= 0 ||
+    probe.frameRate > 60 ||
+    (params.expectedAudio && (!probe.hasAudio || !isAacCodec(probe.audioCodec)))
+  ) {
+    throw new Error(
+      `video_canonical_incompatible:${probe.videoCodec}:${probe.audioCodec}:${probe.pixelFormat}:${probe.frameRate}`,
+    );
+  }
+  return { sizeBytes, probe };
+}
+
+async function remuxCanonical(params: {
+  ffmpegPath: string;
+  inputPath: string;
+  outputPath: string;
+  source: VideoSourceProbe;
+}) {
+  const copyAudio = !params.source.hasAudio || isAacCodec(params.source.audioCodec);
+  const args = [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-i",
+    params.inputPath,
+    "-map",
+    "0:v:0",
+  ];
+  if (params.source.hasAudio) args.push("-map", "0:a:0?");
+  args.push("-c:v", "copy");
+  if (params.source.hasAudio) {
+    args.push(
+      "-c:a",
+      copyAudio ? "copy" : "aac",
+      ...(copyAudio
+        ? []
+        : ["-b:a", `${VIDEO_CANONICAL_AUDIO_BITRATE_KBPS}k`, "-ac", "2"]),
+    );
+  } else {
+    args.push("-an");
+  }
+  args.push(
+    "-movflags",
+    "+faststart",
+    "-map_metadata",
+    "-1",
+    "-map_chapters",
+    "-1",
+    "-metadata:s:v:0",
+    "rotate=0",
+    "-avoid_negative_ts",
+    "make_zero",
+    params.outputPath,
+  );
+  await execFileAsync(params.ffmpegPath, args, {
+    timeout: Math.min(120_000, FFMPEG_CANONICAL_TIMEOUT_MS),
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const verified = await verifyCanonicalOutput({
+    ffmpegPath: params.ffmpegPath,
+    outputPath: params.outputPath,
+    expectedAudio: params.source.hasAudio,
+  });
+  return {
+    ...verified,
+    mode: copyAudio
+      ? ("stream_copy" as const)
+      : ("video_copy_audio_transcode" as const),
+    bitrateKbps: null,
+    attempts: 1,
+  };
+}
+
+async function transcodeCanonical(params: {
+  ffmpegPath: string;
+  inputPath: string;
+  outputPath: string;
+  source: VideoSourceProbe;
+}) {
+  let bitrateKbps = getVideoTargetBitrateKbps({
+    durationSeconds: params.source.durationSeconds,
+    maxBytes: VIDEO_CANONICAL_MAX_BYTES,
+    audioBitrateKbps: params.source.hasAudio
+      ? VIDEO_CANONICAL_AUDIO_BITRATE_KBPS
+      : 0,
+    minVideoKbps: 96,
+    maxVideoKbps: 8_000,
+  });
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const filters = [buildScaleFilter(VIDEO_CANONICAL_MAX_SIDE)];
+    if (params.source.frameRate > 60) filters.push("fps=60");
+    const args = [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-nostdin",
+      "-i",
+      params.inputPath,
+      "-map",
+      "0:v:0",
+    ];
+    if (params.source.hasAudio) args.push("-map", "0:a:0?");
+    args.push(
+      "-vf",
+      filters.join(","),
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-threads",
+      "0",
+      "-b:v",
+      `${bitrateKbps}k`,
+      "-maxrate",
+      `${Math.max(bitrateKbps, Math.round(bitrateKbps * 1.2))}k`,
+      "-bufsize",
+      `${Math.max(512, bitrateKbps * 2)}k`,
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-map_metadata",
+      "-1",
+      "-map_chapters",
+      "-1",
+      "-metadata:s:v:0",
+      "rotate=0",
+      "-max_muxing_queue_size",
+      "2048",
+    );
+    if (params.source.hasAudio) {
+      args.push(
+        "-c:a",
+        "aac",
+        "-b:a",
+        `${VIDEO_CANONICAL_AUDIO_BITRATE_KBPS}k`,
+        "-ac",
+        "2",
+      );
+    } else {
+      args.push("-an");
+    }
+    args.push(params.outputPath);
+
+    await execFileAsync(params.ffmpegPath, args, {
+      timeout: FFMPEG_CANONICAL_TIMEOUT_MS,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    const sizeBytes = await outputSize(params.outputPath);
+    if (sizeBytes > 0 && sizeBytes <= VIDEO_CANONICAL_MAX_BYTES) {
+      const verified = await verifyCanonicalOutput({
+        ffmpegPath: params.ffmpegPath,
+        outputPath: params.outputPath,
+        expectedAudio: params.source.hasAudio,
+      });
+      return {
+        ...verified,
+        mode: "full_transcode" as const,
+        bitrateKbps,
+        attempts: attempt,
+      };
+    }
+    bitrateKbps = Math.max(64, Math.floor(bitrateKbps * 0.7));
+  }
+  throw new Error("video_canonical_size_limit_unreachable");
+}
+
+async function prepareCanonical(params: {
+  ffmpegPath: string;
+  inputPath: string;
+  outputPath: string;
+  source: VideoSourceProbe;
+  sourceSizeBytes: number;
+  warnings: string[];
+}): Promise<CanonicalPreparation> {
+  if (canCopyCanonicalVideo(params)) {
+    try {
+      return await remuxCanonical(params);
+    } catch (error) {
+      params.warnings.push(`canonical_fast_path_failed:${compactError(error)}`);
+    }
+  }
+  return await transcodeCanonical(params);
+}
+
 async function extractFrame(params: {
   ffmpegPath: string;
   inputPath: string;
@@ -399,6 +649,7 @@ export async function normalizeVideoSource(params: {
   const requestedFrameIndexes = [0, 1, 2].filter((index) =>
     requestedKeys.has(`frame_0${index + 1}` as VideoNormalizationVariantKey),
   );
+  const needsCanonical = requestedKeys.has("canonical");
   const needsThumbnail = requestedKeys.has("thumbnail");
   const needsAudio = requestedKeys.has("audio_track");
 
@@ -415,6 +666,7 @@ export async function normalizeVideoSource(params: {
   emitProgress(10, "Analyse du média");
 
   const audioPath = path.join(params.outputDirectory, "audio-track.mp3");
+  const canonicalPath = path.join(params.outputDirectory, "canonical.mp4");
   const framePaths = [1, 2, 3].map((index) =>
     path.join(
       params.outputDirectory,
@@ -425,7 +677,8 @@ export async function normalizeVideoSource(params: {
   const captureTimes = buildVideoFrameCaptureTimes(source.durationSeconds);
   const totalTasks = Math.max(
     1,
-    requestedFrameIndexes.length +
+    (needsCanonical ? 1 : 0) +
+      requestedFrameIndexes.length +
       (needsThumbnail ? 1 : 0) +
       (needsAudio && source.hasAudio ? 1 : 0),
   );
@@ -434,6 +687,20 @@ export async function normalizeVideoSource(params: {
     completedTasks += 1;
     emitProgress(10 + (completedTasks / totalTasks) * 84, stage);
   };
+
+  let canonicalPreparation: CanonicalPreparation | null = null;
+  if (needsCanonical) {
+    emitProgress(11, "Conversion automatique en MP4 H.264/AAC");
+    canonicalPreparation = await prepareCanonical({
+      ffmpegPath,
+      inputPath: params.inputPath,
+      outputPath: canonicalPath,
+      source,
+      sourceSizeBytes,
+      warnings,
+    });
+    completeTask("VidÃ©o MP4 H.264/AAC prÃªte");
+  }
 
   const frameSizes = [0, 0, 0];
   const frameAvailable = [false, false, false];
@@ -560,6 +827,41 @@ export async function normalizeVideoSource(params: {
   const variants: Partial<
     Record<VideoNormalizationVariantKey, NormalizedVideoVariant>
   > = {};
+
+  if (needsCanonical && canonicalPreparation) {
+    variants.canonical = buildVariant({
+      key: "canonical",
+      filePath: canonicalPath,
+      mimeType: "video/mp4",
+      extension: "mp4",
+      width: canonicalPreparation.probe.orientedWidth,
+      height: canonicalPreparation.probe.orientedHeight,
+      durationSeconds: canonicalPreparation.probe.durationSeconds,
+      sizeBytes: canonicalPreparation.sizeBytes,
+      transformSpec: {
+        operation: "video_canonical",
+        output: "mp4",
+        video_codec: "h264",
+        audio_codec: source.hasAudio ? "aac" : "none",
+        pixel_format: "yuv420p",
+        max_side: VIDEO_CANONICAL_MAX_SIDE,
+        max_bytes: VIDEO_CANONICAL_MAX_BYTES,
+        mode: canonicalPreparation.mode,
+      },
+      metadata: {
+        ...sourceMetadata,
+        output_video_codec: canonicalPreparation.probe.videoCodec,
+        output_audio_codec: canonicalPreparation.probe.audioCodec,
+        output_frame_rate: canonicalPreparation.probe.frameRate,
+        output_pixel_format: canonicalPreparation.probe.pixelFormat,
+        output_container_format: "mp4",
+        output_size_bytes: canonicalPreparation.sizeBytes,
+        conversion_mode: canonicalPreparation.mode,
+        target_video_bitrate_kbps: canonicalPreparation.bitrateKbps,
+        encoding_attempts: canonicalPreparation.attempts,
+      },
+    });
+  }
 
   if (needsThumbnail) {
     variants.thumbnail = buildVariant({

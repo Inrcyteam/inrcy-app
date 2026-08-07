@@ -102,12 +102,12 @@ test("03 - parcours IA avec vidéo", () => {
   );
   assert.match(
     missions,
-    /publication_preparation:\s*\["thumbnail"\]/,
+    /publication_preparation:\s*\["canonical", "thumbnail"\]/,
   );
   const videoMissions = missions.slice(
     missions.indexOf("BOOSTER_VIDEO_PREPARATION_KEYS"),
   );
-  assert.doesNotMatch(
+  assert.match(
     videoMissions,
     /publication_preparation:\s*\[[^\]]*"canonical"/,
   );

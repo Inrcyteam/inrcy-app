@@ -6,6 +6,7 @@ export type MediaLibraryPickerItem = {
   id: string;
   bucket_name: string | null;
   storage_path: string;
+  original_file_name?: string | null;
   media_type: "image" | "video";
   mime_type: string | null;
   size_bytes: number | null;

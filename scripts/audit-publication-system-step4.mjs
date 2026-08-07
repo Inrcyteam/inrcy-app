@@ -28,7 +28,7 @@ const checks = [
       !/INR_MEDIA_VIDEO_(?:COMPRESSION_TRIGGER|CANONICAL_(?:TARGET|MAX))_BYTES/.test(
         rules,
       ),
-    "publication alignée sur l'original sans seuil de compression",
+    "publication alignée sur l'original avec fallback borné à 75 Mo",
   ],
   [
     /INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS\s*=\s*\[[\s\S]*"mp4"[\s\S]*"m4v"[\s\S]*"mov"/.test(
@@ -40,16 +40,17 @@ const checks = [
     "formats vidéo Booster limités à MP4, M4V et MOV",
   ],
   [
-    /BOOSTER_VIDEO_DERIVATIVE_KEYS[\s\S]*"thumbnail"[\s\S]*"frame_01"[\s\S]*"audio_track"/.test(
+    /BOOSTER_VIDEO_DERIVATIVE_KEYS[\s\S]*"canonical"[\s\S]*"thumbnail"[\s\S]*"frame_01"[\s\S]*"audio_track"/.test(
       normalizer,
     ) &&
-      !/async function encodeMp4|libx264|size_cap_transcode/.test(normalizer),
-    "worker actif limité au probe, aux captures et à l'audio IA",
+      /async function prepareCanonical|libx264/.test(normalizer),
+    "worker actif capable de produire le fallback MP4/H.264/AAC",
   ],
   [
-    /canonical et ai_preview restent lisibles/.test(normalization) &&
-      /ne produit plus aucun fichier vid/.test(normalization),
-    "anciens dérivés lisibles uniquement pour la compatibilité des brouillons",
+    /VIDEO_CANONICAL_MAX_BYTES\s*=\s*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES/.test(
+      normalization,
+    ),
+    "fallback canonique plafonné au contrat publication de 75 Mo",
   ],
   [
     /gmb:\s*\{[\s\S]*maxBytes:\s*GOOGLE_BUSINESS_VIDEO_MAX_BYTES/.test(

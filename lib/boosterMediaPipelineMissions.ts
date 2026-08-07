@@ -23,7 +23,10 @@ export const BOOSTER_VIDEO_PREPARATION_KEYS = Object.freeze({
     "frame_03",
     "audio_track",
   ] as const,
-  publication_preparation: ["thumbnail"] as const,
+  // Le canonique n'est effectivement produit que lorsque la preuve FFmpeg
+  // montre que l'original n'est pas directement publiable. Il convertit alors
+  // automatiquement le conteneur/codec en MP4 H.264/AAC commun aux canaux.
+  publication_preparation: ["canonical", "thumbnail"] as const,
 });
 
 export type BoosterPreparationMission = Exclude<

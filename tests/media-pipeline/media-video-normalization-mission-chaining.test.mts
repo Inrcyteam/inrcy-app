@@ -32,6 +32,7 @@ test("une publication arrivée pendant la préparation IA fusionne les sorties s
   assert.deepEqual(
     new Set(merged.requiredOutputs),
     new Set([
+      "canonical",
       "thumbnail",
       "frame_01",
       "frame_02",
@@ -62,6 +63,7 @@ test("le worker ne refile que les sorties demandées après son snapshot", () =>
   const latestPayload = {
     pipelineMission: "publication_preparation",
     requiredOutputs: [
+      "canonical",
       "thumbnail",
       "frame_01",
       "frame_02",
@@ -83,7 +85,7 @@ test("le worker ne refile que les sorties demandées après son snapshot", () =>
       payload: latestPayload,
       fulfilledKeys: fulfilledByAiWorker,
     }),
-    [],
+    ["canonical"],
   );
   assert.deepEqual(
     readRequestedVideoPreparationKeys({ payload: latestPayload }),

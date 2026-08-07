@@ -23,16 +23,16 @@ test("AI preparation extracts only lightweight artifacts from the original", () 
   assert.deepEqual(plan.keys, AI_OUTPUTS);
 });
 
-test("publication preparation only requests the universal thumbnail", () => {
+test("publication preparation requests the canonical fallback and thumbnail", () => {
   const plan = planVideoNormalizationExecution({
     mission: "publication_preparation",
-    requestedKeys: ["thumbnail"],
+    requestedKeys: ["canonical", "thumbnail"],
     readyKeys: new Set(),
   });
 
   assert.equal(plan.mission, "publication_preparation");
   assert.equal(plan.continuesWithPendingOutputs, false);
-  assert.deepEqual(plan.keys, ["thumbnail"]);
+  assert.deepEqual(plan.keys, ["canonical", "thumbnail"]);
 });
 
 test("obsolete compressed outputs from persisted jobs are ignored", () => {
@@ -42,8 +42,8 @@ test("obsolete compressed outputs from persisted jobs are ignored", () => {
     readyKeys: new Set(),
   });
 
-  assert.deepEqual(plan.keys, AI_OUTPUTS);
-  assert.ok(!plan.keys.includes("canonical"));
+  assert.deepEqual(plan.keys, ["canonical", ...AI_OUTPUTS]);
+  assert.ok(plan.keys.includes("canonical"));
   assert.ok(!plan.keys.includes("ai_preview"));
 });
 

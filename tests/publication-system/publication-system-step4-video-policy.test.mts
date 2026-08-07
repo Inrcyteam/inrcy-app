@@ -62,8 +62,9 @@ test("une vidéo dépassant 75 Mo est refusée avant publication", () => {
   if (!result.ok) assert.equal(result.reason, "video_too_large");
 });
 
-test("les missions Booster actives n'encodent aucun master vidéo", () => {
+test("la mission publication possède un fallback canonique ciblé", () => {
   assert.deepEqual(BOOSTER_VIDEO_PREPARATION_KEYS.publication_preparation, [
+    "canonical",
     "thumbnail",
   ]);
   assert.deepEqual(BOOSTER_VIDEO_PREPARATION_KEYS.ai_preparation, [
@@ -77,7 +78,7 @@ test("les missions Booster actives n'encodent aucun master vidéo", () => {
     ...BOOSTER_VIDEO_PREPARATION_KEYS.publication_preparation,
     ...BOOSTER_VIDEO_PREPARATION_KEYS.ai_preparation,
   ]);
-  assert.equal(activeKeys.has("canonical"), false);
+  assert.equal(activeKeys.has("canonical"), true);
   assert.equal(activeKeys.has("ai_preview"), false);
 });
 

@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "./mediaRules.ts";
@@ -16,12 +17,15 @@ export const VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL =
 
 export const VIDEO_FRAME_MAX_SIDE = 1280;
 export const VIDEO_THUMBNAIL_MAX_SIDE = 720;
+export const VIDEO_CANONICAL_MAX_SIDE = 1920;
+export const VIDEO_CANONICAL_MAX_BYTES = INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES;
+export const VIDEO_CANONICAL_AUDIO_BITRATE_KBPS = 128;
 export const VIDEO_AUDIO_TRACK_MAX_BYTES = 40 * 1024 * 1024;
 export const VIDEO_FRAME_MAX_BYTES = 5 * 1024 * 1024;
 
-// canonical et ai_preview restent lisibles pour les anciens brouillons déjà
-// persistés. Les missions Booster actives ne les demandent plus et le worker
-// ne produit plus aucun fichier vidéo dérivé.
+// `canonical` est le fallback MP4/H.264/AAC de publication. `ai_preview`
+// reste seulement lisible pour les anciens brouillons ; les sorties IA
+// actives demeurent les captures, la miniature et la piste audio.
 export const VIDEO_NORMALIZATION_VARIANT_KEYS = [
   "canonical",
   "ai_preview",

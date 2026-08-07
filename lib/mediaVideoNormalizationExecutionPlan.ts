@@ -14,8 +14,8 @@ const ACTIVE_PREPARATION_OUTPUTS = new Set<VideoNormalizationVariantKey>([
 
 /**
  * Produces one bounded preparation stage from the original accepted video.
- * Booster no longer creates a shared compressed master: this worker only
- * extracts the thumbnail, AI captures and audio requested by the mission.
+ * Publication may request a canonical MP4 when the original failed the server
+ * compatibility proof; AI preparation keeps using lightweight outputs.
  */
 export function planVideoNormalizationExecution(params: {
   mission: BoosterPreparationMission | null;

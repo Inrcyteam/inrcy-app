@@ -5,12 +5,12 @@ import {
   normalizeMediaLibraryOptimizationTarget,
   buildVideoCompressionProfile,
   type VideoCompressionProfile,
-} from "@/lib/mediaLibraryOptimizationPolicy";
+} from "./mediaLibraryOptimizationPolicy.ts";
 import {
   probeVideoSource,
   resolveVideoNormalizationFfmpegPath,
   type VideoSourceProbe,
-} from "@/lib/mediaVideoNormalizer";
+} from "./mediaVideoNormalizer.ts";
 
 export type MediaLibraryVideoCompressionResult = {
   outputPath: string;

@@ -296,6 +296,37 @@ export function buildVideoFileName(file: Pick<File, "name" | "type">) {
   return `${rawName.replace(/\.[^.]*$/, "")}.${extension}`;
 }
 
+export function buildMediaLibraryFileName(item: {
+  media_type: "image" | "video";
+  original_file_name?: string | null;
+  storage_path?: string | null;
+  title?: string | null;
+  mime_type?: string | null;
+}) {
+  const originalName = String(item.original_file_name || "").trim();
+  const storageName =
+    String(item.storage_path || "")
+      .replace(/\\/g, "/")
+      .split("/")
+      .pop() || "";
+  const title = String(item.title || "").trim();
+  const fallbackName =
+    item.media_type === "video" ? "video-inrcy.mp4" : "image-inrcy.jpg";
+  const candidate = originalName || storageName || title || fallbackName;
+
+  if (item.media_type === "video") {
+    // Le titre de MÃ©diathÃ¨que est un libellÃ© d'affichage et peut ne pas avoir
+    // d'extension. Booster valide un vrai nom de fichier : on garantit donc
+    // ici l'extension vidÃ©o avant de reconstruire le File du navigateur.
+    return buildVideoFileName({
+      name: candidate,
+      type: item.mime_type || "video/mp4",
+    });
+  }
+
+  return candidate;
+}
+
 export function buildVideoRatioLabel(width: number | null, height: number | null) {
   if (!width || !height) return "Ratio inconnu";
   const ratio = width / height;

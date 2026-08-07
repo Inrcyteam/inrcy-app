@@ -120,7 +120,11 @@ type UsePublishImageControllerParams = {
   setIsDraggingImage: Dispatch<SetStateAction<boolean>>;
   hasVideoMedia: boolean;
   setImgError: Dispatch<SetStateAction<string>>;
-  onOversizedMedia?: (file: File, targetChannel?: ChannelKey) => boolean | void;
+  onOversizedMedia?: (
+    file: File,
+    targetChannel?: ChannelKey,
+    queuedFiles?: File[],
+  ) => boolean | void;
   setActiveCard: Dispatch<SetStateAction<DisplayKey>>;
   setPublicationMediaType: Dispatch<SetStateAction<PublicationMediaType>>;
   setChannelMediaModes: Dispatch<
@@ -424,13 +428,13 @@ export default function usePublishImageController({
     pickedFiles: File[],
     targetChannel?: ChannelKey,
   ) => {
-    if (!pickedFiles.length) return;
+    if (!pickedFiles.length) return false;
     setImgError("");
 
     const incoming = pickedFiles.filter(isBoosterImageFile);
     if (!incoming.length) {
       setImgError("Ajoutez des fichiers image valides.");
-      return;
+      return false;
     }
 
     if (!hasVideoMedia) {
@@ -452,7 +456,7 @@ export default function usePublishImageController({
           ? `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`
           : "Ces images sont déjà ajoutées.",
       );
-      return;
+      return false;
     }
 
     if (incoming.length > allowed.length) {
@@ -463,18 +467,29 @@ export default function usePublishImageController({
       );
     }
 
-    const tooBig = allowed.find((file) => file.size > BOOSTER_MAX_IMAGE_BYTES);
-    if (tooBig) {
-      const handled = onOversizedMedia?.(tooBig, targetChannel) === true;
+    const oversizedFiles = allowed.filter(
+      (file) => file.size > BOOSTER_MAX_IMAGE_BYTES,
+    );
+    const insertableFiles = allowed.filter(
+      (file) => file.size <= BOOSTER_MAX_IMAGE_BYTES,
+    );
+    const queueOversizedFiles = () => {
+      const [first, ...rest] = oversizedFiles;
+      if (!first) return;
+      const handled = onOversizedMedia?.(first, targetChannel, rest) === true;
       if (!handled) {
         setImgError(
-          `L'image ${tooBig.name} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`,
+          `L'image ${first.name} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`,
         );
       }
-      return;
+    };
+
+    if (!insertableFiles.length) {
+      queueOversizedFiles();
+      return false;
     }
 
-    const totalImageBytes = [...images, ...allowed].reduce(
+    const totalImageBytes = [...images, ...insertableFiles].reduce(
       (sum, file) => sum + (file?.size || 0),
       0,
     );
@@ -482,14 +497,17 @@ export default function usePublishImageController({
       setImgError(
         `Vos images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`,
       );
-      return;
+      return false;
     }
 
-    const nextFiles = [...images, ...allowed].slice(0, BOOSTER_MAX_IMAGE_COUNT);
-    const presentations = await Promise.all(
-      allowed.map((file) => buildLocalImagePresentation(file)),
+    const nextFiles = [...images, ...insertableFiles].slice(
+      0,
+      BOOSTER_MAX_IMAGE_COUNT,
     );
-    const nextMetaEntries = allowed.map(
+    const presentations = await Promise.all(
+      insertableFiles.map((file) => buildLocalImagePresentation(file)),
+    );
+    const nextMetaEntries = insertableFiles.map(
       (file, index) =>
         [makeImageKey(file), presentations[index].meta] as const,
     );
@@ -501,7 +519,7 @@ export default function usePublishImageController({
       string,
       ImageMeta
     >;
-    const newKeys = allowed.map((file) => makeImageKey(file));
+    const newKeys = insertableFiles.map((file) => makeImageKey(file));
     const previousPoolKeys = images.map((file) => makeImageKey(file));
     const nextPoolKeys = nextFiles.map((file) => makeImageKey(file));
 
@@ -593,6 +611,8 @@ export default function usePublishImageController({
         return next;
       });
     }
+    queueOversizedFiles();
+    return true;
   };
 
   const onImagesChange = async (

@@ -26,11 +26,11 @@ const checks = [
     "worker vidéo aligné sur le plafond unique de 75 Mo",
   ],
   [
-    /BOOSTER_VIDEO_DERIVATIVE_KEYS[\s\S]*"thumbnail"[\s\S]*"frame_03"[\s\S]*"audio_track"/.test(
+    /BOOSTER_VIDEO_DERIVATIVE_KEYS[\s\S]*"canonical"[\s\S]*"thumbnail"[\s\S]*"frame_03"[\s\S]*"audio_track"/.test(
       normalizer,
     ) &&
-      !/encodeMp4|libx264|size_cap_transcode/.test(normalizer),
-    "aucune compression vidéo dans le worker Booster",
+      /prepareCanonical|libx264/.test(normalizer),
+    "fallback vidéo MP4\/H.264\/AAC disponible dans le worker Booster",
   ],
   [
     /CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 7/.test(variants),
@@ -41,7 +41,7 @@ const checks = [
       /const publicationVariant = directSourceReady \? null : canonical/.test(
         workspaceConsumption,
       ),
-    "publication de l'original vérifié avec secours réservé aux anciens brouillons",
+    "publication de l'original vérifié avec secours canonique ciblé",
   ],
   [
     !/quality\.videoBitrate/.test(variants),

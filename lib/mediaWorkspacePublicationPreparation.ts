@@ -398,8 +398,9 @@ async function prioritizeJobs(params: {
 /**
  * Owns the bounded publication-preparation step for durable publish jobs.
  * It probes an otherwise-unproven MP4 so a compatible H.264/AAC source is
- * published directly. Video work is limited to the durable thumbnail needed
- * by Pinterest/previews; no shared compressed master is created.
+ * published directly. When the source is not directly publishable, the
+ * durable worker prepares a bounded MP4/H.264/AAC canonical fallback. The
+ * thumbnail remains available for Pinterest and previews.
  */
 export async function prepareWorkspaceMediaForPublication(params: {
   accountId: string;

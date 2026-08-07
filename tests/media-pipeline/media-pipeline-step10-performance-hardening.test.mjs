@@ -112,8 +112,8 @@ test("l'original reste publiable et les incidents d'extraction sont rejoués", (
   const videoMissions = missions.slice(
     missions.indexOf("BOOSTER_VIDEO_PREPARATION_KEYS"),
   );
-  assert.doesNotMatch(videoMissions, /"canonical"|"ai_preview"/);
-  assert.match(videoMissions, /publication_preparation:\s*\["thumbnail"\]/);
+  assert.match(videoMissions, /publication_preparation:\s*\["canonical", "thumbnail"\]/);
+  assert.doesNotMatch(videoMissions, /"ai_preview"/);
   const terminalBlock =
     worker.match(/const terminal\s*=([\s\S]*?);\s*[\r\n]+\s*return new VideoNormalizationError/)?.[1] ||
     "";

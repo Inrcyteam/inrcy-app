@@ -366,6 +366,10 @@ export default function MediaOptimizerModal({
 
   const currentSize = Number(workingItem?.size_bytes || sourceFile?.size || 0);
   const limit = mediaType ? outputLimit(mediaType, origin) : 0;
+  const sourceMaxBytes = mediaType ? sourceLimit(mediaType) : 0;
+  const sourceTooLarge = Boolean(
+    sourceMaxBytes && currentSize > sourceMaxBytes,
+  );
   const maxTargetBytes = Math.max(0, Math.min(currentSize || limit, limit));
   const minTargetBytes = Math.min(MEDIA_LIBRARY_MIN_TARGET_BYTES, maxTargetBytes || MEDIA_LIBRARY_MIN_TARGET_BYTES);
   const title = "Compresser le média";
@@ -652,6 +656,26 @@ export default function MediaOptimizerModal({
           </span>
         </div>
 
+        {sourceTooLarge ? (
+          <div
+            role="alert"
+            style={{
+              padding: "11px 12px",
+              borderRadius: 13,
+              border: "1px solid rgba(248,113,113,.36)",
+              background: "rgba(127,29,29,.22)",
+              color: "#fecaca",
+              fontSize: 13,
+              lineHeight: 1.45,
+            }}
+          >
+            <strong>Fichier source trop volumineux.</strong> Ce média fait{" "}
+            {formatBytes(currentSize)}. iNrCy accepte une source de{" "}
+            {formatBytes(sourceMaxBytes)} maximum et ne peut donc pas importer
+            ni compresser ce fichier. Choisissez une source plus légère.
+          </div>
+        ) : null}
+
         <div
           style={{
             display: "grid",
@@ -812,7 +836,7 @@ export default function MediaOptimizerModal({
             <button
               type="button"
               onClick={() => void handleOptimize()}
-              disabled={busy || !mediaType || !currentSize || !targetBytes || targetBytes >= currentSize || currentSize > sourceLimit(mediaType || "image")}
+              disabled={busy || !mediaType || !currentSize || !targetBytes || targetBytes >= currentSize || sourceTooLarge}
               style={{
                 borderRadius: 999,
                 padding: "10px 16px",
@@ -820,8 +844,8 @@ export default function MediaOptimizerModal({
                 background: "linear-gradient(135deg, rgba(47,209,255,.30), rgba(155,81,255,.34))",
                 color: "#fff",
                 fontWeight: 950,
-                cursor: busy ? "wait" : "pointer",
-                opacity: busy ? 0.65 : 1,
+                cursor: busy ? "wait" : sourceTooLarge ? "not-allowed" : "pointer",
+                opacity: busy || sourceTooLarge ? 0.65 : 1,
               }}
             >
               {busy ? "Compression en cours…" : "Compresser"}

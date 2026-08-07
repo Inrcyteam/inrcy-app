@@ -10,8 +10,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const read = (relativePath: string) =>
   fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 
-test("le pipeline Booster ne produit plus de master vidéo compressé", () => {
+test("le pipeline Booster produit uniquement le fallback canonique nécessaire", () => {
   assert.deepEqual(BOOSTER_VIDEO_PREPARATION_KEYS.publication_preparation, [
+    "canonical",
     "thumbnail",
   ]);
   assert.equal(
@@ -19,7 +20,8 @@ test("le pipeline Booster ne produit plus de master vidéo compressé", () => {
     false,
   );
   const normalizer = read("lib/mediaVideoNormalizer.ts");
-  assert.doesNotMatch(normalizer, /encodeMp4|prepareCanonical|libx264/);
+  assert.match(normalizer, /prepareCanonical/);
+  assert.match(normalizer, /libx264/);
   assert.doesNotMatch(normalizer, /Compression des médias/);
   assert.match(normalizer, /extractFrame/);
   assert.match(normalizer, /extractAudioTrack/);

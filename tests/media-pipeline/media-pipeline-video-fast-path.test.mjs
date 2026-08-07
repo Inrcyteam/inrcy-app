@@ -6,10 +6,11 @@ import test from "node:test";
 const ROOT = process.cwd();
 const read = (file) => readFileSync(resolve(ROOT, file), "utf8");
 
-test("Booster ne fabrique plus aucun second fichier vidéo", () => {
+test("Booster conserve un fallback canonique sans ancien aperçu vidéo IA", () => {
   const normalizer = read("lib/mediaVideoNormalizer.ts");
-  assert.doesNotMatch(normalizer, /libx264|VIDEO_CANONICAL_TARGET_BYTES/);
-  assert.doesNotMatch(normalizer, /key:\s*"canonical"|key:\s*"ai_preview"/);
+  assert.match(normalizer, /libx264/);
+  assert.match(normalizer, /key:\s*"canonical"/);
+  assert.doesNotMatch(normalizer, /key:\s*"ai_preview"/);
   assert.match(normalizer, /BOOSTER_VIDEO_DERIVATIVE_KEYS/);
   assert.match(normalizer, /"thumbnail"/);
   assert.match(normalizer, /"frame_01"/);

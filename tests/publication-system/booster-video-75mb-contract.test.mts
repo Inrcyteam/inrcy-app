@@ -34,8 +34,9 @@ test("MP4, M4V et MOV sont admis, les conteneurs nécessitant une conversion res
   assert.equal(isInrMediaVideoFile({ name: "source.mkv", type: "video/x-matroska" }), false);
 });
 
-test("le worker Booster ne produit aucune vidéo compressée", () => {
+test("le worker Booster garde un fallback canonique borné à 75 Mo", () => {
   assert.deepEqual(BOOSTER_VIDEO_PREPARATION_KEYS.publication_preparation, [
+    "canonical",
     "thumbnail",
   ]);
   assert.deepEqual(BOOSTER_VIDEO_PREPARATION_KEYS.ai_preparation, [
@@ -46,7 +47,9 @@ test("le worker Booster ne produit aucune vidéo compressée", () => {
     "audio_track",
   ]);
   const normalizer = read("lib/mediaVideoNormalizer.ts");
-  assert.doesNotMatch(normalizer, /encodeMp4|libx264|size_cap_transcode/);
+  assert.match(normalizer, /prepareCanonical/);
+  assert.match(normalizer, /libx264/);
+  assert.match(normalizer, /VIDEO_CANONICAL_MAX_BYTES/);
 });
 
 test("Google Business partage les 75 Mo et conserve seulement ses règles métier", () => {

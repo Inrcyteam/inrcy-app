@@ -44,11 +44,15 @@ test("étape 2 expose exactement les trois missions média", () => {
   );
   assert.match(
     missionSource,
-    /ai_preparation:\s*\[[\s\S]*"thumbnail"[\s\S]*"frame_01"[\s\S]*"audio_track"[\s\S]*publication_preparation:\s*\["thumbnail"\]/,
+    /ai_preparation:\s*\[[\s\S]*"thumbnail"[\s\S]*"frame_01"[\s\S]*"audio_track"[\s\S]*publication_preparation:\s*\["canonical", "thumbnail"\]/,
+  );
+  assert.match(
+    missionSource,
+    /BOOSTER_VIDEO_PREPARATION_KEYS[\s\S]*"canonical"/,
   );
   assert.doesNotMatch(
-    missionSource,
-    /BOOSTER_VIDEO_PREPARATION_KEYS[\s\S]*"canonical"|BOOSTER_VIDEO_PREPARATION_KEYS[\s\S]*"ai_preview"/,
+    missionSource.slice(missionSource.indexOf("BOOSTER_VIDEO_PREPARATION_KEYS")),
+    /"ai_preview"/,
   );
 });
 
@@ -157,7 +161,7 @@ test("l'upload workspace persiste les métadonnées puis préchauffe les dériv�
 test("le serveur distingue préparation IA et préparation publication", () => {
   assert.match(prepareRouteSource, /type PreparationMission/);
   assert.match(prepareRouteSource, /mission === "ai_preparation"/);
-  assert.match(prepareRouteSource, /isDirectPublicationVideo/);
+  assert.match(prepareRouteSource, /canUseOriginalVideo/);
   assert.match(prepareRouteSource, /hasAiArtifacts/);
   assert.match(prepareRouteSource, /mission,/);
   assert.match(prepareRouteSource, /alignReadyMissionStatuses/);

@@ -280,9 +280,9 @@ function isMediaReady(params: {
   if (params.media.mediaType === "image") {
     return hasVariant(params.variants, params.media.mediaId, "canonical");
   }
-  // The original server-probed MP4 is the publication source. A current
-  // thumbnail remains required for Pinterest and for durable previews. A
-  // legacy canonical is accepted only to keep already-created drafts usable.
+  // The server-probed original stays the preferred publication source. A
+  // canonical MP4/H.264/AAC is the durable fallback when that proof fails;
+  // the thumbnail remains required for previews and Pinterest.
   const sourceReady =
     canUseOriginalVideo(params.media) ||
     hasVariant(params.variants, params.media.mediaId, "canonical");

@@ -165,6 +165,24 @@ function persistedSourceProbe(mediaMetadata: unknown) {
   return asRecord(normalization.source);
 }
 
+async function hasReadyCanonicalVariant(params: {
+  accountId: string;
+  mediaId: string;
+}) {
+  const result = await supabaseAdmin
+    .from("media_variants")
+    .select("id")
+    .eq("account_id", params.accountId)
+    .eq("media_id", params.mediaId)
+    .is("workspace_id", null)
+    .eq("purpose", "canonical")
+    .eq("signature", getVideoNormalizationSignature("canonical"))
+    .eq("status", "ready")
+    .limit(1);
+  if (result.error) throw result.error;
+  return Boolean(result.data?.length);
+}
+
 function readPreparationMission(
   job: ClaimedVideoJob,
 ): BoosterPreparationMission | null {
@@ -800,14 +818,20 @@ async function markJobFailure(params: {
         sourceProbe: persistedSourceProbe(latestMedia.media_metadata),
       })
     : false;
-  const publicationMediaReady = originalReady;
+  const canonicalReady = await hasReadyCanonicalVariant({
+    accountId: params.job.account_id,
+    mediaId: params.job.media_id,
+  });
+  const publicationMediaReady = originalReady || canonicalReady;
   const publicationMissionFailed = claimedMission === "publication_preparation";
   const chained = finalStatus === "queued";
-  const mediaStatus = chained
-    ? "queued"
-    : finalStatus === "retry_wait"
-      ? "failed_retryable"
-      : "failed_terminal";
+  const mediaStatus = publicationMediaReady
+    ? "ready"
+    : chained
+      ? "queued"
+      : finalStatus === "retry_wait"
+        ? "failed_retryable"
+        : "failed_terminal";
   const publicationStatus = publicationMediaReady
     ? "ready"
     : publicationMissionFailed
@@ -823,8 +847,10 @@ async function markJobFailure(params: {
       // original. Only a publication-preparation failure may fail publication.
       publication_status: publicationStatus,
       processing_progress: publicationMediaReady ? 100 : 0,
-      processing_error_code: chained ? null : normalized.code,
-      processing_error_message: chained ? null : normalized.message,
+      processing_error_code:
+        chained || publicationMediaReady ? null : normalized.code,
+      processing_error_message:
+        chained || publicationMediaReady ? null : normalized.message,
       processing_completed_at:
         finalStatus === "failed" ? new Date().toISOString() : null,
     })
@@ -856,6 +882,7 @@ async function updateMediaAfterSuccessfulNormalization(params: {
     Record<VideoNormalizationVariantKey, Awaited<ReturnType<typeof uploadVariant>>>
   >;
   originalPublicationReady: boolean;
+  canonicalPublicationReady: boolean;
   sourceSha256: string;
   completedAt: string;
   continuesWithPendingOutputs?: boolean;
@@ -899,7 +926,7 @@ async function updateMediaAfterSuccessfulNormalization(params: {
         ? "queued"
         : "ready",
       publication_status:
-        params.originalPublicationReady
+        params.originalPublicationReady || params.canonicalPublicationReady
           ? "ready"
           : params.continuesWithPendingOutputs
             ? "processing"
@@ -1163,16 +1190,18 @@ async function processClaimedVideoJob(
         NonNullable<ReturnType<typeof readyVariantOutput>>
       >
     >;
-    const pendingVariants = selectedVariants.filter(
-      (variant) => !reusableOutputs[variant.key],
-    );
+    const pendingVariants = selectedVariants
+      .filter((variant) => !reusableOutputs[variant.key])
+      .sort((left, right) =>
+        left.key === "canonical" ? -1 : right.key === "canonical" ? 1 : 0,
+      );
 
     await markVariantsProcessing(job, pendingVariants);
     await persistStageProgress(5);
 
     // Captures IA, audio et miniature sont toujours extraits de l'original.
-    // Une ancienne variante canonique peut rester lisible pour l'historique,
-    // mais elle n'est plus une entrée de travail du Booster.
+    // La variante canonique, lorsqu'elle est demandée, est uniquement le
+    // filet de sécurité MP4/H.264/AAC utilisé si l'original est incompatible.
     const downloaded = await downloadSourceToTemp(media, job.id);
     workDir = downloaded.workDir;
     await persistStageProgress(20);
@@ -1260,7 +1289,12 @@ async function processClaimedVideoJob(
       media,
       sourceProbe: normalized.source,
     });
-    if (execution.mission === "publication_preparation" && !originalPublicationReady) {
+    const canonicalPublicationReady = Boolean(outputs.canonical);
+    if (
+      execution.mission === "publication_preparation" &&
+      !originalPublicationReady &&
+      !canonicalPublicationReady
+    ) {
       throw new VideoNormalizationError(
         "video_source_incompatible",
         "Cette vidéo ne peut pas être publiée telle quelle. Utilisez un fichier MP4/M4V/MOV H.264 avec audio AAC, de 75 Mo maximum.",
@@ -1276,6 +1310,7 @@ async function processClaimedVideoJob(
       normalized,
       outputs,
       originalPublicationReady,
+      canonicalPublicationReady,
       sourceSha256: downloaded.sha256,
       completedAt,
       continuesWithPendingOutputs: execution.continuesWithPendingOutputs,
