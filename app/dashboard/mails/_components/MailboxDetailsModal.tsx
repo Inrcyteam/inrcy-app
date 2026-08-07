@@ -432,6 +432,59 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setDetailsActionSuccess,
   ]);
 
+  const deleteChannelPublicationAndSyncStatus = React.useCallback(async () => {
+    const deletion = await deleteChannelPublication();
+    if (!deletion?.payload || !deletion.channel) return;
+
+    const deletedResults =
+      deletion.payload?.results && typeof deletion.payload.results === "object"
+        ? deletion.payload.results
+        : {};
+    const deletedResult = (deletedResults as Record<string, unknown>)[deletion.channel];
+
+    setPublicationLiveStatus((current: any) => {
+      if (!current) return current;
+      const currentResults =
+        current?.results && typeof current.results === "object"
+          ? current.results
+          : {};
+      const currentSummary =
+        current?.summary && typeof current.summary === "object"
+          ? current.summary
+          : null;
+      const entries = Array.isArray(currentSummary?.entries)
+        ? currentSummary.entries.map((entry: any) =>
+            String(entry?.channel || "").trim() === deletion.channel
+              ? {
+                  ...entry,
+                  ok: true,
+                  status: "deleted",
+                  technicalStatus: "deleted",
+                  pending: false,
+                }
+              : entry,
+          )
+        : currentSummary?.entries;
+
+      return {
+        ...current,
+        results: {
+          ...currentResults,
+          ...(deletedResult ? { [deletion.channel]: deletedResult } : {}),
+        },
+        ...(currentSummary
+          ? {
+              summary: {
+                ...currentSummary,
+                entries,
+              },
+            }
+          : {}),
+      };
+    });
+    setPublicationStatusCheckedAt(new Date().toISOString());
+  }, [deleteChannelPublication]);
+
   React.useEffect(() => {
     let cancelled = false;
     if (!open || detailsItem?.source !== "app_events") {
@@ -1687,7 +1740,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     <button
                                       type="button"
                                       className={styles.btnDangerSmall}
-                                      onClick={deleteChannelPublication}
+                                      onClick={() => void deleteChannelPublicationAndSyncStatus()}
                                       disabled={detailsActionBusy}
                                       title="Supprimer la publication"
                                       aria-label="Supprimer la publication"

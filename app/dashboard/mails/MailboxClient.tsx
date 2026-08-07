@@ -4350,7 +4350,7 @@ export default function MailboxClient() {
       reader.readAsDataURL(file);
     });
 
-  async function saveChannelPublication() {
+  async function saveChannelPublication(): Promise<void> {
     if (!detailsItem || detailsItem.source !== "app_events") return;
     const publicationId = String(
       (detailsPayload as any)?.publication_id || "",
@@ -4544,13 +4544,13 @@ export default function MailboxClient() {
     }
   }
 
-  async function deleteChannelPublication() {
-    if (!detailsItem || detailsItem.source !== "app_events") return;
+  async function deleteChannelPublication(): Promise<{ payload: any; channel: string } | null> {
+    if (!detailsItem || detailsItem.source !== "app_events") return null;
     const publicationId = String(
       (detailsPayload as any)?.publication_id || "",
     ).trim();
     const channel = String(activeDetailsChannelEntry?.key || "").trim();
-    if (!publicationId || !channel) return;
+    if (!publicationId || !channel) return null;
     const label =
       activeDetailsChannelEntry?.label || formatChannelLabel(channel);
     const ok = await confirmInrcy({
@@ -4559,7 +4559,7 @@ export default function MailboxClient() {
       confirmLabel: "Supprimer",
       variant: "danger",
     });
-    if (!ok) return;
+    if (!ok) return null;
 
     setDetailsActionBusy(true);
     setDetailsActionError(null);
@@ -4582,27 +4582,58 @@ export default function MailboxClient() {
       // The API returns the authoritative app_events payload after the remote
       // deletion. Apply it immediately so the details modal switches to
       // "Supprimé" without waiting for a history round-trip or a manual refresh.
-      const deletedPayload =
+      const apiDeletedPayload =
         json?.payload &&
         typeof json.payload === "object" &&
         !Array.isArray(json.payload)
           ? json.payload
           : null;
-      if (deletedPayload) {
-        setItems((current) =>
-          current.map((item) =>
-            item.id === detailsItem.id && item.source === "app_events"
-              ? {
-                  ...item,
-                  raw: {
-                    ...((item.raw || {}) as Record<string, unknown>),
-                    payload: deletedPayload,
-                  },
-                }
-              : item,
-          ),
-        );
-      }
+      const fallbackDeletedResult = {
+        ...(activeDetailsChannelResult && typeof activeDetailsChannelResult === "object"
+          ? activeDetailsChannelResult
+          : {}),
+        ok: true,
+        deleted: true,
+        status: "deleted",
+        deleted_at: new Date().toISOString(),
+      };
+      const payloadBase =
+        apiDeletedPayload ||
+        ((detailsPayload && typeof detailsPayload === "object") ? detailsPayload : {});
+      const payloadResults =
+        (payloadBase as any)?.results && typeof (payloadBase as any).results === "object"
+          ? (payloadBase as any).results
+          : {};
+      const apiDeletedChannelResult =
+        payloadResults?.[channel] && typeof payloadResults[channel] === "object"
+          ? payloadResults[channel]
+          : {};
+      const deletedPayload = {
+        ...payloadBase,
+        results: {
+          ...payloadResults,
+          [channel]: {
+            ...fallbackDeletedResult,
+            ...apiDeletedChannelResult,
+            ok: true,
+            deleted: true,
+            status: "deleted",
+          },
+        },
+      };
+      setItems((current) =>
+        current.map((item) =>
+          item.id === detailsItem.id && item.source === "app_events"
+            ? {
+                ...item,
+                raw: {
+                  ...((item.raw || {}) as Record<string, unknown>),
+                  payload: deletedPayload,
+                },
+              }
+            : item,
+        ),
+      );
       setDetailsActionSuccess(`Publication ${label} supprimée.`);
       setDetailsEditMode(false);
       // Release the action immediately. The history refresh can continue in
@@ -4611,12 +4642,14 @@ export default function MailboxClient() {
       setDetailsActionBusy(false);
       setDetailsChannelKey(channel);
       void loadHistory();
+      return { payload: deletedPayload, channel };
     } catch (e: any) {
       const baseMessage = getSimpleFrenchErrorMessage(
         e,
         "Impossible de supprimer cette publication pour le moment.",
       );
       setDetailsActionError(baseMessage);
+      return null;
     } finally {
       setDetailsActionBusy(false);
     }

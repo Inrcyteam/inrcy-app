@@ -29,7 +29,7 @@ type MediaLibraryPickerModalProps = {
   selectedHint?: string;
   maxImageBytes?: number;
   maxVideoBytes?: number;
-  onOpenOptimizer?: () => void;
+  onOpenOptimizer?: (item: MediaLibraryPickerItem) => void;
   onClose: () => void;
   onConfirm: (items: MediaLibraryPickerItem[]) => void | Promise<void>;
 };
@@ -111,6 +111,7 @@ export default function MediaLibraryPickerModal({
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [oversizeBlocked, setOversizeBlocked] = useState(false);
+  const [oversizeBlockedItem, setOversizeBlockedItem] = useState<MediaLibraryPickerItem | null>(null);
   const [compact, setCompact] = useState(false);
 
   useEffect(() => {
@@ -119,6 +120,7 @@ export default function MediaLibraryPickerModal({
     setQuery("");
     setSelectedIds([]);
     setOversizeBlocked(false);
+    setOversizeBlockedItem(null);
     setError("");
   }, [open, accept]);
 
@@ -182,6 +184,7 @@ export default function MediaLibraryPickerModal({
   const toggleItem = (item: MediaLibraryPickerItem) => {
     setError("");
     setOversizeBlocked(false);
+    setOversizeBlockedItem(null);
     const sizeBytes = Number(item.size_bytes || 0);
     const maxBytes =
       item.media_type === "video" ? maxVideoBytes : maxImageBytes;
@@ -193,6 +196,7 @@ export default function MediaLibraryPickerModal({
     ) {
       const limitLabel = item.media_type === "video" ? "75 Mo" : "50 Mo";
       setOversizeBlocked(true);
+      setOversizeBlockedItem(item);
       setError(
         `Ce média dépasse ${limitLabel}. Créez d'abord une copie optimisée dans la Médiathèque.`,
       );
@@ -497,12 +501,13 @@ export default function MediaLibraryPickerModal({
         {error ? (
           <div style={errorStyle}>
             <div>{error}</div>
-            {oversizeBlocked && onOpenOptimizer ? (
+            {oversizeBlocked && oversizeBlockedItem && onOpenOptimizer ? (
               <button
                 type="button"
                 onClick={() => {
+                  const item = oversizeBlockedItem;
                   onClose();
-                  onOpenOptimizer();
+                  onOpenOptimizer(item);
                 }}
                 style={{
                   ...ghostButtonStyle,

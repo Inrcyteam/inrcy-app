@@ -1511,7 +1511,7 @@ export default function PublishIntentPanel({
               cursor: "pointer",
             }}
           >
-            Compresser le média dans la Médiathèque
+            Optimiser le média
           </button>
         ) : null}
         {generationNotice ? (

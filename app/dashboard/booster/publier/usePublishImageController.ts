@@ -120,6 +120,7 @@ type UsePublishImageControllerParams = {
   setIsDraggingImage: Dispatch<SetStateAction<boolean>>;
   hasVideoMedia: boolean;
   setImgError: Dispatch<SetStateAction<string>>;
+  onOversizedMedia?: (file: File, targetChannel?: ChannelKey) => void;
   setActiveCard: Dispatch<SetStateAction<DisplayKey>>;
   setPublicationMediaType: Dispatch<SetStateAction<PublicationMediaType>>;
   setChannelMediaModes: Dispatch<
@@ -157,6 +158,7 @@ export default function usePublishImageController({
   setIsDraggingImage,
   hasVideoMedia,
   setImgError,
+  onOversizedMedia,
   setActiveCard,
   setPublicationMediaType,
   setChannelMediaModes,
@@ -463,6 +465,7 @@ export default function usePublishImageController({
 
     const tooBig = allowed.find((file) => file.size > BOOSTER_MAX_IMAGE_BYTES);
     if (tooBig) {
+      onOversizedMedia?.(tooBig, targetChannel);
       setImgError(
         `L'image ${tooBig.name} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`,
       );

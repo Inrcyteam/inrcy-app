@@ -219,6 +219,9 @@ import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCapt
 import MediaLibraryPickerModal, {
   type MediaLibraryPickerItem,
 } from "@/app/dashboard/_components/MediaLibraryPickerModal";
+import MediaOptimizerModal, {
+  type MediaOptimizerItem,
+} from "@/app/dashboard/_components/MediaOptimizerModal";
 
 // 30 s reste la cible UX. La marge couvre un basculement fournisseur sans
 // transformer une première tentative lente en faux échec nécessitant 2 clics.
@@ -444,15 +447,43 @@ export default function PublishModal({
   const imagesRef = useRef<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
+  const [mediaOptimizerOpen, setMediaOptimizerOpen] = useState(false);
+  const [mediaOptimizerSourceItem, setMediaOptimizerSourceItem] =
+    useState<MediaOptimizerItem | null>(null);
+  const [oversizedMediaCandidate, setOversizedMediaCandidate] = useState<{
+    file: File;
+    scope: "generation" | "publication";
+    targetChannel?: ChannelKey;
+  } | null>(null);
   const oversizedMediaError = useMemo(
     () =>
       /\b(?:50|75)\s*Mo\b/i.test(imgError) &&
       /d[ée]passe/i.test(imgError),
     [imgError],
   );
-  const openMediaOptimizer = useCallback(() => {
-    router.push("/dashboard/mediatheque?action=optimize");
-  }, [router]);
+  const openMediaOptimizer = useCallback((item?: MediaLibraryPickerItem) => {
+    if (item) {
+      setMediaOptimizerSourceItem(item as MediaOptimizerItem);
+      setOversizedMediaCandidate(null);
+    }
+    setMediaOptimizerOpen(true);
+  }, []);
+  const registerOversizedMedia = useCallback(
+    (file: File, targetChannel?: ChannelKey) => {
+      setMediaOptimizerSourceItem(null);
+      setOversizedMediaCandidate({
+        file,
+        scope: targetChannel ? "publication" : "generation",
+        targetChannel,
+      });
+    },
+    [],
+  );
+  const closeMediaOptimizer = useCallback(() => {
+    setMediaOptimizerOpen(false);
+    setMediaOptimizerSourceItem(null);
+    setOversizedMediaCandidate(null);
+  }, []);
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
     Record<string, ImageMeta>
@@ -1947,6 +1978,7 @@ export default function PublishModal({
     setIsDraggingImage,
     hasVideoMedia: Boolean(videoFile || videoPreviewUrl),
     setImgError,
+    onOversizedMedia: registerOversizedMedia,
     setActiveCard,
     setPublicationMediaType,
     setChannelMediaModes,
@@ -2828,6 +2860,10 @@ export default function PublishModal({
 
     setCreationModeError("");
     setPublishError("");
+    setImgError("");
+    setMediaOptimizerOpen(false);
+    setMediaOptimizerSourceItem(null);
+    setOversizedMediaCandidate(null);
     setCreationMode(nextMode);
     setContentWorkspaceOpen(nextMode === "manual");
     setSynchronizedActiveChannel(selectedChannels[0]);
@@ -3470,6 +3506,7 @@ export default function PublishModal({
     }
 
     if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
+      registerOversizedMedia(file, options?.targetChannel);
       setImgError(
         `La vidéo ${file.name} dépasse ${BOOSTER_MAX_VIDEO_MB_LABEL}. Compressez-la d'abord avant de l'ajouter au Booster.`,
       );
@@ -3651,6 +3688,28 @@ export default function PublishModal({
         `${selectedImages.length} image(s) ajoutée(s). Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`,
       );
     }
+  };
+
+  const applyOptimizedMediaToBooster = async (item: MediaOptimizerItem) => {
+    setImgError("");
+    const targetChannel = oversizedMediaCandidate?.targetChannel;
+
+    if (!targetChannel) {
+      await addMediaLibrarySelection([item]);
+      setImgError("");
+      return;
+    }
+
+    const file = await mediaLibraryItemToFile(item);
+    if (item.media_type === "video") {
+      await addVideoFile(file, {
+        hasImages: images.length > 0,
+        targetChannel,
+      });
+    } else {
+      await addImageFiles([file], targetChannel);
+    }
+    setImgError("");
   };
 
   const onTakePhotoClick = async (targetChannel?: ChannelKey) => {
@@ -6060,6 +6119,15 @@ export default function PublishModal({
         }
         onClose={() => setMediaLibraryPickerOpen(false)}
         onConfirm={(items) => addMediaLibrarySelection(items)}
+      />
+
+      <MediaOptimizerModal
+        open={mediaOptimizerOpen}
+        sourceItem={mediaOptimizerSourceItem}
+        sourceFile={oversizedMediaCandidate?.file || null}
+        origin="booster"
+        onClose={closeMediaOptimizer}
+        onOptimized={applyOptimizedMediaToBooster}
       />
 
       <PublishChannelSelector

@@ -22,12 +22,13 @@ import {
 } from "@/lib/mediaUploadPolicy";
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import MediaOptimizerModal, {
+  type MediaOptimizerItem,
+} from "@/app/dashboard/_components/MediaOptimizerModal";
 import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
 import {
-  MEDIA_LIBRARY_IMAGE_OPTIMIZATION_JOB_TYPE,
   MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES,
   MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
-  MEDIA_LIBRARY_VIDEO_OPTIMIZATION_JOB_TYPE,
   MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES,
   MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
   needsMediaLibraryOptimization,
@@ -292,16 +293,6 @@ function mediaNeedsOptimization(item: MediaItem) {
   });
 }
 
-function optimizationStage(item: MediaItem) {
-  const result = item.optimization?.result;
-  const stage = result && typeof result.stage === "string" ? result.stage.trim() : "";
-  if (stage) return stage;
-  if (item.optimization?.status === "queued") return "En attente";
-  if (item.optimization?.status === "retry_wait") return "Nouvelle tentative programmée";
-  if (item.optimization?.status === "failed") return "Optimisation impossible";
-  if (item.optimization?.status === "succeeded") return "Copie compatible créée";
-  return item.media_type === "video" ? "Compression disponible" : "Optimisation disponible";
-}
 
 export default function MediaLibraryClient() {
   const [initialSnapshot] = useState<MediaLibrarySnapshot | null>(() => readInitialMediaLibrarySnapshot());
@@ -329,8 +320,7 @@ export default function MediaLibraryClient() {
   const [search, setSearch] = useState("");
   const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
   const [helperOpen, setHelperOpen] = useState(false);
-  const [optimizerRedirected, setOptimizerRedirected] = useState(false);
-  const [optimizingId, setOptimizingId] = useState<string | null>(null);
+  const [optimizerItem, setOptimizerItem] = useState<MediaOptimizerItem | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -414,74 +404,12 @@ export default function MediaLibraryClient() {
   }, [initialSnapshot, loadItems]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    setOptimizerRedirected(params.get("action") === "optimize");
-  }, []);
-
-  useEffect(() => {
     if (!hasRunningOptimization) return;
     const timer = window.setInterval(() => {
       void loadItems({ silent: true });
     }, 2_500);
     return () => window.clearInterval(timer);
   }, [hasRunningOptimization, loadItems]);
-
-  async function startOptimization(item: MediaItem) {
-    if (!mediaNeedsOptimization(item)) return;
-    setOptimizingId(item.id);
-    setError(null);
-    setSuccess(null);
-    try {
-      const response = await fetch("/api/media-library/optimization", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mediaId: item.id }),
-      });
-      const json = await readApiJson(response, "Optimisation impossible.");
-      if (!response.ok && response.status !== 202) {
-        throw new Error(json?.error || "Optimisation impossible.");
-      }
-      if (json?.job) {
-        setItems((current) =>
-          current.map((entry) =>
-            entry.id === item.id ? { ...entry, optimization: json.job } : entry,
-          ),
-        );
-      }
-      if (json?.job?.status === "succeeded") {
-        setSuccess("La copie compatible est déjà disponible dans la Médiathèque.");
-        await loadItems({ silent: true });
-        return;
-      }
-
-      setSuccess(
-        item.media_type === "video"
-          ? "Compression lancée. Vous pouvez quitter cette page : elle continuera automatiquement."
-          : "Optimisation lancée. Vous pouvez quitter cette page : elle continuera automatiquement.",
-      );
-      const jobType =
-        String(json?.job?.job_type || "") ||
-        (item.media_type === "video"
-          ? MEDIA_LIBRARY_VIDEO_OPTIMIZATION_JOB_TYPE
-          : MEDIA_LIBRARY_IMAGE_OPTIMIZATION_JOB_TYPE);
-      void fetch("/api/media-library/optimization/run", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mediaId: item.id, jobType }),
-      })
-        .catch((runError) => {
-          console.warn("[media-library] immediate optimization worker unavailable", runError);
-        })
-        .finally(() => {
-          void loadItems({ silent: true });
-        });
-    } catch (e: any) {
-      setError(getClientUserFacingErrorMessage(e, "Optimisation impossible."));
-    } finally {
-      setOptimizingId(null);
-    }
-  }
 
   function mergeSelectedFiles(nextFiles: File[]) {
     if (nextFiles.length === 0) return;
@@ -997,19 +925,6 @@ export default function MediaLibraryClient() {
           </div>
         </section>
 
-        {optimizerRedirected ? (
-          <section className={styles.optimizerRedirectBanner} aria-live="polite">
-            <div>
-              <strong>Média hors limite détecté dans Booster</strong>
-              <span>
-                Importez ici votre fichier, puis utilisez le bouton d’optimisation. Une nouvelle copie compatible sera créée sans modifier l’original.
-              </span>
-            </div>
-            <button type="button" onClick={() => setOptimizerRedirected(false)}>
-              Compris
-            </button>
-          </section>
-        ) : null}
 
         <section className={styles.metricsGrid}>
           <article className={styles.metricCard}>
@@ -1344,61 +1259,28 @@ export default function MediaLibraryClient() {
                         <strong>{item.title || "Média sans titre"}</strong>
                         <span>{tagsToText(item.tags) || "Aucun tag"}</span>
                         {mediaNeedsOptimization(item) ? (
-                          <div className={styles.optimizationBox}>
-                            <div className={styles.optimizationSummary}>
-                              <span className={styles.optimizationBadge}>
-                                Hors limite Booster · {formatBytes(item.size_bytes)} / {formatBytes(mediaOptimizationLimit(item))}
-                              </span>
-                              {item.optimization ? (
-                                <span className={styles.optimizationStage}>
-                                  {optimizationStage(item)}
-                                  {["queued", "processing", "retry_wait"].includes(item.optimization.status)
-                                    ? ` · ${Math.max(0, Math.min(99, Number(item.optimization.progress || 0)))} %`
-                                    : ""}
-                                </span>
-                              ) : null}
-                            </div>
+                          <div className={styles.mediaRowOptimizationActions}>
+                            <span className={styles.optimizationBadge}>
+                              Hors limite Booster · {formatBytes(item.size_bytes)} / {formatBytes(mediaOptimizationLimit(item))}
+                            </span>
                             <button
                               type="button"
                               className={styles.optimizeButton}
-                              disabled={
-                                optimizingId === item.id ||
-                                ["queued", "processing", "retry_wait", "succeeded"].includes(
-                                  String(item.optimization?.status || ""),
-                                )
-                              }
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void startOptimization(item);
+                                setOptimizerItem(item as MediaOptimizerItem);
                               }}
                             >
                               {item.optimization?.status === "succeeded"
-                                ? "Copie compatible créée"
+                                ? "Voir la copie"
                                 : ["queued", "processing", "retry_wait"].includes(
                                       String(item.optimization?.status || ""),
                                     )
-                                  ? item.media_type === "video"
-                                    ? "Compression en cours…"
-                                    : "Optimisation en cours…"
+                                  ? `Suivre · ${Math.max(0, Math.min(99, Number(item.optimization?.progress || 0)))} %`
                                   : item.media_type === "video"
-                                    ? "Compresser pour Booster"
-                                    : "Optimiser pour Booster"}
+                                    ? "Compresser"
+                                    : "Optimiser"}
                             </button>
-                            {item.optimization &&
-                            ["queued", "processing", "retry_wait"].includes(item.optimization.status) ? (
-                              <div className={styles.optimizationProgress} aria-hidden="true">
-                                <span
-                                  style={{
-                                    width: `${Math.max(2, Math.min(99, Number(item.optimization.progress || 0)))}%`,
-                                  }}
-                                />
-                              </div>
-                            ) : null}
-                            {item.optimization?.status === "failed" && item.optimization.error_message ? (
-                              <span className={styles.optimizationError}>
-                                {item.optimization.error_message}
-                              </span>
-                            ) : null}
                           </div>
                         ) : item.source === "mediatheque_optimization" ? (
                           <span className={styles.compatibleCopyBadge}>✓ Compatible Booster</span>
@@ -1478,6 +1360,14 @@ export default function MediaLibraryClient() {
           </section>
         </div>
       </div>
+
+      <MediaOptimizerModal
+        open={Boolean(optimizerItem)}
+        sourceItem={optimizerItem}
+        origin="mediatheque"
+        onClose={() => setOptimizerItem(null)}
+        onLibraryChanged={() => loadItems({ silent: true })}
+      />
 
       {helperOpen ? (
         <div

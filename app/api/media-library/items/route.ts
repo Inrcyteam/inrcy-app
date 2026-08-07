@@ -265,8 +265,9 @@ export async function GET(request: NextRequest) {
   const type = cleanText(url.searchParams.get("type"), 20) || "all";
   const active = cleanText(url.searchParams.get("active"), 20) || "active";
   const q = cleanText(url.searchParams.get("q"), 120);
+  const mediaId = cleanText(url.searchParams.get("id"), 80);
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 120), 1), 240);
-  const fetchLimit = q ? 500 : limit;
+  const fetchLimit = mediaId ? 1 : q ? 500 : limit;
 
   let query = supabaseAdmin
     .from("pro_media_library")
@@ -275,6 +276,7 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(fetchLimit);
 
+  if (mediaId) query = query.eq("id", mediaId);
   if (type === "image" || type === "video") query = query.eq("media_type", type);
   if (active === "active") query = query.eq("is_active", true);
   else if (active === "inactive") query = query.eq("is_active", false);

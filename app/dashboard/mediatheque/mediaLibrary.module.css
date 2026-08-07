@@ -2521,3 +2521,77 @@ button:disabled{
     margin-top:7px;
   }
 }
+
+/* Finition — lignes stables + optimisation compacte dans une modale partagée */
+.mediaList{
+  grid-auto-rows:max-content;
+}
+
+.mediaRow{
+  min-width:0;
+  height:auto;
+  overflow:hidden;
+  isolation:isolate;
+}
+
+.mediaRowFile,
+.mediaRowMain{
+  min-width:0;
+  max-width:100%;
+}
+
+.mediaRowMain{
+  overflow:hidden;
+}
+
+.mediaRowOptimizationActions{
+  min-width:0;
+  max-width:100%;
+  margin-top:5px;
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+
+.mediaRowOptimizationActions .optimizationBadge{
+  min-width:0;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  padding:4px 7px;
+  border:1px solid rgba(255,193,73,.20);
+  border-radius:999px;
+  background:rgba(93,57,12,.20);
+}
+
+.mediaRowOptimizationActions .optimizeButton{
+  flex:0 0 auto;
+  min-height:28px;
+  padding:0 10px;
+  font-size:10.5px;
+}
+
+@media (min-width:1181px){
+  .mediaListHead,
+  .mediaRow{
+    grid-template-columns:34px minmax(0,1fr) 82px 80px 104px 108px 100px !important;
+    align-items:center;
+  }
+}
+
+@media (max-width:680px){
+  .mediaRowOptimizationActions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .mediaRowOptimizationActions .optimizationBadge{
+    width:100%;
+    white-space:normal;
+  }
+
+  .mediaRowOptimizationActions .optimizeButton{
+    width:100%;
+  }
+}

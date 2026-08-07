@@ -510,7 +510,7 @@ export default function PublishImagesPanel({
                 cursor: "pointer",
               }}
             >
-              Compresser le média dans la Médiathèque
+              Optimiser le média
             </button>
           ) : null}
         </div>
