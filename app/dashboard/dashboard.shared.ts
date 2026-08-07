@@ -41,12 +41,12 @@ export function getBubbleStatusFromBlock(
     return { status: "connected", text: "Connecté" };
   }
 
-  if (block.connection.requiresUpdate || block.connection.connectionStatus === "needs_update") {
-    return { status: "available", text: "À actualiser" };
-  }
-
-  if (block.connection.expired) {
-    return { status: "available", text: "Reconnexion requise" };
+  if (
+    block.connection.requiresUpdate ||
+    block.connection.connectionStatus === "needs_update" ||
+    block.connection.expired
+  ) {
+    return { status: "reconnect", text: "À reconnecter" };
   }
 
   if (block.connection.connected) {
@@ -161,7 +161,8 @@ export function inferChannelsFromRealtimePayload(payload: any): DashboardChannel
       source === "instagram" ||
       source === "linkedin" ||
       source === "tiktok" ||
-      source === "youtube_shorts"
+      source === "youtube_shorts" ||
+      source === "pinterest"
     ) {
       impacted.add(source);
       continue;
@@ -170,7 +171,8 @@ export function inferChannelsFromRealtimePayload(payload: any): DashboardChannel
     if (provider === "facebook") impacted.add("facebook");
     if (provider === "linkedin") impacted.add("linkedin");
     if (provider === "tiktok") impacted.add("tiktok");
-    if (provider === "youtube_shorts") impacted.add("youtube_shorts");
+    if (provider === "youtube_shorts" || provider === "youtube") impacted.add("youtube_shorts");
+    if (provider === "pinterest") impacted.add("pinterest");
     if (provider === "google" && source === "gmb") impacted.add("gmb");
   }
 
@@ -181,7 +183,7 @@ export function inferChannelsFromSearchParams(
   linked: string | null,
   targetPanel: string | null,
 ): DashboardChannelKey[] {
-  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin" || linked === "tiktok" || linked === "youtube_shorts") {
+  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin" || linked === "tiktok" || linked === "youtube_shorts" || linked === "pinterest") {
     return [linked];
   }
 
@@ -197,7 +199,8 @@ export function inferChannelsFromSearchParams(
     targetPanel === "instagram" ||
     targetPanel === "linkedin" ||
     targetPanel === "tiktok" ||
-    targetPanel === "youtube_shorts"
+    targetPanel === "youtube_shorts" ||
+    targetPanel === "pinterest"
   ) {
     return [targetPanel];
   }

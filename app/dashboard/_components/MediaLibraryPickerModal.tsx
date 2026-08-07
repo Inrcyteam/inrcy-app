@@ -44,6 +44,13 @@ function formatBytes(value: number | null | undefined) {
   return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} Mo`;
 }
 
+
+function formatLimitBytes(value: number | null | undefined) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "la limite autorisée";
+  return `${Math.max(1, Math.round(bytes / 1_000_000))} Mo`;
+}
+
 function formatDuration(seconds: number | null | undefined) {
   const safe = Number(seconds || 0);
   if (!Number.isFinite(safe) || safe <= 0) return "—";
@@ -194,7 +201,7 @@ export default function MediaLibraryPickerModal({
       Number.isFinite(Number(maxBytes)) &&
       sizeBytes > Number(maxBytes)
     ) {
-      const limitLabel = item.media_type === "video" ? "75 Mo" : "50 Mo";
+      const limitLabel = formatLimitBytes(Number(maxBytes));
       setOversizeBlocked(true);
       setOversizeBlockedItem(item);
       setError(

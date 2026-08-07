@@ -1497,7 +1497,7 @@ export default function PublishIntentPanel({
         {showMediaOptimizerAction && onOpenMediaOptimizer ? (
           <button
             type="button"
-            onClick={onOpenMediaOptimizer}
+            onClick={() => onOpenMediaOptimizer()}
             style={{
               justifySelf: "start",
               border: "1px solid rgba(105,239,255,0.42)",

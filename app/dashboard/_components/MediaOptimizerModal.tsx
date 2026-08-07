@@ -42,7 +42,7 @@ type Props = {
   open: boolean;
   sourceItem?: MediaOptimizerItem | null;
   sourceFile?: File | null;
-  origin?: "booster" | "mediatheque";
+  origin?: "booster" | "mediatheque" | "email";
   onClose: () => void;
   onOptimized?: (item: MediaOptimizerItem) => void | Promise<void>;
   onLibraryChanged?: () => void | Promise<void>;
@@ -73,7 +73,11 @@ function itemName(item: MediaOptimizerItem | null, file: File | null) {
   return "Média iNrCy";
 }
 
-function outputLimit(mediaType: "image" | "video") {
+function outputLimit(
+  mediaType: "image" | "video",
+  origin: "booster" | "mediatheque" | "email",
+) {
+  if (origin === "email") return MEDIA_LIBRARY_EMAIL_TARGET_BYTES;
   return mediaType === "video"
     ? MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES
     : MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES;
@@ -357,7 +361,7 @@ export default function MediaOptimizerModal({
   }, [sourceFile, workingItem]);
 
   const currentSize = Number(workingItem?.size_bytes || sourceFile?.size || 0);
-  const limit = mediaType ? outputLimit(mediaType) : 0;
+  const limit = mediaType ? outputLimit(mediaType, origin) : 0;
   const maxTargetBytes = Math.max(0, Math.min(currentSize || limit, limit));
   const minTargetBytes = Math.min(MEDIA_LIBRARY_MIN_TARGET_BYTES, maxTargetBytes || MEDIA_LIBRARY_MIN_TARGET_BYTES);
   const title = "Compresser le média";
@@ -471,7 +475,9 @@ export default function MediaOptimizerModal({
         setNotice(
           origin === "booster"
             ? `Copie compressée ajoutée au Booster. ${retentionMessage}`
-            : retentionMessage,
+            : origin === "email"
+              ? `Copie compressée prête pour la pièce jointe. ${retentionMessage}`
+              : retentionMessage,
         );
       }
     } catch (err) {
@@ -596,7 +602,9 @@ export default function MediaOptimizerModal({
               whiteSpace: "nowrap",
             }}
           >
-            {mediaType === "video" ? "Vidéo" : "Image"} : {formatBytes(limit)} max
+            {origin === "email"
+              ? `E-mail : ${formatBytes(limit)} max`
+              : `${mediaType === "video" ? "Vidéo" : "Image"} : ${formatBytes(limit)} max`}
           </span>
         </div>
 
@@ -638,17 +646,21 @@ export default function MediaOptimizerModal({
             >
               ✉️ Email 20 Mo
             </button>
-            <button
-              type="button"
-              onClick={() => setTargetBytes(maxTargetBytes)}
-              disabled={busy || !maxTargetBytes}
-              style={{ borderRadius: 999, padding: "7px 10px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#dbeafe", fontWeight: 800, cursor: busy ? "default" : "pointer" }}
-            >
-              {mediaType === "video" ? "🎥 Publication 75 Mo" : "🖼️ Publication 50 Mo"}
-            </button>
+            {origin !== "email" ? (
+              <button
+                type="button"
+                onClick={() => setTargetBytes(maxTargetBytes)}
+                disabled={busy || !maxTargetBytes}
+                style={{ borderRadius: 999, padding: "7px 10px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#dbeafe", fontWeight: 800, cursor: busy ? "default" : "pointer" }}
+              >
+                {mediaType === "video" ? "🎥 Publication 75 Mo" : "🖼️ Publication 50 Mo"}
+              </button>
+            ) : null}
           </div>
           <div style={{ color: "#9fb0d2", fontSize: 11, lineHeight: 1.45 }}>
-            Repères : email ≤ 20 Mo · {mediaType === "video" ? "vidéo pour Booster ≤ 75 Mo" : "image pour Booster ≤ 50 Mo"}.
+            {origin === "email"
+              ? "Pièce jointe e-mail : 20 Mo maximum."
+              : `Repères : e-mail ≤ 20 Mo · ${mediaType === "video" ? "vidéo pour Booster ≤ 75 Mo" : "image pour Booster ≤ 50 Mo"}.`}
           </div>
           {aggressiveCompression ? (
             <div role="status" style={{ padding: "9px 10px", borderRadius: 12, border: "1px solid rgba(251,191,36,.28)", background: "rgba(120,53,15,.18)", color: "#fde68a", fontSize: 12, lineHeight: 1.4 }}>

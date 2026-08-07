@@ -2,6 +2,36 @@ import { asRecord, asString } from "@/lib/tsSafe";
 
 export type ConnectionDisplayStatus = "connected" | "needs_update" | "disconnected";
 
+const RECONNECT_MARKER_KEYS = [
+  "needs_reconnect",
+  "reconnect_required",
+  "token_invalid",
+  "token_revoked",
+  "auth_invalid",
+  "oauth_reconnect_required",
+  "tiktok_needs_reconnect",
+  "tiktok_stats_needs_reconnect_at",
+  "tiktok_token_invalid_at",
+] as const;
+
+export function hasConnectionReconnectMarker(node: unknown): boolean {
+  const rec = asRecord(node);
+  return RECONNECT_MARKER_KEYS.some((key) => {
+    const value = rec[key];
+    if (value === true) return true;
+    return typeof value === "string" && value.trim().length > 0;
+  });
+}
+
+function clearConnectionReconnectMarkers<T extends Record<string, unknown>>(node: T): T {
+  const next = { ...node };
+  for (const key of RECONNECT_MARKER_KEYS) delete next[key];
+  delete next["needs_reconnect_at"];
+  delete next["needs_reconnect_reason"];
+  delete next["needs_reconnect_channel"];
+  return next;
+}
+
 export type ConnectionKind =
   | "mail:gmail"
   | "mail:microsoft"
@@ -57,6 +87,7 @@ export function getConnectionDisplayStatus(
   kind: ConnectionKind,
   versionNode: unknown,
 ): ConnectionDisplayStatus {
+  if (hasConnectionReconnectMarker(versionNode)) return "needs_update";
   if (!isConnected) return "disconnected";
   return isConnectionUpdateRequired(kind, versionNode) ? "needs_update" : "connected";
 }
@@ -71,8 +102,9 @@ export function withCurrentConnectionVersion<T extends Record<string, unknown>>(
   kind: ConnectionKind,
   node: T | null | undefined,
 ): T & { connection_version: number; connection_version_updated_at: string } {
+  const cleanNode = clearConnectionReconnectMarkers(((node ?? {}) as T));
   return {
-    ...((node ?? {}) as T),
+    ...cleanNode,
     connection_version: getRequiredConnectionVersion(kind),
     connection_version_updated_at: new Date().toISOString(),
   };

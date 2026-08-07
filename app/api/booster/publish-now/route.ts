@@ -64,6 +64,7 @@ import {
 import {
   getPublishChannelUserMessage,
   logPublishChannelFailure,
+  markPublishChannelReconnectRequired,
 } from "@/lib/channelPublishDiagnostics";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import {
@@ -3376,6 +3377,12 @@ async function publishNowHandler(req: Request) {
               error: fbExpired ? "token_expired" : "not_connected",
               userMessage: facebookUserError,
             });
+            await markPublishChannelReconnectRequired({
+              channel: "facebook",
+              userId,
+              error: fbExpired ? "token_expired" : "not_connected",
+              userMessage: facebookUserError,
+            });
             await setDelivery(ch, {
               status: "failed",
               error: facebookUserError,
@@ -3440,6 +3447,12 @@ async function publishNowHandler(req: Request) {
               error: resp.error,
               userMessage: facebookUserError,
               diagnostics: resp,
+            });
+            await markPublishChannelReconnectRequired({
+              channel: "facebook",
+              userId,
+              error: resp.error,
+              userMessage: facebookUserError,
             });
             await setDelivery(ch, {
               status: "failed",
@@ -3519,6 +3532,12 @@ async function publishNowHandler(req: Request) {
               userId,
               publicationId,
               stage: "precheck",
+              error: igExpired ? "token_expired" : "not_connected",
+              userMessage: instagramUserError,
+            });
+            await markPublishChannelReconnectRequired({
+              channel: "instagram",
+              userId,
               error: igExpired ? "token_expired" : "not_connected",
               userMessage: instagramUserError,
             });
@@ -3745,6 +3764,9 @@ async function publishNowHandler(req: Request) {
               userMessage: instagramUserError,
               diagnostics: videoPhaseResult,
             });
+            await markPublishChannelReconnectRequired({
+              channel: "instagram", userId, error: rawVideoError, userMessage: instagramUserError,
+            });
             await setDelivery(ch, {
               status: "failed",
               error: instagramUserError,
@@ -3815,6 +3837,9 @@ async function publishNowHandler(req: Request) {
               error: resp.error,
               userMessage: instagramUserError,
               diagnostics: resp,
+            });
+            await markPublishChannelReconnectRequired({
+              channel: "instagram", userId, error: resp.error, userMessage: instagramUserError,
             });
             await setDelivery(ch, {
               status: "failed",
@@ -3897,6 +3922,12 @@ async function publishNowHandler(req: Request) {
                 refreshed: auth.refreshed,
                 canReconnectSilently: auth.canReconnectSilently,
               },
+            });
+            await markPublishChannelReconnectRequired({
+              channel: "linkedin",
+              userId,
+              error: liRawError,
+              userMessage: liError,
             });
             await setDelivery(ch, { status: "failed", error: liError });
             results[ch] = {
@@ -4011,6 +4042,12 @@ async function publishNowHandler(req: Request) {
               userMessage: linkedInUserError,
               diagnostics: resp,
             });
+            await markPublishChannelReconnectRequired({
+              channel: "linkedin",
+              userId,
+              error: resp.error,
+              userMessage: linkedInUserError,
+            });
             await setDelivery(ch, {
               status: "failed",
               error: linkedInUserError,
@@ -4119,8 +4156,15 @@ async function publishNowHandler(req: Request) {
           ).trim();
 
           if (!youtubeActive || !youtubeAccessToken) {
-            const youtubeUserError =
-              "YouTube à connecter. Rendez-vous dans Canaux.";
+            const youtubeUserError = youtubeActive
+              ? "YouTube à reconnecter. Rendez-vous dans Canaux."
+              : "YouTube à connecter. Rendez-vous dans Canaux.";
+            await markPublishChannelReconnectRequired({
+              channel: "youtube_shorts",
+              userId,
+              error: youtubeActive ? "access_token_unavailable" : "not_connected",
+              userMessage: youtubeUserError,
+            });
             await setDelivery(ch, {
               status: "failed",
               error: youtubeUserError,
@@ -4371,6 +4415,9 @@ async function publishNowHandler(req: Request) {
               userMessage: youtubeUserError,
               diagnostics: upload,
             });
+            await markPublishChannelReconnectRequired({
+              channel: "youtube_shorts", userId, error: upload.error, userMessage: youtubeUserError,
+            });
             await setDelivery(ch, {
               status: "failed",
               error: youtubeUserError,
@@ -4423,15 +4470,22 @@ async function publishNowHandler(req: Request) {
             : "";
 
           if (!activeTiktok || !tiktokAccessToken) {
-            const tiktokUserError =
-              "TikTok à connecter. Rendez-vous dans Canaux.";
+            const tiktokUserError = activeTiktok
+              ? "TikTok à reconnecter. Rendez-vous dans Canaux."
+              : "TikTok à connecter. Rendez-vous dans Canaux.";
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "tiktok",
               userId,
               publicationId,
               stage: "precheck",
-              error: "not_connected",
+              error: activeTiktok ? "access_token_unavailable" : "not_connected",
+              userMessage: tiktokUserError,
+            });
+            await markPublishChannelReconnectRequired({
+              channel: "tiktok",
+              userId,
+              error: activeTiktok ? "access_token_unavailable" : "not_connected",
               userMessage: tiktokUserError,
             });
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
@@ -4677,6 +4731,9 @@ async function publishNowHandler(req: Request) {
               userMessage: tiktokUserError,
               diagnostics: tiktokResult,
             });
+            await markPublishChannelReconnectRequired({
+              channel: "tiktok", userId, error: tiktokResult.error, userMessage: tiktokUserError,
+            });
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
             results[ch] = {
               ok: false,
@@ -4760,8 +4817,16 @@ async function publishNowHandler(req: Request) {
               : "";
 
           if (!pinterestAccessToken) {
-            const pinterestUserError =
-              "Pinterest à connecter. Rendez-vous dans Canaux.";
+            const pinterestWasConnected = pinterestStatus === "connected" || pinterestStatus === "account_connected";
+            const pinterestUserError = pinterestWasConnected
+              ? "Pinterest à reconnecter. Rendez-vous dans Canaux."
+              : "Pinterest à connecter. Rendez-vous dans Canaux.";
+            await markPublishChannelReconnectRequired({
+              channel: "pinterest",
+              userId,
+              error: pinterestWasConnected ? "access_token_unavailable" : "not_connected",
+              userMessage: pinterestUserError,
+            });
             await setDelivery(ch, {
               status: "failed",
               error: pinterestUserError,
@@ -5275,6 +5340,12 @@ async function publishNowHandler(req: Request) {
               error: "missing_or_expired_token",
               userMessage: gmbUserError,
             });
+            await markPublishChannelReconnectRequired({
+              channel: "gmb",
+              userId,
+              error: "missing_or_expired_token",
+              userMessage: gmbUserError,
+            });
             await setDelivery(ch, { status: "failed", error: gmbUserError });
             results[ch] = { ok: false, error: gmbUserError };
             continue;
@@ -5510,6 +5581,12 @@ async function publishNowHandler(req: Request) {
           userId,
           publicationId,
           stage: "exception",
+          error: e,
+          userMessage: msg,
+        });
+        await markPublishChannelReconnectRequired({
+          channel: ch,
+          userId,
           error: e,
           userMessage: msg,
         });

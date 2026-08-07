@@ -24,6 +24,8 @@ type ChannelDetailInfo = {
   desktopLabel: string;
   mobileLabel: string;
   fullLabel: string;
+  requiresReconnect?: boolean;
+  connectionStatus?: string | null;
 };
 
 type PublishChannelSelectorProps = {
@@ -51,6 +53,23 @@ const CHANNEL_ICON_SRC: Record<ChannelKey, string> = {
   youtube_shorts: "/icons/youtube-shorts.png",
   pinterest: "/icons/pinterest-logo-128.png",
 };
+
+function WarningTriangle({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      focusable="false"
+      style={{ display: "block", color: "#fb923c", filter: "drop-shadow(0 0 6px rgba(251,146,60,0.55))" }}
+    >
+      <path d="M12 3.5 21 20H3L12 3.5Z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M12 8.5v5.7" stroke="#241204" strokeWidth="2.1" strokeLinecap="round" />
+      <circle cx="12" cy="17.2" r="1.15" fill="#241204" />
+    </svg>
+  );
+}
 
 function LinkIcon() {
   return (
@@ -186,6 +205,7 @@ export default function PublishChannelSelector({
         {channelKeys.map((key, index) => {
           const info = getChannelDetailInfo(key);
           const isConnected = connected[key];
+          const requiresReconnect = Boolean(info?.requiresReconnect);
           const isSelected = channels[key] && isConnected;
           const isInfoVisible = channelInfoOpen === key && !!info;
           const isLastOddMobileItem = isMobile && index === channelKeys.length - 1 && channelKeys.length % 2 === 1;
@@ -215,14 +235,21 @@ export default function PublishChannelSelector({
                   overflow: "visible",
                   border: isSelected
                     ? "1px solid rgba(56,189,248,0.82)"
-                    : "1px solid rgba(255,255,255,0.12)",
+                    : requiresReconnect
+                      ? "1px solid rgba(251,146,60,0.52)"
+                      : "1px solid rgba(255,255,255,0.12)",
                   boxShadow: isSelected
                     ? "0 0 0 1px rgba(56,189,248,0.26) inset, 0 10px 24px rgba(14,165,233,0.12)"
-                    : "none",
+                    : requiresReconnect
+                      ? "0 0 18px rgba(251,146,60,0.10)"
+                      : "none",
                   background: isSelected
                     ? "linear-gradient(135deg, rgba(56,189,248,0.22), rgba(14,116,144,0.20))"
-                    : "rgba(255,255,255,0.04)",
+                    : requiresReconnect
+                      ? "linear-gradient(135deg, rgba(251,146,60,0.12), rgba(234,88,12,0.05))"
+                      : "rgba(255,255,255,0.04)",
                   cursor: isConnected ? "pointer" : "not-allowed",
+                  opacity: requiresReconnect ? 0.86 : undefined,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -249,7 +276,9 @@ export default function PublishChannelSelector({
                     letterSpacing: "-0.025em",
                     color: isConnected
                       ? "rgba(255,255,255,0.97)"
-                      : "rgba(255,255,255,0.48)",
+                      : requiresReconnect
+                        ? "rgba(255,255,255,0.78)"
+                        : "rgba(255,255,255,0.48)",
                   }}
                 >
                   {CHANNEL_LABELS[key]}
@@ -257,16 +286,20 @@ export default function PublishChannelSelector({
                 <button
                   type="button"
                   aria-label={
-                    info
-                      ? `Voir les détails de ${CHANNEL_LABELS[key]}`
-                      : `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`
+                    requiresReconnect
+                      ? `${CHANNEL_LABELS[key]} à reconnecter`
+                      : info
+                        ? `Voir les détails de ${CHANNEL_LABELS[key]}`
+                        : `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`
                   }
                   title={
-                    info
-                      ? `Voir les détails de ${CHANNEL_LABELS[key]}`
-                      : isConnected
-                        ? "Canal connecté"
-                        : "Canal non connecté"
+                    requiresReconnect
+                      ? "À reconnecter dans Canaux"
+                      : info
+                        ? `Voir les détails de ${CHANNEL_LABELS[key]}`
+                        : isConnected
+                          ? "Canal connecté"
+                          : "Canal non connecté"
                   }
                   disabled={!info}
                   onPointerDown={(event) => event.stopPropagation()}
@@ -281,25 +314,31 @@ export default function PublishChannelSelector({
                     width: 28,
                     height: 28,
                     borderRadius: 999,
-                    border: isConnected
-                      ? "1px solid rgba(134,239,172,0.58)"
-                      : "1px solid rgba(255,255,255,0.12)",
-                    background: isConnected
-                      ? "linear-gradient(180deg, rgba(34,197,94,0.96), rgba(22,163,74,0.96))"
-                      : "rgba(255,255,255,0.08)",
-                    color: isConnected ? "#ffffff" : "rgba(255,255,255,0.46)",
+                    border: requiresReconnect
+                      ? "1px solid rgba(251,146,60,0.62)"
+                      : isConnected
+                        ? "1px solid rgba(134,239,172,0.58)"
+                        : "1px solid rgba(255,255,255,0.12)",
+                    background: requiresReconnect
+                      ? "rgba(251,146,60,0.12)"
+                      : isConnected
+                        ? "linear-gradient(180deg, rgba(34,197,94,0.96), rgba(22,163,74,0.96))"
+                        : "rgba(255,255,255,0.08)",
+                    color: requiresReconnect ? "#fb923c" : isConnected ? "#ffffff" : "rgba(255,255,255,0.46)",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
                     flexShrink: 0,
                     cursor: info ? "pointer" : "default",
-                    opacity: isConnected ? 1 : 0.6,
-                    boxShadow: isConnected
-                      ? "0 0 0 1px rgba(255,255,255,0.10) inset, 0 8px 18px rgba(34,197,94,0.34)"
-                      : "none",
+                    opacity: requiresReconnect ? 1 : isConnected ? 1 : 0.6,
+                    boxShadow: requiresReconnect
+                      ? "0 0 14px rgba(251,146,60,0.18)"
+                      : isConnected
+                        ? "0 0 0 1px rgba(255,255,255,0.10) inset, 0 8px 18px rgba(34,197,94,0.34)"
+                        : "none",
                   }}
                 >
-                  <LinkIcon />
+                  {requiresReconnect ? <WarningTriangle size={17} /> : <LinkIcon />}
                 </button>
                 {isInfoVisible && info ? (
                   <div
@@ -346,7 +385,7 @@ export default function PublishChannelSelector({
               tabIndex={isConnected ? 0 : -1}
               aria-disabled={!isConnected}
               aria-pressed={isSelected}
-              title={info?.fullLabel || `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`}
+              title={requiresReconnect ? `${CHANNEL_LABELS[key]} · À reconnecter dans Canaux` : info?.fullLabel || `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`}
               onMouseEnter={() => {
                 if (info) setChannelInfoOpen(key);
               }}
@@ -376,33 +415,49 @@ export default function PublishChannelSelector({
                 borderRadius: 16,
                 border: isSelected
                   ? "2px solid rgba(76,195,255,0.88)"
-                  : "1px solid rgba(255,255,255,0.10)",
+                  : requiresReconnect
+                    ? "1px solid rgba(251,146,60,0.52)"
+                    : "1px solid rgba(255,255,255,0.10)",
                 boxShadow: isSelected
                   ? "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 18px rgba(76,195,255,0.18), 0 10px 24px rgba(8,18,34,0.16)"
-                  : "none",
+                  : requiresReconnect
+                    ? "0 0 18px rgba(251,146,60,0.10)"
+                    : "none",
                 background: isSelected
                   ? "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(34,211,238,0.08))"
-                  : "rgba(255,255,255,0.03)",
+                  : requiresReconnect
+                    ? "linear-gradient(135deg, rgba(251,146,60,0.11), rgba(234,88,12,0.04))"
+                    : "rgba(255,255,255,0.03)",
                 cursor: isConnected ? "pointer" : "not-allowed",
+                opacity: requiresReconnect ? 0.86 : undefined,
                 display: "grid",
                 placeItems: "center",
               }}
             >
-              <span
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  top: 8,
-                  right: 8,
-                  width: 9,
-                  height: 9,
-                  borderRadius: 999,
-                  background: isConnected ? "#43d17d" : "#ff6b7d",
-                  boxShadow: isConnected
-                    ? "0 0 12px rgba(67,209,125,0.45)"
-                    : "0 0 12px rgba(255,107,125,0.25)",
-                }}
-              />
+              {requiresReconnect ? (
+                <span
+                  aria-hidden
+                  style={{ position: "absolute", top: 6, right: 6, display: "inline-flex" }}
+                >
+                  <WarningTriangle size={18} />
+                </span>
+              ) : (
+                <span
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    width: 9,
+                    height: 9,
+                    borderRadius: 999,
+                    background: isConnected ? "#43d17d" : "#ff6b7d",
+                    boxShadow: isConnected
+                      ? "0 0 12px rgba(67,209,125,0.45)"
+                      : "0 0 12px rgba(255,107,125,0.25)",
+                  }}
+                />
+              )}
               {isSelected ? (
                 <span
                   aria-hidden
@@ -437,8 +492,8 @@ export default function PublishChannelSelector({
                   height: key === "site_web" ? 25 : 27,
                   borderRadius: 999,
                   objectFit: "cover",
-                  opacity: isConnected ? 1 : 0.48,
-                  filter: isConnected ? undefined : "grayscale(0.7)",
+                  opacity: isConnected ? 1 : requiresReconnect ? 0.72 : 0.48,
+                  filter: isConnected ? undefined : requiresReconnect ? "grayscale(0.35)" : "grayscale(0.7)",
                   boxShadow: isSelected ? "0 0 18px rgba(76,195,255,0.24)" : undefined,
                 }}
               />

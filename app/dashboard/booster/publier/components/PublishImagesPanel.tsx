@@ -497,7 +497,7 @@ export default function PublishImagesPanel({
           {showMediaOptimizerAction && onOpenMediaOptimizer ? (
             <button
               type="button"
-              onClick={onOpenMediaOptimizer}
+              onClick={() => onOpenMediaOptimizer()}
               style={{
                 border: "1px solid rgba(105,239,255,0.42)",
                 borderRadius: 999,

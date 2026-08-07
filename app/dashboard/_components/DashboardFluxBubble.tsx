@@ -45,6 +45,27 @@ type Props = {
   requiredSetupLockMessage?: string;
 };
 
+function WarningTriangle({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M12 3.5 21 20H3L12 3.5Z"
+        fill="currentColor"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M12 8.5v5.7" stroke="#241204" strokeWidth="2.1" strokeLinecap="round" />
+      <circle cx="12" cy="17.2" r="1.15" fill="#241204" />
+    </svg>
+  );
+}
+
 export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked = false, requiredSetupLockMessage = "" }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -55,8 +76,9 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
     isVisible,
   } = useDelayedPendingAction<string>();
   const isComingSoon = item.bubbleStatus === "coming";
+  const isReconnect = item.bubbleStatus === "reconnect" && !requiredSetupLocked;
   const isAvailableToConnect = item.bubbleStatus === "available" && !requiredSetupLocked;
-  const shouldHighlightConfigure = isAvailableToConnect && !item.configureDisabled;
+  const shouldHighlightConfigure = (isAvailableToConnect || isReconnect) && !item.configureDisabled;
   const configureActionKey = `configure:${item.key}`;
   const configurePending = pendingKey === configureActionKey;
   const configureLoadingVisible = isVisible(configureActionKey);
@@ -73,7 +95,7 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
   return (
     <article
       key={itemKey ?? item.key}
-      className={`${bubbleStyles.card} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""}`}
+      className={`${bubbleStyles.card} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""} ${isReconnect ? bubbleStyles.reconnectCard : ""}`}
       title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
     >
       <div className={bubbleStyles.stack}>
@@ -92,13 +114,15 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
 
         <div className={bubbleStyles.title}>{item.name}</div>
 
-        <div className={`${bubbleStyles.status} ${isAvailableToConnect ? bubbleStyles.statusAvailable : ""}`}>
+        <div className={`${bubbleStyles.status} ${isAvailableToConnect ? bubbleStyles.statusAvailable : ""} ${isReconnect ? bubbleStyles.statusReconnect : ""}`}>
           {requiredSetupLocked ? (
             <RequiredSetupLock
               message={requiredSetupLockMessage}
               className={bubbleStyles.statusLock}
               compact
             />
+          ) : isReconnect ? (
+            <WarningTriangle className={bubbleStyles.warningTriangle} />
           ) : (
             <span
               className={[
@@ -152,7 +176,7 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
           )}
 
           <button
-            className={`${bubbleStyles.action} ${bubbleStyles.actionMain} ${shouldHighlightConfigure ? bubbleStyles.actionMainAvailable : ""}`}
+            className={`${bubbleStyles.action} ${bubbleStyles.actionMain} ${shouldHighlightConfigure ? bubbleStyles.actionMainAvailable : ""} ${isReconnect ? bubbleStyles.actionMainReconnect : ""}`}
             type="button"
             data-dashboard-prefetch={item.configureDestination?.kind === "path" ? item.configureDestination.value : undefined}
             onClick={requiredSetupLocked ? undefined : () => {

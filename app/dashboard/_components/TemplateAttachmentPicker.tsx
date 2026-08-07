@@ -9,6 +9,11 @@ import MediaLibraryPickerModal, {
   mediaLibraryItemToAttachment,
   type MediaLibraryPickerItem,
 } from "@/app/dashboard/_components/MediaLibraryPickerModal";
+import MediaOptimizerModal, {
+  type MediaOptimizerItem,
+} from "@/app/dashboard/_components/MediaOptimizerModal";
+import { MEDIA_LIBRARY_EMAIL_TARGET_BYTES } from "@/lib/mediaLibraryOptimizationPolicy";
+import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
 
 const ATTACH_BUCKET = "inrbox_attachments";
 
@@ -34,42 +39,16 @@ export default function TemplateAttachmentPicker({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [mediaLibraryOpen, setMediaLibraryOpen] = React.useState(false);
+  const [optimizerFile, setOptimizerFile] = React.useState<File | null>(null);
+  const [optimizerItem, setOptimizerItem] = React.useState<MediaLibraryPickerItem | null>(null);
+  const [optimizerQueue, setOptimizerQueue] = React.useState<File[]>([]);
+  const [optimizerCompleted, setOptimizerCompleted] = React.useState(false);
 
-  const handleFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const files = Array.from<File>(input.files || []);
-    if (!files.length || busy) return;
-
-    setBusy(true);
-    setError("");
-    try {
-      const supabase = createClient();
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
-      const uploaded: ComposeAttachmentRef[] = [];
-
-      for (const file of files) {
-        const path = makeAttachmentPath(file.name || "piece-jointe", userId);
-        const { error: uploadError } = await supabase.storage
-          .from(ATTACH_BUCKET)
-          .upload(path, file, {
-            cacheControl: "3600",
-            upsert: false,
-            contentType: file.type || "application/octet-stream",
-          });
-        if (uploadError) throw uploadError;
-        uploaded.push({
-          bucket: ATTACH_BUCKET,
-          path,
-          name: file.name || "piece-jointe",
-          type: file.type || "application/octet-stream",
-          size: file.size || 0,
-        });
-      }
-
+  const appendAttachments = React.useCallback(
+    (items: ComposeAttachmentRef[]) => {
       setAttachments((prev) => {
         const merged = [...prev];
-        for (const item of uploaded) {
+        for (const item of items) {
           const exists = merged.some(
             (current) =>
               current.bucket === item.bucket && current.path === item.path,
@@ -78,28 +57,126 @@ export default function TemplateAttachmentPicker({
         }
         return merged;
       });
-    } catch (err) {
-      console.error("Template attachment upload failed", err);
-      setError("Pièce jointe impossible à préparer.");
-    } finally {
-      input.value = "";
-      setBusy(false);
+    },
+    [setAttachments],
+  );
+
+  const openOptimizerForFiles = React.useCallback((files: File[]) => {
+    const [first, ...rest] = files;
+    if (!first) return;
+    setOptimizerItem(null);
+    setOptimizerFile(first);
+    setOptimizerQueue(rest);
+    setOptimizerCompleted(false);
+  }, []);
+
+  const closeOptimizer = React.useCallback(() => {
+    if (optimizerCompleted && optimizerQueue.length > 0) {
+      const [next, ...rest] = optimizerQueue;
+      setOptimizerItem(null);
+      setOptimizerFile(next);
+      setOptimizerQueue(rest);
+      setOptimizerCompleted(false);
+      return;
+    }
+    setOptimizerFile(null);
+    setOptimizerItem(null);
+    setOptimizerQueue([]);
+    setOptimizerCompleted(false);
+  }, [optimizerCompleted, optimizerQueue]);
+
+  const handleFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = Array.from<File>(input.files || []);
+    if (!files.length || busy) return;
+
+    const directFiles: File[] = [];
+    const oversizedMedia: File[] = [];
+    const oversizedUnsupported: File[] = [];
+    for (const file of files) {
+      if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+        directFiles.push(file);
+        continue;
+      }
+      const mediaType = detectUniversalUploadMediaType({
+        name: file.name,
+        mimeType: file.type,
+      });
+      if (mediaType === "image" || mediaType === "video") {
+        oversizedMedia.push(file);
+      } else {
+        oversizedUnsupported.push(file);
+      }
+    }
+
+    setError(
+      oversizedUnsupported.length > 0
+        ? `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être compressé automatiquement par iNrCy.`
+        : "",
+    );
+    input.value = "";
+
+    if (directFiles.length > 0) {
+      setBusy(true);
+      try {
+        const supabase = createClient();
+        const { data: auth } = await supabase.auth.getUser();
+        const userId = auth?.user?.id
+          ? resolveActiveBrowserUserId(auth.user.id)
+          : null;
+        const uploaded: ComposeAttachmentRef[] = [];
+
+        for (const file of directFiles) {
+          const path = makeAttachmentPath(file.name || "piece-jointe", userId);
+          const { error: uploadError } = await supabase.storage
+            .from(ATTACH_BUCKET)
+            .upload(path, file, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: file.type || "application/octet-stream",
+            });
+          if (uploadError) throw uploadError;
+          uploaded.push({
+            bucket: ATTACH_BUCKET,
+            path,
+            name: file.name || "piece-jointe",
+            type: file.type || "application/octet-stream",
+            size: file.size || 0,
+          });
+        }
+
+        appendAttachments(uploaded);
+      } catch (err) {
+        console.error("Template attachment upload failed", err);
+        setError("Pièce jointe impossible à préparer.");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    if (oversizedMedia.length > 0) {
+      openOptimizerForFiles(oversizedMedia);
     }
   };
 
   const addMediaLibraryItems = (items: MediaLibraryPickerItem[]) => {
-    const nextAttachments = items.map(mediaLibraryItemToAttachment);
-    setAttachments((prev) => {
-      const merged = [...prev];
-      for (const item of nextAttachments) {
-        const exists = merged.some(
-          (current) =>
-            current.bucket === item.bucket && current.path === item.path,
-        );
-        if (!exists) merged.push(item);
-      }
-      return merged;
-    });
+    appendAttachments(items.map(mediaLibraryItemToAttachment));
+  };
+
+  const openOptimizerForLibraryItem = (item: MediaLibraryPickerItem) => {
+    setOptimizerFile(null);
+    setOptimizerQueue([]);
+    setOptimizerItem(item);
+    setOptimizerCompleted(false);
+  };
+
+  const handleOptimized = async (item: MediaOptimizerItem) => {
+    if (Number(item.size_bytes || 0) > MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+      setError("La copie compressée dépasse encore 20 Mo. Choisissez un objectif plus léger.");
+      return;
+    }
+    appendAttachments([mediaLibraryItemToAttachment(item)]);
+    setOptimizerCompleted(true);
   };
 
   const isFooter = variant === "footer";
@@ -120,14 +197,25 @@ export default function TemplateAttachmentPicker({
 
   return (
     <>
+      <MediaOptimizerModal
+        open={Boolean(optimizerFile || optimizerItem)}
+        sourceFile={optimizerFile}
+        sourceItem={optimizerItem}
+        origin="email"
+        onClose={closeOptimizer}
+        onOptimized={handleOptimized}
+      />
       <MediaLibraryPickerModal
         open={mediaLibraryOpen}
         title="Joindre depuis la Médiathèque"
-        subtitle="Ajoutez une image ou une vidéo déjà stockée dans iNrCy."
+        subtitle="Ajoutez une image ou une vidéo déjà stockée dans iNrCy · 20 Mo max par fichier."
         accept="all"
         multiple
         maxSelection={10}
+        maxImageBytes={MEDIA_LIBRARY_EMAIL_TARGET_BYTES}
+        maxVideoBytes={MEDIA_LIBRARY_EMAIL_TARGET_BYTES}
         confirmLabel="Joindre"
+        onOpenOptimizer={openOptimizerForLibraryItem}
         onClose={() => setMediaLibraryOpen(false)}
         onConfirm={(items) => addMediaLibraryItems(items)}
       />
@@ -149,6 +237,7 @@ export default function TemplateAttachmentPicker({
           htmlFor={inputId}
           className={styles.secondaryBtn}
           aria-disabled={busy}
+          title="Joindre un fichier · 20 Mo max par fichier"
           style={{
             ...attachButtonStyle,
             opacity: busy ? 0.72 : 1,

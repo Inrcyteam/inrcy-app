@@ -140,6 +140,14 @@ function firstCleanLabel(candidates: unknown[], fallback: string, formatter: (va
   return fallback;
 }
 
+function isOfficiallyConnected(state: { connected?: boolean; connection_status?: string | null }) {
+  return state.connected === true && state.connection_status === "connected";
+}
+
+function requiresReconnect(state: { expired?: boolean; requiresUpdate?: boolean; connection_status?: string | null }) {
+  return state.expired === true || state.requiresUpdate === true || state.connection_status === "needs_update";
+}
+
 export async function GET() {
   try {
     const { supabase, user, errorResponse, activeUserId } = await requireUser();
@@ -164,13 +172,13 @@ export async function GET() {
         inrcy_site: states.site_inrcy.connected,
         site_web: states.site_web.connected,
         inr_search: inrSearchPublished,
-        gmb: states.gmb.connected && !states.gmb.requiresUpdate,
-        facebook: states.facebook.connected && !states.facebook.requiresUpdate,
-        instagram: states.instagram.connected && !states.instagram.requiresUpdate,
-        linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
-        tiktok: states.tiktok.connected && !states.tiktok.requiresUpdate,
-        youtube_shorts: states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate,
-        pinterest: pinterestEnabled && states.pinterest.connected && !states.pinterest.requiresUpdate,
+        gmb: isOfficiallyConnected(states.gmb),
+        facebook: isOfficiallyConnected(states.facebook),
+        instagram: isOfficiallyConnected(states.instagram),
+        linkedin: isOfficiallyConnected(states.linkedin),
+        tiktok: isOfficiallyConnected(states.tiktok),
+        youtube_shorts: isOfficiallyConnected(states.youtube_shorts),
+        pinterest: pinterestEnabled && isOfficiallyConnected(states.pinterest),
       },
       channelDetails: {
         inrcy_site: {
@@ -196,6 +204,8 @@ export async function GET() {
             cleanBusinessName,
           ),
           href: states.gmb.url,
+          connectionStatus: states.gmb.connection_status,
+          requiresReconnect: requiresReconnect(states.gmb),
         },
         facebook: {
           type: "page",
@@ -205,6 +215,8 @@ export async function GET() {
             cleanBusinessName,
           ),
           href: states.facebook.page_url,
+          connectionStatus: states.facebook.connection_status,
+          requiresReconnect: requiresReconnect(states.facebook),
         },
         instagram: {
           type: "account",
@@ -214,6 +226,8 @@ export async function GET() {
             cleanSocialHandle,
           ),
           href: states.instagram.profile_url,
+          connectionStatus: states.instagram.connection_status,
+          requiresReconnect: requiresReconnect(states.instagram),
         },
         linkedin: {
           type: states.linkedin.organization_id ? "page" : "profile",
@@ -227,6 +241,8 @@ export async function GET() {
           href: states.linkedin.organization_id
             ? states.linkedin.organization_url
             : states.linkedin.profile_url,
+          connectionStatus: states.linkedin.connection_status,
+          requiresReconnect: requiresReconnect(states.linkedin),
         },
         tiktok: {
           type: "account",
@@ -236,6 +252,8 @@ export async function GET() {
             cleanSocialHandle,
           ),
           href: states.tiktok.profile_url,
+          connectionStatus: states.tiktok.connection_status,
+          requiresReconnect: requiresReconnect(states.tiktok),
         },
         youtube_shorts: {
           type: "channel",
@@ -245,6 +263,8 @@ export async function GET() {
             cleanBusinessName,
           ),
           href: states.youtube_shorts.channel_url,
+          connectionStatus: states.youtube_shorts.connection_status,
+          requiresReconnect: requiresReconnect(states.youtube_shorts),
         },
         pinterest: {
           type: "account",
@@ -254,6 +274,8 @@ export async function GET() {
             cleanBusinessName,
           ),
           href: states.pinterest.profile_url,
+          connectionStatus: states.pinterest.connection_status,
+          requiresReconnect: requiresReconnect(states.pinterest),
         },
       },
     });

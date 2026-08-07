@@ -10,7 +10,7 @@ export function statusLabel(s: ModuleStatus, language?: AppLanguageCode | string
 
 export function statusClass(s: ModuleStatus) {
   if (s === "connected") return styles.badgeOk;
-  if (s === "available") return styles.badgeWarn;
+  if (s === "available" || s === "reconnect") return styles.badgeWarn;
   return styles.badgeSoon;
 }
 

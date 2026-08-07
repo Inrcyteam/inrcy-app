@@ -469,7 +469,13 @@ export default function PublishModal({
     [imgError],
   );
   const openMediaOptimizer = useCallback((item?: MediaLibraryPickerItem) => {
-    if (item) {
+    const isLibraryItem =
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof item.id === "string" &&
+      (item.media_type === "image" || item.media_type === "video");
+
+    if (isLibraryItem) {
       setMediaOptimizerSourceItem(item as MediaOptimizerItem);
       setOversizedMediaCandidate(null);
     }
@@ -2729,16 +2735,21 @@ export default function PublishModal({
 
   const getChannelDetailInfo = (key: ChannelKey) => {
     const detail = channelDetails[key] || EMPTY_CHANNEL_DETAILS[key];
+    const requiresReconnect = Boolean(detail?.requiresReconnect);
     const rawLabel = String(detail?.label || detail?.href || "").trim();
     const simplifiedLabel = simplifyChannelDetail(key, rawLabel);
-    if (!simplifiedLabel) return null;
-    const desktopLabel = truncateText(simplifiedLabel, 34);
-    const mobileLabel = truncateText(simplifiedLabel, 24);
+    const statusLabel = requiresReconnect ? "À reconnecter dans Canaux" : "";
+    const fullLabel = statusLabel || simplifiedLabel;
+    if (!fullLabel) return null;
+    const desktopLabel = truncateText(fullLabel, 34);
+    const mobileLabel = truncateText(fullLabel, 24);
     return {
-      href: detail?.href || null,
+      href: requiresReconnect ? null : detail?.href || null,
       desktopLabel,
       mobileLabel,
-      fullLabel: simplifiedLabel,
+      fullLabel,
+      requiresReconnect,
+      connectionStatus: detail?.connectionStatus || null,
     };
   };
 

@@ -1,4 +1,4 @@
-export type ModuleStatus = "connected" | "available" | "coming";
+export type ModuleStatus = "connected" | "available" | "reconnect" | "coming";
 export type Accent = "cyan" | "purple" | "pink" | "orange";
 export type Ownership = "none" | "rented" | "sold";
 

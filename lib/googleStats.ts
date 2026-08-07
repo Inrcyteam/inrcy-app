@@ -63,6 +63,13 @@ async function markGoogleIntegrationDisconnected(row: GoogleTokenRow, userId: st
       status: "disconnected",
       access_token_enc: null,
       expires_at: null,
+      meta: {
+        ...(row.meta && typeof row.meta === "object" && !Array.isArray(row.meta) ? row.meta : {}),
+        needs_reconnect: true,
+        needs_reconnect_at: new Date().toISOString(),
+        needs_reconnect_channel: row.source,
+        needs_reconnect_reason: "google_refresh_token_invalid",
+      },
     })
     .eq("id", row.id)
     .eq("user_id", userId);

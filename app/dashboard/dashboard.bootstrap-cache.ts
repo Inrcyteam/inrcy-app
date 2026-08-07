@@ -120,7 +120,7 @@ export function isEmptyInrBadgeProfile(profile: InrBadgeProfileSummary) {
 }
 
 export function isModuleStatus(value: unknown): value is ModuleStatus {
-  return value === "connected" || value === "available" || value === "coming";
+  return value === "connected" || value === "available" || value === "reconnect" || value === "coming";
 }
 
 export function readCachedSiteBubbleProgress(): SiteBubbleProgressCache {

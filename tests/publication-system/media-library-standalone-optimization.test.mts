@@ -79,3 +79,38 @@ test("compression stays autonomous and reusable outside Booster", () => {
   assert.match(vercel, /api\/cron\/media-library-optimization/);
   assert.doesNotMatch(boosterProgress, /Compression des médias/);
 });
+
+test("Booster optimizer buttons never forward the React click event as a media item", () => {
+  const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
+  const intentPanel = read("app/dashboard/booster/publier/components/PublishIntentPanel.tsx");
+  const imagesPanel = read("app/dashboard/booster/publier/components/PublishImagesPanel.tsx");
+
+  assert.match(publishModal, /typeof item\.id === "string"/);
+  assert.match(publishModal, /item\.media_type === "image" \|\| item\.media_type === "video"/);
+  assert.doesNotMatch(intentPanel, /onClick=\{onOpenMediaOptimizer\}/);
+  assert.doesNotMatch(imagesPanel, /onClick=\{onOpenMediaOptimizer\}/);
+  assert.match(intentPanel, /onClick=\{\(\) => onOpenMediaOptimizer\(\)\}/);
+  assert.match(imagesPanel, /onClick=\{\(\) => onOpenMediaOptimizer\(\)\}/);
+});
+
+
+test("mail, Propulser and Fidéliser reuse the optimizer with a strict 20 Mo attachment ceiling", () => {
+  const modal = read("app/dashboard/_components/MediaOptimizerModal.tsx");
+  const picker = read("app/dashboard/_components/MediaLibraryPickerModal.tsx");
+  const templateAttachments = read("app/dashboard/_components/TemplateAttachmentPicker.tsx");
+  const mailCompose = read("app/dashboard/mails/_components/MailboxComposeModal.tsx");
+
+  assert.match(modal, /origin\?: "booster" \| "mediatheque" \| "email"/);
+  assert.match(modal, /origin === "email"\) return MEDIA_LIBRARY_EMAIL_TARGET_BYTES/);
+  assert.match(modal, /Pièce jointe e-mail : 20 Mo maximum/);
+  assert.match(picker, /formatLimitBytes/);
+  assert.doesNotMatch(picker, /item\.media_type === "video" \? "75 Mo" : "50 Mo"/);
+
+  for (const source of [templateAttachments, mailCompose]) {
+    assert.match(source, /MEDIA_LIBRARY_EMAIL_TARGET_BYTES/);
+    assert.match(source, /origin="email"/);
+    assert.match(source, /maxImageBytes=\{MEDIA_LIBRARY_EMAIL_TARGET_BYTES\}/);
+    assert.match(source, /maxVideoBytes=\{MEDIA_LIBRARY_EMAIL_TARGET_BYTES\}/);
+    assert.match(source, /detectUniversalUploadMediaType/);
+  }
+});

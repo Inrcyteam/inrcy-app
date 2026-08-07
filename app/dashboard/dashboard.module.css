@@ -6259,10 +6259,10 @@
 .channelPillWarning {
   background: linear-gradient(
     135deg,
-    rgba(250, 204, 21, 0.26),
-    rgba(234, 179, 8, 0.11)
+    rgba(251, 146, 60, 0.28),
+    rgba(234, 88, 12, 0.12)
   );
-  border-color: rgba(250, 204, 21, 0.38);
+  border-color: rgba(251, 146, 60, 0.44);
 }
 
 .channelPillActive {
@@ -6294,8 +6294,16 @@
 }
 
 .channelPillWarning .channelPillDot {
-  background: #facc15;
-  box-shadow: 0 0 12px rgba(250, 204, 21, 0.7);
+  background: #fb923c;
+  box-shadow: 0 0 12px rgba(251, 146, 60, 0.7);
+}
+
+.channelPillWarningIcon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  color: #fb923c;
+  filter: drop-shadow(0 0 6px rgba(251, 146, 60, 0.5));
 }
 
 .mobileChannelSummary {
@@ -7031,8 +7039,8 @@
 }
 
 .carouselIconBtnWarning::after {
-  background: #facc15;
-  box-shadow: 0 0 9px rgba(250, 204, 21, 0.62);
+  background: #fb923c;
+  box-shadow: 0 0 9px rgba(251, 146, 60, 0.62);
 }
 
 .carouselIconBtnAvailable {

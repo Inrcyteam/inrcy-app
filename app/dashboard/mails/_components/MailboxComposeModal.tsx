@@ -3,6 +3,11 @@ import MediaLibraryPickerModal, {
   mediaLibraryItemToAttachment,
   type MediaLibraryPickerItem,
 } from "@/app/dashboard/_components/MediaLibraryPickerModal";
+import MediaOptimizerModal, {
+  type MediaOptimizerItem,
+} from "@/app/dashboard/_components/MediaOptimizerModal";
+import { MEDIA_LIBRARY_EMAIL_TARGET_BYTES } from "@/lib/mediaLibraryOptimizationPolicy";
+import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
 import styles from "../mails.module.css";
 import {
   normalizeMailSubject,
@@ -183,6 +188,10 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
   } = props;
 
   const [mediaLibraryOpen, setMediaLibraryOpen] = React.useState(false);
+  const [optimizerFile, setOptimizerFile] = React.useState<File | null>(null);
+  const [optimizerItem, setOptimizerItem] = React.useState<MediaLibraryPickerItem | null>(null);
+  const [optimizerQueue, setOptimizerQueue] = React.useState<File[]>([]);
+  const [optimizerCompleted, setOptimizerCompleted] = React.useState(false);
 
   const hasComposeWork = React.useMemo(() => {
     return Boolean(
@@ -428,61 +437,144 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     padding: "14px 14px",
   };
 
-  const handleAttachmentInputChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const input = e.currentTarget;
-    const next = Array.from<File>(input.files || []);
-    setFiles(next);
-    if (!next.length) return;
-    try {
-      const uploaded = await uploadComposeFiles(next);
+  const appendComposeAttachments = React.useCallback(
+    (items: any[]) => {
       setComposeAttachments((prev) => {
         const merged = [...prev];
-        for (const item of uploaded) {
+        for (const item of items) {
           const exists = merged.some(
-            (x) => x.bucket === item.bucket && x.path === item.path,
+            (current) =>
+              current.bucket === item.bucket && current.path === item.path,
           );
           if (!exists) merged.push(item);
         }
         return merged;
       });
-    } catch (err) {
-      console.error("Attachment upload failed", err);
+    },
+    [setComposeAttachments],
+  );
+
+  const openOptimizerForFiles = React.useCallback((files: File[]) => {
+    const [first, ...rest] = files;
+    if (!first) return;
+    setOptimizerItem(null);
+    setOptimizerFile(first);
+    setOptimizerQueue(rest);
+    setOptimizerCompleted(false);
+  }, []);
+
+  const closeOptimizer = React.useCallback(() => {
+    if (optimizerCompleted && optimizerQueue.length > 0) {
+      const [next, ...rest] = optimizerQueue;
+      setOptimizerItem(null);
+      setOptimizerFile(next);
+      setOptimizerQueue(rest);
+      setOptimizerCompleted(false);
+      return;
+    }
+    setOptimizerFile(null);
+    setOptimizerItem(null);
+    setOptimizerQueue([]);
+    setOptimizerCompleted(false);
+  }, [optimizerCompleted, optimizerQueue]);
+
+  const handleAttachmentInputChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const input = e.currentTarget;
+    const next = Array.from<File>(input.files || []);
+    input.value = "";
+    setFiles([]);
+    if (!next.length) return;
+
+    const directFiles: File[] = [];
+    const oversizedMedia: File[] = [];
+    const oversizedUnsupported: File[] = [];
+    for (const file of next) {
+      if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+        directFiles.push(file);
+        continue;
+      }
+      const mediaType = detectUniversalUploadMediaType({
+        name: file.name,
+        mimeType: file.type,
+      });
+      if (mediaType === "image" || mediaType === "video") {
+        oversizedMedia.push(file);
+      } else {
+        oversizedUnsupported.push(file);
+      }
+    }
+
+    if (oversizedUnsupported.length > 0) {
       setToast(
-        "Impossible de préparer cette pièce jointe. Veuillez vérifier son format ou sa taille.",
+        `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être compressé automatiquement par iNrCy.`,
       );
-    } finally {
-      input.value = "";
-      setFiles([]);
+    }
+
+    if (directFiles.length > 0) {
+      try {
+        setFiles(directFiles);
+        const uploaded = await uploadComposeFiles(directFiles);
+        appendComposeAttachments(uploaded);
+      } catch (err) {
+        console.error("Attachment upload failed", err);
+        setToast(
+          "Impossible de préparer cette pièce jointe. Veuillez vérifier son format ou sa taille.",
+        );
+      } finally {
+        setFiles([]);
+      }
+    }
+
+    if (oversizedMedia.length > 0) {
+      setToast("Ce média dépasse 20 Mo. Choisissez le poids cible pour créer une copie adaptée à l’e-mail.");
+      openOptimizerForFiles(oversizedMedia);
     }
   };
 
   const addMediaLibraryAttachments = (items: MediaLibraryPickerItem[]) => {
-    const nextAttachments = items.map(mediaLibraryItemToAttachment);
-    setComposeAttachments((prev) => {
-      const merged = [...prev];
-      for (const item of nextAttachments) {
-        const exists = merged.some(
-          (current) =>
-            current.bucket === item.bucket && current.path === item.path,
-        );
-        if (!exists) merged.push(item);
-      }
-      return merged;
-    });
+    appendComposeAttachments(items.map(mediaLibraryItemToAttachment));
+  };
+
+  const openOptimizerForLibraryItem = (item: MediaLibraryPickerItem) => {
+    setOptimizerFile(null);
+    setOptimizerQueue([]);
+    setOptimizerItem(item);
+    setOptimizerCompleted(false);
+  };
+
+  const handleOptimizedAttachment = async (item: MediaOptimizerItem) => {
+    if (Number(item.size_bytes || 0) > MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+      setToast("La copie compressée dépasse encore 20 Mo. Choisissez un objectif plus léger.");
+      return;
+    }
+    appendComposeAttachments([mediaLibraryItemToAttachment(item)]);
+    setOptimizerCompleted(true);
+    setToast("Copie compressée ajoutée au message.");
   };
 
   return (
     <div className={`${styles.modalOverlay} ${styles.composeModalOverlay}`} onClick={(e) => e.stopPropagation()}>
+      <MediaOptimizerModal
+        open={Boolean(optimizerFile || optimizerItem)}
+        sourceFile={optimizerFile}
+        sourceItem={optimizerItem}
+        origin="email"
+        onClose={closeOptimizer}
+        onOptimized={handleOptimizedAttachment}
+      />
       <MediaLibraryPickerModal
         open={mediaLibraryOpen}
         title="Joindre depuis la Médiathèque"
-        subtitle="Ajoutez une image ou une vidéo déjà stockée dans iNrCy."
+        subtitle="Ajoutez une image ou une vidéo déjà stockée dans iNrCy · 20 Mo max par fichier."
         accept="all"
         multiple
         maxSelection={10}
+        maxImageBytes={MEDIA_LIBRARY_EMAIL_TARGET_BYTES}
+        maxVideoBytes={MEDIA_LIBRARY_EMAIL_TARGET_BYTES}
         confirmLabel="Joindre"
+        onOpenOptimizer={openOptimizerForLibraryItem}
         onClose={() => setMediaLibraryOpen(false)}
         onConfirm={(items) => addMediaLibraryAttachments(items)}
       />
@@ -1178,7 +1270,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
               htmlFor={fileInputId}
               className={styles.btnAttach}
               aria-disabled={attachBusy}
-              title="Joindre un fichier"
+              title="Joindre un fichier · 20 Mo max"
             >
               <span aria-hidden>📎</span>
               <span className={styles.composeAttachLabel}>Joindre</span>

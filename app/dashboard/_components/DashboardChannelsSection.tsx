@@ -41,6 +41,16 @@ type ChannelPillTone = "connected" | "available" | "warning";
 
 const SITE_CHANNEL_KEYS = new Set(["site_inrcy", "site_web"]);
 
+function WarningTriangle({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
+      <path d="M12 3.5 21 20H3L12 3.5Z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M12 8.5v5.7" stroke="#241204" strokeWidth="2.1" strokeLinecap="round" />
+      <circle cx="12" cy="17.2" r="1.15" fill="#241204" />
+    </svg>
+  );
+}
+
 function getChannelPillLabel(item: DashboardFluxBubbleData) {
   if (!SITE_CHANNEL_KEYS.has(item.key)) return item.name;
 
@@ -49,6 +59,8 @@ function getChannelPillLabel(item: DashboardFluxBubbleData) {
 }
 
 function getChannelPillTone(item: DashboardFluxBubbleData): ChannelPillTone {
+  if (item.bubbleStatus === "reconnect") return "warning";
+
   const normalizedStatusText = item.bubbleStatusText
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -175,11 +187,12 @@ export default function DashboardChannelsSection({
 
   const renderDesktopSideBubble = (item: DashboardFluxBubbleData, keyOverride?: string) => {
     const isComingSoon = item.bubbleStatus === "coming";
+    const isReconnect = item.bubbleStatus === "reconnect";
 
     return (
     <article
       key={keyOverride ?? item.key}
-      className={`${bubbleStyles.card} ${styles.desktopSideBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""}`}
+      className={`${bubbleStyles.card} ${styles.desktopSideBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""} ${isReconnect ? bubbleStyles.reconnectCard : ""}`}
       title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
       aria-hidden
     >
@@ -199,8 +212,12 @@ export default function DashboardChannelsSection({
 
         <div className={bubbleStyles.title}>{item.name}</div>
 
-        <div className={bubbleStyles.status}>
-          <span className={getStatusDotClassName(item)} aria-hidden />
+        <div className={`${bubbleStyles.status} ${isReconnect ? bubbleStyles.statusReconnect : ""}`}>
+          {isReconnect ? (
+            <WarningTriangle className={bubbleStyles.warningTriangle} />
+          ) : (
+            <span className={getStatusDotClassName(item)} aria-hidden />
+          )}
           <span className={bubbleStyles.statusText}>{item.bubbleStatusText}</span>
         </div>
 
@@ -448,7 +465,11 @@ export default function DashboardChannelsSection({
                     }}
                     aria-pressed={isActive}
                   >
-                    <span className={styles.channelPillDot} aria-hidden />
+                    {tone === "warning" ? (
+                      <WarningTriangle className={styles.channelPillWarningIcon} />
+                    ) : (
+                      <span className={styles.channelPillDot} aria-hidden />
+                    )}
                     <span>{getChannelPillLabel(item)}</span>
                   </button>
                 );

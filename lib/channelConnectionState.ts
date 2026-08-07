@@ -167,6 +167,10 @@ function hasTruthyString(v: unknown) {
   return !!(asString(v) || "").trim();
 }
 
+function hasIntegrationRecord(row: JsonRecord) {
+  return Object.keys(row).length > 0;
+}
+
 function buildGoogleMapsSearchUrl(label: string | null) {
   const clean = (label || "").trim();
   return clean ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clean)}` : null;
@@ -257,12 +261,17 @@ export async function getChannelConnectionStates(
   const fbHasSelectedPageToken = hasTruthyString(fbMeta.selected) || hasTruthyString(fb.resource_id);
   const fbExpired = isExpired(fb.expires_at) && !fbHasSelectedPageToken;
   const fbStatus = asString(fb.status);
+  const fbHasOfficialRow = hasIntegrationRecord(fb);
   const fbHasToken = hasTruthyString(fb.access_token_enc) || hasTruthyString(fbMeta.standard_user_access_token_enc) || hasTruthyString(fbMeta.business_user_access_token_enc) || hasTruthyString(fbMeta.user_access_token_enc);
-  const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
+  const fbAccountConnected = fbHasOfficialRow
+    ? Boolean((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken)
+    : Boolean(fbSettings.accountConnected);
   const fbResourceId = asString(fb.resource_id) || asString(fbSettings.pageId) || null;
   const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;
   const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fbSettings.url) || buildFacebookPageUrl(fbResourceId);
-  const fbPageConnected = Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
+  const fbPageConnected = fbHasOfficialRow
+    ? Boolean(fbAccountConnected && fbResourceId)
+    : Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
   const fbConnectionStatus = getConnectionDisplayStatus(fbPageConnected, "channel:facebook", fbMeta);
   const fbRequiresUpdate = fbConnectionStatus === "needs_update";
 
@@ -272,8 +281,11 @@ export async function getChannelConnectionStates(
   const igHasSelectedProfileToken = hasTruthyString(igMeta.page_id) || hasTruthyString(ig.resource_id);
   const igExpired = isExpired(ig.expires_at) && !igHasSelectedProfileToken;
   const igStatus = asString(ig.status);
+  const igHasOfficialRow = hasIntegrationRecord(ig);
   const igHasToken = hasTruthyString(ig.access_token_enc);
-  const igAccountConnected = Boolean(((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken) || igSettings.accountConnected);
+  const igAccountConnected = igHasOfficialRow
+    ? Boolean((igStatus === "account_connected" || igStatus === "connected") && !igExpired && igHasToken)
+    : Boolean(igSettings.accountConnected);
   const igResourceId = asString(ig.resource_id) || asString(igSettings.igId) || asString(igSettings.pageId) || null;
   const igUsername = asString(ig.resource_label) || asString(igSettings.username) || null;
   const igProfileUrl = asString(igSettings.url) || (igUsername ? `https://www.instagram.com/${igUsername}/` : null);
@@ -289,7 +301,10 @@ export async function getChannelConnectionStates(
   const liExpired = isExpired(li.expires_at) && !liHasRefreshToken;
   const liStatus = asString(li.status);
   const liMeta = asRecord(li.meta);
-  const liConnected = Boolean(((liStatus === "connected" || liStatus === "account_connected") && liHasReusableAuth && !liExpired) || liSettings.accountConnected || liSettings.connected);
+  const liHasOfficialRow = hasIntegrationRecord(li);
+  const liConnected = liHasOfficialRow
+    ? Boolean((liStatus === "connected" || liStatus === "account_connected") && liHasReusableAuth && !liExpired)
+    : Boolean(liSettings.accountConnected || liSettings.connected);
   const liConnectionStatus = getConnectionDisplayStatus(liConnected, "channel:linkedin", liMeta);
   const liRequiresUpdate = liConnectionStatus === "needs_update";
   const liActiveOrganizationId = asString(liMeta.org_id) || asString(liSettings.orgId) || "";
@@ -347,8 +362,11 @@ export async function getChannelConnectionStates(
   const pinterestHasToken = hasTruthyString(pinterest.access_token_enc) || hasTruthyString(pinterest.refresh_token_enc);
   const pinterestExpired = isExpired(pinterest.expires_at) && !hasTruthyString(pinterest.refresh_token_enc);
   const pinterestStatus = asString(pinterest.status);
+  const pinterestMeta = asRecord(pinterest.meta);
   const pinterestOAuthConnected = Boolean((pinterestStatus === "connected" || pinterestStatus === "account_connected") && pinterestHasToken && !pinterestExpired);
   const pinterestConnected = pinterestOAuthConnected;
+  const pinterestConnectionStatus = getConnectionDisplayStatus(pinterestConnected, "channel:pinterest", pinterestMeta);
+  const pinterestRequiresUpdate = pinterestConnectionStatus === "needs_update";
   const pinterestDefaultBoardId = asString(pinterestSettings.defaultBoardId) || null;
   const pinterestDefaultBoardName = asString(pinterestSettings.defaultBoardName) || null;
 
@@ -364,17 +382,20 @@ export async function getChannelConnectionStates(
   const gmbSettings = asRecord(settings.gmb);
   const gmbMeta = asRecord(gmb.meta);
   const gmbStatus = asString(gmb.status);
+  const gmbHasOfficialRow = hasIntegrationRecord(gmb);
   const gmbHasToken = hasTruthyString(gmb.access_token_enc);
   const gmbHasRefreshToken = hasTruthyString(gmb.refresh_token_enc);
   const gmbHasReusableAuth = gmbHasToken || gmbHasRefreshToken;
   const gmbExpired = isExpired(gmb.expires_at) && !gmbHasRefreshToken;
-  const gmbAccountConnected = Boolean(
-    (((gmbStatus === "connected" || gmbStatus === "account_connected") && gmbHasReusableAuth && !gmbExpired) || gmbSettings.connected || gmbSettings.accountEmail)
-  );
+  const gmbAccountConnected = gmbHasOfficialRow
+    ? Boolean((gmbStatus === "connected" || gmbStatus === "account_connected") && gmbHasReusableAuth && !gmbExpired)
+    : Boolean(gmbSettings.connected || gmbSettings.accountEmail);
   const gmbResourceId = asString(gmb.resource_id) || asString(gmbSettings.locationName) || null;
   const gmbResourceLabel = asString(gmb.resource_label) || asString(gmbSettings.locationTitle) || null;
   const gmbUrl = asString(gmbMeta.url) || asString(gmbSettings.url) || buildGoogleMapsSearchUrl(gmbResourceLabel || gmbResourceId);
-  const gmbConfigured = Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
+  const gmbConfigured = gmbHasOfficialRow
+    ? Boolean(gmbAccountConnected && gmbResourceId)
+    : Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
   const gmbConnectionStatus = getConnectionDisplayStatus(gmbConfigured, "channel:gmb", gmbMeta);
   const gmbRequiresUpdate = gmbConnectionStatus === "needs_update";
 
@@ -474,8 +495,8 @@ export async function getChannelConnectionStates(
       accountConnected: pinterestConnected,
       connected: pinterestConnected,
       expired: pinterestExpired,
-      requiresUpdate: false,
-      connection_status: pinterestConnected ? "connected" : "disconnected",
+      requiresUpdate: pinterestRequiresUpdate,
+      connection_status: pinterestConnectionStatus,
       // Le lien public est renseigné par le professionnel et reste indépendant des données API Pinterest.
       resource_id: pinterestDefaultBoardId,
       username: null,

@@ -407,7 +407,7 @@ const fr: DashboardCopy = {
     toConnect: "A connecter",
     toConfigure: "A configurer",
     toUpdate: "À actualiser",
-    reconnect: "Reconnexion requise",
+    reconnect: "À reconnecter",
     disabled: "Désactivé",
     noSite: "Aucun site",
     soon: "Bientôt",
@@ -755,6 +755,7 @@ export function getDashboardStatusLabel(status: ModuleStatus, language?: AppLang
   const copy = getDashboardTranslations(language);
   if (status === "connected") return copy.status.connected;
   if (status === "available") return copy.status.toConnect;
+  if (status === "reconnect") return copy.status.reconnect;
   return copy.status.soon;
 }
 

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { log } from "@/lib/observability/logger";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   FACEBOOK_RECONNECT_USER_MESSAGE,
   GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE,
@@ -46,6 +47,9 @@ const CHANNEL_RECONNECTS: Partial<Record<PublishDiagnosticChannel, string>> = {
   facebook: FACEBOOK_RECONNECT_USER_MESSAGE,
   instagram: INSTAGRAM_RECONNECT_USER_MESSAGE,
   linkedin: LINKEDIN_RECONNECT_USER_MESSAGE,
+  tiktok: "TikTok à reconnecter. Rendez-vous dans Canaux.",
+  youtube_shorts: "YouTube à reconnecter. Rendez-vous dans Canaux.",
+  pinterest: "Pinterest à reconnecter. Rendez-vous dans Canaux.",
 };
 
 function stringifyError(input: unknown): string {
@@ -56,6 +60,73 @@ function stringifyError(input: unknown): string {
   } catch {
     return String(input || "");
   }
+}
+
+const RECONNECT_INTEGRATION_KEYS: Partial<Record<PublishDiagnosticChannel, { provider: string; source: string; product: string }>> = {
+  gmb: { provider: "google", source: "gmb", product: "gmb" },
+  facebook: { provider: "facebook", source: "facebook", product: "facebook" },
+  instagram: { provider: "instagram", source: "instagram", product: "instagram" },
+  linkedin: { provider: "linkedin", source: "linkedin", product: "linkedin" },
+  tiktok: { provider: "tiktok", source: "tiktok", product: "tiktok" },
+  youtube_shorts: { provider: "youtube", source: "youtube_shorts", product: "youtube_shorts" },
+  pinterest: { provider: "pinterest", source: "pinterest", product: "pinterest" },
+};
+
+const RECONNECT_USER_MESSAGE_RE = /(?:\breconnect|reconnexion\s+requise|à\s+reconnecter|a\s+reconnecter|reconnecte)/i;
+const RECONNECT_RAW_ERROR_RE = /(?:invalid_grant|access_token_invalid|invalid\s+(?:access\s+)?token|token\s+(?:has\s+been\s+)?(?:expired|revoked)|expired\s+token|refresh\s+token.*(?:expired|revoked|invalid)|oauth.*(?:expired|invalid)|session\s+has\s+expired|unauthorized.*token|\b401\b)/i;
+
+export function isPublishReconnectRequiredError(
+  channel: PublishDiagnosticChannel,
+  error: unknown,
+  userMessage?: string | null,
+): boolean {
+  if (!RECONNECT_INTEGRATION_KEYS[channel]) return false;
+  const publicMessage = String(userMessage || "");
+  if (RECONNECT_USER_MESSAGE_RE.test(publicMessage)) return true;
+  return RECONNECT_RAW_ERROR_RE.test(stringifyError(error));
+}
+
+export async function markPublishChannelReconnectRequired(params: {
+  channel: PublishDiagnosticChannel;
+  userId: string;
+  error?: unknown;
+  userMessage?: string | null;
+}) {
+  const key = RECONNECT_INTEGRATION_KEYS[params.channel];
+  if (!key || !params.userId) return false;
+  if (!isPublishReconnectRequiredError(params.channel, params.error, params.userMessage)) return false;
+
+  const { data, error: readError } = await supabaseAdmin
+    .from("integrations")
+    .select("id,meta")
+    .eq("user_id", params.userId)
+    .eq("provider", key.provider)
+    .eq("source", key.source)
+    .eq("product", key.product)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (readError || !data?.id) return false;
+  const currentMeta = data.meta && typeof data.meta === "object" && !Array.isArray(data.meta)
+    ? data.meta as Record<string, unknown>
+    : {};
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabaseAdmin
+    .from("integrations")
+    .update({
+      meta: {
+        ...currentMeta,
+        needs_reconnect: true,
+        needs_reconnect_at: now,
+        needs_reconnect_channel: params.channel,
+        needs_reconnect_reason: "publication_authentication_failed",
+      },
+    })
+    .eq("id", data.id)
+    .eq("user_id", params.userId);
+
+  return !updateError;
 }
 
 function sanitizeDiagnostics(value: unknown, depth = 0): unknown {
