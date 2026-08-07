@@ -1000,7 +1000,7 @@ export default function MediaLibraryClient() {
               <small className={styles.helper}>
                 {selectedFiles.length
                   ? `${selectedFiles.length} fichier(s) · ${selectedStats.images} image(s) · ${selectedStats.videos} vidéo(s) · ${formatBytes(selectedStats.bytes)}`
-                  : `Glissez-déposez ou sélectionnez vos médias jusqu’à 300 Mo. Après l’import, un bouton permet d’optimiser les images de plus de 50 Mo et les vidéos de plus de 75 Mo · lots de ${UPLOAD_BATCH_SIZE}.`}
+                  : `Médias source jusqu’à 300 Mo · optimisation proposée au-delà de 50 Mo par image ou 75 Mo pour la vidéo · lots de ${UPLOAD_BATCH_SIZE}.`}
               </small>
             </label>
 

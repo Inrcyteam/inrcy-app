@@ -963,6 +963,42 @@ export default function PublishModal({
           if (json?.channelDetails) {
             setChannelDetails((prev) => ({ ...prev, ...json.channelDetails }));
           }
+          if (json.channels.pinterest) {
+            void fetch("/api/integrations/pinterest/status?live=1", {
+              cache: "no-store" as any,
+            })
+              .then(async (pinterestResponse) => {
+                if (!pinterestResponse.ok) return null;
+                return pinterestResponse.json().catch(() => null);
+              })
+              .then((pinterestStatus) => {
+                if (!alive || !pinterestStatus?.ok || !pinterestStatus?.connected)
+                  return;
+                const username = String(pinterestStatus.username || "")
+                  .replace(/^@+/, "")
+                  .trim();
+                const profileHref = normalizeExternalHref(
+                  pinterestStatus.profileUrl ||
+                    pinterestStatus.publicProfileUrl ||
+                    (username
+                      ? `https://www.pinterest.fr/${encodeURIComponent(username)}/`
+                      : ""),
+                );
+                const accountLabel = String(
+                  pinterestStatus.accountName || username || profileHref,
+                ).trim();
+                setChannelDetails((current) => ({
+                  ...current,
+                  pinterest: {
+                    ...(current.pinterest || EMPTY_CHANNEL_DETAILS.pinterest),
+                    type: "account",
+                    label: accountLabel || "Compte Pinterest connecté",
+                    href: profileHref || null,
+                  },
+                }));
+              })
+              .catch(() => null);
+          }
         }
       } catch {
         // ignore
@@ -5050,10 +5086,54 @@ export default function PublishModal({
       if (publicationAccepted) {
         onUnsavedChange?.(false);
       }
+      let recoveredPinterestHref = "";
+      if (
+        publishableChannels.includes("pinterest") &&
+        !normalizeExternalHref(channelDetails.pinterest?.href)
+      ) {
+        try {
+          const pinterestResponse = await fetch(
+            "/api/integrations/pinterest/status?live=1",
+            { cache: "no-store" as any },
+          );
+          const pinterestStatus = pinterestResponse.ok
+            ? await pinterestResponse.json().catch(() => null)
+            : null;
+          const username = String(pinterestStatus?.username || "")
+            .replace(/^@+/, "")
+            .trim();
+          recoveredPinterestHref = normalizeExternalHref(
+            pinterestStatus?.profileUrl ||
+              pinterestStatus?.publicProfileUrl ||
+              (username
+                ? `https://www.pinterest.fr/${encodeURIComponent(username)}/`
+                : ""),
+          );
+          if (recoveredPinterestHref) {
+            const accountLabel = String(
+              pinterestStatus?.accountName || username || recoveredPinterestHref,
+            ).trim();
+            setChannelDetails((current) => ({
+              ...current,
+              pinterest: {
+                ...(current.pinterest || EMPTY_CHANNEL_DETAILS.pinterest),
+                type: "account",
+                label: accountLabel || "Compte Pinterest connecté",
+                href: recoveredPinterestHref,
+              },
+            }));
+          }
+        } catch {
+          recoveredPinterestHref = "";
+        }
+      }
       const channelLinks = Object.fromEntries(
         publishableChannels.map((channel) => [
           channel,
-          normalizeExternalHref(channelDetails[channel]?.href),
+          channel === "pinterest"
+            ? normalizeExternalHref(channelDetails[channel]?.href) ||
+              recoveredPinterestHref
+            : normalizeExternalHref(channelDetails[channel]?.href),
         ]),
       );
       if (publicationComplete) {

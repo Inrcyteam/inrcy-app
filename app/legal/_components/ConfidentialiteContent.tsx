@@ -189,7 +189,7 @@ historiques de publication ;
 statuts de publication ;
 erreurs ou retours techniques des plateformes connectées.
 
-Sauf évolution de l’offre, l’application peut permettre l’ajout de 5 images maximum, dans une limite de 50 Mo par image et de 150 Mo au total pour une publication, ou 1 vidéo source MP4/M4V/MOV H.264/AAC jusqu’à 75 Mo, conservée dans son format original sauf adaptation explicitement demandée par le professionnel. Au-delà de 75 Mo, le fichier doit d’abord être compressé hors du Booster.
+Sauf évolution de l’offre, l’application peut permettre l’ajout de 5 images maximum, avec un objectif de 50 Mo par image et de 150 Mo au total après optimisation, ou 1 vidéo source jusqu’à 300 Mo. Au-delà de 50 Mo par image ou de 75 Mo pour la vidéo, iNrCy propose la création d’une copie optimisée adaptée à la publication, sans modifier le fichier original du professionnel.
 
 Le professionnel reste responsable des contenus, images, vidéos, marques, textes, sons, musiques, logos, documents et éléments qu’il importe, génère, valide ou publie.
 

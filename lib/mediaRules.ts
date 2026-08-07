@@ -1,13 +1,12 @@
 export const INR_MEDIA_IMAGE_MAX_BYTES = 50 * 1024 * 1024;
 export const INR_MEDIA_IMAGE_MAX_MB_LABEL = "50 Mo";
 
-// Booster has one video class only: an original source up to 75,000,000 bytes.
-// Files above this ceiling belong to the future, separate media-library
-// compressor and are rejected before upload by the current publication flow.
+// 75 Mo est le seuil de la copie prête à publier. Une source plus lourde peut
+// être importée jusqu'au plafond de 300 Mo puis optimisée avant publication.
 export const INR_MEDIA_VIDEO_SOURCE_MAX_BYTES = 75_000_000;
 export const INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL = "75 Mo";
 export const INR_MEDIA_VIDEO_TOO_LARGE_MESSAGE =
-  `Cette vidéo dépasse ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}. Compressez-la d'abord avant de l'ajouter au Booster.`;
+  `Cette vidéo dépasse ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}. iNrCy vous propose de créer une copie optimisée avant de poursuivre.`;
 
 export const INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT = 5;
 export const INR_MEDIA_PUBLICATION_IMAGE_COUNT_LABEL = "5 images";
@@ -29,7 +28,7 @@ export const INR_MEDIA_IMAGE_FORMATS_LABEL =
 export const INR_MEDIA_VIDEO_FORMATS_LABEL =
   "MP4, M4V ou MOV (H.264/AAC)";
 export const INR_MEDIA_IMAGE_LIMITS_LABEL = `${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images maximum · ${INR_MEDIA_IMAGE_MAX_MB_LABEL} par image · ${INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL} au total`;
-export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo maximum · ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · original conservé`;
+export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo maximum · source jusqu’à 300 Mo · optimisation au-delà de ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · original conservé`;
 
 export const INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES = [
   "image/jpeg",

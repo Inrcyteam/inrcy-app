@@ -164,8 +164,8 @@ test("media can be added after generation without clearing channel content", () 
   assert.doesNotMatch(imageSource, /setPostsByChannel\(/);
   assert.doesNotMatch(imageSource, /setContentWorkspaceOpen/);
 
-  assert.match(intentPanel, /sans nouvel upload/);
-  assert.match(imagePanel, /r\u00e9utilis\u00e9 ici/);
+  assert.match(intentPanel, /BOOSTER_GENERATION_MEDIA_OPTIMIZATION_LABEL/);
+  assert.match(imagePanel, /BOOSTER_PUBLICATION_MEDIA_OPTIMIZATION_LABEL/);
 });
 
 test("the UI keeps one final publishing engine with dynamic branch labels", () => {

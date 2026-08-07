@@ -169,8 +169,8 @@ Le Client peut utiliser des médias dans les limites prévues par l’applicatio
 
 Sauf évolution ultérieure de l’offre, Booster / Publier permet notamment d’ajouter :
 
-jusqu’à 5 images, dans une limite de 50 Mo par image et de 150 Mo au total pour une publication ; ou
-1 vidéo source MP4/M4V/MOV H.264/AAC jusqu’à 75 Mo, conservée dans son format original sauf adaptation explicitement demandée par le Client. Au-delà de 75 Mo, le fichier doit d’abord être compressé hors du Booster.
+jusqu’à 5 images, avec un objectif de 50 Mo par image et de 150 Mo au total après optimisation ; ou
+1 vidéo source jusqu’à 300 Mo. Au-delà de 50 Mo par image ou de 75 Mo pour la vidéo, iNrCy propose la création d’une copie optimisée adaptée à la publication, sans modifier le fichier original du Client.
 
 Les limites techniques peuvent évoluer selon les besoins de stabilité, de sécurité, de performance ou les contraintes imposées par les plateformes tierces.
 

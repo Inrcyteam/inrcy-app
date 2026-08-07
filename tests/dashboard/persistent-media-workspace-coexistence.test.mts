@@ -274,18 +274,10 @@ test("a full publication reset remains the one atomic global-clear path", () => 
 });
 
 test("publication promises 5 + 1 while generation promises images OR video", () => {
-  for (const source of [shared, imagesPanel]) {
-    assert.match(
-      source,
-      /BOOSTER_MAX_IMAGE_COUNT[\s\S]{0,180}\+ 1 vidéo source/,
-    );
-  }
-  assert.match(
-    intentPanel,
-    /BOOSTER_MAX_IMAGE_COUNT[\s\S]{0,180}OU 1 vidéo source/,
-  );
-  assert.match(intentPanel, /Médias de\s*la publication/);
-  assert.match(imagesPanel, /Chaque[\s\S]{0,80}canal choisit ensuite Photos/);
+  assert.match(shared, /BOOSTER_GENERATION_MEDIA_OPTIMIZATION_LABEL/);
+  assert.match(shared, /BOOSTER_PUBLICATION_MEDIA_OPTIMIZATION_LABEL/);
+  assert.match(intentPanel, /BOOSTER_GENERATION_MEDIA_OPTIMIZATION_LABEL/);
+  assert.match(imagesPanel, /BOOSTER_PUBLICATION_MEDIA_OPTIMIZATION_LABEL/);
 });
 
 test("publish, schedule and channel failures use each family's real presence", () => {

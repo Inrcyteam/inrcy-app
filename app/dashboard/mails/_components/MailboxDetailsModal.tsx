@@ -5,11 +5,18 @@ import { editableHtmlToSiteText, renderBoosterSiteContentHtml, renderBoosterSite
 import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
-import MediaLibraryPickerModal from "@/app/dashboard/_components/MediaLibraryPickerModal";
+import MediaLibraryPickerModal, {
+  type MediaLibraryPickerItem,
+} from "@/app/dashboard/_components/MediaLibraryPickerModal";
+import MediaOptimizerModal, {
+  type MediaOptimizerItem,
+} from "@/app/dashboard/_components/MediaOptimizerModal";
 import RichSiteContentEditor from "@/app/dashboard/booster/publier/components/RichSiteContentEditor";
 import BoosterVideoFormatManager from "@/app/dashboard/booster/publier/components/BoosterVideoFormatManager";
 import {
   buildPreferredCtaPatch,
+  BOOSTER_MAX_IMAGE_BYTES,
+  BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_PREFERRED_CTA_OPTIONS,
   CHANNEL_TEXT_GUIDELINES,
   getChannelDefaultCtaLabel,
@@ -119,6 +126,12 @@ type PublicationStatusMeta = {
   title: string;
 };
 
+type PublicationMediaOptimizerRequest = {
+  source:
+    | { kind: "file"; file: File }
+    | { kind: "library"; item: MediaOptimizerItem };
+};
+
 function normalizeExternalHref(value: unknown): string {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -171,7 +184,7 @@ function getFallbackChannelAccountHref(channel: string, result: any): string {
   if (!username) return "";
   if (channel === "instagram") return `https://www.instagram.com/${encodeURIComponent(username)}/`;
   if (channel === "tiktok") return `https://www.tiktok.com/@${encodeURIComponent(username)}`;
-  if (channel === "pinterest") return `https://www.pinterest.com/${encodeURIComponent(username)}/`;
+  if (channel === "pinterest") return `https://www.pinterest.fr/${encodeURIComponent(username)}/`;
   return "";
 }
 
@@ -352,6 +365,12 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
   const [publicationCameraOpen, setPublicationCameraOpen] = React.useState(false);
   const [publicationMediaLibraryOpen, setPublicationMediaLibraryOpen] = React.useState(false);
+  const [publicationOptimizerRequest, setPublicationOptimizerRequest] =
+    React.useState<PublicationMediaOptimizerRequest | null>(null);
+  const [publicationOptimizerQueue, setPublicationOptimizerQueue] =
+    React.useState<PublicationMediaOptimizerRequest[]>([]);
+  const [publicationOptimizerCompleted, setPublicationOptimizerCompleted] =
+    React.useState(false);
   const [tiktokStatusChecking, setTiktokStatusChecking] = React.useState(false);
   const [tiktokRetrying, setTiktokRetrying] = React.useState(false);
   const [tiktokCancelling, setTiktokCancelling] = React.useState(false);
@@ -501,6 +520,42 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
         const json = await response.json().catch(() => ({}));
         if (!cancelled && response.ok && json?.channelDetails && typeof json.channelDetails === "object") {
           setConnectedChannelDetails(json.channelDetails as Record<string, ConnectedChannelDetail>);
+        }
+        if (!cancelled && response.ok && json?.channels?.pinterest) {
+          const pinterestResponse = await fetch(
+            "/api/integrations/pinterest/status?live=1",
+            { method: "GET", cache: "no-store" },
+          ).catch(() => null);
+          const pinterestStatus = pinterestResponse?.ok
+            ? await pinterestResponse.json().catch(() => null)
+            : null;
+          if (!cancelled && pinterestStatus?.ok && pinterestStatus?.connected) {
+            const username = String(pinterestStatus.username || "")
+              .replace(/^@+/, "")
+              .trim();
+            const href = normalizeExternalHref(
+              pinterestStatus.profileUrl ||
+                pinterestStatus.publicProfileUrl ||
+                (username
+                  ? `https://www.pinterest.fr/${encodeURIComponent(username)}/`
+                  : ""),
+            );
+            if (href) {
+              setConnectedChannelDetails((current) => ({
+                ...current,
+                pinterest: {
+                  ...(current.pinterest || {}),
+                  type: "account",
+                  label: String(
+                    pinterestStatus.accountName ||
+                      username ||
+                      "Compte Pinterest connecté",
+                  ).trim(),
+                  href,
+                },
+              }));
+            }
+          }
         }
       } catch {
         // Le lien enregistré dans le résultat reste disponible en repli.
@@ -1028,6 +1083,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setPublicationPreviewOpen(false);
     setPublicationCameraOpen(false);
     setPublicationMediaLibraryOpen(false);
+    setPublicationOptimizerRequest(null);
+    setPublicationOptimizerQueue([]);
+    setPublicationOptimizerCompleted(false);
     setTiktokStatusChecking(false);
     setTiktokRetrying(false);
     setTiktokCancelling(false);
@@ -1037,6 +1095,92 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
       detailsBodyRef.current?.scrollTo({ top: 0, behavior: "auto" });
     });
   }, [open, detailsItem?.id]);
+
+  function openPublicationOptimizerForFiles(files: File[]) {
+    const requests = files.map<PublicationMediaOptimizerRequest>((file) => ({
+      source: { kind: "file", file },
+    }));
+    const [first, ...rest] = requests;
+    if (!first) return;
+    setPublicationOptimizerRequest(first);
+    setPublicationOptimizerQueue(rest);
+    setPublicationOptimizerCompleted(false);
+  }
+
+  function openPublicationOptimizerForLibraryItem(
+    item: MediaLibraryPickerItem,
+  ) {
+    setPublicationOptimizerRequest({
+      source: { kind: "library", item: item as MediaOptimizerItem },
+    });
+    setPublicationOptimizerQueue([]);
+    setPublicationOptimizerCompleted(false);
+  }
+
+  function closePublicationOptimizer() {
+    if (
+      publicationOptimizerCompleted &&
+      publicationOptimizerQueue.length > 0
+    ) {
+      const [next, ...rest] = publicationOptimizerQueue;
+      setPublicationOptimizerRequest(next);
+      setPublicationOptimizerQueue(rest);
+      setPublicationOptimizerCompleted(false);
+      return;
+    }
+    setPublicationOptimizerRequest(null);
+    setPublicationOptimizerQueue([]);
+    setPublicationOptimizerCompleted(false);
+  }
+
+  async function handleOptimizedPublicationMedia(item: MediaOptimizerItem) {
+    await addPublicationMediaLibraryItems([item]);
+    markPublicationEditDirty();
+    setPublicationOptimizerCompleted(true);
+    restoreDetailsModalScroll();
+  }
+
+  function handlePublicationImageFiles(
+    fileList: FileList | File[] | null,
+  ) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const insertableFiles = files.filter(
+      (file) => file.size <= BOOSTER_MAX_IMAGE_BYTES,
+    );
+    const oversizedFiles = files.filter(
+      (file) => file.size > BOOSTER_MAX_IMAGE_BYTES,
+    );
+    if (insertableFiles.length > 0) {
+      markPublicationEditDirty();
+      addPublicationFiles(insertableFiles);
+    }
+    if (oversizedFiles.length > 0) {
+      openPublicationOptimizerForFiles(oversizedFiles);
+    }
+  }
+
+  function handlePublicationVideoFiles(
+    fileList: FileList | File[] | null,
+  ) {
+    const file = Array.from(fileList || [])[0];
+    if (!file) return;
+    if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
+      openPublicationOptimizerForFiles([file]);
+      return;
+    }
+    markPublicationEditDirty();
+    addPublicationVideo([file]);
+  }
+
+  function handlePublicationPhoto(file: File) {
+    if (file.size > BOOSTER_MAX_IMAGE_BYTES) {
+      openPublicationOptimizerForFiles([file]);
+      return;
+    }
+    markPublicationEditDirty();
+    addPublicationPhoto(file);
+  }
 
   if (!open) return null;
 
@@ -2281,8 +2425,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 title="Appareil iNrCy"
                                 onClose={closePublicationCamera}
                                 onCapture={async (file) => {
-                                  markPublicationEditDirty();
-                                  addPublicationPhoto(file);
+                                  handlePublicationPhoto(file);
                                   restoreDetailsModalScroll();
                                 }}
                               />
@@ -2299,8 +2442,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   onChange={(e) => {
                                     const input = e.currentTarget;
                                     const files = input?.files ?? null;
-                                    if (files?.length) markPublicationEditDirty();
-                                    addPublicationFiles(files);
+                                    handlePublicationImageFiles(files);
                                     if (input) input.value = "";
                                   }}
                                 />
@@ -2312,10 +2454,25 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   onChange={(e) => {
                                     const input = e.currentTarget;
                                     const files = input?.files ?? null;
-                                    if (files?.length) markPublicationEditDirty();
-                                    addPublicationVideo(files);
+                                    handlePublicationVideoFiles(files);
                                     if (input) input.value = "";
                                   }}
+                                />
+                                <MediaOptimizerModal
+                                  open={Boolean(publicationOptimizerRequest)}
+                                  sourceFile={
+                                    publicationOptimizerRequest?.source.kind === "file"
+                                      ? publicationOptimizerRequest.source.file
+                                      : null
+                                  }
+                                  sourceItem={
+                                    publicationOptimizerRequest?.source.kind === "library"
+                                      ? publicationOptimizerRequest.source.item
+                                      : null
+                                  }
+                                  origin="booster"
+                                  onClose={closePublicationOptimizer}
+                                  onOptimized={handleOptimizedPublicationMedia}
                                 />
                                 <MediaLibraryPickerModal
                                   open={publicationMediaLibraryOpen}
@@ -2324,8 +2481,12 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   accept="all"
                                   multiple
                                   maxSelection={5}
+                                  maxImageBytes={BOOSTER_MAX_IMAGE_BYTES}
+                                  maxVideoBytes={BOOSTER_MAX_VIDEO_BYTES}
                                   confirmLabel="Utiliser la sélection"
                                   selectedHint="Choisissez jusqu’à 5 images ou 1 vidéo."
+                                  onOpenOptimizer={openPublicationOptimizerForLibraryItem}
+                                  onOversizedMedia={openPublicationOptimizerForLibraryItem}
                                   onClose={closePublicationMediaLibrary}
                                   onConfirm={async (items) => {
                                     if (items.length) markPublicationEditDirty();

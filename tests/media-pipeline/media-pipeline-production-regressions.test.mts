@@ -121,8 +121,9 @@ test("le choix vidéo reste instantané et l'original est attesté sans compress
   assert.match(prepareRoute, /function canUseOriginalVideo/);
   assert.match(
     prepareRoute,
-    /The original server-probed MP4 is the publication source/,
+    /The server-probed original stays the preferred publication source/,
   );
+  assert.match(prepareRoute, /canonical MP4\/H\.264\/AAC is the durable fallback/);
   assert.doesNotMatch(prepareRoute, /size_requires_compression/);
   assert.doesNotMatch(modal, /startBackgroundVideoPrewarm/);
   assert.doesNotMatch(modal, /prepareCutoverVideoVariants/);

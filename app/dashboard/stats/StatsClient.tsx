@@ -508,7 +508,10 @@ export default function StatsClient({ initialInrSearch }: StatsClientProps) {
         </div>
       ) : null}
 
-      <div className={styles.statsWorkspace}>
+      <div
+        className={`${styles.statsWorkspace} ${activeStatsPanel === "all" ? "" : styles.statsWorkspaceChannel}`}
+        data-stats-view={activeStatsPanel === "all" ? "global" : "channel"}
+      >
         <aside className={styles.statsRail} aria-label="Canaux iNr’Stats">
           <button
             type="button"

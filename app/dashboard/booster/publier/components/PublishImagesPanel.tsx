@@ -10,9 +10,7 @@ import PublishVideoAdapterPanel, {
 } from "./PublishVideoAdapterPanel";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
-  BOOSTER_MAX_IMAGE_MB_LABEL,
-  BOOSTER_MAX_MEDIA_MB_LABEL,
-  BOOSTER_MAX_VIDEO_MB_LABEL,
+  BOOSTER_PUBLICATION_MEDIA_OPTIMIZATION_LABEL,
   BOOSTER_IMAGE_ACCEPT,
   BOOSTER_IMAGE_FORMATS_LABEL,
   BOOSTER_IMAGE_LIMITS_LABEL,
@@ -383,12 +381,7 @@ export default function PublishImagesPanel({
         className={styles.subtitle}
         style={{ marginBottom: 12, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Ajoutez jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
-        {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
-        total) + 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}. Chaque
-        canal choisit ensuite Photos, Vidéo ou Aucun indépendamment. Le média déjà
-        utilisé pour la génération est réutilisé ici. Les contrôles et conversions
-        restent limités aux canaux qui en ont réellement besoin.
+        {BOOSTER_PUBLICATION_MEDIA_OPTIMIZATION_LABEL}
       </div>
       <div
         style={{
@@ -473,6 +466,7 @@ export default function PublishImagesPanel({
           {getBoosterSelectedMediaSummary({
             imageCount: images.length,
             hasVideo: hasVideoMedia,
+            context: "publication",
           })}
           <span style={{ opacity: 0.74 }}>
             {hasImages ? ` · ${BOOSTER_IMAGE_FORMATS_LABEL}` : ""}

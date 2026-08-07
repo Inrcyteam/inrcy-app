@@ -1,33 +1,73 @@
-# Correctifs vidéo, compression et publication — 7 août 2026
+# Bilan final — médias, publication, Pinterest et iNr’Stats
 
-Ce paquet repart du ZIP `inrcy-app-media-flow-optimise.zip` fourni le 7 août 2026.
+Paquet finalisé le 8 août 2026 à partir du ZIP `inrcy-app-media-flow-optimise.zip` fourni le 7 août 2026.
 
-## Causes confirmées
+## Parcours média sécurisé
 
-1. Une copie compressée pouvait revenir de la Médiathèque avec un titre sans extension. Booster reconstruisait alors un objet `File` sans `.mp4` et refusait la vidéo, même si son contenu était bien un MP4.
-2. Un conteneur `.mp4` ne garantit pas que ses pistes sont compatibles. La vidéo de reproduction contient une piste vidéo H.264 mais une piste audio MP3. Le serveur exigeait H.264/AAC et arrêtait donc la préparation de tous les canaux utilisant ce média partagé.
+- Une copie compressée est reconstruite avec son vrai `original_file_name`, puis avec le nom Storage en secours. Une ancienne vidéo MP4 dont le titre n’a plus d’extension retrouve automatiquement un nom `.mp4` valide.
+- Booster ne confirme l’insertion que si le fichier compressé a réellement été accepté. L’insertion automatique et le bouton manuel utilisent la même validation.
+- Les images déjà valides sont conservées pendant que plusieurs images trop lourdes sont optimisées successivement.
+- Toute source de plus de 300 Mo est bloquée avant traitement avec une explication claire.
+- Les fichiers acceptés jusqu’à 300 Mo peuvent être optimisés : proposition au-delà de 50 Mo par image ou 75 Mo pour la vidéo.
+- La préparation serveur privilégie l’original lorsque FFmpeg confirme sa compatibilité. Sinon, elle produit automatiquement le fallback commun MP4/H.264/AAC, `yuv420p`, 60 i/s maximum et 75 Mo maximum.
+- Si seule la piste audio est incompatible, la vidéo H.264 est conservée et seule la piste audio est convertie en AAC.
+- Si une demande de publication arrive après une préparation IA, la sortie MP4 canonique manquante est remise durablement en file au lieu d’être oubliée.
+- Un échec de préparation ou de publication reste isolé au canal concerné ; les autres canaux continuent normalement.
 
-## Corrections incluses
+## Robustesse des outils
 
-- Réinsertion automatique et manuelle des médias avec leur vrai `original_file_name`, puis le nom Storage en secours. Une ancienne vidéo sans extension reçoit une extension `.mp4` valide.
-- Confirmation explicite de la réussite d'insertion : la modale ne déclare plus une insertion réussie si Booster a refusé le fichier.
-- File d'optimisation conservée pour plusieurs images trop lourdes et messages explicites pour une source dépassant la limite d'import.
-- Fallback serveur de publication : MP4, vidéo H.264, pixels `yuv420p`, audio AAC, cadence maximale 60 i/s et poids maximal 75 Mo.
-- Chemin rapide : si seule la piste audio est incompatible, la vidéo H.264 est conservée sans réencodage et seule la piste audio est convertie en AAC.
-- Réencodage complet uniquement lorsque c'est nécessaire (codec, dimensions, cadence, rotation ou poids), avec contrôle du fichier produit avant publication.
-- Une variante canonique prête rend le média publiable même si l'original ne l'est pas. Les échecs d'un canal restent isolés des autres canaux.
-- Enchaînement durable validé : préparation IA, puis ajout ultérieur de la mission publication, puis reprise automatique des sorties encore manquantes.
+- Hooks React de la composition d’e-mail replacés avant les sorties conditionnelles.
+- Modale d’optimisation intégrée aux publications et campagnes iNrAgent ainsi qu’à l’édition iNrSend.
+- Génération, publication et programmation conservent leurs mécanismes idempotents de récupération après une réponse réseau perdue.
+- Les contenus récupérés sont réinjectés dans Booster et restent modifiables par le professionnel.
 
-## Validations effectuées
+## Textes médias
 
-- TypeScript : réussi.
-- ESLint sur tous les fichiers modifiés : réussi.
-- Compilation Next/Turbopack : code compilé avec succès ; l'étape suivante est limitée localement par l'interdiction de lancer un sous-processus dans le bac à sable.
-- Tests ciblés : réinsertion Médiathèque, optimisation autonome, sélection génération, workspace persistant, missions IA/publication, reprise des jobs, progression, politique 75 Mo, isolation des canaux et certification Booster.
-- Fichier réel de reproduction, 92 025 077 octets, H.264 + MP3 : copie obtenue de 58 760 428 octets en MP4/H.264/AAC, reconnue directement publiable.
-- Échantillon H.264 + MP3 sous 75 Mo : conversion rapide en MP4/H.264/AAC vérifiée.
-- Vidéo témoin qui réussit déjà : H.264 + AAC, reconnue directement publiable sans adaptation obligatoire.
+Le texte court est centralisé afin d’éviter les anciennes promesses contradictoires :
+
+> Jusqu’à 5 images ou 1 vidéo de 300 Mo max · optimisation proposée au-delà de 50 Mo par image ou 75 Mo pour la vidéo.
+
+Dans le bloc de répartition de publication, `et` remplace `ou`, car le pool de publication peut conserver cinq images et une vidéo puis les distribuer indépendamment selon les canaux.
+
+## Nouveau bilan de publication
+
+- Fenêtre élargie et en-tête compact.
+- Une réussite majoritaire conserve une présentation positive.
+- Bandeaux séparés avec quotas : réussites en vert, traitements en orange et échecs en rouge.
+- Lignes classées dans ce même ordre, avec icônes de réussite plus visibles.
+- Boutons `Voir`, nouvelle tentative et accès à iNrSend conservés.
+- Les canaux en traitement ne transforment plus tout le bilan en alerte orange.
+
+## Pinterest
+
+- L’adresse publique est déduite du nom de compte déjà récupéré : `https://www.pinterest.fr/{nom-du-compte}/`.
+- Le champ de configuration est prérempli automatiquement tout en restant modifiable.
+- Le bouton `Voir` est disponible dans le bilan de publication lorsque le profil peut être déduit.
+- iNrSend récupère également le profil Pinterest et affiche `Ouvrir le compte`, comme pour les autres réseaux.
+
+## iNr’Stats
+
+- La vue détaillée d’un canal reprend toute la largeur de la colonne disponible, comme la vue globale.
+- Titre, KPI et cartes internes partagent désormais le même alignement et des colonnes équilibrées.
+- La vue globale n’est pas modifiée.
+- Les protections existantes de zoom et de petite largeur restent actives grâce aux mêmes `container queries` : les cartes se replient verticalement uniquement quand l’espace réel devient insuffisant.
+
+## Validation
+
+- 234 tests Dashboard : réussis.
+- 205 tests du système de publication : réussis.
+- 243 tests du pipeline média : réussis.
+- 72 tests iNrSend : réussis.
+- 41 tests Pinterest : réussis.
+- 15 tests iNrAgent : réussis.
+- 16 tests de certification Booster : réussis.
+- 4 tests des règles médias : réussis.
+- TypeScript : réussi sans erreur.
+- ESLint complet : réussi sans erreur.
+- Validation manuelle communiquée : parcours génération → compression → réinsertion → publication réussi avec une vidéo de 81 Mo.
+
+Le build Turbopack local ne peut pas utiliser le `node_modules` partagé, car celui-ci est un lien symbolique situé hors de la racine de ce dossier de travail. Le contrôle Webpack de secours atteint la compilation mais est ensuite bloqué par le téléchargement interdit de Google Fonts et par d’anciens sélecteurs globaux de modules CSS, sans rapport avec les fichiers corrigés. Ces limites sont propres à l’environnement local ; TypeScript, ESLint et toutes les suites ciblées ci-dessus sont verts.
 
 ## Déploiement
 
-Ce ZIP contient du code source corrigé : un nouveau build et un nouveau déploiement Vercel sont nécessaires. Ne réutilisez pas le précédent ZIP corrigé.
+Ce paquet contient le code source corrigé. Il faut reconstruire et redéployer ce nouveau ZIP sur Vercel ; ne pas réutiliser les ZIP corrigés précédents.

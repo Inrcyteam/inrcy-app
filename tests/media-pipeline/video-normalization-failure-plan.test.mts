@@ -53,7 +53,7 @@ test("the preclaimed AI/publication union is not mistaken for a late request", (
   }
 });
 
-test("publication arriving after the complete AI claim adds no output", () => {
+test("publication arriving after the complete AI claim queues the canonical MP4", () => {
   const plan = planVideoNormalizationFailure({
     claimedKeys: AI_KEYS,
     latestKeys: UNION_KEYS,
@@ -62,10 +62,10 @@ test("publication arriving after the complete AI claim adds no output", () => {
     maxAttempts: 4,
   });
 
-  assert.equal(plan.status, "failed");
-  assert.equal(plan.attemptCount, 4);
-  assert.equal(plan.hasLateRequest, false);
-  assert.deepEqual(plan.addedKeys, []);
+  assert.equal(plan.status, "queued");
+  assert.equal(plan.attemptCount, 0);
+  assert.equal(plan.hasLateRequest, true);
+  assert.deepEqual(plan.addedKeys, ["canonical"]);
 });
 
 test("AI outputs arriving after a publication claim remain in the follow-up union", () => {

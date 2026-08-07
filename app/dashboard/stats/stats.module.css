@@ -7623,3 +7623,104 @@
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+
+/* iNr'Stats — gabarit canal aligné sur la vue globale.
+   La vue globale reste inchangée. Sur desktop, la fiche d'un canal reprend
+   exactement toute la colonne disponible : titre, KPI et cartes internes ont
+   une largeur commune. Les container queries ci-dessus gardent le repli
+   vertical lorsque le zoom réduit réellement la largeur du panneau. */
+@media (min-width: 901px) {
+  .statsWorkspaceChannel,
+  .statsWorkspaceChannel .statsPanel,
+  .statsWorkspaceChannel .channelStatsPanel,
+  .statsWorkspaceChannel .channelStatsPanel .cube,
+  .statsWorkspaceChannel .channelStatsPanel .cubeBody {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsHeader {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsHeader > .channelStatsTitleBlock {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsHeader > .channelStatsTitleBlock > .allStatsTitle,
+  .statsWorkspaceChannel .channelStatsHeader > .channelStatsTitleBlock > .allStatsText {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsKpis,
+  .statsWorkspaceChannel .channelStatsHeader .channelStatsKpis,
+  .statsWorkspaceChannel .channelStatsHeader .allStatsKpis {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    justify-self: stretch !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsKpisMail,
+  .statsWorkspaceChannel .channelStatsHeader .channelStatsKpisMail,
+  .statsWorkspaceChannel .channelStatsHeader .allStatsKpis.channelStatsKpisMail {
+    width: 100% !important;
+    min-width: 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsKpis .allStatsKpi,
+  .statsWorkspaceChannel .channelStatsHeader .allStatsKpis .allStatsKpi {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: initial !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsPanel .detailTopRow,
+  .statsWorkspaceChannel .channelStatsPanel .blockRow {
+    width: 100% !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+  }
+
+  .statsWorkspaceChannel .channelStatsPanel .detailTopRow > .block,
+  .statsWorkspaceChannel .channelStatsPanel .blockRow > .block,
+  .statsWorkspaceChannel .channelStatsPanel .cubeBody > .block {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@container channelStats (max-width: 800px) {
+  .statsWorkspaceChannel .channelStatsPanel .detailTopRow,
+  .statsWorkspaceChannel .channelStatsPanel .blockRow {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@container channelStats (max-width: 560px) {
+  .statsWorkspaceChannel .channelStatsKpis,
+  .statsWorkspaceChannel .channelStatsHeader .channelStatsKpis,
+  .statsWorkspaceChannel .channelStatsHeader .allStatsKpis,
+  .statsWorkspaceChannel .channelStatsKpisMail,
+  .statsWorkspaceChannel .channelStatsHeader .channelStatsKpisMail,
+  .statsWorkspaceChannel .channelStatsHeader .allStatsKpis.channelStatsKpisMail {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

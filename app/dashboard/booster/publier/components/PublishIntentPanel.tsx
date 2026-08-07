@@ -14,9 +14,7 @@ import {
 import AiEngineInfoModal from "../../../_components/AiEngineInfoModal";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
-  BOOSTER_MAX_IMAGE_MB_LABEL,
-  BOOSTER_MAX_MEDIA_MB_LABEL,
-  BOOSTER_MAX_VIDEO_MB_LABEL,
+  BOOSTER_GENERATION_MEDIA_OPTIMIZATION_LABEL,
   BOOSTER_IMAGE_ACCEPT,
   BOOSTER_IMAGE_FORMATS_LABEL,
   BOOSTER_IMAGE_LIMITS_LABEL,
@@ -1007,17 +1005,9 @@ export default function PublishIntentPanel({
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Décrivez le sujet de cette publication et ajoutez, si nécessaire, une
-        consigne ponctuelle prioritaire. Le média est facultatif pour la
-        génération. {" "}
-        <strong>
-          Pour la génération : jusqu’à {BOOSTER_MAX_IMAGE_COUNT} images (
-          {BOOSTER_MAX_IMAGE_MB_LABEL} chacune, {BOOSTER_MAX_MEDIA_MB_LABEL} au
-          total) OU 1 vidéo source jusqu’à {BOOSTER_MAX_VIDEO_MB_LABEL}.
-        </strong>{" "}
-        L’original choisi sera réutilisé sans nouvel upload. Dans les Médias de
-        la publication, vous pourrez ensuite ajouter l’autre famille et répartir
-        images et vidéo indépendamment selon les canaux.
+        Décrivez le sujet de cette publication et, si nécessaire, ajoutez une
+        consigne ponctuelle. Le média est facultatif. {" "}
+        <strong>{BOOSTER_GENERATION_MEDIA_OPTIMIZATION_LABEL}</strong>
       </div>
       <div style={{ display: "grid", gap: 10 }}>
         <div
@@ -1264,6 +1254,7 @@ export default function PublishIntentPanel({
               {getBoosterSelectedMediaSummary({
                 imageCount: images.length,
                 hasVideo: hasVideoMedia,
+                context: "generation",
               })}
               <span style={{ opacity: 0.74 }}>
                 {hasImages ? ` · ${BOOSTER_IMAGE_FORMATS_LABEL}` : ""}

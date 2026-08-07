@@ -307,7 +307,7 @@ export default function PinterestSettingsContent({ onUnsavedChange }: { onUnsave
   const hasUnsavedChanges = Boolean(
     newBoardName.trim() ||
       (editingBoard && editingBoardName.trim() !== editingBoard.name) ||
-      profileLinkDraft !== (settings.publicProfileUrl || ""),
+      profileLinkDraft !== (settings.publicProfileUrl || settings.profileUrl || ""),
   );
 
   useEffect(() => {
@@ -350,8 +350,8 @@ export default function PinterestSettingsContent({ onUnsavedChange }: { onUnsave
   }, [settings]);
 
   useEffect(() => {
-    setProfileLinkDraft(settings.publicProfileUrl || "");
-  }, [settings.publicProfileUrl]);
+    setProfileLinkDraft(settings.publicProfileUrl || settings.profileUrl || "");
+  }, [settings.profileUrl, settings.publicProfileUrl]);
 
   const connectPinterest = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -821,7 +821,8 @@ export default function PinterestSettingsContent({ onUnsavedChange }: { onUnsave
               </button>
             </div>
             <small style={{ color: "rgba(255,255,255,0.58)", fontSize: 12 }}>
-              Ce lien permet d’afficher Pinterest dans iNr’Badge.
+              Ce lien est déduit automatiquement du nom du compte Pinterest et
+              peut être corrigé manuellement si nécessaire.
             </small>
           </div>
         ) : null}

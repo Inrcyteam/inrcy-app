@@ -340,10 +340,6 @@ export default function PublishExecutionResultModal({
     Number(effectiveSummary?.warningCount || 0),
     entries.filter((entry) => entry.status === "published_with_warning").length,
   );
-  const mediaWarningCount = Math.max(
-    Number(effectiveSummary?.mediaWarningCount || 0),
-    entries.filter((entry) => entry.warning_kind === "media_degraded").length,
-  );
   const pendingCount = Math.max(
     Number(effectiveSummary?.pendingCount || 0),
     entries.filter(isPendingPublicationEntry).length,
@@ -352,14 +348,61 @@ export default function PublishExecutionResultModal({
     Number(effectiveSummary?.skippedCount || 0),
     entries.filter((entry) => entry.status === "skipped").length,
   );
-  const pendingEntries = entries.filter(isPendingPublicationEntry);
-  const pendingLabels = Array.from(
-    new Set(pendingEntries.map((entry) => entry.label).filter(Boolean)),
-  );
   const retryableFailureCount = Math.max(
     0,
     Number(effectiveSummary?.retryableFailureCount || 0),
   );
+  const publishedEntryCount = entries.filter(
+    (entry) =>
+      entry.status !== "skipped" &&
+      !isPendingPublicationEntry(entry) &&
+      entry.ok !== false &&
+      String(entry.status || "").toLowerCase() !== "failed",
+  ).length;
+  const failedEntryCount = entries.filter(
+    (entry) =>
+      entry.status !== "skipped" &&
+      !isPendingPublicationEntry(entry) &&
+      (entry.ok === false || String(entry.status || "").toLowerCase() === "failed"),
+  ).length;
+  const publishedCount = entries.length
+    ? publishedEntryCount
+    : Math.max(0, successCount - pendingCount);
+  const failedOrSkippedCount = Math.max(failureCount, failedEntryCount) + skippedCount;
+  const totalCount = Math.max(
+    entries.length,
+    publishedCount + pendingCount + failedOrSkippedCount,
+    1,
+  );
+  const hasPublishedChannels = publishedCount > 0;
+  const orderedEntries = [...entries].sort((left, right) => {
+    const rank = (entry: PublishExecutionEntry) => {
+      if (entry.status === "skipped") return 3;
+      if (isPendingPublicationEntry(entry)) return 1;
+      if (entry.ok === false || String(entry.status || "").toLowerCase() === "failed") return 2;
+      return 0;
+    };
+    return rank(left) - rank(right);
+  });
+
+  const overallTitle = allFailed
+    ? "Publication échouée"
+    : hasPublishedChannels
+      ? "Publication bien lancée"
+      : pendingCount
+        ? "Publication en cours"
+        : failureCount
+          ? "Publication envoyée partiellement"
+          : "Publication envoyée avec succès";
+  const overallSubtitle = allFailed
+    ? "Aucun canal n’a pu publier. Les erreurs sont détaillées ci-dessous."
+    : hasPublishedChannels && pendingCount
+      ? `${publishedCount} canal${publishedCount > 1 ? "aux sont déjà publiés" : " est déjà publié"} sur ${totalCount}. iNrCy poursuit automatiquement le traitement des ${pendingCount} autre${pendingCount > 1 ? "s" : ""}.`
+      : hasPublishedChannels && failedOrSkippedCount
+        ? `${publishedCount} canal${publishedCount > 1 ? "aux ont" : " a"} publié sur ${totalCount}. Les canaux à corriger sont détaillés ci-dessous.`
+        : hasPublishedChannels
+          ? `${publishedCount}/${totalCount} canal${totalCount > 1 ? "aux publiés" : " publié"} avec succès.`
+          : `${pendingCount || totalCount} canal${(pendingCount || totalCount) > 1 ? "aux sont" : " est"} encore en traitement. iNrCy actualise ce bilan automatiquement.`;
 
   return (
     <div
@@ -379,17 +422,19 @@ export default function PublishExecutionResultModal({
       <div
         className={styles.blockCard}
         style={{
-          width: "min(560px, 100%)",
+          width: "min(760px, 100%)",
           maxHeight:
             "calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))) - 32px)",
           overflowY: "auto",
-          textAlign: "center",
+          textAlign: "left",
           position: "relative",
           boxShadow: "0 30px 80px rgba(0,0,0,0.40)",
           border: `1px solid ${
-            allFailed
+            hasPublishedChannels
+              ? "rgba(34,197,94,0.34)"
+              : allFailed
               ? "rgba(248,113,113,0.34)"
-              : failureCount || pendingCount || warningCount || skippedCount
+              : pendingCount || warningCount || skippedCount
                 ? "rgba(251,191,36,0.28)"
                 : "rgba(34,197,94,0.28)"
           }`,
@@ -412,65 +457,86 @@ export default function PublishExecutionResultModal({
         >
           ✕
         </button>
-        <div style={{ fontSize: 42, marginBottom: 8 }}>
-          {allFailed
-            ? "❌"
-            : failureCount
-              ? "⚠️"
-              : pendingCount
-                ? "⏳"
-                : warningCount || skippedCount
-                  ? "⚠️"
-                  : "🎉"}
-        </div>
-        <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
-          {allFailed
-            ? "Publication échouée"
-            : failureCount
-              ? "Publication envoyée partiellement"
-              : pendingCount
-                ? "Envoi accepté, traitement en cours"
-              : warningCount
-                ? `Publication publiée avec avertissement${warningCount > 1 ? "s" : ""}`
-              : skippedCount
-                ? "Publication envoyée sur les canaux prêts"
-                : "Publication envoyée avec succès"}
-        </div>
         <div
-          className={styles.subtitle}
-          style={{ maxWidth: 460, margin: "0 auto 14px auto" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            paddingRight: 54,
+            marginBottom: 14,
+          }}
         >
-          {allFailed
-            ? "Aucun canal n’a pu publier. Vérifiez le détail ci-dessous."
-            : failureCount
-              ? `Votre publication a été envoyée sur ${successCount} canal(aux). ${failureCount} canal(aux) n'ont pas pu publier.`
-              : pendingCount
-                ? `${pendingLabels.length ? pendingLabels.join(", ") : `${pendingCount} canal(aux)`} ${pendingCount > 1 ? "sont encore en traitement" : "est encore en traitement"}. Le statut final peut être vérifié dans iNrSend.`
-              : warningCount
-                ? `${successCount} canal(aux) ont publié. ${mediaWarningCount || warningCount} publication(s) comportent un avertissement${mediaWarningCount ? " lié au média" : ""}.`
-              : skippedCount
-                ? `${successCount} canal(aux) ont publié. ${skippedCount} canal(aux) ont été ignorés avant l’envoi car ils n’étaient pas prêts.`
-                : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
+          <span
+            aria-hidden
+            style={{
+              width: 48,
+              height: 48,
+              flex: "0 0 48px",
+              borderRadius: 16,
+              display: "grid",
+              placeItems: "center",
+              fontSize: 27,
+              fontWeight: 900,
+              color: "#fff",
+              background: hasPublishedChannels
+                ? "linear-gradient(135deg, #16a34a, #34d399)"
+                : allFailed
+                  ? "linear-gradient(135deg, #dc2626, #fb7185)"
+                  : "linear-gradient(135deg, #d97706, #fbbf24)",
+              boxShadow: hasPublishedChannels
+                ? "0 10px 28px rgba(34,197,94,0.30)"
+                : allFailed
+                  ? "0 10px 28px rgba(248,113,113,0.24)"
+                  : "0 10px 28px rgba(251,191,36,0.22)",
+            }}
+          >
+            {hasPublishedChannels ? "✓" : allFailed ? "×" : "⏳"}
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div className={styles.blockTitle} style={{ marginBottom: 4 }}>
+              {overallTitle}
+            </div>
+            <div
+              className={styles.subtitle}
+              style={{ maxWidth: 610, margin: 0, lineHeight: 1.42 }}
+            >
+              {overallSubtitle}
+            </div>
+          </div>
         </div>
-        <StatusMessage
-          variant={failureCount ? "error" : pendingCount || warningCount || skippedCount ? "warning" : "success"}
-          style={{ marginTop: 0, fontSize: 14 }}
-        >
-          {allFailed
-            ? "Échec : vérifiez le détail ci-dessous."
-            : failureCount
-              ? "Succès partiel : vérifiez le détail ci-dessous."
-              : pendingCount
-                ? "Envoi accepté : suivez les canaux en traitement dans iNrSend."
-              : warningCount
-                ? "La publication est bien en ligne. Vérifiez les canaux signalés ci-dessous."
-              : skippedCount
-                ? "Les canaux prêts ont été publiés ; corrigez les canaux ignorés avant de les relancer."
-                : "C’est parfait, votre publication est lancée."}
-        </StatusMessage>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          {publishedCount > 0 ? (
+            <StatusMessage variant="success" style={{ marginTop: 0, fontSize: 14 }}>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
+                <strong>✓ Réussites</strong>
+                <strong>{publishedCount}/{totalCount} publiés</strong>
+              </span>
+            </StatusMessage>
+          ) : null}
+          {pendingCount > 0 ? (
+            <StatusMessage variant="warning" style={{ marginTop: 0, fontSize: 14 }}>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
+                <strong>⏳ En traitement</strong>
+                <strong>{pendingCount}/{totalCount} en cours</strong>
+              </span>
+            </StatusMessage>
+          ) : null}
+          {failedOrSkippedCount > 0 ? (
+            <StatusMessage variant="error" style={{ marginTop: 0, fontSize: 14 }}>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
+                <strong>× Échecs ou canaux à corriger</strong>
+                <strong>{failedOrSkippedCount}/{totalCount}</strong>
+              </span>
+              <span style={{ display: "none" }}>
+                Publication envoyée partiellement · Publication publiée avec avertissement
+              </span>
+            </StatusMessage>
+          ) : null}
+        </div>
         {entries.length ? (
           <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
-            {entries.map((entry) => {
+            {orderedEntries.map((entry) => {
               const entryIsPending = isPendingPublicationEntry(entry);
               const channelHref = String(effectiveSummary?.channelLinks?.[entry.channel] || "").trim();
               const visibleError = !entryIsPending && entry.error
@@ -494,14 +560,41 @@ export default function PublishExecutionResultModal({
                   `${entry.label} n'est pas prêt pour la publication.`,
                 ),
               );
+              const entryTone = entry.status === "skipped"
+                ? {
+                    border: "rgba(251,191,36,0.28)",
+                    background: "linear-gradient(90deg, rgba(251,191,36,0.09), rgba(255,255,255,0.025))",
+                    iconBackground: "rgba(251,191,36,0.18)",
+                    iconColor: "#fde68a",
+                  }
+                : entryIsPending
+                  ? {
+                      border: "rgba(251,191,36,0.28)",
+                      background: "linear-gradient(90deg, rgba(251,191,36,0.09), rgba(255,255,255,0.025))",
+                      iconBackground: "rgba(251,191,36,0.18)",
+                      iconColor: "#fde68a",
+                    }
+                  : entry.ok
+                    ? {
+                        border: "rgba(52,211,153,0.30)",
+                        background: "linear-gradient(90deg, rgba(34,197,94,0.12), rgba(255,255,255,0.025))",
+                        iconBackground: "linear-gradient(135deg, #16a34a, #34d399)",
+                        iconColor: "#fff",
+                      }
+                    : {
+                        border: "rgba(248,113,113,0.30)",
+                        background: "linear-gradient(90deg, rgba(248,113,113,0.10), rgba(255,255,255,0.025))",
+                        iconBackground: "rgba(248,113,113,0.18)",
+                        iconColor: "#fecaca",
+                      };
               return (
                 <div
                   key={entry.channel}
                   style={{
                     borderRadius: 14,
                     padding: "10px 12px",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "rgba(255,255,255,0.03)",
+                    border: `1px solid ${entryTone.border}`,
+                    background: entryTone.background,
                   }}
                 >
                   <div
@@ -512,16 +605,36 @@ export default function PublishExecutionResultModal({
                       alignItems: "center",
                     }}
                   >
-                    <strong>
-                      {entry.status === "skipped"
-                        ? "⏭️"
-                        : entryIsPending
-                          ? "⏳"
-                          : entry.ok
-                            ? entry.status === "published_with_warning"
-                              ? "⚠️"
-                              : "✅"
-                            : "❌"} {entry.label}
+                    <strong style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 30,
+                          height: 30,
+                          flex: "0 0 30px",
+                          borderRadius: 999,
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: 17,
+                          fontWeight: 900,
+                          color: entryTone.iconColor,
+                          background: entryTone.iconBackground,
+                          boxShadow: entry.ok && !entryIsPending
+                            ? "0 5px 16px rgba(34,197,94,0.22)"
+                            : undefined,
+                        }}
+                      >
+                        {entry.status === "skipped"
+                          ? "⏭"
+                          : entryIsPending
+                            ? "⏳"
+                            : entry.ok
+                              ? entry.status === "published_with_warning"
+                                ? "!"
+                                : "✓"
+                              : "×"}
+                      </span>
+                      <span>{entry.label}</span>
                     </strong>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       {channelHref ? (

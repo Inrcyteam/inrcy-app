@@ -416,27 +416,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     text,
   ]);
 
-  if (!open) return null;
-
-  const composeInputStyle: React.CSSProperties = {
-    ...inputStyle,
-    minHeight: 46,
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(7,10,24,0.62)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-    fontSize: 15,
-  };
-
-  const composeEditorStyle: React.CSSProperties = {
-    ...textareaStyle,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(7,10,24,0.72)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-    padding: "14px 14px",
-  };
-
   const appendComposeAttachments = React.useCallback(
     (items: any[]) => {
       setComposeAttachments((prev) => {
@@ -477,6 +456,27 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     setOptimizerQueue([]);
     setOptimizerCompleted(false);
   }, [optimizerCompleted, optimizerQueue]);
+
+  if (!open) return null;
+
+  const composeInputStyle: React.CSSProperties = {
+    ...inputStyle,
+    minHeight: 46,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(7,10,24,0.62)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+    fontSize: 15,
+  };
+
+  const composeEditorStyle: React.CSSProperties = {
+    ...textareaStyle,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(7,10,24,0.72)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+    padding: "14px 14px",
+  };
 
   const handleAttachmentInputChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
