@@ -367,6 +367,9 @@ type AttachmentModalProps = {
   onOpenLibrary: () => void;
   onCloseLibrary: () => void;
   onConfirmLibrary: ComponentProps<typeof MediaLibraryPickerModal>["onConfirm"];
+  maxAttachmentBytes: number;
+  onOpenOptimizer: ComponentProps<typeof MediaLibraryPickerModal>["onOpenOptimizer"];
+  onOversizedMedia: ComponentProps<typeof MediaLibraryPickerModal>["onOversizedMedia"];
   onRemove: (path: string) => void;
 };
 
@@ -381,6 +384,9 @@ export function AttachmentModal({
   onOpenLibrary,
   onCloseLibrary,
   onConfirmLibrary,
+  maxAttachmentBytes,
+  onOpenOptimizer,
+  onOversizedMedia,
   onRemove,
 }: AttachmentModalProps) {
   if (!open || !preview) return null;
@@ -417,18 +423,22 @@ export function AttachmentModal({
               Médiathèque
             </button>
           </div>
-          <small>Les fichiers seront joints à la campagne au moment de la validation.</small>
+          <small>20 Mo maximum par fichier. Les médias plus lourds peuvent être compressés par iNrCy.</small>
         </div>
 
         <MediaLibraryPickerModal
           open={libraryPickerOpen}
           title="Joindre depuis la Médiathèque"
-          subtitle="Ajouter un média"
+          subtitle="Ajoutez un média déjà stocké dans iNrCy · 20 Mo max par fichier."
           accept="all"
           multiple
           maxSelection={10}
+          maxImageBytes={maxAttachmentBytes}
+          maxVideoBytes={maxAttachmentBytes}
           confirmLabel="Joindre"
           selectedHint="Choisissez les médias à joindre à la campagne."
+          onOpenOptimizer={onOpenOptimizer}
+          onOversizedMedia={onOversizedMedia}
           onClose={onCloseLibrary}
           onConfirm={onConfirmLibrary}
         />

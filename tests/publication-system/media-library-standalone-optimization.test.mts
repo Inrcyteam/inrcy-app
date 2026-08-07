@@ -84,6 +84,9 @@ test("Booster optimizer buttons never forward the React click event as a media i
   const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
   const intentPanel = read("app/dashboard/booster/publier/components/PublishIntentPanel.tsx");
   const imagesPanel = read("app/dashboard/booster/publier/components/PublishImagesPanel.tsx");
+  const warningModals = read("app/dashboard/booster/publier/components/PublishWarningModals.tsx");
+  const picker = read("app/dashboard/_components/MediaLibraryPickerModal.tsx");
+  const optimizer = read("app/dashboard/_components/MediaOptimizerModal.tsx");
 
   assert.match(publishModal, /typeof item\.id === "string"/);
   assert.match(publishModal, /item\.media_type === "image" \|\| item\.media_type === "video"/);
@@ -91,6 +94,17 @@ test("Booster optimizer buttons never forward the React click event as a media i
   assert.doesNotMatch(imagesPanel, /onClick=\{onOpenMediaOptimizer\}/);
   assert.match(intentPanel, /onClick=\{\(\) => onOpenMediaOptimizer\(\)\}/);
   assert.match(imagesPanel, /onClick=\{\(\) => onOpenMediaOptimizer\(\)\}/);
+  assert.match(publishModal, /type BoosterMediaInsertionDestination/);
+  assert.match(publishModal, /destination\.kind === "channel" \? destination\.channel : undefined/);
+  assert.match(publishModal, /setMediaOptimizerPromptOpen\(true\)/);
+  assert.match(warningModals, /Fichier trop volumineux/);
+  assert.match(warningModals, /Optimiser le média/);
+  assert.match(optimizer, /Insérer le fichier compressé/);
+  assert.match(optimizer, /iNrCy n’a pas pu réinsérer automatiquement le fichier/);
+  assert.match(picker, /width: "min\(1000px, calc\(100vw - 32px\)\)"/);
+  assert.match(picker, /compactMediaStatusStyle/);
+  assert.match(picker, /optimizeButtonStyle/);
+  assert.match(picker, /item\.media_type === "video" \? "Vidéo" : "Image"/);
 });
 
 

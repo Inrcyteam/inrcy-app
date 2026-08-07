@@ -117,7 +117,7 @@ test("the generation UI and all its entry points enforce images OR video", () =>
     "const addMediaLibrarySelection",
     "const onTakePhotoClick",
   );
-  assert.match(librarySelection, /mediaLibraryPickerScope === "generation"/);
+  assert.match(librarySelection, /destination\.kind === "generation"/);
   assert.match(librarySelection, /getGenerationMediaSelectionError\(\{/);
 
   const cameraSelection = between(

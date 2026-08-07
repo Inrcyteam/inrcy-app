@@ -240,11 +240,14 @@ test("generation library is exclusive while publication keeps the 5 + 1 path", (
     "// Les captures",
   );
 
-  assert.match(selection, /mediaLibraryPickerScope === "generation"/);
+  assert.match(selection, /destination\.kind === "generation"/);
   assert.match(selection, /getGenerationMediaSelectionError\(\{/);
   assert.match(selection, /videos\.length > 1/);
   assert.match(selection, /const \[files, selectedVideo\] = await Promise\.all/);
-  assert.match(selection, /await addImageFiles\(files\)/);
+  assert.match(
+    selection,
+    /await addImageFiles\([\s\S]{0,180}destination\.kind === "channel" \? destination\.channel : undefined/,
+  );
   assert.match(selection, /await addVideoFile\(selectedVideo,[\s\S]*hasImages:/);
   assert.match(
     publishModal,

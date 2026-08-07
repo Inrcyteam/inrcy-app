@@ -30,6 +30,7 @@ type MediaLibraryPickerModalProps = {
   maxImageBytes?: number;
   maxVideoBytes?: number;
   onOpenOptimizer?: (item: MediaLibraryPickerItem) => void;
+  onOversizedMedia?: (item: MediaLibraryPickerItem) => void;
   onClose: () => void;
   onConfirm: (items: MediaLibraryPickerItem[]) => void | Promise<void>;
 };
@@ -105,6 +106,7 @@ export default function MediaLibraryPickerModal({
   maxImageBytes,
   maxVideoBytes,
   onOpenOptimizer,
+  onOversizedMedia,
   onClose,
   onConfirm,
 }: MediaLibraryPickerModalProps) {
@@ -133,7 +135,7 @@ export default function MediaLibraryPickerModal({
 
   useEffect(() => {
     if (!open || typeof window === "undefined") return;
-    const updateCompact = () => setCompact(window.innerWidth <= 640);
+    const updateCompact = () => setCompact(window.innerWidth <= 760);
     updateCompact();
     window.addEventListener("resize", updateCompact);
     return () => window.removeEventListener("resize", updateCompact);
@@ -201,6 +203,11 @@ export default function MediaLibraryPickerModal({
       Number.isFinite(Number(maxBytes)) &&
       sizeBytes > Number(maxBytes)
     ) {
+      if (onOversizedMedia) {
+        onClose();
+        onOversizedMedia(item);
+        return;
+      }
       const limitLabel = formatLimitBytes(Number(maxBytes));
       setOversizeBlocked(true);
       setOversizeBlockedItem(item);
@@ -549,20 +556,40 @@ export default function MediaLibraryPickerModal({
                 Array.isArray(item.tags) && item.tags.length
                   ? item.tags.join(", ")
                   : "Aucun tag";
+              const openOptimizerForItem = (
+                event: React.MouseEvent<HTMLButtonElement>,
+              ) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!onOpenOptimizer) {
+                  toggleItem(item);
+                  return;
+                }
+                onClose();
+                onOpenOptimizer(item);
+              };
               return (
-                <button
-                  type="button"
+                <div
                   key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
                   onClick={() => toggleItem(item)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    toggleItem(item);
+                  }}
                   style={{
                     ...rowComputedStyle,
                     borderColor: selected
                       ? "rgba(105,239,255,.65)"
+                      : itemOversized
+                        ? "rgba(251,191,36,.22)"
                       : "rgba(255,255,255,.08)",
                     background: selected
                       ? "linear-gradient(90deg, rgba(76,195,255,.16), rgba(155,81,255,.12))"
                       : rowComputedStyle.background,
-                    opacity: itemOversized ? 0.72 : 1,
                   }}
                 >
                   <span style={thumbComputedStyle}>
@@ -586,15 +613,39 @@ export default function MediaLibraryPickerModal({
                     <strong style={nameStyle}>{displayName(item)}</strong>
                     <small style={tagStyle}>{tags}</small>
                   </span>
-                  <span style={pillStyle}>
-                    {itemOversized
-                      ? "À optimiser"
-                      : item.media_type === "video"
-                        ? "Vidéo"
-                        : "Image"}
-                  </span>
-                  {!compact ? (
+                  {compact ? (
+                    <span style={compactMediaStatusStyle}>
+                      <span style={compactTypePillStyle}>
+                        {item.media_type === "video" ? "Vidéo" : "Image"}
+                      </span>
+                      {itemOversized ? (
+                        <button
+                          type="button"
+                          onClick={openOptimizerForItem}
+                          style={compactOptimizeButtonStyle}
+                          title={`Compresser ce média pour respecter ${formatLimitBytes(Number(itemLimit))}`}
+                        >
+                          À optimiser
+                        </button>
+                      ) : null}
+                    </span>
+                  ) : (
                     <>
+                      <span style={pillStyle}>
+                        {item.media_type === "video" ? "Vidéo" : "Image"}
+                      </span>
+                      <span style={optimizerCellStyle}>
+                        {itemOversized ? (
+                          <button
+                            type="button"
+                            onClick={openOptimizerForItem}
+                            style={optimizeButtonStyle}
+                            title={`Compresser ce média pour respecter ${formatLimitBytes(Number(itemLimit))}`}
+                          >
+                            À optimiser
+                          </button>
+                        ) : null}
+                      </span>
                       <span style={metaStyle}>
                         {formatBytes(item.size_bytes)}
                       </span>
@@ -609,9 +660,9 @@ export default function MediaLibraryPickerModal({
                         {dateLabel(item.created_at)}
                       </span>
                     </>
-                  ) : null}
+                  )}
                   <span style={checkStyle}>{selected ? "✓" : ""}</span>
-                </button>
+                </div>
               );
             })
           )}
@@ -669,7 +720,7 @@ const overlayStyle: React.CSSProperties = {
 };
 
 const modalStyle: React.CSSProperties = {
-  width: "min(900px, calc(100vw - 32px))",
+  width: "min(1000px, calc(100vw - 32px))",
   height: "min(820px, calc(100svh - 32px))",
   maxHeight: "calc(100svh - 32px)",
   display: "grid",
@@ -890,7 +941,8 @@ const rowStyle: React.CSSProperties = {
   minWidth: 0,
   boxSizing: "border-box",
   display: "grid",
-  gridTemplateColumns: "68px minmax(0,1fr) 74px 72px 84px 94px 34px",
+  gridTemplateColumns:
+    "68px minmax(90px,.75fr) 72px 92px 68px 80px minmax(78px,.25fr) 34px",
   gap: 10,
   alignItems: "center",
   padding: 10,
@@ -952,6 +1004,49 @@ const pillStyle: React.CSSProperties = {
   color: "#dff6ff",
   fontSize: 12,
   fontWeight: 950,
+};
+
+const optimizerCellStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-start",
+};
+
+const optimizeButtonStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  borderRadius: 999,
+  padding: "5px 9px",
+  border: "1px solid rgba(251,191,36,.30)",
+  background: "rgba(120,53,15,.20)",
+  color: "#fde68a",
+  fontSize: 11,
+  lineHeight: 1.05,
+  fontWeight: 950,
+  whiteSpace: "nowrap",
+  cursor: "pointer",
+};
+
+const compactMediaStatusStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  justifyItems: "start",
+  alignContent: "center",
+  gap: 2,
+};
+
+const compactTypePillStyle: React.CSSProperties = {
+  ...pillStyle,
+  padding: "3px 7px",
+  fontSize: 10,
+  lineHeight: 1.05,
+};
+
+const compactOptimizeButtonStyle: React.CSSProperties = {
+  ...optimizeButtonStyle,
+  padding: "3px 7px",
+  fontSize: 9.5,
+  lineHeight: 1.05,
 };
 
 const metaStyle: React.CSSProperties = {

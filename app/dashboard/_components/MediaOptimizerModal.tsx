@@ -332,6 +332,8 @@ export default function MediaOptimizerModal({
   const [stage, setStage] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [insertionError, setInsertionError] = useState("");
+  const [retentionNotice, setRetentionNotice] = useState("");
   const [outputItem, setOutputItem] = useState<MediaOptimizerItem | null>(null);
   const [targetBytes, setTargetBytes] = useState(0);
   const openRef = useRef(open);
@@ -346,6 +348,8 @@ export default function MediaOptimizerModal({
     setStage("");
     setError("");
     setNotice("");
+    setInsertionError("");
+    setRetentionNotice("");
     setOutputItem(null);
     setTargetBytes(0);
   }, [open, sourceFile, sourceItem]);
@@ -362,6 +366,10 @@ export default function MediaOptimizerModal({
 
   const currentSize = Number(workingItem?.size_bytes || sourceFile?.size || 0);
   const limit = mediaType ? outputLimit(mediaType, origin) : 0;
+  const sourceMaxBytes = mediaType ? sourceLimit(mediaType) : 0;
+  const sourceTooLarge = Boolean(
+    sourceMaxBytes && currentSize > sourceMaxBytes,
+  );
   const maxTargetBytes = Math.max(0, Math.min(currentSize || limit, limit));
   const minTargetBytes = Math.min(MEDIA_LIBRARY_MIN_TARGET_BYTES, maxTargetBytes || MEDIA_LIBRARY_MIN_TARGET_BYTES);
   const title = "Compresser le média";
@@ -378,11 +386,59 @@ export default function MediaOptimizerModal({
   const targetMb = Math.max(0, Math.round(targetBytes / 1_000_000));
   const maxTargetMb = Math.max(0, Math.round(maxTargetBytes / 1_000_000));
 
+  const applyOptimizedItem = async (
+    optimized: MediaOptimizerItem,
+    retentionMessage: string,
+  ) => {
+    if (!onOptimized) {
+      setInsertionError("");
+      setNotice(retentionMessage);
+      return true;
+    }
+
+    try {
+      await onOptimized(optimized);
+      setInsertionError("");
+      setNotice(
+        origin === "booster"
+          ? `Copie compressée ajoutée au Booster. ${retentionMessage}`
+          : origin === "email"
+            ? `Copie compressée ajoutée à la pièce jointe. ${retentionMessage}`
+            : retentionMessage,
+      );
+      return true;
+    } catch (err) {
+      setInsertionError(
+        err instanceof Error
+          ? err.message
+          : "La copie a bien été créée, mais son insertion automatique a échoué.",
+      );
+      setNotice(`Copie compressée créée. ${retentionMessage}`);
+      return false;
+    }
+  };
+
+  const retryOptimizedInsertion = async () => {
+    if (!outputItem || !onOptimized || busy) return;
+    setBusy(true);
+    setInsertionError("");
+    try {
+      await applyOptimizedItem(
+        outputItem,
+        retentionNotice || "Original conservé dans la Médiathèque.",
+      );
+    } finally {
+      if (openRef.current) setBusy(false);
+    }
+  };
+
   const handleOptimize = async () => {
     if (busy || !mediaType) return;
     setBusy(true);
     setError("");
     setNotice("");
+    setInsertionError("");
+    setRetentionNotice("");
     setOutputItem(null);
     try {
       let source = workingItem;
@@ -467,19 +523,11 @@ export default function MediaOptimizerModal({
         const retention = await removeOriginalIfSafe(source.id);
         retentionMessage = retention.message;
       }
+      setRetentionNotice(retentionMessage);
       setNotice(retentionMessage);
       await onLibraryChanged?.();
 
-      if (onOptimized) {
-        await onOptimized(optimized);
-        setNotice(
-          origin === "booster"
-            ? `Copie compressée ajoutée au Booster. ${retentionMessage}`
-            : origin === "email"
-              ? `Copie compressée prête pour la pièce jointe. ${retentionMessage}`
-              : retentionMessage,
-        );
-      }
+      await applyOptimizedItem(optimized, retentionMessage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Compression impossible.");
     } finally {
@@ -608,6 +656,26 @@ export default function MediaOptimizerModal({
           </span>
         </div>
 
+        {sourceTooLarge ? (
+          <div
+            role="alert"
+            style={{
+              padding: "11px 12px",
+              borderRadius: 13,
+              border: "1px solid rgba(248,113,113,.36)",
+              background: "rgba(127,29,29,.22)",
+              color: "#fecaca",
+              fontSize: 13,
+              lineHeight: 1.45,
+            }}
+          >
+            <strong>Fichier source trop volumineux.</strong> Ce média fait{" "}
+            {formatBytes(currentSize)}. iNrCy accepte une source de{" "}
+            {formatBytes(sourceMaxBytes)} maximum et ne peut donc pas importer
+            ni compresser ce fichier. Choisissez une source plus légère.
+          </div>
+        ) : null}
+
         <div
           style={{
             display: "grid",
@@ -729,6 +797,23 @@ export default function MediaOptimizerModal({
           <div role="status" style={{ color: "#c9d8f4", fontSize: 12 }}>{notice}</div>
         ) : null}
 
+        {outputItem && insertionError ? (
+          <div
+            role="alert"
+            style={{
+              padding: "10px 12px",
+              borderRadius: 13,
+              border: "1px solid rgba(251,191,36,.30)",
+              background: "rgba(120,53,15,.18)",
+              color: "#fde68a",
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            La compression est terminée, mais iNrCy n’a pas pu réinsérer automatiquement le fichier. {insertionError}
+          </div>
+        ) : null}
+
         <footer style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
           <button
             type="button"
@@ -751,7 +836,25 @@ export default function MediaOptimizerModal({
             <button
               type="button"
               onClick={() => void handleOptimize()}
-              disabled={busy || !mediaType || !currentSize || !targetBytes || targetBytes >= currentSize || currentSize > sourceLimit(mediaType || "image")}
+              disabled={busy || !mediaType || !currentSize || !targetBytes || targetBytes >= currentSize || sourceTooLarge}
+              style={{
+                borderRadius: 999,
+                padding: "10px 16px",
+                border: "1px solid rgba(105,239,255,.34)",
+                background: "linear-gradient(135deg, rgba(47,209,255,.30), rgba(155,81,255,.34))",
+                color: "#fff",
+                fontWeight: 950,
+                cursor: busy ? "wait" : sourceTooLarge ? "not-allowed" : "pointer",
+                opacity: busy || sourceTooLarge ? 0.65 : 1,
+              }}
+            >
+              {busy ? "Compression en cours…" : "Compresser"}
+            </button>
+          ) : insertionError && onOptimized ? (
+            <button
+              type="button"
+              onClick={() => void retryOptimizedInsertion()}
+              disabled={busy}
               style={{
                 borderRadius: 999,
                 padding: "10px 16px",
@@ -763,7 +866,7 @@ export default function MediaOptimizerModal({
                 opacity: busy ? 0.65 : 1,
               }}
             >
-              {busy ? "Compression en cours…" : "Compresser"}
+              {busy ? "Insertion…" : "Insérer le fichier compressé"}
             </button>
           ) : null}
         </footer>

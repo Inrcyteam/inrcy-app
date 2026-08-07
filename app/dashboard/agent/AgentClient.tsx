@@ -62,6 +62,11 @@ import RichSiteContentEditor from "../booster/publier/components/RichSiteContent
 import MediaLibraryPickerModal, {
   type MediaLibraryPickerItem,
 } from "../_components/MediaLibraryPickerModal";
+import MediaOptimizerModal, {
+  type MediaOptimizerItem,
+} from "../_components/MediaOptimizerModal";
+import { MEDIA_LIBRARY_EMAIL_TARGET_BYTES } from "@/lib/mediaLibraryOptimizationPolicy";
+import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
   CHANNEL_PRESETS,
@@ -162,6 +167,13 @@ import type {
   AgentConfirmDialogState,
   ScheduleListItem,
 } from "./_lib/agent.types";
+
+type AgentMediaOptimizerRequest = {
+  source:
+    | { kind: "file"; file: File }
+    | { kind: "library"; item: MediaOptimizerItem };
+  destination: "publish" | "campaign";
+};
 import {
   AGENT_MEDIA_MAX_IMAGE_BYTES,
   AGENT_MEDIA_MAX_VIDEO_BYTES,
@@ -388,6 +400,12 @@ export default function AgentClient() {
   const [publishMediaUploadState, setPublishMediaUploadState] = useState<
     "idle" | "saving"
   >("idle");
+  const [mediaOptimizerRequest, setMediaOptimizerRequest] =
+    useState<AgentMediaOptimizerRequest | null>(null);
+  const [mediaOptimizerQueue, setMediaOptimizerQueue] = useState<
+    AgentMediaOptimizerRequest[]
+  >([]);
+  const [mediaOptimizerCompleted, setMediaOptimizerCompleted] = useState(false);
   const [publishImageAdapterOpen, setPublishImageAdapterOpen] = useState(false);
   const [publishImageAdapterFile, setPublishImageAdapterFile] =
     useState<File | null>(null);
@@ -1249,12 +1267,6 @@ export default function AgentClient() {
         `Format non autorisé. Images : ${INR_MEDIA_IMAGE_FORMATS_LABEL}. Vidéos : ${INR_MEDIA_VIDEO_FORMATS_LABEL}.`,
       );
     }
-    if (isImage && file.size > AGENT_MEDIA_MAX_IMAGE_BYTES) {
-      throw new Error(`Image trop lourde. Taille maximale : ${INR_MEDIA_IMAGE_MAX_MB_LABEL}.`);
-    }
-    if (isVideo && file.size > AGENT_MEDIA_MAX_VIDEO_BYTES) {
-      throw new Error(`Vidéo trop lourde. Taille maximale : ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}.`);
-    }
     if (activePreviewChannel === "youtube" && !isVideo) {
       throw new Error(
         "YouTube nécessite une vidéo. Choisis une vidéo depuis la Médiathèque ou importe une vidéo.",
@@ -1263,19 +1275,68 @@ export default function AgentClient() {
     return isVideo ? "video" : "image";
   }
 
+  function openMediaOptimizerForFiles(
+    files: File[],
+    destination: AgentMediaOptimizerRequest["destination"],
+  ) {
+    const requests = files
+      .filter((file) => {
+        const mediaType = detectUniversalUploadMediaType({
+          name: file.name,
+          mimeType: file.type,
+        });
+        return mediaType === "image" || mediaType === "video";
+      })
+      .map<AgentMediaOptimizerRequest>((file) => ({
+        source: { kind: "file", file },
+        destination,
+      }));
+    const [first, ...rest] = requests;
+    if (!first) return false;
+    setMediaOptimizerRequest(first);
+    setMediaOptimizerQueue(rest);
+    setMediaOptimizerCompleted(false);
+    return true;
+  }
+
+  function openMediaOptimizerForLibraryItem(
+    item: MediaLibraryPickerItem,
+    destination: AgentMediaOptimizerRequest["destination"],
+  ) {
+    setMediaOptimizerRequest({
+      source: { kind: "library", item: item as MediaOptimizerItem },
+      destination,
+    });
+    setMediaOptimizerQueue([]);
+    setMediaOptimizerCompleted(false);
+  }
+
+  function closeMediaOptimizer() {
+    if (mediaOptimizerCompleted && mediaOptimizerQueue.length > 0) {
+      const [next, ...rest] = mediaOptimizerQueue;
+      setMediaOptimizerRequest(next);
+      setMediaOptimizerQueue(rest);
+      setMediaOptimizerCompleted(false);
+      return;
+    }
+    setMediaOptimizerRequest(null);
+    setMediaOptimizerQueue([]);
+    setMediaOptimizerCompleted(false);
+  }
+
   async function selectPublishMediaFromLibrary(
     item: AgentMediaLibraryItem | MediaLibraryPickerItem,
   ) {
-    if (!item) return;
+    if (!item) return false;
     if (activePreviewChannel === "youtube" && item.media_type !== "video") {
       showNotice("YouTube nécessite une vidéo.");
-      return;
+      return false;
     }
     if (item.media_type === "image" && publishImageLimitReached) {
       showNotice(
         `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint pour ce canal.`,
       );
-      return;
+      return false;
     }
     setPublishMediaUploadState("saving");
     try {
@@ -1294,12 +1355,14 @@ export default function AgentClient() {
         setPublishMediaActiveIndex(0);
         showNotice("Vidéo iNrAgent mise à jour.");
       }
+      return true;
     } catch (error) {
       showNotice(
         error instanceof Error
           ? error.message
           : "Modification du média impossible.",
       );
+      return false;
     } finally {
       setPublishMediaUploadState("idle");
     }
@@ -1742,6 +1805,14 @@ export default function AgentClient() {
       mediaKind = validateAgentPublishMediaFile(file);
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Média invalide.");
+      return;
+    }
+
+    const exceedsPublishLimit =
+      (mediaKind === "image" && file.size > AGENT_MEDIA_MAX_IMAGE_BYTES) ||
+      (mediaKind === "video" && file.size > AGENT_MEDIA_MAX_VIDEO_BYTES);
+    if (exceedsPublishLimit) {
+      openMediaOptimizerForFiles([file], "publish");
       return;
     }
 
@@ -2371,8 +2442,39 @@ export default function AgentClient() {
 
   async function uploadCampaignAttachment(filesInput: FileList | null) {
     if (!selectedPreparedAction || attachmentUploadState === "saving") return;
-    const files = Array.from(filesInput || []);
+    const files = Array.from(filesInput || []).slice(0, 10);
     if (!files.length) return;
+
+    const directFiles: File[] = [];
+    const oversizedMedia: File[] = [];
+    const oversizedUnsupported: File[] = [];
+    for (const file of files) {
+      if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+        directFiles.push(file);
+        continue;
+      }
+      const mediaType = detectUniversalUploadMediaType({
+        name: file.name,
+        mimeType: file.type,
+      });
+      if (mediaType === "image" || mediaType === "video") {
+        oversizedMedia.push(file);
+      } else {
+        oversizedUnsupported.push(file);
+      }
+    }
+
+    if (!directFiles.length) {
+      if (oversizedUnsupported.length > 0) {
+        showNotice(
+          `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être compressé automatiquement par iNrCy.`,
+        );
+      }
+      if (oversizedMedia.length > 0) {
+        openMediaOptimizerForFiles(oversizedMedia, "campaign");
+      }
+      return;
+    }
 
     setAttachmentUploadState("saving");
     try {
@@ -2381,7 +2483,7 @@ export default function AgentClient() {
       const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
       const uploaded: CampaignAttachmentRef[] = [];
 
-      for (const file of files.slice(0, 10)) {
+      for (const file of directFiles) {
         const path = makeAttachmentPath(file.name || "piece-jointe", userId);
         const { error } = await supabase.storage
           .from("inrbox_attachments")
@@ -2405,9 +2507,15 @@ export default function AgentClient() {
       );
       await saveCampaignAttachments([...current, ...uploaded].slice(0, 10));
       showNotice(
-        uploaded.length > 1
-          ? "Pièces jointes ajoutées."
-          : "Pièce jointe ajoutée.",
+        `${
+          uploaded.length > 1
+            ? "Pièces jointes ajoutées."
+            : "Pièce jointe ajoutée."
+        }${
+          oversizedUnsupported.length > 0
+            ? ` ${oversizedUnsupported[0].name} dépasse 20 Mo et ne peut pas être compressé automatiquement.`
+            : ""
+        }`,
       );
     } catch (error) {
       showNotice(
@@ -2418,12 +2526,16 @@ export default function AgentClient() {
     } finally {
       setAttachmentUploadState("idle");
     }
+
+    if (oversizedMedia.length > 0) {
+      openMediaOptimizerForFiles(oversizedMedia, "campaign");
+    }
   }
 
   async function addCampaignAttachmentsFromMediaLibrary(
     items: MediaLibraryPickerItem[],
   ) {
-    if (!selectedPreparedAction || attachmentUploadState === "saving") return;
+    if (!selectedPreparedAction || attachmentUploadState === "saving") return false;
     const picked = items.slice(0, 10).map((item) => ({
       bucket: item.bucket_name || "inrcy-pro-media",
       path: item.storage_path,
@@ -2436,7 +2548,7 @@ export default function AgentClient() {
         (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
       size: item.size_bytes || 0,
     })) as CampaignAttachmentRef[];
-    if (!picked.length) return;
+    if (!picked.length) return false;
 
     setAttachmentUploadState("saving");
     try {
@@ -2449,15 +2561,46 @@ export default function AgentClient() {
           ? "Pièces jointes ajoutées depuis la Médiathèque."
           : "Pièce jointe ajoutée depuis la Médiathèque.",
       );
+      return true;
     } catch (error) {
       showNotice(
         error instanceof Error
           ? error.message
           : "Pièce jointe impossible à ajouter.",
       );
+      return false;
     } finally {
       setAttachmentUploadState("idle");
     }
+  }
+
+  async function handleOptimizedAgentMedia(item: MediaOptimizerItem) {
+    const request = mediaOptimizerRequest;
+    if (!request) {
+      throw new Error(
+        "La destination du média compressé n’est plus disponible dans iNrAgent.",
+      );
+    }
+
+    if (
+      request.destination === "campaign" &&
+      Number(item.size_bytes || 0) > MEDIA_LIBRARY_EMAIL_TARGET_BYTES
+    ) {
+      throw new Error(
+        "La copie compressée dépasse encore 20 Mo. Choisissez un objectif plus léger.",
+      );
+    }
+
+    const inserted =
+      request.destination === "campaign"
+        ? await addCampaignAttachmentsFromMediaLibrary([item])
+        : await selectPublishMediaFromLibrary(item);
+    if (!inserted) {
+      throw new Error(
+        "La copie compressée a été créée, mais son insertion dans iNrAgent a échoué.",
+      );
+    }
+    setMediaOptimizerCompleted(true);
   }
 
   async function removeCampaignAttachment(path: string) {
@@ -5017,6 +5160,27 @@ export default function AgentClient() {
         onSave={saveCampaignMailAccount}
       />
 
+      <MediaOptimizerModal
+        open={Boolean(mediaOptimizerRequest)}
+        sourceFile={
+          mediaOptimizerRequest?.source.kind === "file"
+            ? mediaOptimizerRequest.source.file
+            : null
+        }
+        sourceItem={
+          mediaOptimizerRequest?.source.kind === "library"
+            ? mediaOptimizerRequest.source.item
+            : null
+        }
+        origin={
+          mediaOptimizerRequest?.destination === "campaign"
+            ? "email"
+            : "booster"
+        }
+        onClose={closeMediaOptimizer}
+        onOptimized={handleOptimizedAgentMedia}
+      />
+
       <AttachmentModal
         open={attachmentPreviewOpen}
         preview={campaignMailPreview}
@@ -5027,7 +5191,16 @@ export default function AgentClient() {
         onFilesSelected={(files) => void uploadCampaignAttachment(files)}
         onOpenLibrary={() => setCampaignMediaLibraryPickerOpen(true)}
         onCloseLibrary={() => setCampaignMediaLibraryPickerOpen(false)}
-        onConfirmLibrary={addCampaignAttachmentsFromMediaLibrary}
+        onConfirmLibrary={async (items) => {
+          await addCampaignAttachmentsFromMediaLibrary(items);
+        }}
+        maxAttachmentBytes={MEDIA_LIBRARY_EMAIL_TARGET_BYTES}
+        onOpenOptimizer={(item) =>
+          openMediaOptimizerForLibraryItem(item, "campaign")
+        }
+        onOversizedMedia={(item) =>
+          openMediaOptimizerForLibraryItem(item, "campaign")
+        }
         onRemove={removeCampaignAttachment}
       />
 
@@ -5311,11 +5484,19 @@ export default function AgentClient() {
               accept={activePreviewChannel === "youtube" ? "video" : "all"}
               multiple={false}
               maxSelection={1}
+              maxImageBytes={AGENT_MEDIA_MAX_IMAGE_BYTES}
+              maxVideoBytes={AGENT_MEDIA_MAX_VIDEO_BYTES}
               confirmLabel="Utiliser ce média"
               selectedHint={
                 publishImageLimitReached
                   ? `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint : choisissez une vidéo ou supprimez d’abord une image.`
                   : "Choisissez un média pour iNrAgent."
+              }
+              onOpenOptimizer={(item) =>
+                openMediaOptimizerForLibraryItem(item, "publish")
+              }
+              onOversizedMedia={(item) =>
+                openMediaOptimizerForLibraryItem(item, "publish")
               }
               onClose={() => setPublishMediaLibraryPickerOpen(false)}
               onConfirm={(items) => selectPublishMediaFromPicker(items)}
