@@ -228,10 +228,6 @@ import MediaLibraryPickerModal, {
 import MediaOptimizerModal, {
   type MediaOptimizerItem,
 } from "@/app/dashboard/_components/MediaOptimizerModal";
-import {
-  MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
-  MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
-} from "@/lib/mediaLibraryOptimizationPolicy";
 
 // 30 s reste la cible UX. La marge couvre un basculement fournisseur sans
 // transformer une première tentative lente en faux échec nécessitant 2 clics.
@@ -475,10 +471,6 @@ export default function PublishModal({
     useState(false);
   const [mediaOptimizerRequest, setMediaOptimizerRequest] =
     useState<BoosterMediaOptimizerRequest | null>(null);
-  const [mediaOptimizerQueue, setMediaOptimizerQueue] = useState<
-    BoosterMediaOptimizerRequest[]
-  >([]);
-  const [mediaOptimizerCompleted, setMediaOptimizerCompleted] = useState(false);
   const pendingDirectMediaDestinationRef =
     useRef<BoosterMediaInsertionDestination | null>(null);
 
@@ -503,30 +495,21 @@ export default function PublishModal({
         mediaType: item!.media_type,
         destination: getMediaLibraryPickerDestination(),
       });
-      setMediaOptimizerQueue([]);
-      setMediaOptimizerCompleted(false);
     }
     setMediaOptimizerPromptOpen(false);
     setMediaOptimizerOpen(true);
   }, [getMediaLibraryPickerDestination]);
 
   const registerOversizedMedia = useCallback(
-    (file: File, targetChannel?: ChannelKey, queuedFiles: File[] = []) => {
+    (file: File, targetChannel?: ChannelKey) => {
       const destination: BoosterMediaInsertionDestination = targetChannel
         ? { kind: "channel", channel: targetChannel }
         : pendingDirectMediaDestinationRef.current || { kind: "publication" };
-      const requests = [file, ...queuedFiles].map<BoosterMediaOptimizerRequest>(
-        (candidate) => ({
-          source: { kind: "file", file: candidate },
-          mediaType: isBoosterVideoFile(candidate) ? "video" : "image",
-          destination,
-        }),
-      );
-      const [first, ...rest] = requests;
-      if (!first) return false;
-      setMediaOptimizerRequest(first);
-      setMediaOptimizerQueue(rest);
-      setMediaOptimizerCompleted(false);
+      setMediaOptimizerRequest({
+        source: { kind: "file", file },
+        mediaType: isBoosterVideoFile(file) ? "video" : "image",
+        destination,
+      });
       setImgError("");
       setMediaOptimizerOpen(false);
       setMediaOptimizerPromptOpen(true);
@@ -542,8 +525,6 @@ export default function PublishModal({
         mediaType: item.media_type,
         destination: getMediaLibraryPickerDestination(),
       });
-      setMediaOptimizerQueue([]);
-      setMediaOptimizerCompleted(false);
       setImgError("");
       setMediaOptimizerOpen(false);
       setMediaOptimizerPromptOpen(true);
@@ -560,25 +541,13 @@ export default function PublishModal({
   const closeOversizedMediaPrompt = useCallback(() => {
     setMediaOptimizerPromptOpen(false);
     setMediaOptimizerRequest(null);
-    setMediaOptimizerQueue([]);
-    setMediaOptimizerCompleted(false);
   }, []);
 
   const closeMediaOptimizer = useCallback(() => {
     setMediaOptimizerOpen(false);
     setMediaOptimizerPromptOpen(false);
-    if (mediaOptimizerCompleted && mediaOptimizerQueue.length > 0) {
-      const [next, ...rest] = mediaOptimizerQueue;
-      setMediaOptimizerRequest(next);
-      setMediaOptimizerQueue(rest);
-      setMediaOptimizerCompleted(false);
-      setMediaOptimizerPromptOpen(true);
-      return;
-    }
     setMediaOptimizerRequest(null);
-    setMediaOptimizerQueue([]);
-    setMediaOptimizerCompleted(false);
-  }, [mediaOptimizerCompleted, mediaOptimizerQueue]);
+  }, []);
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
     Record<string, ImageMeta>
@@ -3679,7 +3648,7 @@ export default function PublishModal({
     file: File | null,
     options?: { hasImages?: boolean; targetChannel?: ChannelKey },
   ) => {
-    if (!file) return false;
+    if (!file) return;
     const channelModesBeforeVideo = options?.targetChannel
       ? Array.from(
           new Set<ChannelKey>([
@@ -3700,12 +3669,12 @@ export default function PublishModal({
 
     if (!isBoosterVideoFile(file)) {
       setImgError(`Ajoutez une vidéo valide : ${BOOSTER_VIDEO_FORMATS_LABEL}.`);
-      return false;
+      return;
     }
 
     if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
       registerOversizedMedia(file, options?.targetChannel);
-      return false;
+      return;
     }
 
     clearVideoMedia({ cleanupStorage: true, reason: "replace-video" });
@@ -3802,7 +3771,6 @@ export default function PublishModal({
       }
       return next;
     });
-    return true;
   };
 
   const onVideoChange = async (files: FileList | null) => {
@@ -3841,7 +3809,7 @@ export default function PublishModal({
     destination: BoosterMediaInsertionDestination =
       getMediaLibraryPickerDestination(),
   ) => {
-    if (!items.length) return false;
+    if (!items.length) return;
     setImgError("");
     const videos = items.filter((item) => item.media_type === "video");
     const imagesFromLibrary = items.filter(
@@ -3876,34 +3844,23 @@ export default function PublishModal({
     ]);
 
     if (files.length) {
-      const inserted = await addImageFiles(
+      await addImageFiles(
         files,
         destination.kind === "channel" ? destination.channel : undefined,
       );
-      if (!inserted) {
-        throw new Error(
-          "Le média est prêt, mais Booster ne peut pas l’insérer avec la sélection actuelle.",
-        );
-      }
     }
     if (selectedVideo) {
-      const inserted = await addVideoFile(selectedVideo, {
+      await addVideoFile(selectedVideo, {
         hasImages: images.length + files.length > 0,
         targetChannel:
           destination.kind === "channel" ? destination.channel : undefined,
       });
-      if (!inserted) {
-        throw new Error(
-          "La vidéo est prête, mais Booster ne peut pas l’insérer avec la sélection actuelle.",
-        );
-      }
     }
     if (imagesFromLibrary.length > selectedImages.length) {
       setImgError(
         `${selectedImages.length} image(s) ajoutée(s). Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`,
       );
     }
-    return true;
   };
 
   const applyOptimizedMediaToBooster = async (item: MediaOptimizerItem) => {
@@ -3923,7 +3880,6 @@ export default function PublishModal({
 
     await addMediaLibrarySelection([item], request.destination);
     setImgError("");
-    setMediaOptimizerCompleted(true);
   };
 
   const onTakePhotoClick = async (
@@ -6387,10 +6343,6 @@ export default function PublishModal({
                   mediaOptimizerRequest.mediaType === "video"
                     ? BOOSTER_MAX_VIDEO_BYTES
                     : BOOSTER_MAX_IMAGE_BYTES,
-                sourceMaxBytes:
-                  mediaOptimizerRequest.mediaType === "video"
-                    ? MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES
-                    : MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
               }
             : null
         }
@@ -6445,12 +6397,9 @@ export default function PublishModal({
             : "Ajouter à la publication"
         }
         onClose={() => setMediaLibraryPickerOpen(false)}
-        onConfirm={async (items) => {
-          await addMediaLibrarySelection(
-            items,
-            getMediaLibraryPickerDestination(),
-          );
-        }}
+        onConfirm={(items) =>
+          addMediaLibrarySelection(items, getMediaLibraryPickerDestination())
+        }
       />
 
       <MediaOptimizerModal

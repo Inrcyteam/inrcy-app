@@ -117,12 +117,12 @@ export type MailboxDetailsModalProps = {
   openPublicationImageAdapter: (channel: string, imageKey: string) => void;
   resetPublicationImage?: (channel: string, imageKey: string) => void;
   movePublicationImage?: (channel: string, imageKey: string, direction: -1 | 1) => void;
-  addPublicationFiles: (fileList: FileList | File[] | null) => void;
+  addPublicationFiles: (fileList: FileList | null) => void;
   addPublicationPhoto: (file: File) => void;
   addPublicationMediaLibraryItems: (items: MediaLibraryPickerItem[]) => void | Promise<void>;
   publicationVideoInputId: string;
   activePublicationEditVideo: PublicationEditVideoState | null;
-  addPublicationVideo: (fileList: FileList | File[] | null) => void;
+  addPublicationVideo: (fileList: FileList | null) => void;
   removePublicationVideo: (channel?: string) => void;
   setPublicationVideoFormatForChannel: (channel: string, format: VideoFormat) => void;
   setPublicationVideoAdaptationModeForChannel: (channel: string, mode: VideoAdaptationMode) => void;

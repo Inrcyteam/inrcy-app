@@ -3789,7 +3789,7 @@ export default function MailboxClient() {
     });
   }
 
-  function addPublicationFiles(fileList: FileList | File[] | null) {
+  function addPublicationFiles(fileList: FileList | null) {
     if (!fileList) return;
     addPublicationPickedFiles(Array.from(fileList));
   }
@@ -4036,7 +4036,7 @@ export default function MailboxClient() {
     }
   }
 
-  async function addPublicationVideo(fileList: FileList | File[] | null) {
+  async function addPublicationVideo(fileList: FileList | null) {
     const channel = normalizeBoosterChannelKeyForVideo(
       activeDetailsChannelEntry?.key || "",
     );

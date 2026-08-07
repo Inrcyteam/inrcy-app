@@ -13,7 +13,6 @@ type PublishWarningModalsProps = {
     mediaType: "image" | "video";
     sizeBytes: number;
     maxBytes: number;
-    sourceMaxBytes: number;
   } | null;
   onCloseOversizedMedia: () => void;
   onOptimizeOversizedMedia: () => void;
@@ -80,8 +79,6 @@ export default function PublishWarningModals({
 }: PublishWarningModalsProps) {
   if (oversizedMedia) {
     const mediaLabel = oversizedMedia.mediaType === "video" ? "vidéo" : "image";
-    const sourceTooLarge =
-      oversizedMedia.sizeBytes > oversizedMedia.sourceMaxBytes;
     return (
       <WarningShell styles={styles}>
         <div
@@ -120,9 +117,7 @@ export default function PublishWarningModals({
               color: "rgba(255,255,255,0.62)",
             }}
           >
-            {sourceTooLarge
-              ? `iNrCy accepte un fichier source de ${formatBytes(oversizedMedia.sourceMaxBytes)} maximum. Ce fichier ne peut pas être importé ni compressé : choisissez une source plus légère.`
-              : "iNrCy peut créer une copie compressée et la remettre automatiquement exactement là où vous étiez en train de l’ajouter."}
+            iNrCy peut créer une copie compressée et la remettre automatiquement exactement là où vous étiez en train de l’ajouter.
           </div>
         </div>
         <div
@@ -140,15 +135,13 @@ export default function PublishWarningModals({
           >
             Fermer
           </button>
-          {!sourceTooLarge ? (
-            <button
-              type="button"
-              className={styles.primaryBtn}
-              onClick={onOptimizeOversizedMedia}
-            >
-              Optimiser le média
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={styles.primaryBtn}
+            onClick={onOptimizeOversizedMedia}
+          >
+            Optimiser le média
+          </button>
         </div>
       </WarningShell>
     );
