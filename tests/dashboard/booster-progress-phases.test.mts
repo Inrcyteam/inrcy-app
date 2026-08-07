@@ -33,20 +33,22 @@ test("generation progress phases are ordered and capped at 100", () => {
 test("publication progress keeps iNr'Send as the final visible phase", () => {
   assert.equal(PUBLICATION_PROGRESS_PHASES.length, 9);
   assertOrderedCaps(PUBLICATION_PROGRESS_PHASES);
-  const inrSendPhase = PUBLICATION_PROGRESS_PHASES.at(-2);
+  const inrSendPhase =
+    PUBLICATION_PROGRESS_PHASES[PUBLICATION_PROGRESS_PHASES.length - 2];
   assert.equal(inrSendPhase?.key, "inrsend_recording");
-  assert.equal(inrSendPhase?.start, 96);
+  assert.equal(inrSendPhase?.start, 93);
   assert.equal(inrSendPhase?.cap, 99);
 });
 
-test("the UI groups technical publication work into four factual stages", () => {
+test("the UI groups technical publication work into five factual stages", () => {
   assert.deepEqual(
     PUBLICATION_PROGRESS_STAGES.map((stage) => stage.label),
     [
       "Demande prise en charge",
       "Finalisation des médias",
-      "Envoi parallèle",
-      "Confirmations et bilan",
+      "Publication sur les canaux",
+      "Vérification des publications",
+      "Enregistrement dans iNr’Send",
     ],
   );
   assert.equal(getPublicationProgressStage("verification").index, 1);
@@ -55,14 +57,17 @@ test("the UI groups technical publication work into four factual stages", () => 
   assert.equal(getPublicationProgressStage("channel_dispatch").index, 3);
   assert.equal(getPublicationProgressStage("publication_finalization").index, 3);
   assert.equal(getPublicationProgressStage("status_collection").index, 4);
-  assert.equal(getPublicationProgressStage("complete").index, 4);
+  assert.equal(getPublicationProgressStage("inrsend_recording").index, 5);
+  assert.equal(getPublicationProgressStage("complete").index, 5);
   assert.equal(getPublicationProgressStageForValue(0).index, 1);
   assert.equal(getPublicationProgressStageForValue(7).index, 1);
   assert.equal(getPublicationProgressStageForValue(8).index, 2);
   assert.equal(getPublicationProgressStageForValue(57).index, 2);
   assert.equal(getPublicationProgressStageForValue(58).index, 3);
-  assert.equal(getPublicationProgressStageForValue(91).index, 3);
+  assert.equal(getPublicationProgressStageForValue(83).index, 3);
+  assert.equal(getPublicationProgressStageForValue(84).index, 4);
   assert.equal(getPublicationProgressStageForValue(92).index, 4);
+  assert.equal(getPublicationProgressStageForValue(93).index, 5);
 });
 
 test("the 30-second bilan reaches 100 even while channels finish in background", () => {

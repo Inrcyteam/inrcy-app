@@ -6,8 +6,10 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createSignedUploadUrlWithRetry } from "@/lib/supabaseStorageUpload";
 import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
 import {
-  UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES,
-  UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES,
+  MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
+  MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
+} from "@/lib/mediaLibraryOptimizationPolicy";
+import {
   detectUniversalUploadMediaType,
   getUniversalMediaContentType,
   getUniversalMediaSafeExtension,
@@ -17,8 +19,8 @@ export const runtime = "nodejs";
 
 const BUCKET = "inrcy-pro-media";
 const MAX_FILES = INR_MEDIA_UPLOAD_BATCH_SIZE;
-const MAX_IMAGE_BYTES = UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES;
-const MAX_VIDEO_BYTES = UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES;
+const MAX_IMAGE_BYTES = MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES;
+const MAX_VIDEO_BYTES = MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES;
 
 type PrepareFile = {
   client_id?: unknown;
@@ -125,12 +127,12 @@ function assertAllowedFile(name: string, mime: string, size: number) {
   }
   if (type === "image" && size > MAX_IMAGE_BYTES) {
     throw new Error(
-      `${name || "Image"} : fichier exceptionnellement volumineux.`,
+      `${name || "Image"} : la Médiathèque accepte jusqu’à 300 Mo.`,
     );
   }
   if (type === "video" && size > MAX_VIDEO_BYTES) {
     throw new Error(
-      `${name || "Vidéo"} : fichier exceptionnellement volumineux.`,
+      `${name || "Vidéo"} : la Médiathèque accepte jusqu’à 300 Mo.`,
     );
   }
 }

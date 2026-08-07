@@ -1,7 +1,8 @@
-import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
-
 export const TIKTOK_MAX_SINGLE_CHUNK_BYTES = 64 * 1024 * 1024;
 export const TIKTOK_DEFAULT_CHUNK_BYTES = 32 * 1024 * 1024;
+// Provider transport capacity is deliberately independent from Booster's
+// product-level 75 MB input rule. Booster rejects oversized files upstream.
+export const TIKTOK_VIDEO_UPLOAD_MAX_BYTES = 300 * 1024 * 1024;
 
 export type TikTokVideoUploadPlan = {
   chunkSize: number;
@@ -12,7 +13,7 @@ export function buildTikTokVideoUploadPlan(
   videoSize: number,
 ): TikTokVideoUploadPlan {
   const safeSize = Math.max(0, Math.floor(Number(videoSize) || 0));
-  if (safeSize > INR_MEDIA_VIDEO_SOURCE_MAX_BYTES) {
+  if (safeSize > TIKTOK_VIDEO_UPLOAD_MAX_BYTES) {
     throw new RangeError("tiktok_video_source_too_large");
   }
   if (safeSize <= TIKTOK_MAX_SINGLE_CHUNK_BYTES) {

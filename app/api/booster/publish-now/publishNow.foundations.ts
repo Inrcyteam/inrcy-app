@@ -528,3 +528,68 @@ export function buildEditableImageAttachments(
     };
   });
 }
+
+/**
+ * Builds the immutable media snapshot kept by iNrSend.
+ *
+ * Publication derivatives (crop, padding, social format) are deliberately
+ * excluded: the history must always expose the reusable source selected by
+ * the professional, even when a channel received an adapted rendition.
+ */
+export function buildOriginalImageAttachments(
+  imageSet: ImageSet,
+): EditableImageAttachment[] {
+  const editableAttachments = Array.isArray(imageSet.editableAttachments)
+    ? imageSet.editableAttachments
+    : [];
+  const sourceAttachments: EditableImageAttachment[] = editableAttachments.length
+    ? editableAttachments
+    : imageSet.images.map((url, index) => ({
+        name: `image-${index + 1}.jpg`,
+        type: "image/jpeg",
+        url,
+        renderedUrl: url,
+        publicUrl: url,
+        originalUrl: url,
+        originalPublicUrl: url,
+      }));
+
+  return sourceAttachments.flatMap((attachment, index) => {
+    const originalUrl = String(
+      attachment.originalPublicUrl ||
+        attachment.originalUrl ||
+        attachment.publicUrl ||
+        attachment.url ||
+        attachment.renderedUrl ||
+        "",
+    ).trim();
+    if (!originalUrl) return [];
+
+    const originalName =
+      String(
+        attachment.originalName ||
+          attachment.name ||
+          `image-${index + 1}.jpg`,
+      ).trim() || `image-${index + 1}.jpg`;
+    const originalType =
+      String(attachment.originalType || attachment.type || "image/jpeg").trim() ||
+      "image/jpeg";
+
+    return [
+      {
+        ...attachment,
+        name: originalName,
+        type: originalType,
+        url: originalUrl,
+        renderedUrl: originalUrl,
+        publicUrl: originalUrl,
+        originalUrl,
+        originalPublicUrl: originalUrl,
+        originalName,
+        originalType,
+        transform: null,
+        isCustomized: false,
+      },
+    ];
+  });
+}

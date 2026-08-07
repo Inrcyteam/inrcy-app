@@ -191,6 +191,7 @@ import {
   asRecord,
   buildAsyncPreparedImagePayloads,
   buildEditableImageAttachments,
+  buildOriginalImageAttachments,
   buildImmediateDuplicateMessage,
   buildPublishIdempotencyKey,
   buildPublishIdempotencyMetadata,
@@ -1852,6 +1853,12 @@ async function publishNowHandler(req: Request) {
     const publicationImageSet = baseImageSet.images.length
       ? baseImageSet
       : fallbackImageSet || baseImageSet;
+    const originalPublicationImageAttachments =
+      buildOriginalImageAttachments(publicationImageSet);
+    const getOriginalImagesForChannel = (channel: ChannelKey) =>
+      buildOriginalImageAttachments(
+        channelImageSets[channel] || publicationImageSet,
+      );
 
     // Hard fail only if images were provided somewhere but none could be uploaded/prepared.
     if (
@@ -1962,16 +1969,20 @@ async function publishNowHandler(req: Request) {
               mediaModeByChannel[channel] === "video"
                 ? getPublicationVideoForChannel(channel)
                 : null;
+            const originalVideo =
+              publicationVideo ||
+              channelPersistedVideo?.sourceVideo ||
+              channelPersistedVideo;
 
-            if (mediaModeByChannel[channel] === "video" && channelPersistedVideo) {
+            if (mediaModeByChannel[channel] === "video" && originalVideo) {
               return [
                 channel,
                 {
                   ...baseValue,
                   images: [],
-                  attachments: [channelPersistedVideo],
-                  video: channelPersistedVideo,
-                  sourceVideo: publicationVideo,
+                  attachments: [originalVideo],
+                  video: originalVideo,
+                  sourceVideo: originalVideo,
                   mediaMode: "video",
                   videoSettings: videoSettingsByChannel[channel] || null,
                   videoFormat: videoSettingsByChannel[channel]?.format || null,
@@ -1995,14 +2006,13 @@ async function publishNowHandler(req: Request) {
             }
 
             const imageSet = channelImageSets[channel] || baseImageSet;
+            const originalImages = getOriginalImagesForChannel(channel);
             return [
               channel,
               {
                 ...baseValue,
-                images: imageSet.images,
-                attachments: imageSet.editableAttachments?.length
-                  ? imageSet.editableAttachments
-                  : imageSet.images,
+                images: originalImages.map((attachment) => attachment.url),
+                attachments: originalImages,
                 publishableUrls: imageSet.publishableUrls,
                 instagramPublishableUrls: imageSet.instagramPublishableUrls,
                 socialFeedPublishableUrls: imageSet.socialFeedPublishableUrls,
@@ -2054,6 +2064,9 @@ async function publishNowHandler(req: Request) {
           videoSettingsByChannel,
           video: hasAnyVideoChannel ? publicationVideo : null,
           videoByChannel: publicationVideoByChannel,
+          attachments: hasAnyVideoChannel && publicationVideo
+            ? [publicationVideo]
+            : originalPublicationImageAttachments,
           idea,
           post: firstPost,
           postByChannel: persistedPostByChannelForAsync,
@@ -5570,16 +5583,20 @@ async function publishNowHandler(req: Request) {
           mediaModeByChannel[channel] === "video"
             ? getPublicationVideoForChannel(channel)
             : null;
+        const originalVideo =
+          persistedVideo ||
+          channelPersistedVideo?.sourceVideo ||
+          channelPersistedVideo;
 
-        if (mediaModeByChannel[channel] === "video" && channelPersistedVideo) {
+        if (mediaModeByChannel[channel] === "video" && originalVideo) {
           return [
             channel,
             {
               ...(baseValue || {}),
               images: [],
-              attachments: [channelPersistedVideo],
-              video: channelPersistedVideo,
-              sourceVideo: persistedVideo,
+              attachments: [originalVideo],
+              video: originalVideo,
+              sourceVideo: originalVideo,
               mediaMode: "video",
               videoSettings: videoSettingsByChannel[channel] || null,
               videoFormat: videoSettingsByChannel[channel]?.format || null,
@@ -5603,15 +5620,14 @@ async function publishNowHandler(req: Request) {
         }
 
         const imageSet = channelImageSets[channel];
+        const originalImages = getOriginalImagesForChannel(channel);
         return [
           channel,
           imageSet
             ? {
                 ...(baseValue || {}),
-                images: imageSet.images,
-                attachments: imageSet.editableAttachments?.length
-                  ? imageSet.editableAttachments
-                  : imageSet.images,
+                images: originalImages.map((attachment) => attachment.url),
+                attachments: originalImages,
                 publishableUrls: imageSet.publishableUrls,
                 instagramPublishableUrls: imageSet.instagramPublishableUrls,
                 socialFeedPublishableUrls: imageSet.socialFeedPublishableUrls,
@@ -5697,6 +5713,9 @@ async function publishNowHandler(req: Request) {
         videoSettingsByChannel,
         video: persistedVideo,
         videoByChannel,
+        attachments: persistedVideo
+          ? [persistedVideo]
+          : originalPublicationImageAttachments,
         idea,
         channels: summary.successChannels,
         attemptedChannels: selected,

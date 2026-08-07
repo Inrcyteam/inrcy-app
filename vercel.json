@@ -49,6 +49,10 @@
       "schedule": "*/1 * * * *"
     },
     {
+      "path": "/api/cron/media-library-optimization",
+      "schedule": "*/1 * * * *"
+    },
+    {
       "path": "/api/cron/media-orphan-cleanup",
       "schedule": "17 * * * *"
     },
@@ -72,6 +76,12 @@
       "includeFiles": "node_modules/ffmpeg-static/**/*"
     },
     "app/api/cron/media-video-normalization/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/cron/media-library-optimization/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/media-library/optimization/run/route.ts": {
       "includeFiles": "node_modules/ffmpeg-static/**/*"
     },
     "app/api/media-pipeline/workspace/prepare/route.ts": {

@@ -919,10 +919,13 @@ export function extractAttachmentsFromPayload(payload: any): PublicationAttachme
       }
       const bucket = String(a.bucket || a.storage_bucket || "").trim();
       const storagePath = String(a.path || a.storage_path || a.storagePath || a.video_path || "").trim();
-      const renderedUrl = a.renderedUrl || a.rendered_url || a.url || a.href || a.publicUrl || a.public_url || a.videoUrl || a.video_url || null;
       const originalUrl = a.originalUrl || a.original_url || a.originalPublicUrl || a.original_public_url || null;
-      const url = renderedUrl || originalUrl || (storagePath && isLikelyUrl(storagePath) ? storagePath : null);
-      const name = a.name || a.filename || a.fileName || a.originalname || a.originalName || (storagePath && !isLikelyUrl(storagePath) ? storagePath.split("/").pop() : null) || url;
+      const renderedUrl = a.renderedUrl || a.rendered_url || a.url || a.href || a.publicUrl || a.public_url || a.videoUrl || a.video_url || null;
+      // iNrSend is the reusable archive: prefer the source over any cropped
+      // or channel-adapted rendition stored alongside it.
+      const url = originalUrl || renderedUrl || (storagePath && isLikelyUrl(storagePath) ? storagePath : null);
+      const hasReusableOriginal = Boolean(originalUrl);
+      const name = a.originalName || a.original_name || a.originalname || a.name || a.filename || a.fileName || (storagePath && !isLikelyUrl(storagePath) ? storagePath.split("/").pop() : null) || url;
       if (!name && !url) return null;
       const finalName = String(name || buildNameFromUrl(String(url || "")));
       const downloadUrl = bucket && storagePath && !isLikelyUrl(storagePath)
@@ -930,11 +933,19 @@ export function extractAttachmentsFromPayload(payload: any): PublicationAttachme
         : null;
       return {
         name: finalName,
-        type: a.type || a.mime || a.mimeType || a.originalType || null,
-        size: typeof a.size === "number" ? a.size : typeof a.bytes === "number" ? a.bytes : null,
+        type: a.originalType || a.original_type || a.type || a.mime || a.mimeType || null,
+        size: typeof a.originalSize === "number"
+          ? a.originalSize
+          : typeof a.original_size === "number"
+          ? a.original_size
+          : typeof a.size === "number"
+          ? a.size
+          : typeof a.bytes === "number"
+          ? a.bytes
+          : null,
         url: url || null,
-        renderedUrl: renderedUrl || url || null,
-        publicUrl: a.publicUrl || a.public_url || renderedUrl || url || null,
+        renderedUrl: hasReusableOriginal ? url : renderedUrl || url || null,
+        publicUrl: hasReusableOriginal ? url : a.publicUrl || a.public_url || renderedUrl || url || null,
         originalUrl: originalUrl || null,
         originalPublicUrl: a.originalPublicUrl || a.original_public_url || originalUrl || null,
         originalStoragePath: a.originalStoragePath || a.original_storage_path || null,
@@ -945,7 +956,7 @@ export function extractAttachmentsFromPayload(payload: any): PublicationAttachme
         duration: typeof a.duration === "number" ? a.duration : typeof a.video_duration_seconds === "number" ? a.video_duration_seconds : null,
         thumbnailUrl: a.thumbnailUrl || a.thumbnail_url || a.video_thumbnail_url || null,
         thumbnailStoragePath: a.thumbnailStoragePath || a.thumbnail_storage_path || null,
-        transform: a.transform || null,
+        transform: hasReusableOriginal ? null : a.transform || null,
         imageMeta: a.imageMeta || a.image_meta || null,
         downloadUrl,
       };
@@ -972,7 +983,16 @@ export function hasAttachmentFields(payload: any): boolean {
     payload.videoUrl,
     payload?.media_metadata?.video,
     payload?.mediaMetadata?.video,
-  ].some((value) => Boolean(value) || Array.isArray(value) || parseMaybeJsonArray(value).length > 0);
+  ].some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return false;
+      const parsed = parseMaybeJsonArray(trimmed);
+      return parsed.length > 0 || !trimmed.startsWith("[");
+    }
+    return Boolean(value);
+  });
 }
 
 export function extractPublicationParts(payload: any): PublicationParts {
@@ -1450,7 +1470,8 @@ export function extractChannelPublications(payload: any): ChannelPublication[] {
     const channelParts = extractPublicationParts(channelPayload);
     const fallbackParts = extractPublicationParts(payload);
 
-    const channelOwnsAttachments = hasAttachmentFields(channelPayload);
+    const channelOwnsAttachments =
+      hasAttachmentFields(channelPayload) || channelParts.mediaMode === "none";
 
     const channelVideoSettings = extractVideoSettingsForChannel(payload, channel, channelPayload);
 

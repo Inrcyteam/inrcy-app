@@ -244,6 +244,8 @@ type PublishIntentPanelProps = {
   useImagesForAI: boolean;
   setUseImagesForAI: Dispatch<SetStateAction<boolean>>;
   imgError: string;
+  showMediaOptimizerAction?: boolean;
+  onOpenMediaOptimizer?: () => void;
   genError: string;
   generationNotice: string;
   generationMediaWarning: string;
@@ -287,6 +289,8 @@ export default function PublishIntentPanel({
   useImagesForAI,
   setUseImagesForAI,
   imgError,
+  showMediaOptimizerAction = false,
+  onOpenMediaOptimizer,
   genError,
   generationNotice,
   generationMediaWarning,
@@ -1490,6 +1494,26 @@ export default function PublishIntentPanel({
             {message}
           </div>
         ))}
+        {showMediaOptimizerAction && onOpenMediaOptimizer ? (
+          <button
+            type="button"
+            onClick={onOpenMediaOptimizer}
+            style={{
+              justifySelf: "start",
+              border: "1px solid rgba(105,239,255,0.42)",
+              borderRadius: 999,
+              background:
+                "linear-gradient(135deg, rgba(47,209,255,0.24), rgba(155,81,255,0.28))",
+              color: "#effcff",
+              padding: "9px 14px",
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Compresser le média dans la Médiathèque
+          </button>
+        ) : null}
         {generationNotice ? (
           <div
             role="status"
@@ -1712,4 +1736,3 @@ export default function PublishIntentPanel({
     </div>
   );
 }
-

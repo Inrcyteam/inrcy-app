@@ -23,10 +23,17 @@ import {
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
+import {
+  MEDIA_LIBRARY_IMAGE_OPTIMIZATION_JOB_TYPE,
+  MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES,
+  MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
+  MEDIA_LIBRARY_VIDEO_OPTIMIZATION_JOB_TYPE,
+  MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES,
+  MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
+  needsMediaLibraryOptimization,
+} from "@/lib/mediaLibraryOptimizationPolicy";
 import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
 import {
-  UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES,
-  UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES,
   detectUniversalUploadMediaType,
 } from "@/lib/mediaUploadPolicy";
 import styles from "./mediaLibrary.module.css";
@@ -52,6 +59,21 @@ type MediaItem = {
   last_used_at: string | null;
   created_at: string;
   signed_url: string | null;
+  original_file_name?: string | null;
+  media_metadata?: Record<string, unknown> | null;
+  optimization?: {
+    id: string;
+    media_id: string;
+    job_type: string;
+    status: "queued" | "processing" | "retry_wait" | "succeeded" | "failed" | "cancelled";
+    progress: number;
+    result?: Record<string, unknown> | null;
+    error_code?: string | null;
+    error_message?: string | null;
+    attempt_count?: number;
+    max_attempts?: number;
+    updated_at?: string;
+  } | null;
 };
 
 
@@ -96,8 +118,8 @@ type UploadFinalizeItem = {
 };
 
 
-const MAX_IMAGE_BYTES = UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES;
-const MAX_VIDEO_BYTES = UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES;
+const MAX_IMAGE_BYTES = MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES;
+const MAX_VIDEO_BYTES = MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES;
 const UPLOAD_BATCH_SIZE = INR_MEDIA_UPLOAD_BATCH_SIZE;
 
 async function readApiJson(response: Response, fallbackMessage: string) {
@@ -149,12 +171,12 @@ function validateUploadFiles(selectedFiles: File[]) {
     }
     if (isImageFile(file) && file.size > MAX_IMAGE_BYTES) {
       throw new Error(
-        `${formatUploadName(file)} : image exceptionnellement volumineuse.`,
+        `${formatUploadName(file)} : la Médiathèque accepte jusqu’à 300 Mo.`,
       );
     }
     if (isVideoFile(file) && file.size > MAX_VIDEO_BYTES) {
       throw new Error(
-        `${formatUploadName(file)} : vidéo exceptionnellement volumineuse.`,
+        `${formatUploadName(file)} : la Médiathèque accepte jusqu’à 300 Mo.`,
       );
     }
   }
@@ -257,6 +279,30 @@ function cleanEditableTags(value: string) {
     .slice(0, 30);
 }
 
+function mediaOptimizationLimit(item: Pick<MediaItem, "media_type">) {
+  return item.media_type === "video"
+    ? MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES
+    : MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES;
+}
+
+function mediaNeedsOptimization(item: MediaItem) {
+  return needsMediaLibraryOptimization({
+    mediaType: item.media_type,
+    sizeBytes: item.size_bytes,
+  });
+}
+
+function optimizationStage(item: MediaItem) {
+  const result = item.optimization?.result;
+  const stage = result && typeof result.stage === "string" ? result.stage.trim() : "";
+  if (stage) return stage;
+  if (item.optimization?.status === "queued") return "En attente";
+  if (item.optimization?.status === "retry_wait") return "Nouvelle tentative programmée";
+  if (item.optimization?.status === "failed") return "Optimisation impossible";
+  if (item.optimization?.status === "succeeded") return "Copie compatible créée";
+  return item.media_type === "video" ? "Compression disponible" : "Optimisation disponible";
+}
+
 export default function MediaLibraryClient() {
   const [initialSnapshot] = useState<MediaLibrarySnapshot | null>(() => readInitialMediaLibrarySnapshot());
   const [items, setItems] = useState<MediaItem[]>(() => initialSnapshot?.items ?? []);
@@ -283,6 +329,8 @@ export default function MediaLibraryClient() {
   const [search, setSearch] = useState("");
   const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
   const [helperOpen, setHelperOpen] = useState(false);
+  const [optimizerRedirected, setOptimizerRedirected] = useState(false);
+  const [optimizingId, setOptimizingId] = useState<string | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -306,6 +354,11 @@ export default function MediaLibraryClient() {
   const allVisibleItemsSelected =
     items.length > 0 && items.every((item) => selectedItemIds.has(item.id));
   const bulkDeleting = savingId === "__bulk__";
+  const hasRunningOptimization = items.some((item) =>
+    ["queued", "processing", "retry_wait"].includes(
+      String(item.optimization?.status || ""),
+    ),
+  );
 
   const loadItems = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
@@ -359,6 +412,76 @@ export default function MediaLibraryClient() {
   useEffect(() => {
     void loadItems({ silent: Boolean(initialSnapshot) });
   }, [initialSnapshot, loadItems]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setOptimizerRedirected(params.get("action") === "optimize");
+  }, []);
+
+  useEffect(() => {
+    if (!hasRunningOptimization) return;
+    const timer = window.setInterval(() => {
+      void loadItems({ silent: true });
+    }, 2_500);
+    return () => window.clearInterval(timer);
+  }, [hasRunningOptimization, loadItems]);
+
+  async function startOptimization(item: MediaItem) {
+    if (!mediaNeedsOptimization(item)) return;
+    setOptimizingId(item.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch("/api/media-library/optimization", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mediaId: item.id }),
+      });
+      const json = await readApiJson(response, "Optimisation impossible.");
+      if (!response.ok && response.status !== 202) {
+        throw new Error(json?.error || "Optimisation impossible.");
+      }
+      if (json?.job) {
+        setItems((current) =>
+          current.map((entry) =>
+            entry.id === item.id ? { ...entry, optimization: json.job } : entry,
+          ),
+        );
+      }
+      if (json?.job?.status === "succeeded") {
+        setSuccess("La copie compatible est déjà disponible dans la Médiathèque.");
+        await loadItems({ silent: true });
+        return;
+      }
+
+      setSuccess(
+        item.media_type === "video"
+          ? "Compression lancée. Vous pouvez quitter cette page : elle continuera automatiquement."
+          : "Optimisation lancée. Vous pouvez quitter cette page : elle continuera automatiquement.",
+      );
+      const jobType =
+        String(json?.job?.job_type || "") ||
+        (item.media_type === "video"
+          ? MEDIA_LIBRARY_VIDEO_OPTIMIZATION_JOB_TYPE
+          : MEDIA_LIBRARY_IMAGE_OPTIMIZATION_JOB_TYPE);
+      void fetch("/api/media-library/optimization/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mediaId: item.id, jobType }),
+      })
+        .catch((runError) => {
+          console.warn("[media-library] immediate optimization worker unavailable", runError);
+        })
+        .finally(() => {
+          void loadItems({ silent: true });
+        });
+    } catch (e: any) {
+      setError(getClientUserFacingErrorMessage(e, "Optimisation impossible."));
+    } finally {
+      setOptimizingId(null);
+    }
+  }
 
   function mergeSelectedFiles(nextFiles: File[]) {
     if (nextFiles.length === 0) return;
@@ -874,6 +997,20 @@ export default function MediaLibraryClient() {
           </div>
         </section>
 
+        {optimizerRedirected ? (
+          <section className={styles.optimizerRedirectBanner} aria-live="polite">
+            <div>
+              <strong>Média hors limite détecté dans Booster</strong>
+              <span>
+                Importez ici votre fichier, puis utilisez le bouton d’optimisation. Une nouvelle copie compatible sera créée sans modifier l’original.
+              </span>
+            </div>
+            <button type="button" onClick={() => setOptimizerRedirected(false)}>
+              Compris
+            </button>
+          </section>
+        ) : null}
+
         <section className={styles.metricsGrid}>
           <article className={styles.metricCard}>
             <span className={styles.metricLabel}>Médias</span>
@@ -943,7 +1080,7 @@ export default function MediaLibraryClient() {
               <small className={styles.helper}>
                 {selectedFiles.length
                   ? `${selectedFiles.length} fichier(s) · ${selectedStats.images} image(s) · ${selectedStats.videos} vidéo(s) · ${formatBytes(selectedStats.bytes)}`
-                  : `Glissez-déposez ou sélectionnez vos médias. iNrCy prépare automatiquement les formats et les fichiers volumineux · import par lots de ${UPLOAD_BATCH_SIZE}.`}
+                  : `Glissez-déposez ou sélectionnez vos médias jusqu’à 300 Mo. Après l’import, un bouton permet d’optimiser les images de plus de 50 Mo et les vidéos de plus de 75 Mo · lots de ${UPLOAD_BATCH_SIZE}.`}
               </small>
             </label>
 
@@ -1206,6 +1343,66 @@ export default function MediaLibraryClient() {
                       <div className={styles.mediaRowMain}>
                         <strong>{item.title || "Média sans titre"}</strong>
                         <span>{tagsToText(item.tags) || "Aucun tag"}</span>
+                        {mediaNeedsOptimization(item) ? (
+                          <div className={styles.optimizationBox}>
+                            <div className={styles.optimizationSummary}>
+                              <span className={styles.optimizationBadge}>
+                                Hors limite Booster · {formatBytes(item.size_bytes)} / {formatBytes(mediaOptimizationLimit(item))}
+                              </span>
+                              {item.optimization ? (
+                                <span className={styles.optimizationStage}>
+                                  {optimizationStage(item)}
+                                  {["queued", "processing", "retry_wait"].includes(item.optimization.status)
+                                    ? ` · ${Math.max(0, Math.min(99, Number(item.optimization.progress || 0)))} %`
+                                    : ""}
+                                </span>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              className={styles.optimizeButton}
+                              disabled={
+                                optimizingId === item.id ||
+                                ["queued", "processing", "retry_wait", "succeeded"].includes(
+                                  String(item.optimization?.status || ""),
+                                )
+                              }
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void startOptimization(item);
+                              }}
+                            >
+                              {item.optimization?.status === "succeeded"
+                                ? "Copie compatible créée"
+                                : ["queued", "processing", "retry_wait"].includes(
+                                      String(item.optimization?.status || ""),
+                                    )
+                                  ? item.media_type === "video"
+                                    ? "Compression en cours…"
+                                    : "Optimisation en cours…"
+                                  : item.media_type === "video"
+                                    ? "Compresser pour Booster"
+                                    : "Optimiser pour Booster"}
+                            </button>
+                            {item.optimization &&
+                            ["queued", "processing", "retry_wait"].includes(item.optimization.status) ? (
+                              <div className={styles.optimizationProgress} aria-hidden="true">
+                                <span
+                                  style={{
+                                    width: `${Math.max(2, Math.min(99, Number(item.optimization.progress || 0)))}%`,
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                            {item.optimization?.status === "failed" && item.optimization.error_message ? (
+                              <span className={styles.optimizationError}>
+                                {item.optimization.error_message}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : item.source === "mediatheque_optimization" ? (
+                          <span className={styles.compatibleCopyBadge}>✓ Compatible Booster</span>
+                        ) : null}
                       </div>
                     </div>
 

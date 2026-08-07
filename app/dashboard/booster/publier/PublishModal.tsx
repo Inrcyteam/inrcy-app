@@ -68,6 +68,7 @@ import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelIma
 import {
   BOOSTER_IMAGE_ACCEPT,
   BOOSTER_MAX_IMAGE_COUNT,
+  BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   BOOSTER_VIDEO_ACCEPT,
@@ -443,6 +444,15 @@ export default function PublishModal({
   const imagesRef = useRef<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
+  const oversizedMediaError = useMemo(
+    () =>
+      /\b(?:50|75)\s*Mo\b/i.test(imgError) &&
+      /d[ée]passe/i.test(imgError),
+    [imgError],
+  );
+  const openMediaOptimizer = useCallback(() => {
+    router.push("/dashboard/mediatheque?action=optimize");
+  }, [router]);
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
     Record<string, ImageMeta>
@@ -4303,15 +4313,15 @@ export default function PublishModal({
       if (update.stage === "released_to_background") {
         setPublicationProgressPhase(
           "status_collection",
-          `${Math.max(0, totalCount - terminalCount)} ${totalCount - terminalCount > 1 ? "canaux finalisent" : "canal finalise"} · Bilan en préparation`,
-          95,
+          `${Math.max(0, totalCount - terminalCount)} ${totalCount - terminalCount > 1 ? "canaux finalisent" : "canal finalise"} · Vérification des publications`,
+          92,
         );
         return;
       }
       if (update.stage === "completed") {
         setPublicationProgressPhase(
           "inrsend_recording",
-          "Confirmations reçues · Bilan iNr’Send",
+          "Enregistrement dans iNr’Send",
           99,
         );
         return;
@@ -4319,8 +4329,8 @@ export default function PublishModal({
       if (terminalCount >= totalCount) {
         setPublicationProgressPhase(
           "status_collection",
-          `Confirmations reçues sur ${totalCount}/${totalCount} canaux`,
-          95,
+          `Vérification des publications · ${totalCount}/${totalCount} confirmations`,
+          92,
         );
       } else if (terminalCount > 0) {
         const nextChannel = publishTargetChannels.find(
@@ -4332,7 +4342,7 @@ export default function PublishModal({
         setPublicationProgressPhase(
           "publication_finalization",
           `${Math.min(totalCount, terminalCount + 1)}/${totalCount} · Publication sur ${nextChannelLabel}`,
-          mapProgressRange(terminalCount, 0, totalCount, 79, 91),
+          mapProgressRange(terminalCount, 0, totalCount, 73, 83),
         );
       } else {
         const firstChannel = publishTargetChannels[0];
@@ -4342,7 +4352,7 @@ export default function PublishModal({
         setPublicationProgressPhase(
           "channel_dispatch",
           `1/${totalCount} · Publication sur ${firstChannelLabel}`,
-          mapProgressRange(update.pollAttempt, 0, 12, 60, 76),
+          mapProgressRange(update.pollAttempt, 0, 12, 60, 71),
         );
       }
     };
@@ -4646,6 +4656,23 @@ export default function PublishModal({
         (Number(result?.summary?.successCount || 0) > 0 || pendingCount > 0);
       const publicationComplete = publicationAccepted && pendingCount === 0;
       const bilanProgress = resolvePublicationBilanProgress(pendingCount);
+
+      setPublicationProgressPhase(
+        "status_collection",
+        pendingCount > 0
+          ? pendingCount > 1
+            ? `Vérification des publications · ${pendingCount} canaux poursuivent le traitement`
+            : "Vérification des publications · 1 canal poursuit le traitement"
+          : `Vérification des publications · ${publishableChannels.length}/${publishableChannels.length} confirmations`,
+        92,
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 280));
+      setPublicationProgressPhase(
+        "inrsend_recording",
+        "Enregistrement dans iNr’Send",
+        99,
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 280));
 
       completePublicationProgress(
         bilanProgress.backgroundFinalization
@@ -6023,6 +6050,9 @@ export default function PublishModal({
             ? generationMediaSelectionPolicy.libraryMaxSelection
             : BOOSTER_MAX_IMAGE_COUNT + 1
         }
+        maxImageBytes={BOOSTER_MAX_IMAGE_BYTES}
+        maxVideoBytes={BOOSTER_MAX_VIDEO_BYTES}
+        onOpenOptimizer={openMediaOptimizer}
         confirmLabel={
           mediaLibraryPickerScope === "generation"
             ? "Ajouter à la génération"
@@ -6119,6 +6149,10 @@ export default function PublishModal({
             useImagesForAI={useImagesForAI}
             setUseImagesForAI={setUseImagesForAI}
             imgError={generationMediaWarning ? "" : imgError}
+            showMediaOptimizerAction={
+              !generationMediaWarning && oversizedMediaError
+            }
+            onOpenMediaOptimizer={openMediaOptimizer}
             genError={genError}
             generationNotice={generationNotice}
             generationMediaWarning={generationMediaWarning}
@@ -6214,6 +6248,8 @@ export default function PublishModal({
               }
               removeVideo={removeVideo}
               imgError={imgError}
+              showMediaOptimizerAction={oversizedMediaError}
+              onOpenMediaOptimizer={openMediaOptimizer}
               selectedChannels={selectedChannels}
               activeImageChannel={activeImageChannel}
               imageAdapterTabs={imageAdapterTabs}

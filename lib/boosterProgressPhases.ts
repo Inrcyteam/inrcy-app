@@ -22,10 +22,10 @@ export const PUBLICATION_PROGRESS_PHASES = [
   { key: "media_preparation", label: "Finalisation des médias", start: 8, cap: 28 },
   { key: "channel_compatibility", label: "Finalisation des médias", start: 28, cap: 42 },
   { key: "file_preparation", label: "Finalisation des médias", start: 42, cap: 58 },
-  { key: "channel_dispatch", label: "Publication sur les canaux", start: 58, cap: 78 },
-  { key: "publication_finalization", label: "Publication sur les canaux", start: 78, cap: 92 },
-  { key: "status_collection", label: "Mise à jour du bilan", start: 92, cap: 96 },
-  { key: "inrsend_recording", label: "Bilan iNr’Send", start: 96, cap: 99 },
+  { key: "channel_dispatch", label: "Publication sur les canaux", start: 58, cap: 72 },
+  { key: "publication_finalization", label: "Publication sur les canaux", start: 72, cap: 84 },
+  { key: "status_collection", label: "Vérification des publications", start: 84, cap: 93 },
+  { key: "inrsend_recording", label: "Enregistrement dans iNr’Send", start: 93, cap: 99 },
   { key: "complete", label: "Bilan prêt", start: 100, cap: 100 },
 ] as const satisfies readonly ProgressPhaseDefinition[];
 
@@ -35,12 +35,13 @@ export type PublicationProgressPhaseKey =
   (typeof PUBLICATION_PROGRESS_PHASES)[number]["key"];
 
 // Les phases techniques ci-dessus gardent des plafonds précis. L'interface
-// les regroupe en quatre étapes compréhensibles par le pro.
+// les regroupe en étapes compréhensibles par le pro.
 export const PUBLICATION_PROGRESS_STAGES = [
   { index: 1, label: "Demande prise en charge" },
   { index: 2, label: "Finalisation des médias" },
-  { index: 3, label: "Envoi parallèle" },
-  { index: 4, label: "Confirmations et bilan" },
+  { index: 3, label: "Publication sur les canaux" },
+  { index: 4, label: "Vérification des publications" },
+  { index: 5, label: "Enregistrement dans iNr’Send" },
 ] as const;
 
 export function getPublicationProgressStage(
@@ -57,7 +58,8 @@ export function getPublicationProgressStage(
   if (key === "channel_dispatch" || key === "publication_finalization") {
     return PUBLICATION_PROGRESS_STAGES[2];
   }
-  return PUBLICATION_PROGRESS_STAGES[3];
+  if (key === "status_collection") return PUBLICATION_PROGRESS_STAGES[3];
+  return PUBLICATION_PROGRESS_STAGES[4];
 }
 
 export function getPublicationProgressStageForValue(value: number) {
@@ -71,7 +73,10 @@ export function getPublicationProgressStageForValue(value: number) {
   if (progress < PUBLICATION_PROGRESS_PHASES[6].start) {
     return PUBLICATION_PROGRESS_STAGES[2];
   }
-  return PUBLICATION_PROGRESS_STAGES[3];
+  if (progress < PUBLICATION_PROGRESS_PHASES[7].start) {
+    return PUBLICATION_PROGRESS_STAGES[3];
+  }
+  return PUBLICATION_PROGRESS_STAGES[4];
 }
 
 export function clampProgress(value: number, minimum = 0, maximum = 100) {

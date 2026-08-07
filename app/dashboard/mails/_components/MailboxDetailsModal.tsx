@@ -1139,10 +1139,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const publicationDraftAttachments = detailsItem.source === "app_events" && Array.isArray(payload?.imageDrafts)
                     ? payload.imageDrafts
                         .map((image: any) => ({
-                          url: String(image?.publicUrl || image?.url || image?.dataUrl || "").trim(),
-                          name: String(image?.name || "Image brouillon"),
-                          type: String(image?.type || "image/jpeg"),
-                          size: Number(image?.size || 0) || undefined,
+                          url: String(image?.originalPublicUrl || image?.originalUrl || image?.publicUrl || image?.url || image?.dataUrl || "").trim(),
+                          name: String(image?.originalName || image?.name || "Image brouillon"),
+                          type: String(image?.originalType || image?.type || "image/jpeg"),
+                          size: Number(image?.originalSize || image?.size || 0) || undefined,
                         }))
                         .filter((att: any) => att.url)
                     : [];
@@ -2297,7 +2297,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     <div style={{ fontSize: 12, color: "rgba(255,255,255,0.66)", marginTop: 4 }}>
                                       {detailsEditMode
                                         ? "Modifiez la vidéo, son format et son rendu avant d’enregistrer."
-                                        : `${activePublicationEntry.label || formatChannelLabel(activePublicationEntry.key)} utilise sa propre variante vidéo préparée par iNrCy.`}
+                                        : `Média source original conservé pour ${activePublicationEntry.label || formatChannelLabel(activePublicationEntry.key)}.`}
                                     </div>
                                   </div>
                                 </div>
@@ -2367,7 +2367,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", lineHeight: 1.45 }}>
                                     {detailsEditMode
                                       ? "Enregistrez ensuite pour republier ce canal avec la vidéo et le format affichés."
-                                      : "Ce détail affiche la vidéo réellement utilisée pour ce canal au moment de la publication."}
+                                      : "Ce détail affiche l’original réutilisable. Les adaptations propres au canal ne remplacent jamais le fichier source."}
                                   </div>
                                 </div>
                               </section>

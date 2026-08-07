@@ -27,6 +27,9 @@ type MediaLibraryPickerModalProps = {
   maxSelection?: number;
   confirmLabel?: string;
   selectedHint?: string;
+  maxImageBytes?: number;
+  maxVideoBytes?: number;
+  onOpenOptimizer?: () => void;
   onClose: () => void;
   onConfirm: (items: MediaLibraryPickerItem[]) => void | Promise<void>;
 };
@@ -92,6 +95,9 @@ export default function MediaLibraryPickerModal({
   maxSelection = 10,
   confirmLabel = "Ajouter",
   selectedHint,
+  maxImageBytes,
+  maxVideoBytes,
+  onOpenOptimizer,
   onClose,
   onConfirm,
 }: MediaLibraryPickerModalProps) {
@@ -104,6 +110,7 @@ export default function MediaLibraryPickerModal({
   );
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [oversizeBlocked, setOversizeBlocked] = useState(false);
   const [compact, setCompact] = useState(false);
 
   useEffect(() => {
@@ -111,6 +118,7 @@ export default function MediaLibraryPickerModal({
     setTypeFilter(accept === "all" ? "all" : accept);
     setQuery("");
     setSelectedIds([]);
+    setOversizeBlocked(false);
     setError("");
   }, [open, accept]);
 
@@ -173,6 +181,23 @@ export default function MediaLibraryPickerModal({
 
   const toggleItem = (item: MediaLibraryPickerItem) => {
     setError("");
+    setOversizeBlocked(false);
+    const sizeBytes = Number(item.size_bytes || 0);
+    const maxBytes =
+      item.media_type === "video" ? maxVideoBytes : maxImageBytes;
+    if (
+      Number.isFinite(sizeBytes) &&
+      sizeBytes > 0 &&
+      Number.isFinite(Number(maxBytes)) &&
+      sizeBytes > Number(maxBytes)
+    ) {
+      const limitLabel = item.media_type === "video" ? "75 Mo" : "50 Mo";
+      setOversizeBlocked(true);
+      setError(
+        `Ce média dépasse ${limitLabel}. Créez d'abord une copie optimisée dans la Médiathèque.`,
+      );
+      return;
+    }
     setSelectedIds((current) => {
       if (current.includes(item.id))
         return current.filter((id) => id !== item.id);
@@ -469,7 +494,27 @@ export default function MediaLibraryPickerModal({
 
         {filtersNode}
 
-        {error ? <div style={errorStyle}>{error}</div> : null}
+        {error ? (
+          <div style={errorStyle}>
+            <div>{error}</div>
+            {oversizeBlocked && onOpenOptimizer ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenOptimizer();
+                }}
+                style={{
+                  ...ghostButtonStyle,
+                  marginTop: 9,
+                  padding: "8px 12px",
+                }}
+              >
+                Compresser le média
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <div style={listComputedStyle}>
           {loading ? (
@@ -481,6 +526,13 @@ export default function MediaLibraryPickerModal({
           ) : (
             items.map((item) => {
               const selected = selectedIds.includes(item.id);
+              const itemLimit =
+                item.media_type === "video" ? maxVideoBytes : maxImageBytes;
+              const itemOversized =
+                Number.isFinite(Number(item.size_bytes)) &&
+                Number(item.size_bytes) > 0 &&
+                Number.isFinite(Number(itemLimit)) &&
+                Number(item.size_bytes) > Number(itemLimit);
               const tags =
                 Array.isArray(item.tags) && item.tags.length
                   ? item.tags.join(", ")
@@ -498,6 +550,7 @@ export default function MediaLibraryPickerModal({
                     background: selected
                       ? "linear-gradient(90deg, rgba(76,195,255,.16), rgba(155,81,255,.12))"
                       : rowComputedStyle.background,
+                    opacity: itemOversized ? 0.72 : 1,
                   }}
                 >
                   <span style={thumbComputedStyle}>
@@ -522,7 +575,11 @@ export default function MediaLibraryPickerModal({
                     <small style={tagStyle}>{tags}</small>
                   </span>
                   <span style={pillStyle}>
-                    {item.media_type === "video" ? "Vidéo" : "Image"}
+                    {itemOversized
+                      ? "À optimiser"
+                      : item.media_type === "video"
+                        ? "Vidéo"
+                        : "Image"}
                   </span>
                   {!compact ? (
                     <>

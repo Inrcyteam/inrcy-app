@@ -106,6 +106,8 @@ type PublishImagesPanelProps = {
   onApplyVideoFormatToAllChannels?: (channel: ChannelKey) => void;
   removeVideo: () => void;
   imgError: string;
+  showMediaOptimizerAction?: boolean;
+  onOpenMediaOptimizer?: () => void;
   selectedChannels: ChannelKey[];
   activeImageChannel: ChannelKey;
   imageAdapterTabs: ImageAdapterTab[];
@@ -158,6 +160,8 @@ export default function PublishImagesPanel({
   onApplyVideoFormatToAllChannels,
   removeVideo,
   imgError,
+  showMediaOptimizerAction = false,
+  onOpenMediaOptimizer,
   selectedChannels,
   activeImageChannel,
   imageAdapterTabs,
@@ -479,8 +483,36 @@ export default function PublishImagesPanel({
         </div>
       </div>
       {imgError ? (
-        <div style={{ marginBottom: 10, fontSize: 13, color: "#ffb4b4" }}>
-          {imgError}
+        <div
+          style={{
+            marginBottom: 10,
+            display: "grid",
+            justifyItems: "start",
+            gap: 8,
+            fontSize: 13,
+            color: "#ffb4b4",
+          }}
+        >
+          <span>{imgError}</span>
+          {showMediaOptimizerAction && onOpenMediaOptimizer ? (
+            <button
+              type="button"
+              onClick={onOpenMediaOptimizer}
+              style={{
+                border: "1px solid rgba(105,239,255,0.42)",
+                borderRadius: 999,
+                background:
+                  "linear-gradient(135deg, rgba(47,209,255,0.24), rgba(155,81,255,0.28))",
+                color: "#effcff",
+                padding: "9px 14px",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              Compresser le média dans la Médiathèque
+            </button>
+          ) : null}
         </div>
       ) : null}
 

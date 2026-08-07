@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { buildMediaLibraryContentUrl } from "@/lib/mediaLibraryContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadInrAgentVideoDerivativePaths } from "@/lib/inrAgentVideoContextCache";
+import { MEDIA_LIBRARY_OPTIMIZATION_JOB_TYPES } from "@/lib/mediaLibraryOptimizationPolicy";
 
 export const runtime = "nodejs";
 
@@ -269,7 +270,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabaseAdmin
     .from("pro_media_library")
-    .select("id,user_id,bucket_name,storage_path,media_type,mime_type,size_bytes,title,tags,source,width,height,duration_seconds,is_active,usage_count,last_used_at,created_at,updated_at")
+    .select("id,user_id,bucket_name,storage_path,media_type,mime_type,size_bytes,title,tags,source,width,height,duration_seconds,is_active,usage_count,last_used_at,created_at,updated_at,original_file_name,media_metadata")
     .eq("user_id", activeUserId)
     .order("created_at", { ascending: false })
     .limit(fetchLimit);
@@ -304,8 +305,36 @@ export async function GET(request: NextRequest) {
     : rawRows
   ).slice(0, limit);
 
+  const mediaIds = rows.map((row: any) => String(row.id || "")).filter(Boolean);
+  const optimizationByMediaId = new Map<string, Record<string, unknown>>();
+  if (mediaIds.length) {
+    const jobs = await supabaseAdmin
+      .from("media_processing_jobs")
+      .select(
+        "id,media_id,job_type,status,progress,result,error_code,error_message,attempt_count,max_attempts,created_at,updated_at",
+      )
+      .eq("account_id", activeUserId)
+      .in("media_id", mediaIds)
+      .in("job_type", [...MEDIA_LIBRARY_OPTIMIZATION_JOB_TYPES])
+      .order("created_at", { ascending: false })
+      .limit(Math.min(960, Math.max(40, mediaIds.length * 3)));
+    if (jobs.error) {
+      if (!isMissingOptionalUsageTable(jobs.error, "media_processing_jobs")) {
+        console.warn("[media-library] optimization states unavailable", jobs.error);
+      }
+    } else {
+      for (const job of jobs.data || []) {
+        const mediaId = String((job as any).media_id || "");
+        if (mediaId && !optimizationByMediaId.has(mediaId)) {
+          optimizationByMediaId.set(mediaId, job as Record<string, unknown>);
+        }
+      }
+    }
+  }
+
   const withUrls = rows.map((row: any) => ({
     ...row,
+    optimization: optimizationByMediaId.get(String(row.id || "")) || null,
     // URL applicative stable : aucun token Supabase temporaire n'est conservé
     // dans l'interface après expiration.
     signed_url: buildMediaLibraryContentUrl(String(row.id || "")),

@@ -4578,6 +4578,31 @@ export default function MailboxClient() {
       );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Suppression impossible.");
+
+      // The API returns the authoritative app_events payload after the remote
+      // deletion. Apply it immediately so the details modal switches to
+      // "Supprimé" without waiting for a history round-trip or a manual refresh.
+      const deletedPayload =
+        json?.payload &&
+        typeof json.payload === "object" &&
+        !Array.isArray(json.payload)
+          ? json.payload
+          : null;
+      if (deletedPayload) {
+        setItems((current) =>
+          current.map((item) =>
+            item.id === detailsItem.id && item.source === "app_events"
+              ? {
+                  ...item,
+                  raw: {
+                    ...((item.raw || {}) as Record<string, unknown>),
+                    payload: deletedPayload,
+                  },
+                }
+              : item,
+          ),
+        );
+      }
       setDetailsActionSuccess(`Publication ${label} supprimée.`);
       setDetailsEditMode(false);
       // Release the action immediately. The history refresh can continue in
