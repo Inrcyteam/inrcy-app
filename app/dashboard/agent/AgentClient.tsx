@@ -37,7 +37,6 @@ import {
   INR_MEDIA_VIDEO_FORMATS_LABEL,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
   isInrMediaImageFile,
-  isInrMediaVideoFile,
 } from "@/lib/mediaRules";
 import {
   makeAttachmentPath,
@@ -65,8 +64,15 @@ import MediaLibraryPickerModal, {
 import MediaOptimizerModal, {
   type MediaOptimizerItem,
 } from "../_components/MediaOptimizerModal";
-import { MEDIA_LIBRARY_EMAIL_TARGET_BYTES } from "@/lib/mediaLibraryOptimizationPolicy";
-import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
+import {
+  MEDIA_LIBRARY_EMAIL_TARGET_BYTES,
+  getMediaLibraryOptimizationRequirements,
+} from "@/lib/mediaLibraryOptimizationPolicy";
+import {
+  UNIVERSAL_MEDIA_VIDEO_EXTENSIONS,
+  UNIVERSAL_MEDIA_VIDEO_MIME_TYPES,
+  detectUniversalUploadMediaType,
+} from "@/lib/mediaUploadPolicy";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
   CHANNEL_PRESETS,
@@ -189,6 +195,7 @@ import {
   apiToDay,
   AGENT_RICH_TEXT_EDITOR_STYLE,
 } from "./_lib/agent.config";
+
 import {
   clampNumber,
   toggleItem,
@@ -280,6 +287,11 @@ import {
   scheduledEditUpdateFromAction,
   computeNextOccurrence,
 } from "./_lib/agent.schedule";
+
+const AGENT_VIDEO_OPTIMIZER_ACCEPT = [
+  ...UNIVERSAL_MEDIA_VIDEO_MIME_TYPES,
+  ...UNIVERSAL_MEDIA_VIDEO_EXTENSIONS.map((extension) => `.${extension}`),
+].join(",");
 
 export default function AgentClient() {
   const router = useRouter();
@@ -1260,8 +1272,12 @@ export default function AgentClient() {
   }
 
   function validateAgentPublishMediaFile(file: File) {
-    const isImage = isInrMediaImageFile(file);
-    const isVideo = isInrMediaVideoFile(file);
+    const detectedType = detectUniversalUploadMediaType({
+      name: file.name,
+      mimeType: file.type,
+    });
+    const isImage = detectedType === "image" && isInrMediaImageFile(file);
+    const isVideo = detectedType === "video";
     if (!isImage && !isVideo) {
       throw new Error(
         `Format non autorisé. Images : ${INR_MEDIA_IMAGE_FORMATS_LABEL}. Vidéos : ${INR_MEDIA_VIDEO_FORMATS_LABEL}.`,
@@ -1808,10 +1824,17 @@ export default function AgentClient() {
       return;
     }
 
-    const exceedsPublishLimit =
-      (mediaKind === "image" && file.size > AGENT_MEDIA_MAX_IMAGE_BYTES) ||
-      (mediaKind === "video" && file.size > AGENT_MEDIA_MAX_VIDEO_BYTES);
-    if (exceedsPublishLimit) {
+    const optimizationRequirements = getMediaLibraryOptimizationRequirements({
+      mediaType: mediaKind,
+      sizeBytes: file.size,
+      targetBytes:
+        mediaKind === "image"
+          ? AGENT_MEDIA_MAX_IMAGE_BYTES
+          : AGENT_MEDIA_MAX_VIDEO_BYTES,
+      name: file.name,
+      mimeType: file.type,
+    });
+    if (optimizationRequirements.needsOptimization) {
       openMediaOptimizerForFiles([file], "publish");
       return;
     }
@@ -2449,16 +2472,22 @@ export default function AgentClient() {
     const oversizedMedia: File[] = [];
     const oversizedUnsupported: File[] = [];
     for (const file of files) {
-      if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
-        directFiles.push(file);
-        continue;
-      }
       const mediaType = detectUniversalUploadMediaType({
         name: file.name,
         mimeType: file.type,
       });
       if (mediaType === "image" || mediaType === "video") {
-        oversizedMedia.push(file);
+        const requirements = getMediaLibraryOptimizationRequirements({
+          mediaType,
+          sizeBytes: file.size,
+          targetBytes: MEDIA_LIBRARY_EMAIL_TARGET_BYTES,
+          name: file.name,
+          mimeType: file.type,
+        });
+        if (requirements.needsOptimization) oversizedMedia.push(file);
+        else directFiles.push(file);
+      } else if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+        directFiles.push(file);
       } else {
         oversizedUnsupported.push(file);
       }
@@ -2467,7 +2496,7 @@ export default function AgentClient() {
     if (!directFiles.length) {
       if (oversizedUnsupported.length > 0) {
         showNotice(
-          `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être compressé automatiquement par iNrCy.`,
+          `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être optimisé automatiquement par iNrCy.`,
         );
       }
       if (oversizedMedia.length > 0) {
@@ -2513,7 +2542,7 @@ export default function AgentClient() {
             : "Pièce jointe ajoutée."
         }${
           oversizedUnsupported.length > 0
-            ? ` ${oversizedUnsupported[0].name} dépasse 20 Mo et ne peut pas être compressé automatiquement.`
+            ? ` ${oversizedUnsupported[0].name} dépasse 20 Mo et ne peut pas être optimisé automatiquement.`
             : ""
         }`,
       );
@@ -2578,7 +2607,7 @@ export default function AgentClient() {
     const request = mediaOptimizerRequest;
     if (!request) {
       throw new Error(
-        "La destination du média compressé n’est plus disponible dans iNrAgent.",
+        "La destination du média optimisé n’est plus disponible dans iNrAgent.",
       );
     }
 
@@ -2587,7 +2616,7 @@ export default function AgentClient() {
       Number(item.size_bytes || 0) > MEDIA_LIBRARY_EMAIL_TARGET_BYTES
     ) {
       throw new Error(
-        "La copie compressée dépasse encore 20 Mo. Choisissez un objectif plus léger.",
+        "Le média optimisé dépasse encore 20 Mo.",
       );
     }
 
@@ -2597,7 +2626,7 @@ export default function AgentClient() {
         : await selectPublishMediaFromLibrary(item);
     if (!inserted) {
       throw new Error(
-        "La copie compressée a été créée, mais son insertion dans iNrAgent a échoué.",
+        "Le média optimisé a été créé, mais son insertion dans iNrAgent a échoué.",
       );
     }
     setMediaOptimizerCompleted(true);
@@ -5378,7 +5407,7 @@ export default function AgentClient() {
               <input
                 id="agent-publish-media-video"
                 type="file"
-                accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
+                accept={AGENT_VIDEO_OPTIMIZER_ACCEPT}
                 onChange={(event) => {
                   void uploadPublishMedia(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";

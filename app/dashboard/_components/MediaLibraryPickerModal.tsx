@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { getMediaLibraryOptimizationRequirements } from "@/lib/mediaLibraryOptimizationPolicy";
 
 export type MediaLibraryPickerItem = {
   id: string;
@@ -81,6 +82,21 @@ function dateLabel(value: string | null) {
   } catch {
     return "—";
   }
+}
+
+function getItemOptimizationRequirements(
+  item: MediaLibraryPickerItem,
+  targetBytes: number | undefined,
+) {
+  const hasTarget = Number.isFinite(Number(targetBytes)) && Number(targetBytes) > 0;
+  if (!hasTarget) return null;
+  return getMediaLibraryOptimizationRequirements({
+    mediaType: item.media_type,
+    sizeBytes: item.size_bytes,
+    targetBytes,
+    name: item.original_file_name || item.storage_path || item.title,
+    mimeType: item.mime_type,
+  });
 }
 
 export function mediaLibraryItemToAttachment(item: MediaLibraryPickerItem) {
@@ -195,15 +211,13 @@ export default function MediaLibraryPickerModal({
     setError("");
     setOversizeBlocked(false);
     setOversizeBlockedItem(null);
-    const sizeBytes = Number(item.size_bytes || 0);
     const maxBytes =
       item.media_type === "video" ? maxVideoBytes : maxImageBytes;
-    if (
-      Number.isFinite(sizeBytes) &&
-      sizeBytes > 0 &&
-      Number.isFinite(Number(maxBytes)) &&
-      sizeBytes > Number(maxBytes)
-    ) {
+    const optimizationRequirements = getItemOptimizationRequirements(
+      item,
+      maxBytes,
+    );
+    if (optimizationRequirements?.needsOptimization) {
       if (onOversizedMedia) {
         onClose();
         onOversizedMedia(item);
@@ -213,7 +227,10 @@ export default function MediaLibraryPickerModal({
       setOversizeBlocked(true);
       setOversizeBlockedItem(item);
       setError(
-        `Ce média dépasse ${limitLabel}. Créez d'abord une copie optimisée dans la Médiathèque.`,
+        optimizationRequirements.needsConversion &&
+          !optimizationRequirements.needsCompression
+          ? "Ce format doit être optimisé avant son insertion."
+          : `Ce média dépasse ${limitLabel}. Créez d'abord une copie optimisée dans la Médiathèque.`,
       );
       return;
     }
@@ -530,7 +547,7 @@ export default function MediaLibraryPickerModal({
                   padding: "8px 12px",
                 }}
               >
-                Compresser le média
+                Optimiser le média
               </button>
             ) : null}
           </div>
@@ -548,11 +565,11 @@ export default function MediaLibraryPickerModal({
               const selected = selectedIds.includes(item.id);
               const itemLimit =
                 item.media_type === "video" ? maxVideoBytes : maxImageBytes;
-              const itemOversized =
-                Number.isFinite(Number(item.size_bytes)) &&
-                Number(item.size_bytes) > 0 &&
-                Number.isFinite(Number(itemLimit)) &&
-                Number(item.size_bytes) > Number(itemLimit);
+              const itemOptimizationRequirements =
+                getItemOptimizationRequirements(item, itemLimit);
+              const itemOversized = Boolean(
+                itemOptimizationRequirements?.needsOptimization,
+              );
               const tags =
                 Array.isArray(item.tags) && item.tags.length
                   ? item.tags.join(", ")
@@ -624,7 +641,7 @@ export default function MediaLibraryPickerModal({
                           type="button"
                           onClick={openOptimizerForItem}
                           style={compactOptimizeButtonStyle}
-                          title={`Compresser ce média pour respecter ${formatLimitBytes(Number(itemLimit))}`}
+                          title="Optimiser automatiquement le format et/ou le poids"
                         >
                           À optimiser
                         </button>
@@ -641,7 +658,7 @@ export default function MediaLibraryPickerModal({
                             type="button"
                             onClick={openOptimizerForItem}
                             style={optimizeButtonStyle}
-                            title={`Compresser ce média pour respecter ${formatLimitBytes(Number(itemLimit))}`}
+                            title="Optimiser automatiquement le format et/ou le poids"
                           >
                             À optimiser
                           </button>

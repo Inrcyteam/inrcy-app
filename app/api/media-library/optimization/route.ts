@@ -4,8 +4,8 @@ import {
   MEDIA_LIBRARY_OPTIMIZATION_MAX_ATTEMPTS,
   MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
   buildMediaLibraryOptimizationIdempotencyKey,
+  getMediaLibraryOptimizationRequirements,
   getMediaLibraryOptimizationJobType,
-  needsMediaLibraryOptimization,
   normalizeMediaLibraryOptimizationTarget,
   type MediaLibraryOptimizationMediaType,
 } from "@/lib/mediaLibraryOptimizationPolicy";
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   const mediaResult = await supabaseAdmin
     .from("pro_media_library")
     .select(
-      "id,user_id,media_type,size_bytes,is_active,upload_status,title,original_file_name",
+      "id,user_id,media_type,size_bytes,is_active,upload_status,title,original_file_name,storage_path,mime_type,detected_mime_type",
     )
     .eq("id", mediaId)
     .eq("user_id", activeUserId)
@@ -65,11 +65,22 @@ export async function POST(request: NextRequest) {
     mediaType,
     targetBytes: Number(body?.targetBytes || 0) || null,
   });
-  if (!needsMediaLibraryOptimization({ mediaType, sizeBytes, targetBytes })) {
+  const requirements = getMediaLibraryOptimizationRequirements({
+    mediaType,
+    sizeBytes,
+    targetBytes,
+    name:
+      mediaResult.data.original_file_name ||
+      mediaResult.data.storage_path ||
+      mediaResult.data.title,
+    mimeType:
+      mediaResult.data.detected_mime_type || mediaResult.data.mime_type,
+  });
+  if (!requirements.needsOptimization) {
     return jsonError(
-      "Ce média est déjà inférieur ou égal au poids cible demandé.",
+      "Ce média est déjà compatible et respecte le plafond de cet outil.",
       409,
-      "media_already_below_target",
+      "media_already_optimized",
     );
   }
   const sourceLimit =
@@ -123,6 +134,9 @@ export async function POST(request: NextRequest) {
             authUserId: user?.id || null,
             requestedAt: now,
             targetBytes,
+            operation: requirements.operation,
+            needsCompression: requirements.needsCompression,
+            needsConversion: requirements.needsConversion,
           },
           result: { stage: "En attente" },
           available_at: now,
@@ -170,6 +184,9 @@ export async function POST(request: NextRequest) {
         authUserId: user?.id || null,
         requestedAt: now,
         targetBytes,
+        operation: requirements.operation,
+        needsCompression: requirements.needsCompression,
+        needsConversion: requirements.needsConversion,
       },
       result: { stage: "En attente" },
       available_at: now,

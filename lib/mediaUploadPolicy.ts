@@ -59,7 +59,7 @@ const IMAGE_MIME_TYPES = new Set([
   "image/x-ms-bmp",
 ]);
 
-const VIDEO_MIME_TYPES = new Set([
+export const UNIVERSAL_MEDIA_VIDEO_MIME_TYPES = [
   "video/mp4",
   "video/quicktime",
   "video/x-m4v",
@@ -73,7 +73,9 @@ const VIDEO_MIME_TYPES = new Set([
   "video/x-ms-wmv",
   "video/x-flv",
   "video/ogg",
-]);
+] as const;
+
+const VIDEO_MIME_TYPES = new Set<string>(UNIVERSAL_MEDIA_VIDEO_MIME_TYPES);
 
 const IMAGE_EXTENSIONS = new Set([
   "jpg",
@@ -91,7 +93,7 @@ const IMAGE_EXTENSIONS = new Set([
   "bmp",
 ]);
 
-const VIDEO_EXTENSIONS = new Set([
+export const UNIVERSAL_MEDIA_VIDEO_EXTENSIONS = [
   "mp4",
   "mov",
   "m4v",
@@ -109,7 +111,9 @@ const VIDEO_EXTENSIONS = new Set([
   "flv",
   "ogv",
   "qt",
-]);
+] as const;
+
+const VIDEO_EXTENSIONS = new Set<string>(UNIVERSAL_MEDIA_VIDEO_EXTENSIONS);
 
 const MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
   "image/jpeg": "jpg",

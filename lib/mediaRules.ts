@@ -26,7 +26,7 @@ export const INR_MEDIA_UPLOAD_BATCH_SIZE = 10;
 export const INR_MEDIA_IMAGE_FORMATS_LABEL =
   "JPG/JFIF, PNG, WebP, GIF, AVIF, HEIC, HEIF, TIFF ou BMP";
 export const INR_MEDIA_VIDEO_FORMATS_LABEL =
-  "MP4, M4V ou MOV (H.264/AAC)";
+  "MP4, M4V, MOV, WebM, MPEG, AVI, MKV, 3GP, TS, WMV, FLV ou OGV";
 export const INR_MEDIA_IMAGE_LIMITS_LABEL = `${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images maximum · ${INR_MEDIA_IMAGE_MAX_MB_LABEL} par image · ${INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL} au total`;
 export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo maximum · source jusqu’à 300 Mo · optimisation au-delà de ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · original conservé`;
 

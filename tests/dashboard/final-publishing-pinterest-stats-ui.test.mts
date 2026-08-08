@@ -18,7 +18,7 @@ test("Booster explains the 300 Mo source ceiling and the automatic optimization 
 
   assert.match(
     shared,
-    /Jusqu’à \$\{BOOSTER_MAX_IMAGE_COUNT\} images ou 1 vidéo de \$\{MEDIA_LIBRARY_VIDEO_SOURCE_MAX_MB_LABEL\} max · optimisation proposée au-delà de \$\{BOOSTER_MAX_IMAGE_MB_LABEL\} par image ou \$\{BOOSTER_MAX_VIDEO_MB_LABEL\} pour la vidéo\./,
+    /Jusqu’à \$\{BOOSTER_MAX_IMAGE_COUNT\} images ou 1 vidéo \(\$\{MEDIA_LIBRARY_VIDEO_SOURCE_MAX_MB_LABEL\} max\) · médias optimisés si nécessaire : format adapté et\/ou poids ramené à \$\{BOOSTER_MAX_IMAGE_MB_LABEL\}\/image ou \$\{BOOSTER_MAX_VIDEO_MB_LABEL\}\/vidéo\./,
   );
   assert.match(shared, /BOOSTER_PUBLICATION_MEDIA_OPTIMIZATION_LABEL/);
   assert.match(intent, /BOOSTER_GENERATION_MEDIA_OPTIMIZATION_LABEL/);
@@ -30,12 +30,19 @@ test("the publication balance highlights successes and keeps independent process
     "app/dashboard/_components/PublishExecutionResultModal.tsx",
   );
 
-  assert.match(modal, /width: "min\(760px, 100%\)"/);
+  assert.match(modal, /width: "min\(660px, 100%\)"/);
   assert.match(modal, /const hasPublishedChannels = publishedCount > 0/);
-  assert.match(modal, /hasPublishedChannels[\s\S]*?linear-gradient\(135deg, #16a34a, #34d399\)/);
-  assert.match(modal, /variant="success"[\s\S]*?Réussites[\s\S]*?publishedCount/);
-  assert.match(modal, /variant="warning"[\s\S]*?En traitement[\s\S]*?pendingCount/);
-  assert.match(modal, /variant="error"[\s\S]*?Échecs ou canaux à corriger[\s\S]*?failedOrSkippedCount/);
+  assert.match(modal, /Publication avec résultats mixtes/);
+  assert.match(modal, /publishedCount[\s\S]*?publié/);
+  assert.match(modal, /pendingCount[\s\S]*?en traitement/);
+  assert.match(modal, /failedOrSkippedCount[\s\S]*?échec/);
+  assert.match(modal, /gridTemplateColumns: "minmax\(0, 1fr\)"/);
+  assert.match(modal, /CHANNEL_LOGO_BY_KEY/);
+  assert.match(modal, /const channelLogoSize = entry\.channel === "site_web" \? 25 : 27/);
+  assert.match(modal, /borderRadius: 999,[\s\S]*?objectFit: "cover"/);
+  assert.match(modal, /loading="eager"[\s\S]*?decoding="sync"[\s\S]*?fetchPriority="high"/);
+  assert.match(modal, /Afficher le détail de l’échec/);
+  assert.match(modal, /expandedEntryDetails/);
   assert.match(modal, /const orderedEntries = \[\.\.\.entries\]\.sort/);
   assert.match(modal, />\s*Voir\s*<\/a>/);
   assert.match(modal, /Voir dans iNr'Send/);
@@ -67,6 +74,23 @@ test("Pinterest derives its account URL for settings, the immediate balance and 
   assert.match(inrSend, /status\?live=1/);
   assert.match(inrSend, /activeChannelAccountHref/);
   assert.match(inrSend, /Ouvrir le compte/);
+});
+
+test("TikTok uses the OAuth username and never turns a short-link token into the account name", () => {
+  const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
+  const connectedChannels = read(
+    "app/api/booster/connected-channels/route.ts",
+  );
+  const foundations = read(
+    "app/dashboard/booster/publier/publishModal.foundations.ts",
+  );
+
+  assert.match(publishModal, /fetch\("\/api\/integrations\/tiktok\/status"/);
+  assert.match(publishModal, /label: username \? `@\$\{username\}` : "Compte TikTok connecté"/);
+  for (const source of [connectedChannels, foundations]) {
+    assert.match(source, /\(\^\|\\\.\)tiktok\\\.com\$\/i/);
+    assert.match(source, /!\/\^\\\/@\/i\.test\(url\.pathname\)/);
+  }
 });
 
 test("iNrStats channel panels use the global column width while zoom reflow stays active", () => {

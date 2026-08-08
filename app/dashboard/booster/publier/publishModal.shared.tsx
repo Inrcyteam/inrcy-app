@@ -42,7 +42,11 @@ import {
   isUniversalMediaUploadEnabled,
   uploadUniversalMediaFile,
 } from "@/lib/universalMediaUploadClient";
-import { UNIVERSAL_MEDIA_STANDARD_UPLOAD_MAX_BYTES } from "@/lib/mediaUploadPolicy";
+import {
+  UNIVERSAL_MEDIA_STANDARD_UPLOAD_MAX_BYTES,
+  UNIVERSAL_MEDIA_VIDEO_EXTENSIONS,
+  UNIVERSAL_MEDIA_VIDEO_MIME_TYPES,
+} from "@/lib/mediaUploadPolicy";
 import { MEDIA_LIBRARY_VIDEO_SOURCE_MAX_MB_LABEL } from "@/lib/mediaLibraryOptimizationPolicy";
 export type { BoosterCtaMode } from "@/lib/boosterCta";
 
@@ -563,11 +567,12 @@ export const BOOSTER_IMAGE_ACCEPT = [
   ...INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS.map((extension) => `.${extension}`),
 ].join(",");
 export const BOOSTER_VIDEO_ACCEPT = [
-  ...INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
-  ...INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.map((extension) => `.${extension}`),
+  ...UNIVERSAL_MEDIA_VIDEO_MIME_TYPES,
+  ...UNIVERSAL_MEDIA_VIDEO_EXTENSIONS.map((extension) => `.${extension}`),
 ].join(",");
 export const BOOSTER_IMAGE_FORMATS_LABEL = INR_MEDIA_IMAGE_FORMATS_LABEL;
-export const BOOSTER_VIDEO_FORMATS_LABEL = INR_MEDIA_VIDEO_FORMATS_LABEL;
+export const BOOSTER_VIDEO_FORMATS_LABEL =
+  "MP4, M4V, MOV, WebM, MPEG, AVI, MKV, 3GP, TS, WMV, FLV ou OGV";
 export const BOOSTER_MAX_MEDIA_BYTES =
   INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES;
 export const BOOSTER_MAX_MEDIA_MB_LABEL =
@@ -585,9 +590,9 @@ export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
 export const BOOSTER_IMAGE_LIMITS_LABEL = INR_MEDIA_IMAGE_LIMITS_LABEL;
 export const BOOSTER_VIDEO_LIMITS_LABEL = INR_MEDIA_VIDEO_LIMITS_LABEL;
 export const BOOSTER_GENERATION_MEDIA_OPTIMIZATION_LABEL =
-  `Jusqu’à ${BOOSTER_MAX_IMAGE_COUNT} images ou 1 vidéo de ${MEDIA_LIBRARY_VIDEO_SOURCE_MAX_MB_LABEL} max · optimisation proposée au-delà de ${BOOSTER_MAX_IMAGE_MB_LABEL} par image ou ${BOOSTER_MAX_VIDEO_MB_LABEL} pour la vidéo.`;
+  `Jusqu’à ${BOOSTER_MAX_IMAGE_COUNT} images ou 1 vidéo (${MEDIA_LIBRARY_VIDEO_SOURCE_MAX_MB_LABEL} max) · médias optimisés si nécessaire : format adapté et/ou poids ramené à ${BOOSTER_MAX_IMAGE_MB_LABEL}/image ou ${BOOSTER_MAX_VIDEO_MB_LABEL}/vidéo.`;
 export const BOOSTER_PUBLICATION_MEDIA_OPTIMIZATION_LABEL =
-  `Jusqu’à ${BOOSTER_MAX_IMAGE_COUNT} images et 1 vidéo de ${MEDIA_LIBRARY_VIDEO_SOURCE_MAX_MB_LABEL} max · optimisation proposée au-delà de ${BOOSTER_MAX_IMAGE_MB_LABEL} par image ou ${BOOSTER_MAX_VIDEO_MB_LABEL} pour la vidéo.`;
+  `Jusqu’à ${BOOSTER_MAX_IMAGE_COUNT} images et 1 vidéo (${MEDIA_LIBRARY_VIDEO_SOURCE_MAX_MB_LABEL} max) · médias optimisés si nécessaire : format adapté et/ou poids ramené à ${BOOSTER_MAX_IMAGE_MB_LABEL}/image ou ${BOOSTER_MAX_VIDEO_MB_LABEL}/vidéo.`;
 
 export function getBoosterSelectedMediaSummary(params: {
   imageCount: number;

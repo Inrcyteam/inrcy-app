@@ -1,11 +1,17 @@
-import { INR_MEDIA_IMAGE_MAX_BYTES, INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "./mediaRules.ts";
+import {
+  INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS,
+  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  getInrMediaFileExtension,
+} from "./mediaRules.ts";
 
 /**
  * The Media Library may keep a heavier original than Booster accepts. The
  * optimizer creates a second, publication-ready file and never mutates the
  * source selected by the professional.
  */
-export const MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION = 2;
+export const MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION = 3;
 export const MEDIA_LIBRARY_VIDEO_OPTIMIZATION_JOB_TYPE =
   "media_library_video_compress_v1";
 export const MEDIA_LIBRARY_IMAGE_OPTIMIZATION_JOB_TYPE =
@@ -39,8 +45,83 @@ export const MEDIA_LIBRARY_OPTIMIZATION_WORKER_LEASE_SECONDS = 1_800;
 export const MEDIA_LIBRARY_OPTIMIZATION_MAX_ATTEMPTS = 3;
 
 export type MediaLibraryOptimizationMediaType = "image" | "video";
+export type MediaLibraryOptimizationOperation =
+  | "none"
+  | "compression"
+  | "conversion"
+  | "conversion_and_compression";
 export type MediaLibraryOptimizationJobType =
   (typeof MEDIA_LIBRARY_OPTIMIZATION_JOB_TYPES)[number];
+
+function normalizeOptimizationMimeType(value: unknown) {
+  return (
+    String(value || "")
+      .toLowerCase()
+      .split(";")[0]
+      ?.trim() || ""
+  );
+}
+
+/**
+ * MP4, M4V and MOV keep the historical transparent Booster flow: they are
+ * inserted immediately and the publication preparation normalizes their
+ * internal codecs only when required. Other video containers are converted
+ * before insertion so preview, duration checks and mobile browsers all work.
+ */
+export function needsMediaLibraryVideoContainerConversion(params: {
+  name?: unknown;
+  mimeType?: unknown;
+}) {
+  const extension = getInrMediaFileExtension(params.name);
+  const mimeType = normalizeOptimizationMimeType(params.mimeType);
+  const genericMime = !mimeType || mimeType === "application/octet-stream";
+  const extensionIsReady = extension
+    ? INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS.some((value) => value === extension)
+    : null;
+  const mimeIsReady = genericMime
+    ? null
+    : INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES.some((value) => value === mimeType);
+
+  if (extension && extensionIsReady === false) return true;
+  if (mimeIsReady === false) return true;
+  return false;
+}
+
+export function getMediaLibraryOptimizationRequirements(params: {
+  mediaType: MediaLibraryOptimizationMediaType;
+  sizeBytes: number | null | undefined;
+  targetBytes?: number | null;
+  name?: unknown;
+  mimeType?: unknown;
+}) {
+  const sizeBytes = Math.max(0, Number(params.sizeBytes || 0));
+  const targetBytes = normalizeMediaLibraryOptimizationTarget({
+    mediaType: params.mediaType,
+    targetBytes: params.targetBytes,
+  });
+  const needsCompression = sizeBytes > targetBytes;
+  const needsConversion =
+    params.mediaType === "video" &&
+    needsMediaLibraryVideoContainerConversion({
+      name: params.name,
+      mimeType: params.mimeType,
+    });
+  const operation: MediaLibraryOptimizationOperation = needsCompression
+    ? needsConversion
+      ? "conversion_and_compression"
+      : "compression"
+    : needsConversion
+      ? "conversion"
+      : "none";
+
+  return {
+    targetBytes,
+    needsCompression,
+    needsConversion,
+    needsOptimization: needsCompression || needsConversion,
+    operation,
+  };
+}
 
 export function getMediaLibraryOptimizationJobType(
   mediaType: MediaLibraryOptimizationMediaType,
@@ -71,13 +152,10 @@ export function needsMediaLibraryOptimization(params: {
   mediaType: MediaLibraryOptimizationMediaType;
   sizeBytes: number | null | undefined;
   targetBytes?: number | null;
+  name?: unknown;
+  mimeType?: unknown;
 }) {
-  const sizeBytes = Math.max(0, Number(params.sizeBytes || 0));
-  const targetBytes = normalizeMediaLibraryOptimizationTarget({
-    mediaType: params.mediaType,
-    targetBytes: params.targetBytes,
-  });
-  return sizeBytes > targetBytes;
+  return getMediaLibraryOptimizationRequirements(params).needsOptimization;
 }
 
 export function buildMediaLibraryOptimizationIdempotencyKey(params: {
@@ -89,15 +167,15 @@ export function buildMediaLibraryOptimizationIdempotencyKey(params: {
     mediaType: params.mediaType,
     targetBytes: params.targetBytes,
   });
-  return `media-library-${params.mediaType}-compress-v${MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION}:${params.mediaId}:${targetBytes}`;
+  return `media-library-${params.mediaType}-optimize-v${MEDIA_LIBRARY_OPTIMIZATION_PIPELINE_VERSION}:${params.mediaId}:${targetBytes}`;
 }
 
 export function buildOptimizedMediaTitle(title: unknown) {
   const clean = String(title || "Média iNrCy")
     .trim()
-    .replace(/\s+[—-]\s+(?:optimis[ée]e? pour Booster|compress[ée]e?)$/i, "")
+    .replace(/\s+[—-]\s+(?:optimis[ée]e?(?: pour Booster)?|compress[ée]e?)$/i, "")
     .slice(0, 145);
-  return `${clean || "Média iNrCy"} — compressé`;
+  return `${clean || "Média iNrCy"} — optimisé`;
 }
 
 export function buildOptimizedFileStem(value: unknown) {
@@ -175,8 +253,8 @@ export function mapMediaLibraryOptimizationStage(progress: number) {
   const safe = Math.max(0, Math.min(100, Math.round(progress)));
   if (safe < 8) return "Préparation du média";
   if (safe < 18) return "Lecture du fichier original";
-  if (safe < 90) return "Compression du média";
-  if (safe < 96) return "Vérification du fichier";
+  if (safe < 90) return "Optimisation du média";
+  if (safe < 96) return "Vérification du fichier optimisé";
   if (safe < 100) return "Enregistrement dans la Médiathèque";
-  return "Copie compressée créée";
+  return "Copie optimisée créée";
 }

@@ -202,7 +202,13 @@ export function cleanChannelHandleLabel(input: unknown) {
   let text = decodeChannelDisplayText(input);
   if (!text) return "";
   const url = normalizeChannelDisplayUrl(text);
-  if (url) text = firstChannelPathPart(url);
+  if (url) {
+    const host = url.hostname.replace(/^www\./i, "");
+    if (/(^|\.)tiktok\.com$/i.test(host) && !/^\/@/i.test(url.pathname)) {
+      return "";
+    }
+    text = firstChannelPathPart(url);
+  }
   text = decodeChannelDisplayText(text)
     .replace(/^@+/, "")
     .replace(/^\/+|\/+$/g, "")

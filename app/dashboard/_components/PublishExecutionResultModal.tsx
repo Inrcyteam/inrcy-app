@@ -7,7 +7,6 @@ import {
   getFrenchPublicationErrorMessage,
 } from "@/lib/publicationErrorFrench";
 import { isBoosterPublicationPendingStatus } from "@/lib/boosterPublicationStatus";
-import StatusMessage from "./StatusMessage";
 
 type DashboardStyles = Readonly<Record<string, string>>;
 
@@ -41,6 +40,23 @@ type PublishExecutionSummary = {
 
 type PublishExecutionEntry = NonNullable<PublishExecutionSummary["entries"]>[number];
 
+const CHANNEL_LOGO_BY_KEY: Readonly<Record<string, string>> = {
+  inrcy_site: "/icons/inrcy.png",
+  site_web: "/icons/site-web.jpg",
+  inr_search: "/icons/inr-search-bubble-128.png",
+  gmb: "/icons/google.jpg",
+  google_business: "/icons/google.jpg",
+  facebook: "/icons/facebook.png",
+  instagram: "/icons/instagram.jpg",
+  linkedin: "/icons/linkedin.png",
+  tiktok: "/icons/tiktok.png",
+  youtube: "/icons/youtube-shorts.png",
+  youtube_shorts: "/icons/youtube-shorts.png",
+  pinterest: "/icons/pinterest-logo-128.png",
+  mail: "/icons/mails-inrcy-dashboard-v2.png",
+  mails: "/icons/mails-inrcy-dashboard-v2.png",
+};
+
 function isPendingPublicationEntry(entry: PublishExecutionEntry) {
   const status = String(entry.status || "").trim().toLowerCase();
   const technicalStatus = String(entry.technicalStatus || "")
@@ -71,6 +87,7 @@ export default function PublishExecutionResultModal({
   retrying?: boolean;
 }) {
   const [liveSummary, setLiveSummary] = useState<PublishExecutionSummary | null>(summary || null);
+  const [expandedEntryDetails, setExpandedEntryDetails] = useState<Record<string, boolean>>({});
   const tiktokPollInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -80,6 +97,10 @@ export default function PublishExecutionResultModal({
   const publicationId = String(
     liveSummary?.publicationId || liveSummary?.publication_id || "",
   ).trim();
+
+  useEffect(() => {
+    setExpandedEntryDetails({});
+  }, [publicationId]);
   const liveEntries = Array.isArray(liveSummary?.entries)
     ? liveSummary.entries
     : [];
@@ -385,21 +406,30 @@ export default function PublishExecutionResultModal({
     return rank(left) - rank(right);
   });
 
+  const hasMixedResults =
+    hasPublishedChannels && (pendingCount > 0 || failedOrSkippedCount > 0);
+  const hasPublishedWarnings = warningCount > 0;
   const overallTitle = allFailed
     ? "Publication échouée"
-    : hasPublishedChannels
-      ? "Publication bien lancée"
-      : pendingCount
-        ? "Publication en cours"
-        : failureCount
-          ? "Publication envoyée partiellement"
-          : "Publication envoyée avec succès";
+    : hasMixedResults
+      ? "Publication avec résultats mixtes"
+      : hasPublishedWarnings
+        ? "Publication publiée avec avertissement"
+      : hasPublishedChannels
+        ? "Publication bien lancée !"
+        : pendingCount
+          ? "Publication en cours"
+          : failureCount
+            ? "Publication envoyée partiellement"
+            : "Publication envoyée avec succès";
   const overallSubtitle = allFailed
     ? "Aucun canal n’a pu publier. Les erreurs sont détaillées ci-dessous."
-    : hasPublishedChannels && pendingCount
-      ? `${publishedCount} canal${publishedCount > 1 ? "aux sont déjà publiés" : " est déjà publié"} sur ${totalCount}. iNrCy poursuit automatiquement le traitement des ${pendingCount} autre${pendingCount > 1 ? "s" : ""}.`
-      : hasPublishedChannels && failedOrSkippedCount
-        ? `${publishedCount} canal${publishedCount > 1 ? "aux ont" : " a"} publié sur ${totalCount}. Les canaux à corriger sont détaillés ci-dessous.`
+    : hasMixedResults
+      ? `${totalCount}/${totalCount} canal${totalCount > 1 ? "aux traités" : " traité"} avec détails ci-dessous.`
+      : hasPublishedChannels && pendingCount
+        ? `${publishedCount} canal${publishedCount > 1 ? "aux sont déjà publiés" : " est déjà publié"} sur ${totalCount}. iNrCy poursuit automatiquement le traitement.`
+        : hasPublishedChannels && hasPublishedWarnings
+          ? `${publishedCount}/${totalCount} canal${totalCount > 1 ? "aux publiés" : " publié"} · ${warningCount} avertissement${warningCount > 1 ? "s" : ""} à consulter.`
         : hasPublishedChannels
           ? `${publishedCount}/${totalCount} canal${totalCount > 1 ? "aux publiés" : " publié"} avec succès.`
           : `${pendingCount || totalCount} canal${(pendingCount || totalCount) > 1 ? "aux sont" : " est"} encore en traitement. iNrCy actualise ce bilan automatiquement.`;
@@ -412,7 +442,7 @@ export default function PublishExecutionResultModal({
         inset: 0,
         display: "grid",
         placeItems: "center",
-        background: "rgba(3, 8, 20, 0.52)",
+        background: "rgba(3, 8, 20, 0.64)",
         zIndex: 110,
         padding: 16,
         overflowY: "auto",
@@ -422,24 +452,27 @@ export default function PublishExecutionResultModal({
       <div
         className={styles.blockCard}
         style={{
-          width: "min(760px, 100%)",
+          width: "min(660px, 100%)",
           maxHeight:
             "calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))) - 32px)",
           overflowY: "auto",
           textAlign: "left",
           position: "relative",
-          boxShadow: "0 30px 80px rgba(0,0,0,0.40)",
+          padding: "22px clamp(14px, 3vw, 24px) 20px",
+          boxShadow: hasPublishedChannels
+            ? "0 32px 90px rgba(0,0,0,0.50), 0 0 48px rgba(99,102,241,0.10)"
+            : allFailed
+              ? "0 32px 90px rgba(0,0,0,0.50), 0 0 42px rgba(248,113,113,0.10)"
+              : "0 32px 90px rgba(0,0,0,0.50), 0 0 42px rgba(251,191,36,0.08)",
           border: `1px solid ${
             hasPublishedChannels
-              ? "rgba(34,197,94,0.34)"
+              ? "rgba(96,165,250,0.28)"
               : allFailed
-              ? "rgba(248,113,113,0.34)"
-              : pendingCount || warningCount || skippedCount
-                ? "rgba(251,191,36,0.28)"
-                : "rgba(34,197,94,0.28)"
+                ? "rgba(248,113,113,0.34)"
+                : "rgba(251,191,36,0.28)"
           }`,
           background:
-            "linear-gradient(180deg, rgba(12,18,32,0.98), rgba(10,14,24,0.98))",
+            "radial-gradient(circle at 50% 0%, rgba(59,130,246,0.09), transparent 30%), linear-gradient(180deg, rgba(12,18,34,0.99), rgba(8,13,25,0.99))",
         }}
       >
         <button
@@ -449,106 +482,217 @@ export default function PublishExecutionResultModal({
           className={styles.secondaryBtn}
           style={{
             position: "absolute",
-            top: 14,
-            right: 14,
-            minWidth: 42,
-            padding: "0 12px",
+            top: 13,
+            right: 13,
+            zIndex: 2,
+            minWidth: 38,
+            minHeight: 34,
+            padding: "0 10px",
+            borderRadius: 999,
           }}
         >
           ✕
         </button>
-        <div
+
+        <header
           style={{
+            minHeight: 66,
             display: "flex",
             alignItems: "center",
-            gap: 14,
-            paddingRight: 54,
-            marginBottom: 14,
+            justifyContent: "center",
+            gap: 13,
+            padding: "3px 48px 0",
+            marginBottom: 15,
           }}
         >
-          <span
+          <div
             aria-hidden
             style={{
-              width: 48,
-              height: 48,
-              flex: "0 0 48px",
-              borderRadius: 16,
+              width: 62,
+              flex: "0 0 62px",
               display: "grid",
               placeItems: "center",
-              fontSize: 27,
-              fontWeight: 900,
-              color: "#fff",
-              background: hasPublishedChannels
-                ? "linear-gradient(135deg, #16a34a, #34d399)"
-                : allFailed
-                  ? "linear-gradient(135deg, #dc2626, #fb7185)"
-                  : "linear-gradient(135deg, #d97706, #fbbf24)",
-              boxShadow: hasPublishedChannels
-                ? "0 10px 28px rgba(34,197,94,0.30)"
-                : allFailed
-                  ? "0 10px 28px rgba(248,113,113,0.24)"
-                  : "0 10px 28px rgba(251,191,36,0.22)",
+              fontSize: hasPublishedChannels ? 49 : 41,
+              lineHeight: 1,
+              filter: "drop-shadow(0 12px 24px rgba(99,102,241,0.28))",
             }}
           >
-            {hasPublishedChannels ? "✓" : allFailed ? "×" : "⏳"}
-          </span>
-          <div style={{ minWidth: 0 }}>
-            <div className={styles.blockTitle} style={{ marginBottom: 4 }}>
+            {hasPublishedChannels ? "🎉" : allFailed ? "❌" : "⏳"}
+          </div>
+          <div style={{ minWidth: 0, textAlign: "left" }}>
+            <div className={styles.blockTitle} style={{ marginBottom: 5, fontSize: 23 }}>
               {overallTitle}
             </div>
             <div
               className={styles.subtitle}
-              style={{ maxWidth: 610, margin: 0, lineHeight: 1.42 }}
+              style={{ maxWidth: 500, margin: 0, lineHeight: 1.38 }}
             >
               {overallSubtitle}
             </div>
           </div>
-        </div>
+        </header>
 
-        <div style={{ display: "grid", gap: 8 }}>
+        <div
+          style={{
+            minHeight: 56,
+            padding: "8px 10px",
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.max(
+              1,
+              Number(publishedCount > 0) + Number(pendingCount > 0) + Number(failedOrSkippedCount > 0),
+            )}, minmax(0, 1fr))`,
+            alignItems: "center",
+            borderRadius: 20,
+            border: "1px solid rgba(168,85,247,0.55)",
+            background:
+              "linear-gradient(90deg, rgba(6,182,212,0.08), rgba(124,58,237,0.10), rgba(236,72,153,0.08))",
+            boxShadow: "inset 0 0 24px rgba(59,130,246,0.04)",
+          }}
+        >
           {publishedCount > 0 ? (
-            <StatusMessage variant="success" style={{ marginTop: 0, fontSize: 14 }}>
-              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
-                <strong>✓ Réussites</strong>
-                <strong>{publishedCount}/{totalCount} publiés</strong>
-              </span>
-            </StatusMessage>
+            <div
+              style={{
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: publishedCount === totalCount ? "space-between" : "center",
+                gap: 9,
+                padding: "0 10px",
+              }}
+            >
+              <strong style={{ display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
+                <span
+                  aria-hidden
+                  style={{
+                    width: 26,
+                    height: 26,
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: 999,
+                    border: "2px solid #34d399",
+                    color: "#34d399",
+                    boxShadow: "0 0 15px rgba(52,211,153,0.24)",
+                  }}
+                >
+                  ✓
+                </span>
+                {publishedCount} publié{publishedCount > 1 ? "s" : ""}
+              </strong>
+              {publishedCount === totalCount ? (
+                <strong style={{ color: "#c084fc", fontSize: 13, textAlign: "right" }}>
+                  Tout est en ligne ! 🎉
+                </strong>
+              ) : null}
+            </div>
           ) : null}
           {pendingCount > 0 ? (
-            <StatusMessage variant="warning" style={{ marginTop: 0, fontSize: 14 }}>
-              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
-                <strong>⏳ En traitement</strong>
-                <strong>{pendingCount}/{totalCount} en cours</strong>
+            <div
+              style={{
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "0 10px",
+                borderLeft: publishedCount > 0 ? "1px solid rgba(148,163,184,0.16)" : undefined,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 26,
+                  height: 26,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 999,
+                  border: "2px solid #fbbf24",
+                  color: "#fbbf24",
+                  boxShadow: "0 0 15px rgba(251,191,36,0.20)",
+                }}
+              >
+                ◷
               </span>
-            </StatusMessage>
+              <strong style={{ color: "#fbbf24", whiteSpace: "nowrap" }}>
+                {pendingCount} en traitement
+              </strong>
+            </div>
           ) : null}
           {failedOrSkippedCount > 0 ? (
-            <StatusMessage variant="error" style={{ marginTop: 0, fontSize: 14 }}>
-              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
-                <strong>× Échecs ou canaux à corriger</strong>
-                <strong>{failedOrSkippedCount}/{totalCount}</strong>
+            <div
+              style={{
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "0 10px",
+                borderLeft:
+                  publishedCount > 0 || pendingCount > 0
+                    ? "1px solid rgba(148,163,184,0.16)"
+                    : undefined,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 26,
+                  height: 26,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 999,
+                  border: "2px solid #fb7185",
+                  color: "#fb7185",
+                  boxShadow: "0 0 15px rgba(251,113,133,0.20)",
+                }}
+              >
+                ×
               </span>
-              <span style={{ display: "none" }}>
-                Publication envoyée partiellement · Publication publiée avec avertissement
-              </span>
-            </StatusMessage>
+              <strong style={{ color: "#fb7185", whiteSpace: "nowrap" }}>
+                {failedOrSkippedCount} échec{failedOrSkippedCount > 1 ? "s" : ""}
+              </strong>
+            </div>
           ) : null}
         </div>
+
         {entries.length ? (
-          <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
+          <div
+            style={{
+              marginTop: 13,
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr)",
+              gap: 7,
+              textAlign: "left",
+            }}
+          >
             {orderedEntries.map((entry) => {
               const entryIsPending = isPendingPublicationEntry(entry);
+              const entryIsSkipped = entry.status === "skipped";
+              const entryIsFailed = !entryIsPending && !entryIsSkipped && (
+                entry.ok === false || String(entry.status || "").toLowerCase() === "failed"
+              );
+              const entryHasWarning = entry.status === "published_with_warning";
               const channelHref = String(effectiveSummary?.channelLinks?.[entry.channel] || "").trim();
+              const channelLogo = CHANNEL_LOGO_BY_KEY[entry.channel];
+              const channelLogoSize = entry.channel === "site_web" ? 25 : 27;
               const visibleError = !entryIsPending && entry.error
                 ? getFrenchPublicationErrorMessage(
                     entry.channel,
                     entry.error,
                     `${entry.label} n'a pas pu publier. Merci de réessayer.`,
                   )
-                : "";
-              const visibleWarning = entry.warning_message
+                : entryIsFailed
+                  ? getFrenchPublicationErrorMessage(
+                      entry.channel,
+                      "publication_failed",
+                      `${entry.label} n'a pas pu publier. Merci de réessayer.`,
+                    )
+                  : "";
+              const rawWarning = String(
+                entry.warning_message || (entry.warning !== "pending" ? entry.warning || "" : ""),
+              ).trim();
+              const visibleWarning = rawWarning
                 ? ensureFrenchPublicationErrorMessage(
-                    entry.warning_message,
+                    rawWarning,
                     entryIsPending
                       ? `${entry.label} est encore en attente de finalisation.`
                       : `${entry.label} a publié avec un avertissement.`,
@@ -560,83 +704,203 @@ export default function PublishExecutionResultModal({
                   `${entry.label} n'est pas prêt pour la publication.`,
                 ),
               );
-              const entryTone = entry.status === "skipped"
+              const tone = entryIsPending || entryHasWarning
                 ? {
-                    border: "rgba(251,191,36,0.28)",
-                    background: "linear-gradient(90deg, rgba(251,191,36,0.09), rgba(255,255,255,0.025))",
-                    iconBackground: "rgba(251,191,36,0.18)",
-                    iconColor: "#fde68a",
+                    border: "rgba(251,191,36,0.22)",
+                    background: "linear-gradient(90deg, rgba(245,158,11,0.07), rgba(20,27,45,0.86))",
+                    statusColor: "#fbbf24",
                   }
-                : entryIsPending
+                : entryIsFailed || entryIsSkipped
                   ? {
-                      border: "rgba(251,191,36,0.28)",
-                      background: "linear-gradient(90deg, rgba(251,191,36,0.09), rgba(255,255,255,0.025))",
-                      iconBackground: "rgba(251,191,36,0.18)",
-                      iconColor: "#fde68a",
+                      border: "rgba(248,113,113,0.24)",
+                      background: "linear-gradient(90deg, rgba(239,68,68,0.07), rgba(20,27,45,0.86))",
+                      statusColor: "#fb7185",
                     }
+                  : {
+                      border: "rgba(96,165,250,0.16)",
+                      background: "linear-gradient(90deg, rgba(30,58,138,0.10), rgba(30,27,75,0.08), rgba(20,27,45,0.88))",
+                      statusColor: "#34d399",
+                    };
+              const statusLabel = entryIsSkipped
+                ? "Non envoyé"
+                : entryIsPending
+                  ? "En traitement"
+                  : entryIsFailed
+                    ? "Échec"
+                    : entryHasWarning
+                      ? "Publié avec avertissement"
+                      : "Publié";
+              // Conserve une description sémantique explicite pour les lecteurs d’écran :
+              // un canal en file d’attente ne doit jamais être annoncé comme publié à cause de `ok`.
+              const semanticStatusIcon = entry.status === "skipped"
+                ? "⏭"
+                : entryIsPending
+                  ? "⏳"
                   : entry.ok
-                    ? {
-                        border: "rgba(52,211,153,0.30)",
-                        background: "linear-gradient(90deg, rgba(34,197,94,0.12), rgba(255,255,255,0.025))",
-                        iconBackground: "linear-gradient(135deg, #16a34a, #34d399)",
-                        iconColor: "#fff",
-                      }
-                    : {
-                        border: "rgba(248,113,113,0.30)",
-                        background: "linear-gradient(90deg, rgba(248,113,113,0.10), rgba(255,255,255,0.025))",
-                        iconBackground: "rgba(248,113,113,0.18)",
-                        iconColor: "#fecaca",
-                      };
+                    ? entryHasWarning
+                      ? "!"
+                      : "✓"
+                    : "×";
+              const accessibleStatusLabel = entry.status === "skipped"
+                ? "Ignoré avant envoi"
+                : entryIsPending
+                  ? "En attente"
+                  : entry.ok
+                    ? entryHasWarning
+                      ? "Publié avec avertissement"
+                      : "Publié"
+                    : "Échec";
+              const hasFailureDetails =
+                (entryIsFailed || entryIsSkipped) &&
+                Boolean(visibleError || visibleBlockers.length);
+              const failureDetailsOpen = Boolean(
+                expandedEntryDetails[entry.channel],
+              );
+
               return (
                 <div
                   key={entry.channel}
                   style={{
-                    borderRadius: 14,
-                    padding: "10px 12px",
-                    border: `1px solid ${entryTone.border}`,
-                    background: entryTone.background,
+                    borderRadius: 13,
+                    padding: "8px 10px",
+                    border: `1px solid ${tone.border}`,
+                    background: tone.background,
                   }}
                 >
                   <div
                     style={{
+                      minHeight: 32,
                       display: "flex",
                       justifyContent: "space-between",
                       gap: 10,
                       alignItems: "center",
                     }}
                   >
-                    <strong style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <strong
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 10,
+                        minWidth: 0,
+                      }}
+                    >
                       <span
                         aria-hidden
                         style={{
-                          width: 30,
-                          height: 30,
-                          flex: "0 0 30px",
+                          width: 31,
+                          height: 31,
+                          flex: "0 0 31px",
                           borderRadius: 999,
+                          overflow: "hidden",
                           display: "grid",
                           placeItems: "center",
-                          fontSize: 17,
-                          fontWeight: 900,
-                          color: entryTone.iconColor,
-                          background: entryTone.iconBackground,
-                          boxShadow: entry.ok && !entryIsPending
-                            ? "0 5px 16px rgba(34,197,94,0.22)"
-                            : undefined,
+                          background: "transparent",
                         }}
                       >
-                        {entry.status === "skipped"
-                          ? "⏭"
-                          : entryIsPending
-                            ? "⏳"
-                            : entry.ok
-                              ? entry.status === "published_with_warning"
-                                ? "!"
-                                : "✓"
-                              : "×"}
+                        {channelLogo ? (
+                          <img
+                            src={channelLogo}
+                            alt=""
+                            aria-hidden="true"
+                            loading="eager"
+                            decoding="sync"
+                            fetchPriority="high"
+                            style={{
+                              width: channelLogoSize,
+                              height: channelLogoSize,
+                              borderRadius: 999,
+                              objectFit: "cover",
+                              boxShadow: "0 0 18px rgba(76,195,255,0.24)",
+                            }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 13 }}>{entry.label.slice(0, 1)}</span>
+                        )}
                       </span>
-                      <span>{entry.label}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{entry.label}</span>
                     </strong>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        gap: 9,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span
+                        aria-label={`${entry.label} — ${accessibleStatusLabel}`}
+                        data-status-icon={semanticStatusIcon}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          color: tone.statusColor,
+                          fontSize: 12,
+                          fontWeight: 750,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 18,
+                            height: 18,
+                            display: "grid",
+                            placeItems: "center",
+                            borderRadius: 999,
+                            border: `1.5px solid ${tone.statusColor}`,
+                            boxShadow: `0 0 11px ${tone.statusColor}55`,
+                            fontSize: 12,
+                            lineHeight: 1,
+                          }}
+                        >
+                          {entryIsPending
+                            ? "◷"
+                            : entryIsFailed || entryIsSkipped
+                              ? "×"
+                              : entryHasWarning
+                                ? "!"
+                                : "✓"}
+                        </span>
+                        {statusLabel}
+                      </span>
+                      {hasFailureDetails ? (
+                        <button
+                          type="button"
+                          aria-label={
+                            failureDetailsOpen
+                              ? `Masquer le détail de l’échec ${entry.label}`
+                              : `Afficher le détail de l’échec ${entry.label}`
+                          }
+                          aria-expanded={failureDetailsOpen}
+                          onClick={() =>
+                            setExpandedEntryDetails((current) => ({
+                              ...current,
+                              [entry.channel]: !current[entry.channel],
+                            }))
+                          }
+                          style={{
+                            width: 25,
+                            height: 25,
+                            flex: "0 0 25px",
+                            display: "grid",
+                            placeItems: "center",
+                            borderRadius: 999,
+                            border: "1px solid rgba(248,113,113,0.45)",
+                            background: failureDetailsOpen
+                              ? "rgba(239,68,68,0.20)"
+                              : "rgba(239,68,68,0.08)",
+                            color: "#fecaca",
+                            fontSize: 13,
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          i
+                        </button>
+                      ) : null}
                       {channelHref ? (
                         <a
                           href={channelHref}
@@ -646,7 +910,7 @@ export default function PublishExecutionResultModal({
                           style={{
                             minHeight: 28,
                             minWidth: 0,
-                            padding: "4px 10px",
+                            padding: "3px 11px",
                             borderRadius: 999,
                             fontSize: 12,
                             textDecoration: "none",
@@ -655,31 +919,54 @@ export default function PublishExecutionResultModal({
                           Voir
                         </a>
                       ) : null}
-                      <span style={{ fontSize: 12, opacity: 0.75 }}>
-                        {entry.status === "skipped"
-                          ? "Ignoré avant envoi"
-                          : entryIsPending
-                            ? "En attente"
-                            : entry.ok
-                              ? entry.status === "published_with_warning"
-                                ? "Publié avec avertissement"
-                                : "Publié"
-                              : "Échec"}
-                      </span>
                     </span>
                   </div>
-                  {visibleError ? (
-                    <div style={{ marginTop: 6, fontSize: 13, color: entry.status === "skipped" ? "#fde68a" : "#ffb4b4" }}>
+
+                  {visibleError && (!hasFailureDetails || failureDetailsOpen) ? (
+                    <div
+                      style={{
+                        marginTop: 7,
+                        padding: "7px 9px",
+                        borderRadius: 9,
+                        borderLeft: "3px solid #fb7185",
+                        background: "rgba(239,68,68,0.08)",
+                        fontSize: 12.5,
+                        lineHeight: 1.4,
+                        color: "#fecaca",
+                      }}
+                    >
                       {visibleError}
                     </div>
                   ) : null}
-                  {entry.status === "skipped" && visibleBlockers.length ? (
-                    <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>
+                  {entryIsSkipped && visibleBlockers.length && failureDetailsOpen ? (
+                    <div
+                      style={{
+                        marginTop: 7,
+                        padding: "7px 9px",
+                        borderRadius: 9,
+                        borderLeft: "3px solid #fb7185",
+                        background: "rgba(239,68,68,0.08)",
+                        fontSize: 12.5,
+                        lineHeight: 1.4,
+                        color: "#fecaca",
+                      }}
+                    >
                       {visibleBlockers.join(" · ")}
                     </div>
                   ) : null}
                   {visibleWarning ? (
-                    <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>
+                    <div
+                      style={{
+                        marginTop: 7,
+                        padding: "7px 9px",
+                        borderRadius: 9,
+                        borderLeft: "3px solid #fbbf24",
+                        background: "rgba(245,158,11,0.08)",
+                        fontSize: 12.5,
+                        lineHeight: 1.4,
+                        color: "#fde68a",
+                      }}
+                    >
                       {visibleWarning}
                     </div>
                   ) : null}
@@ -688,13 +975,15 @@ export default function PublishExecutionResultModal({
             })}
           </div>
         ) : null}
+
         <div
           style={{
             marginTop: 16,
-            display: "flex",
-            justifyContent: "center",
-            gap: 10,
-            flexWrap: "wrap",
+            paddingTop: 14,
+            borderTop: "1px solid rgba(148,163,184,0.12)",
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr)",
+            gap: 9,
           }}
         >
           {onRetryFailed && retryableFailureCount > 0 ? (
@@ -703,13 +992,40 @@ export default function PublishExecutionResultModal({
               className={styles.primaryBtn}
               onClick={() => void onRetryFailed()}
               disabled={retrying}
+              style={{ width: "100%" }}
             >
               {retrying
                 ? "Relance en cours…"
                 : `Retenter ${retryableFailureCount} canal${retryableFailureCount > 1 ? "aux" : ""} en échec`}
             </button>
           ) : null}
-          <button type="button" className={styles.secondaryBtn} onClick={onOpenInrSend}>
+          <button
+            type="button"
+            onClick={onOpenInrSend}
+            style={{
+              width: "100%",
+              minHeight: 46,
+              border: 0,
+              borderRadius: 999,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              color: "#fff",
+              fontWeight: 850,
+              cursor: "pointer",
+              background: "linear-gradient(90deg, #ec4899 0%, #8b5cf6 52%, #2563eb 100%)",
+              boxShadow: "0 12px 28px rgba(124,58,237,0.27)",
+            }}
+          >
+            <img
+              src="/inrsend-logo-seul.png"
+              alt=""
+              aria-hidden="true"
+              width={23}
+              height={23}
+              style={{ width: 23, height: 23, objectFit: "contain" }}
+            />
             Voir dans iNr'Send
           </button>
         </div>

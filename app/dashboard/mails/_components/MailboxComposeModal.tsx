@@ -6,7 +6,10 @@ import MediaLibraryPickerModal, {
 import MediaOptimizerModal, {
   type MediaOptimizerItem,
 } from "@/app/dashboard/_components/MediaOptimizerModal";
-import { MEDIA_LIBRARY_EMAIL_TARGET_BYTES } from "@/lib/mediaLibraryOptimizationPolicy";
+import {
+  MEDIA_LIBRARY_EMAIL_TARGET_BYTES,
+  getMediaLibraryOptimizationRequirements,
+} from "@/lib/mediaLibraryOptimizationPolicy";
 import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
 import styles from "../mails.module.css";
 import {
@@ -491,16 +494,22 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     const oversizedMedia: File[] = [];
     const oversizedUnsupported: File[] = [];
     for (const file of next) {
-      if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
-        directFiles.push(file);
-        continue;
-      }
       const mediaType = detectUniversalUploadMediaType({
         name: file.name,
         mimeType: file.type,
       });
       if (mediaType === "image" || mediaType === "video") {
-        oversizedMedia.push(file);
+        const requirements = getMediaLibraryOptimizationRequirements({
+          mediaType,
+          sizeBytes: file.size,
+          targetBytes: MEDIA_LIBRARY_EMAIL_TARGET_BYTES,
+          name: file.name,
+          mimeType: file.type,
+        });
+        if (requirements.needsOptimization) oversizedMedia.push(file);
+        else directFiles.push(file);
+      } else if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+        directFiles.push(file);
       } else {
         oversizedUnsupported.push(file);
       }
@@ -508,7 +517,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
     if (oversizedUnsupported.length > 0) {
       setToast(
-        `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être compressé automatiquement par iNrCy.`,
+        `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être optimisé automatiquement par iNrCy.`,
       );
     }
 
@@ -528,7 +537,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     }
 
     if (oversizedMedia.length > 0) {
-      setToast("Ce média dépasse 20 Mo. Choisissez le poids cible pour créer une copie adaptée à l’e-mail.");
+      setToast("Ce média doit être optimisé. iNrCy adaptera automatiquement son format et/ou son poids à l’e-mail.");
       openOptimizerForFiles(oversizedMedia);
     }
   };
@@ -546,12 +555,12 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
   const handleOptimizedAttachment = async (item: MediaOptimizerItem) => {
     if (Number(item.size_bytes || 0) > MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
-      setToast("La copie compressée dépasse encore 20 Mo. Choisissez un objectif plus léger.");
+      setToast("Le média optimisé dépasse encore 20 Mo.");
       return;
     }
     appendComposeAttachments([mediaLibraryItemToAttachment(item)]);
     setOptimizerCompleted(true);
-    setToast("Copie compressée ajoutée au message.");
+    setToast("Média optimisé ajouté au message.");
   };
 
   return (
@@ -567,7 +576,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
       <MediaLibraryPickerModal
         open={mediaLibraryOpen}
         title="Joindre depuis la Médiathèque"
-        subtitle="Ajoutez une image ou une vidéo déjà stockée dans iNrCy · 20 Mo max par fichier."
+        subtitle="Ajoutez un média déjà stocké dans iNrCy · format adapté si nécessaire · 20 Mo max."
         accept="all"
         multiple
         maxSelection={10}

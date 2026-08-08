@@ -17,7 +17,10 @@ import {
   type UniversalMediaUploadIntent,
 } from "@/lib/universalMediaUploadClient";
 import {
+  UNIVERSAL_MEDIA_VIDEO_EXTENSIONS,
+  UNIVERSAL_MEDIA_VIDEO_MIME_TYPES,
   buildDirectStorageResumableEndpoint,
+  detectUniversalUploadMediaType,
   selectUniversalMediaUploadProtocol,
 } from "@/lib/mediaUploadPolicy";
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
@@ -29,15 +32,11 @@ import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
 import {
   MEDIA_LIBRARY_IMAGE_OUTPUT_MAX_BYTES,
   MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
-  MEDIA_LIBRARY_MIN_TARGET_BYTES,
   MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES,
   MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
-  needsMediaLibraryOptimization,
+  getMediaLibraryOptimizationRequirements,
 } from "@/lib/mediaLibraryOptimizationPolicy";
 import { MODULE_SNAPSHOT_KEYS, readModuleSnapshot, writeModuleSnapshot } from "@/lib/browserModuleSnapshotCache";
-import {
-  detectUniversalUploadMediaType,
-} from "@/lib/mediaUploadPolicy";
 import styles from "./mediaLibrary.module.css";
 
 type MediaTypeFilter = "all" | "image" | "video";
@@ -288,15 +287,19 @@ function mediaOptimizationLimit(item: Pick<MediaItem, "media_type">) {
 }
 
 function mediaNeedsOptimization(item: MediaItem) {
-  return needsMediaLibraryOptimization({
+  return getMediaLibraryOptimizationRequirements({
     mediaType: item.media_type,
     sizeBytes: item.size_bytes,
-  });
+    targetBytes: mediaOptimizationLimit(item),
+    name: item.original_file_name || item.storage_path || item.title,
+    mimeType: item.mime_type,
+  }).needsOptimization;
 }
 
-function mediaCanBeCompressed(item: MediaItem) {
-  return Number(item.size_bytes || 0) > MEDIA_LIBRARY_MIN_TARGET_BYTES;
-}
+const MEDIA_LIBRARY_VIDEO_ACCEPT = [
+  ...UNIVERSAL_MEDIA_VIDEO_MIME_TYPES,
+  ...UNIVERSAL_MEDIA_VIDEO_EXTENSIONS.map((extension) => `.${extension}`),
+].join(",");
 
 
 export default function MediaLibraryClient() {
@@ -990,7 +993,7 @@ export default function MediaLibraryClient() {
                 key={fileInputKey}
                 className={styles.fileInput}
                 type="file"
-                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/x-m4v"
+                accept={`image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif,image/tiff,image/bmp,${MEDIA_LIBRARY_VIDEO_ACCEPT}`}
                 multiple
                 disabled={uploading}
                 onChange={(event) =>
@@ -1000,7 +1003,7 @@ export default function MediaLibraryClient() {
               <small className={styles.helper}>
                 {selectedFiles.length
                   ? `${selectedFiles.length} fichier(s) · ${selectedStats.images} image(s) · ${selectedStats.videos} vidéo(s) · ${formatBytes(selectedStats.bytes)}`
-                  : `Médias source jusqu’à 300 Mo · optimisation proposée au-delà de 50 Mo par image ou 75 Mo pour la vidéo · lots de ${UPLOAD_BATCH_SIZE}.`}
+                  : `Médias source jusqu’à 300 Mo · format adapté et/ou poids ramené à 50 Mo/image ou 75 Mo/vidéo · lots de ${UPLOAD_BATCH_SIZE}.`}
               </small>
             </label>
 
@@ -1263,15 +1266,11 @@ export default function MediaLibraryClient() {
                       <div className={styles.mediaRowMain}>
                         <strong>{item.title || "Média sans titre"}</strong>
                         <span>{tagsToText(item.tags) || "Aucun tag"}</span>
-                        {mediaCanBeCompressed(item) ? (
+                        {mediaNeedsOptimization(item) ? (
                           <div className={styles.mediaRowOptimizationActions}>
-                            {mediaNeedsOptimization(item) ? (
-                              <span className={styles.optimizationBadge}>
-                                Hors limite Booster · {formatBytes(item.size_bytes)} / {formatBytes(mediaOptimizationLimit(item))}
-                              </span>
-                            ) : item.source === "mediatheque_optimization" ? (
-                              <span className={styles.compatibleCopyBadge}>✓ Copie compressée</span>
-                            ) : null}
+                            <span className={styles.optimizationBadge}>
+                              À optimiser · format et/ou poids
+                            </span>
                             <button
                               type="button"
                               className={styles.optimizeButton}
@@ -1283,12 +1282,12 @@ export default function MediaLibraryClient() {
                               {["queued", "processing", "retry_wait"].includes(
                                 String(item.optimization?.status || ""),
                               )
-                                ? `Compression · ${Math.max(0, Math.min(99, Number(item.optimization?.progress || 0)))} %`
-                                : "Compresser"}
+                                ? `Optimisation · ${Math.max(0, Math.min(99, Number(item.optimization?.progress || 0)))} %`
+                                : "Optimiser"}
                             </button>
                           </div>
                         ) : item.source === "mediatheque_optimization" ? (
-                          <span className={styles.compatibleCopyBadge}>✓ Copie compressée</span>
+                          <span className={styles.compatibleCopyBadge}>✓ Copie optimisée</span>
                         ) : null}
                       </div>
                     </div>

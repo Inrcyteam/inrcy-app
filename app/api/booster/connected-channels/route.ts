@@ -126,7 +126,13 @@ function cleanSocialHandle(input: unknown) {
   let text = decodeDisplayText(input);
   if (!text) return "";
   const url = normalizeUrl(text);
-  if (url) text = firstMeaningfulPathPart(url, ["@"]);
+  if (url) {
+    const host = url.hostname.replace(/^www\./i, "");
+    if (/(^|\.)tiktok\.com$/i.test(host) && !/^\/@/i.test(url.pathname)) {
+      return "";
+    }
+    text = firstMeaningfulPathPart(url, ["@"]);
+  }
   text = decodeDisplayText(text).replace(/^@+/, "").replace(/^\/+|\/+$/g, "").trim();
   if (!text || looksTechnical(text) || /\s/.test(text)) return "";
   return `@${text}`;

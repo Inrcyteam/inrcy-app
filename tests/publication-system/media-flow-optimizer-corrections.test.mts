@@ -12,7 +12,7 @@ const ROOT = process.cwd();
 const read = (relativePath: string) =>
   readFileSync(path.join(ROOT, relativePath), "utf8");
 
-test("the 300 Mo source safety ceiling remains unchanged and is explained before compression", () => {
+test("the 300 Mo source safety ceiling remains unchanged and is explained before optimization", () => {
   assert.equal(MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES, 300 * 1024 * 1024);
   assert.equal(MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES, 300 * 1024 * 1024);
 
@@ -23,10 +23,10 @@ test("the 300 Mo source safety ceiling remains unchanged and is explained before
 
   assert.match(optimizer, /const sourceTooLarge = Boolean/);
   assert.match(optimizer, /Fichier source trop volumineux/);
-  assert.match(optimizer, /ne peut donc pas importer\s+ni compresser ce fichier/);
-  assert.match(optimizer, /targetBytes >= currentSize \|\| sourceTooLarge/);
+  assert.match(optimizer, /ne peut donc pas importer\s+ni optimiser ce fichier/);
+  assert.match(optimizer, /!requirements\?\.needsOptimization \|\| sourceTooLarge/);
   assert.match(warning, /sourceMaxBytes/);
-  assert.match(warning, /Ce fichier ne peut pas être importé ni compressé/);
+  assert.match(warning, /Ce fichier ne peut pas être importé ni optimisé/);
   assert.match(warning, /!sourceTooLarge \? \(/);
 });
 

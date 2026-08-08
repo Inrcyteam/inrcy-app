@@ -14,6 +14,11 @@ type PublishWarningModalsProps = {
     sizeBytes: number;
     maxBytes: number;
     sourceMaxBytes: number;
+    operation:
+      | "none"
+      | "compression"
+      | "conversion"
+      | "conversion_and_compression";
   } | null;
   onCloseOversizedMedia: () => void;
   onOptimizeOversizedMedia: () => void;
@@ -82,6 +87,12 @@ export default function PublishWarningModals({
     const mediaLabel = oversizedMedia.mediaType === "video" ? "vidéo" : "image";
     const sourceTooLarge =
       oversizedMedia.sizeBytes > oversizedMedia.sourceMaxBytes;
+    const needsConversion =
+      oversizedMedia.operation === "conversion" ||
+      oversizedMedia.operation === "conversion_and_compression";
+    const needsCompression =
+      oversizedMedia.operation === "compression" ||
+      oversizedMedia.operation === "conversion_and_compression";
     return (
       <WarningShell styles={styles}>
         <div
@@ -101,7 +112,13 @@ export default function PublishWarningModals({
         </div>
         <div style={{ display: "grid", gap: 9 }}>
           <div className={styles.blockTitle} style={{ marginBottom: 0 }}>
-            Fichier trop volumineux
+            {sourceTooLarge
+              ? "Fichier source trop volumineux"
+              : needsConversion && needsCompression
+                ? "Format et poids à optimiser"
+                : needsConversion
+                  ? "Format à optimiser"
+                  : "Fichier trop volumineux"}
           </div>
           <div
             style={{
@@ -111,7 +128,13 @@ export default function PublishWarningModals({
             }}
           >
             <strong style={{ overflowWrap: "anywhere" }}>{oversizedMedia.name}</strong>
-            {" "}fait <strong>{formatBytes(oversizedMedia.sizeBytes)}</strong>. Une {mediaLabel} dans Booster doit faire au maximum <strong>{formatBytes(oversizedMedia.maxBytes)}</strong>.
+            {needsCompression ? (
+              <>
+                {" "}fait <strong>{formatBytes(oversizedMedia.sizeBytes)}</strong>. Une {mediaLabel} dans Booster doit faire au maximum <strong>{formatBytes(oversizedMedia.maxBytes)}</strong>.
+              </>
+            ) : (
+              <> doit être converti dans un format compatible avec Booster.</>
+            )}
           </div>
           <div
             style={{
@@ -121,8 +144,8 @@ export default function PublishWarningModals({
             }}
           >
             {sourceTooLarge
-              ? `iNrCy accepte un fichier source de ${formatBytes(oversizedMedia.sourceMaxBytes)} maximum. Ce fichier ne peut pas être importé ni compressé : choisissez une source plus légère.`
-              : "iNrCy peut créer une copie compressée et la remettre automatiquement exactement là où vous étiez en train de l’ajouter."}
+              ? `iNrCy accepte un fichier source de ${formatBytes(oversizedMedia.sourceMaxBytes)} maximum. Ce fichier ne peut pas être importé ni optimisé : choisissez une source plus légère.`
+              : "iNrCy va adapter automatiquement le format et/ou le poids, puis remettre le média exactement là où vous étiez en train de l’ajouter."}
           </div>
         </div>
         <div

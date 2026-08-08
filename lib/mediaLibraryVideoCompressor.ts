@@ -140,7 +140,7 @@ async function runFfmpegCompression(params: {
         params.onProgress?.(
           params.progressStart +
             ratio * (params.progressEnd - params.progressStart),
-          "Compression de la vidéo",
+          "Optimisation de la vidéo",
         );
       }
     });
@@ -209,7 +209,7 @@ export async function compressMediaLibraryVideo(params: {
   // Normally one encode is enough. If muxing/codec overhead still overshoots,
   // retry once using the measured result instead of a fixed second target.
   if (sizeBytes > requestedTargetBytes) {
-    params.onProgress?.(72, "Ajustement final de la compression");
+    params.onProgress?.(72, "Ajustement final de la vidéo");
     const correctionRatio = requestedTargetBytes / sizeBytes;
     const retryTarget = Math.max(
       5_000_000,
@@ -237,7 +237,7 @@ export async function compressMediaLibraryVideo(params: {
     throw new Error(`video_output_too_large:${sizeBytes}`);
   }
 
-  params.onProgress?.(90, "Vérification de la vidéo compressée");
+  params.onProgress?.(90, "Vérification de la vidéo optimisée");
   const output = await probeVideoSource({
     ffmpegPath,
     inputPath: params.outputPath,

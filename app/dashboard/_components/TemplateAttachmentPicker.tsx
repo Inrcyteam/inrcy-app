@@ -12,7 +12,10 @@ import MediaLibraryPickerModal, {
 import MediaOptimizerModal, {
   type MediaOptimizerItem,
 } from "@/app/dashboard/_components/MediaOptimizerModal";
-import { MEDIA_LIBRARY_EMAIL_TARGET_BYTES } from "@/lib/mediaLibraryOptimizationPolicy";
+import {
+  MEDIA_LIBRARY_EMAIL_TARGET_BYTES,
+  getMediaLibraryOptimizationRequirements,
+} from "@/lib/mediaLibraryOptimizationPolicy";
 import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
 
 const ATTACH_BUCKET = "inrbox_attachments";
@@ -94,16 +97,22 @@ export default function TemplateAttachmentPicker({
     const oversizedMedia: File[] = [];
     const oversizedUnsupported: File[] = [];
     for (const file of files) {
-      if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
-        directFiles.push(file);
-        continue;
-      }
       const mediaType = detectUniversalUploadMediaType({
         name: file.name,
         mimeType: file.type,
       });
       if (mediaType === "image" || mediaType === "video") {
-        oversizedMedia.push(file);
+        const requirements = getMediaLibraryOptimizationRequirements({
+          mediaType,
+          sizeBytes: file.size,
+          targetBytes: MEDIA_LIBRARY_EMAIL_TARGET_BYTES,
+          name: file.name,
+          mimeType: file.type,
+        });
+        if (requirements.needsOptimization) oversizedMedia.push(file);
+        else directFiles.push(file);
+      } else if (file.size <= MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
+        directFiles.push(file);
       } else {
         oversizedUnsupported.push(file);
       }
@@ -111,7 +120,7 @@ export default function TemplateAttachmentPicker({
 
     setError(
       oversizedUnsupported.length > 0
-        ? `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être compressé automatiquement par iNrCy.`
+        ? `Les pièces jointes sont limitées à 20 Mo. ${oversizedUnsupported[0].name} ne peut pas être optimisé automatiquement par iNrCy.`
         : "",
     );
     input.value = "";
@@ -172,7 +181,7 @@ export default function TemplateAttachmentPicker({
 
   const handleOptimized = async (item: MediaOptimizerItem) => {
     if (Number(item.size_bytes || 0) > MEDIA_LIBRARY_EMAIL_TARGET_BYTES) {
-      setError("La copie compressée dépasse encore 20 Mo. Choisissez un objectif plus léger.");
+      setError("Le média optimisé dépasse encore 20 Mo.");
       return;
     }
     appendAttachments([mediaLibraryItemToAttachment(item)]);
@@ -208,7 +217,7 @@ export default function TemplateAttachmentPicker({
       <MediaLibraryPickerModal
         open={mediaLibraryOpen}
         title="Joindre depuis la Médiathèque"
-        subtitle="Ajoutez une image ou une vidéo déjà stockée dans iNrCy · 20 Mo max par fichier."
+        subtitle="Ajoutez un média déjà stocké dans iNrCy · format adapté si nécessaire · 20 Mo max."
         accept="all"
         multiple
         maxSelection={10}

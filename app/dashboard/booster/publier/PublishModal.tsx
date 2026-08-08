@@ -229,9 +229,11 @@ import MediaLibraryPickerModal, {
 import MediaOptimizerModal, {
   type MediaOptimizerItem,
 } from "@/app/dashboard/_components/MediaOptimizerModal";
+import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
 import {
   MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
   MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
+  getMediaLibraryOptimizationRequirements,
 } from "@/lib/mediaLibraryOptimizationPolicy";
 
 // 30 s reste la cible UX. La marge couvre un basculement fournisseur sans
@@ -259,6 +261,27 @@ type BoosterMediaOptimizerRequest = {
   mediaType: "image" | "video";
   destination: BoosterMediaInsertionDestination;
 };
+
+function getBoosterMediaOptimizerRequirements(
+  request: BoosterMediaOptimizerRequest,
+) {
+  const sourceFile = request.source.kind === "file" ? request.source.file : null;
+  const sourceItem = request.source.kind === "library" ? request.source.item : null;
+  return getMediaLibraryOptimizationRequirements({
+    mediaType: request.mediaType,
+    sizeBytes: sourceFile?.size || sourceItem?.size_bytes || 0,
+    targetBytes:
+      request.mediaType === "video"
+        ? BOOSTER_MAX_VIDEO_BYTES
+        : BOOSTER_MAX_IMAGE_BYTES,
+    name:
+      sourceFile?.name ||
+      sourceItem?.original_file_name ||
+      sourceItem?.storage_path ||
+      sourceItem?.title,
+    mimeType: sourceFile?.type || sourceItem?.mime_type,
+  });
+}
 
 export default function PublishModal({
   styles,
@@ -517,11 +540,17 @@ export default function PublishModal({
         ? { kind: "channel", channel: targetChannel }
         : pendingDirectMediaDestinationRef.current || { kind: "publication" };
       const requests = [file, ...queuedFiles].map<BoosterMediaOptimizerRequest>(
-        (candidate) => ({
-          source: { kind: "file", file: candidate },
-          mediaType: isBoosterVideoFile(candidate) ? "video" : "image",
-          destination,
-        }),
+        (candidate) => {
+          const detectedType = detectUniversalUploadMediaType({
+            name: candidate.name,
+            mimeType: candidate.type,
+          });
+          return {
+            source: { kind: "file", file: candidate },
+            mediaType: detectedType === "video" ? "video" : "image",
+            destination,
+          };
+        },
       );
       const [first, ...rest] = requests;
       if (!first) return false;
@@ -993,6 +1022,39 @@ export default function PublishModal({
                     ...(current.pinterest || EMPTY_CHANNEL_DETAILS.pinterest),
                     type: "account",
                     label: accountLabel || "Compte Pinterest connecté",
+                    href: profileHref || null,
+                  },
+                }));
+              })
+              .catch(() => null);
+          }
+          if (json.channels.tiktok) {
+            void fetch("/api/integrations/tiktok/status", {
+              cache: "no-store" as any,
+              credentials: "include",
+            })
+              .then(async (tiktokResponse) => {
+                if (!tiktokResponse.ok) return null;
+                return tiktokResponse.json().catch(() => null);
+              })
+              .then((tiktokStatus) => {
+                if (!alive || !tiktokStatus?.ok || !tiktokStatus?.tiktok?.connected)
+                  return;
+                const username = String(tiktokStatus.tiktok.username || "")
+                  .replace(/^@+/, "")
+                  .trim();
+                const profileHref = normalizeExternalHref(
+                  tiktokStatus.tiktok.profileUrl ||
+                    (username
+                      ? `https://www.tiktok.com/@${encodeURIComponent(username)}`
+                      : ""),
+                );
+                setChannelDetails((current) => ({
+                  ...current,
+                  tiktok: {
+                    ...(current.tiktok || EMPTY_CHANNEL_DETAILS.tiktok),
+                    type: "account",
+                    label: username ? `@${username}` : "Compte TikTok connecté",
                     href: profileHref || null,
                   },
                 }));
@@ -3735,13 +3797,29 @@ export default function PublishModal({
     setVideoVariantPreparationByChannel({});
     setVideoTransformedVariants([]);
 
-    if (!isBoosterVideoFile(file)) {
+    const detectedMediaType = detectUniversalUploadMediaType({
+      name: file.name,
+      mimeType: file.type,
+    });
+    if (detectedMediaType !== "video") {
       setImgError(`Ajoutez une vidéo valide : ${BOOSTER_VIDEO_FORMATS_LABEL}.`);
       return false;
     }
 
-    if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
+    const optimizationRequirements = getMediaLibraryOptimizationRequirements({
+      mediaType: "video",
+      sizeBytes: file.size,
+      targetBytes: BOOSTER_MAX_VIDEO_BYTES,
+      name: file.name,
+      mimeType: file.type,
+    });
+    if (optimizationRequirements.needsOptimization) {
       registerOversizedMedia(file, options?.targetChannel);
+      return false;
+    }
+
+    if (!isBoosterVideoFile(file)) {
+      setImgError(`Ajoutez une vidéo valide : ${BOOSTER_VIDEO_FORMATS_LABEL}.`);
       return false;
     }
 
@@ -6471,6 +6549,9 @@ export default function PublishModal({
                   mediaOptimizerRequest.mediaType === "video"
                     ? MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES
                     : MEDIA_LIBRARY_IMAGE_SOURCE_MAX_BYTES,
+                operation:
+                  getBoosterMediaOptimizerRequirements(mediaOptimizerRequest)
+                    .operation,
               }
             : null
         }

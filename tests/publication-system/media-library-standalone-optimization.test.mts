@@ -10,6 +10,7 @@ import {
   MEDIA_LIBRARY_VIDEO_OUTPUT_MAX_BYTES,
   MEDIA_LIBRARY_VIDEO_SOURCE_MAX_BYTES,
   buildVideoCompressionProfile,
+  getMediaLibraryOptimizationRequirements,
   needsMediaLibraryOptimization,
   normalizeMediaLibraryOptimizationTarget,
 } from "../../lib/mediaLibraryOptimizationPolicy.ts";
@@ -34,7 +35,7 @@ test("the Media Library keeps heavy originals and exposes exact business compres
   );
 });
 
-test("compression is driven by the professional's requested target", () => {
+test("optimization follows the automatic ceiling selected by the calling tool", () => {
   assert.equal(
     needsMediaLibraryOptimization({
       mediaType: "video",
@@ -61,6 +62,55 @@ test("compression is driven by the professional's requested target", () => {
   assert.ok(profile.audioBitrate > 0);
 });
 
+test("compatible direct videos stay transparent while other containers are optimized", () => {
+  for (const directVideo of [
+    { name: "video.mp4", mimeType: "video/mp4" },
+    { name: "video.m4v", mimeType: "video/x-m4v" },
+    { name: "video.mov", mimeType: "video/quicktime" },
+  ]) {
+    assert.deepEqual(
+      getMediaLibraryOptimizationRequirements({
+        mediaType: "video",
+        sizeBytes: 40_000_000,
+        targetBytes: 75_000_000,
+        ...directVideo,
+      }).operation,
+      "none",
+    );
+  }
+
+  assert.equal(
+    getMediaLibraryOptimizationRequirements({
+      mediaType: "video",
+      sizeBytes: 40_000_000,
+      targetBytes: 75_000_000,
+      name: "video.webm",
+      mimeType: "video/webm",
+    }).operation,
+    "conversion",
+  );
+  assert.equal(
+    getMediaLibraryOptimizationRequirements({
+      mediaType: "video",
+      sizeBytes: 120_000_000,
+      targetBytes: 75_000_000,
+      name: "video.mkv",
+      mimeType: "video/x-matroska",
+    }).operation,
+    "conversion_and_compression",
+  );
+  assert.equal(
+    getMediaLibraryOptimizationRequirements({
+      mediaType: "video",
+      sizeBytes: 120_000_000,
+      targetBytes: 75_000_000,
+      name: "video.mp4",
+      mimeType: "video/mp4",
+    }).operation,
+    "compression",
+  );
+});
+
 test("compression stays autonomous and reusable outside Booster", () => {
   const worker = read("lib/mediaLibraryOptimizationWorker.ts");
   const compressor = read("lib/mediaLibraryVideoCompressor.ts");
@@ -72,10 +122,11 @@ test("compression stays autonomous and reusable outside Booster", () => {
   assert.match(worker, /target_bytes/);
   assert.match(worker, /source:\s*"mediatheque_optimization"/);
   assert.match(compressor, /superfast/);
-  assert.match(modal, /Objectif de poids/);
-  assert.match(modal, /Email 20 Mo/);
+  assert.match(modal, /Optimisation détectée/);
+  assert.match(modal, /Réglage automatique/);
+  assert.match(modal, /E-mail : \$\{formatBytes\(limit\)\} max/);
   assert.match(modal, /Compression forte/);
-  assert.match(mediaLibrary, /mediaCanBeCompressed/);
+  assert.match(mediaLibrary, /mediaNeedsOptimization/);
   assert.match(vercel, /api\/cron\/media-library-optimization/);
   assert.doesNotMatch(boosterProgress, /Compression des médias/);
 });
@@ -99,7 +150,7 @@ test("Booster optimizer buttons never forward the React click event as a media i
   assert.match(publishModal, /setMediaOptimizerPromptOpen\(true\)/);
   assert.match(warningModals, /Fichier trop volumineux/);
   assert.match(warningModals, /Optimiser le média/);
-  assert.match(optimizer, /Insérer le fichier compressé/);
+  assert.match(optimizer, /Insérer le média optimisé/);
   assert.match(optimizer, /iNrCy n’a pas pu réinsérer automatiquement le fichier/);
   assert.match(picker, /width: "min\(1000px, calc\(100vw - 32px\)\)"/);
   assert.match(picker, /compactMediaStatusStyle/);
@@ -116,7 +167,7 @@ test("mail, Propulser and Fidéliser reuse the optimizer with a strict 20 Mo att
 
   assert.match(modal, /origin\?: "booster" \| "mediatheque" \| "email"/);
   assert.match(modal, /origin === "email"\) return MEDIA_LIBRARY_EMAIL_TARGET_BYTES/);
-  assert.match(modal, /Pièce jointe e-mail : 20 Mo maximum/);
+  assert.match(modal, /pièce jointe compatible de 20 Mo maximum/);
   assert.match(picker, /formatLimitBytes/);
   assert.doesNotMatch(picker, /item\.media_type === "video" \? "75 Mo" : "50 Mo"/);
 

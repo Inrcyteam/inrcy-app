@@ -15,9 +15,11 @@ import RichSiteContentEditor from "@/app/dashboard/booster/publier/components/Ri
 import BoosterVideoFormatManager from "@/app/dashboard/booster/publier/components/BoosterVideoFormatManager";
 import {
   buildPreferredCtaPatch,
+  BOOSTER_IMAGE_ACCEPT,
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_PREFERRED_CTA_OPTIONS,
+  BOOSTER_VIDEO_ACCEPT,
   CHANNEL_TEXT_GUIDELINES,
   getChannelDefaultCtaLabel,
   getCtaModeHelp,
@@ -45,6 +47,8 @@ import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "@/app/dashboard/_hooks/useUnsavedExitGuard";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { getFrenchPublicationErrorMessage } from "@/lib/publicationErrorFrench";
+import { detectUniversalUploadMediaType } from "@/lib/mediaUploadPolicy";
+import { getMediaLibraryOptimizationRequirements } from "@/lib/mediaLibraryOptimizationPolicy";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -1146,17 +1150,24 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
     const insertableFiles = files.filter(
-      (file) => file.size <= BOOSTER_MAX_IMAGE_BYTES,
+      (file) =>
+        !getMediaLibraryOptimizationRequirements({
+          mediaType: "image",
+          sizeBytes: file.size,
+          targetBytes: BOOSTER_MAX_IMAGE_BYTES,
+          name: file.name,
+          mimeType: file.type,
+        }).needsOptimization,
     );
-    const oversizedFiles = files.filter(
-      (file) => file.size > BOOSTER_MAX_IMAGE_BYTES,
+    const mediaToOptimize = files.filter(
+      (file) => !insertableFiles.includes(file),
     );
     if (insertableFiles.length > 0) {
       markPublicationEditDirty();
       addPublicationFiles(insertableFiles);
     }
-    if (oversizedFiles.length > 0) {
-      openPublicationOptimizerForFiles(oversizedFiles);
+    if (mediaToOptimize.length > 0) {
+      openPublicationOptimizerForFiles(mediaToOptimize);
     }
   }
 
@@ -1165,7 +1176,18 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   ) {
     const file = Array.from(fileList || [])[0];
     if (!file) return;
-    if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
+    const detectedType = detectUniversalUploadMediaType({
+      name: file.name,
+      mimeType: file.type,
+    });
+    const requirements = getMediaLibraryOptimizationRequirements({
+      mediaType: "video",
+      sizeBytes: file.size,
+      targetBytes: BOOSTER_MAX_VIDEO_BYTES,
+      name: file.name,
+      mimeType: file.type,
+    });
+    if (detectedType === "video" && requirements.needsOptimization) {
       openPublicationOptimizerForFiles([file]);
       return;
     }
@@ -1174,7 +1196,14 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   }
 
   function handlePublicationPhoto(file: File) {
-    if (file.size > BOOSTER_MAX_IMAGE_BYTES) {
+    const requirements = getMediaLibraryOptimizationRequirements({
+      mediaType: "image",
+      sizeBytes: file.size,
+      targetBytes: BOOSTER_MAX_IMAGE_BYTES,
+      name: file.name,
+      mimeType: file.type,
+    });
+    if (requirements.needsOptimization) {
       openPublicationOptimizerForFiles([file]);
       return;
     }
@@ -2436,7 +2465,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 <input
                                   id={publicationEditFileInputId}
                                   type="file"
-                                  accept="image/*"
+                                  accept={BOOSTER_IMAGE_ACCEPT}
                                   multiple
                                   className={styles.hiddenFileInput}
                                   onChange={(e) => {
@@ -2449,7 +2478,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 <input
                                   id={publicationVideoInputId}
                                   type="file"
-                                  accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.m4v,.mov,.webm"
+                                  accept={BOOSTER_VIDEO_ACCEPT}
                                   className={styles.hiddenFileInput}
                                   onChange={(e) => {
                                     const input = e.currentTarget;
