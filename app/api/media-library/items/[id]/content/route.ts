@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { verifyMediaLibraryContentToken } from "@/lib/mediaLibraryContentUrl";
-import { probeStorageObject } from "@/lib/safeStorageSignedUrl";
+import {
+  createSafeStorageSignedUrl,
+  probeStorageObject,
+} from "@/lib/safeStorageSignedUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -48,20 +51,22 @@ export async function GET(
     return notFound();
   }
 
-  const download = await supabaseAdmin.storage.from(bucket).download(storagePath);
-  if (download.error || !download.data) {
+  // Never proxy the object through the Vercel function: a 100-300 MB Blob would
+  // be fully materialized in memory and could terminate the process. A 307 keeps
+  // Range requests intact while Supabase Storage streams the bytes directly.
+  const signedUrl = await createSafeStorageSignedUrl(bucket, storagePath, 120);
+  if (!signedUrl) {
     return NextResponse.json(
       { error: "Lecture du média momentanément indisponible." },
       { status: 503 },
     );
   }
 
-  return new Response(download.data, {
-    status: 200,
+  return new Response(null, {
+    status: 307,
     headers: {
-      "Content-Type":
-        String(row.mime_type || download.data.type || "application/octet-stream"),
-      "Cache-Control": "private, max-age=300, stale-while-revalidate=60",
+      Location: signedUrl,
+      "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
   });

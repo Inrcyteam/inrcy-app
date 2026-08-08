@@ -107,11 +107,24 @@ function pickVoiceMimeType() {
     typeof window.MediaRecorder === "undefined"
   )
     return "";
-  return (
-    voiceMimeCandidates.find((type) =>
-      window.MediaRecorder.isTypeSupported(type),
-    ) || ""
-  );
+  if (typeof window.MediaRecorder.isTypeSupported !== "function") return "";
+  try {
+    return (
+      voiceMimeCandidates.find((type) =>
+        window.MediaRecorder.isTypeSupported(type),
+      ) || ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+function normalizeRecordedVoiceMimeType(type: string) {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized.startsWith("video/mp4")) {
+    return normalized.replace(/^video\/mp4/, "audio/mp4");
+  }
+  return normalized || "audio/webm";
 }
 
 function voiceExtensionFromMime(type: string) {
@@ -178,13 +191,18 @@ function getVoicePlatformInfo() {
     /Safari/i.test(userAgent) &&
     !/Chrome|Chromium|CriOS|FxiOS|Edg|EdgiOS|OPR|Opera/i.test(userAgent);
   const hasSpeechRecognition = Boolean(getSpeechRecognitionConstructor());
-  const shouldUseLiveOnly = hasSpeechRecognition && (isIOS || isSafari);
+  const hasMediaRecording = Boolean(
+    typeof navigator.mediaDevices?.getUserMedia === "function" &&
+      typeof window.MediaRecorder !== "undefined",
+  );
+  const shouldUseLiveOnly = hasSpeechRecognition && !hasMediaRecording;
 
   return {
     isIOS,
     isSafari,
     hasSpeechRecognition,
-    canUseLivePreview: hasSpeechRecognition && !isIOS && !isSafari,
+    canUseLivePreview:
+      hasSpeechRecognition && hasMediaRecording && !isIOS && !isSafari,
     shouldUseLiveOnly,
     shouldWarmupMicrophone: isIOS || isSafari,
   };
@@ -625,7 +643,7 @@ export default function PublishIntentPanel({
 
     stopLiveSpeechRecognition();
     const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state === "recording") {
+    if (recorder && recorder.state !== "inactive") {
       recorder.stop();
       return;
     }
@@ -679,13 +697,15 @@ export default function PublishIntentPanel({
       await warmupVoiceMicrophoneIfNeeded();
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Conserver la référence avant le constructeur permet de libérer le micro
+      // même si une WebView mobile annonce MediaRecorder mais refuse son codec.
+      mediaStreamRef.current = stream;
       const mimeType = pickVoiceMimeType();
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
       audioChunksRef.current = [];
-      mediaStreamRef.current = stream;
       mediaRecorderRef.current = recorder;
       voiceRecordingModeRef.current = "media";
 
@@ -710,7 +730,12 @@ export default function PublishIntentPanel({
       recorder.onstop = () => {
         clearVoiceTimers();
         stopMediaStream();
-        const type = recorder.mimeType || mimeType || "audio/webm";
+        const type = normalizeRecordedVoiceMimeType(
+          audioChunksRef.current[0]?.type ||
+            recorder.mimeType ||
+            mimeType ||
+            "audio/webm",
+        );
         const audioBlob = new Blob(audioChunksRef.current, { type });
         mediaRecorderRef.current = null;
         voiceRecordingModeRef.current = null;
@@ -718,7 +743,9 @@ export default function PublishIntentPanel({
         void submitVoiceBlob(audioBlob, target);
       };
 
-      recorder.start(1000);
+      // Un bloc unique est plus fiable que des fragments MP4/WebM concaténés
+      // sur Safari iOS, Chrome Android et les navigateurs embarqués.
+      recorder.start();
       if (allowLivePreview) {
         startLiveSpeechRecognition(getVoiceTargetText(target), target);
       }
@@ -743,6 +770,11 @@ export default function PublishIntentPanel({
         );
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
         setTargetedVoiceError(target, "Aucun micro détecté sur cet appareil.");
+      } else if (
+        getVoicePlatformInfo().hasSpeechRecognition &&
+        startLiveOnlyVoiceRecording(target)
+      ) {
+        return;
       } else {
         setTargetedVoiceError(
           target,

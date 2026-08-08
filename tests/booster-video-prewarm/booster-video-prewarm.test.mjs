@@ -41,7 +41,7 @@ test("les captures vidéo restent mises en cache et préchauffent hors du bloc d
   assert.doesNotMatch(addVideoBlock, /getOrPrepareVideoFramesForAI/);
   assert.match(
     source,
-    /videoFile\.size < BOOSTER_LOCAL_VIDEO_FRAME_PREWARM_MIN_BYTES[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)/,
+    /creationMode !== "ai" \|\|\s*!videoFile \|\|\s*videoAiContextRef[\s\S]*?getOrPrepareVideoFramesForAI\(videoFile\)/,
   );
   assert.doesNotMatch(source, /preparePersistentAiMedia/);
   assert.doesNotMatch(source, /preparePersistentPublicationMedia/);

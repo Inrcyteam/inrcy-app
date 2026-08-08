@@ -10,10 +10,11 @@ test("Booster retries a recoverable provider failure automatically with a fresh 
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
   assert.match(modal, /getAutomaticAiRetryEngine/);
-  assert.match(modal, /executeGenerationRequest\(selectedAiPreferredEngine\)/);
+  assert.match(modal, /executeGenerationRequestWithRecovery\(selectedAiPreferredEngine\)/);
+  assert.match(modal, /return await executeGenerationRequest\(engine\)/);
   assert.match(modal, /isAutomaticBoosterGenerationRetryEligible/);
   assert.doesNotMatch(modal, /\[429, 502, 503, 504\]\.includes\(response\.status\)/);
-  assert.match(modal, /executeGenerationRequest\(retryEngine\)/);
+  assert.match(modal, /executeGenerationRequestWithRecovery\(retryEngine\)/);
   assert.match(modal, /secours automatique avec/);
   assert.match(modal, /sans modifier votre moteur par défaut/);
 });

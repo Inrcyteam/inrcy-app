@@ -50,6 +50,39 @@ function asString(value: unknown) {
   return typeof value === "string" ? value : value == null ? null : String(value);
 }
 
+function compactScannerError(error: unknown) {
+  return String(error instanceof Error ? error.message : error || "Erreur inconnue")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+function isMailboxAuthenticationFailure(error: unknown) {
+  return /authenticationfailed|authentication failed|invalid credentials|invalid login|login failed|bad credentials|mot de passe incorrect/i.test(
+    compactScannerError(error),
+  );
+}
+
+async function markMailboxReconnectRequired(account: IntegrationRow) {
+  const now = new Date().toISOString();
+  const settings = asRecord(account.settings);
+  const result = await supabaseAdmin
+    .from("integrations")
+    .update({
+      status: "disconnected",
+      settings: {
+        ...settings,
+        needs_reconnect: true,
+        needs_reconnect_at: now,
+        needs_reconnect_reason: "mailbox_authentication_failed",
+      },
+      updated_at: now,
+    })
+    .eq("id", account.id)
+    .eq("user_id", account.user_id);
+  if (result.error) throw result.error;
+}
+
 function hasScope(settings: Record<string, unknown> | null, required: string) {
   const scopes = String(settings?.scopes_raw || settings?.scopes || "").toLowerCase();
   return scopes.split(/[\s,]+/).includes(required.toLowerCase());
@@ -401,7 +434,26 @@ export async function scanConnectedMailboxesForFeedback(opts?: { maxAccounts?: n
       summary.skipped += result.skipped;
     } catch (error) {
       summary.errors += 1;
-      console.warn("[mailBounceScanner] account scan failed", { integrationId: account.id, provider: account.provider, error });
+      if (isMailboxAuthenticationFailure(error)) {
+        await markMailboxReconnectRequired(account).catch((updateError) => {
+          console.warn("[mailBounceScanner] reconnect marker unavailable", {
+            integrationId: account.id,
+            provider: account.provider,
+            message: compactScannerError(updateError),
+          });
+        });
+        console.info("[mailBounceScanner] mailbox reconnect required", {
+          integrationId: account.id,
+          provider: account.provider,
+          code: "mailbox_authentication_failed",
+        });
+      } else {
+        console.warn("[mailBounceScanner] account scan failed", {
+          integrationId: account.id,
+          provider: account.provider,
+          message: compactScannerError(error),
+        });
+      }
     }
   }
   return summary;

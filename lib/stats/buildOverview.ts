@@ -720,7 +720,6 @@ export async function buildStatsOverview(args: {
           youtubeShortsLocalPublicationStats,
         );
       } catch (e) {
-        console.error("[YOUTUBE_STATS_REAL_ERROR]", e);
         const rawMessage = e instanceof Error ? e.message : String(e || "");
         const lowerMessage = rawMessage.toLowerCase();
         const needsReconnect =
@@ -732,7 +731,18 @@ export async function buildStatsOverview(args: {
           lowerMessage.includes("access token") ||
           lowerMessage.includes("invalid_grant") ||
           lowerMessage.includes("reconnect") ||
-          lowerMessage.includes("reconnecte");
+          lowerMessage.includes("reconnecte") ||
+          lowerMessage.includes("expired") ||
+          lowerMessage.includes("revoked");
+        if (needsReconnect) {
+          console.info("[youtube-stats] reconnect required", {
+            code: "youtube_credentials_expired",
+          });
+        } else {
+          console.warn("[youtube-stats] remote metrics unavailable", {
+            message: rawMessage.slice(0, 500),
+          });
+        }
         sourcesStatus.youtube_shorts.metrics = mergeYoutubeShortsLocalPublicationStats(
           {
             totals: {

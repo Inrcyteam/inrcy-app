@@ -692,7 +692,10 @@ async function publishNowHandler(req: Request) {
           workspaceError instanceof MediaWorkspaceConsumptionError
             ? workspaceError.code
             : "workspace_read_failed";
-        console.warn("[booster-publish] workspace media fallback", {
+        const logWorkspaceFallback = workspaceFallbackCode === "workspace_media_not_ready"
+          ? console.info
+          : console.warn;
+        logWorkspaceFallback("[booster-publish] workspace media fallback", {
           workspaceId: mediaWorkspaceId,
           purpose: workspacePurpose,
           code: workspaceFallbackCode,

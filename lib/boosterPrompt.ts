@@ -462,6 +462,7 @@ export function boosterUserPrompt(args: {
       ? "- SÉCURITÉ SONAR : utilise tes connaissances uniquement pour expliquer le sujet demandé, mais ne restitue jamais de citations, sources ou références de recherche. N'ajoute aucun chiffre, statistique, date, actualité, nom de quartier, lieu précis, entreprise ou fait local absent du contexte fourni."
       : "",
     "- Conserve les vrais retours à la ligne dans content avec \\n\\n entre paragraphes.",
+    "- CONTRÔLE FINAL SILENCIEUX : avant de répondre, vérifie une fois que chaque canal demandé est présent, dans la bonne langue, ancré dans la phrase libre, distinct des autres, sans fuite de consigne ni coordonnée, avec la longueur et les emojis demandés, puis corrige directement le JSON si nécessaire.",
     "- Renvoie uniquement le JSON attendu, sans explication.",
   ].filter(Boolean).join("\n");
 

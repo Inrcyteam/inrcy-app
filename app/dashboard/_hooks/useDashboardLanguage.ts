@@ -1,6 +1,9 @@
 "use client";
 
-import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import {
+  getActiveBrowserUserId,
+  resolveActiveBrowserUserId,
+} from "@/lib/browserAccountCache";
 import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,6 +21,72 @@ type LanguageEventDetail = {
   language?: unknown;
   appLanguage?: unknown;
 };
+
+const DB_LANGUAGE_CACHE_TTL_MS = 5 * 60_000;
+const dbLanguageCache = new Map<
+  string,
+  { language: AppLanguageCode | null; expiresAt: number }
+>();
+const dbLanguageRequests = new Map<
+  string,
+  Promise<AppLanguageCode | null>
+>();
+let fallbackAuthUserId: string | null = null;
+let authUserIdRequest: Promise<string | null> | null = null;
+
+async function resolveDashboardAccountId(): Promise<string | null> {
+  const activeAccountId = getActiveBrowserUserId();
+  if (activeAccountId) return activeAccountId;
+  if (fallbackAuthUserId) return fallbackAuthUserId;
+  if (authUserIdRequest) return authUserIdRequest;
+
+  authUserIdRequest = (async () => {
+    const supabase = createClient();
+    const { data } = await supabase.auth.getUser();
+    const authUserId = String(data?.user?.id || "").trim();
+    fallbackAuthUserId = authUserId || null;
+    return fallbackAuthUserId;
+  })().finally(() => {
+    authUserIdRequest = null;
+  });
+  return authUserIdRequest;
+}
+
+async function loadSharedDbLanguage(): Promise<AppLanguageCode | null> {
+  const accountId = await resolveDashboardAccountId();
+  if (!accountId) return null;
+
+  const cached = dbLanguageCache.get(accountId);
+  if (cached && cached.expiresAt > Date.now()) return cached.language;
+
+  const activeRequest = dbLanguageRequests.get(accountId);
+  if (activeRequest) return activeRequest;
+
+  const request = (async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("business_profiles")
+      .select("app_language")
+      .eq("user_id", accountId)
+      .maybeSingle();
+    if (error) return null;
+
+    const rawDbLanguage = String(data?.app_language || "").trim();
+    const dbLanguage = rawDbLanguage
+      ? normalizeAppLanguage(rawDbLanguage)
+      : null;
+    dbLanguageCache.set(accountId, {
+      language: dbLanguage,
+      expiresAt: Date.now() + DB_LANGUAGE_CACHE_TTL_MS,
+    });
+    return dbLanguage;
+  })().finally(() => {
+    dbLanguageRequests.delete(accountId);
+  });
+
+  dbLanguageRequests.set(accountId, request);
+  return request;
+}
 
 function readLocalLanguage(): AppLanguageCode {
   if (typeof window === "undefined") return DEFAULT_APP_LANGUAGE;
@@ -63,22 +132,8 @@ export function useDashboardLanguage() {
 
     const loadDbLanguage = async () => {
       try {
-        const supabase = createClient();
-        const { data: authData } = await supabase.auth.getUser();
-        const user = authData?.user;
-        if (!user) return;
-
-        const { data, error } = await supabase
-          .from("business_profiles")
-          .select("app_language")
-          .eq("user_id", resolveActiveBrowserUserId(user.id))
-          .maybeSingle();
-        if (error) return;
-
-        const rawDbLanguage = String(data?.app_language || "").trim();
-        if (!rawDbLanguage) return;
-
-        const dbLanguage = normalizeAppLanguage(rawDbLanguage);
+        const dbLanguage = await loadSharedDbLanguage();
+        if (!dbLanguage) return;
         writeLocalLanguage(dbLanguage);
         if (mountedRef.current) setLanguageState(dbLanguage);
       } catch {
@@ -122,15 +177,21 @@ export function useDashboardLanguage() {
       const user = authData?.user;
       if (!user) return;
 
+      const accountId = resolveActiveBrowserUserId(user.id);
+
       const { error } = await supabase.from("business_profiles").upsert(
         {
-          user_id: resolveActiveBrowserUserId(user.id),
+          user_id: accountId,
           app_language: nextLanguage,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },
       );
       if (error) throw error;
+      dbLanguageCache.set(accountId, {
+        language: nextLanguage,
+        expiresAt: Date.now() + DB_LANGUAGE_CACHE_TTL_MS,
+      });
       await invalidateBoosterGenerationContextClient("professional");
     } catch {
       // Le choix reste actif localement même si la sauvegarde distante échoue.

@@ -16,8 +16,32 @@ test("raw transcription is routed exclusively through Vercel AI Gateway", () => 
   const config = read("lib/aiGatewayConfig.ts");
   assert.match(config, /v4\/ai\/transcription-model/);
   assert.match(client, /ai-model-id/);
+  assert.match(client, /ai-gateway-protocol-version/);
+  assert.match(client, /AI_GATEWAY_PROTOCOL_VERSION\s*=\s*"0\.0\.1"/);
+  assert.match(client, /ai-transcription-model-specification-version/);
+  assert.match(
+    client,
+    /AI_GATEWAY_TRANSCRIPTION_SPECIFICATION_VERSION\s*=\s*"4"/,
+  );
+  assert.match(client, /ai-gateway-auth-method/);
   assert.match(client, /AI_GATEWAY_TRANSCRIBE_MODEL/);
   assert.doesNotMatch(client, /api\.openai\.com|OPENAI_API_KEY|OPENAI_TRANSCRIBE_MODEL/);
+});
+
+test("one obsolete protocol response never disables voice for every account", () => {
+  const client = read("lib/aiGatewayTranscription.ts");
+  assert.doesNotMatch(client, /transcriptionProtocolUnavailableUntil/);
+  assert.doesNotMatch(client, /TRANSCRIPTION_PROTOCOL_COOLDOWN_MS/);
+});
+
+test("Booster records a portable audio file first and keeps live dictation as fallback", () => {
+  const panel = read(
+    "app/dashboard/booster/publier/components/PublishIntentPanel.tsx",
+  );
+  assert.match(panel, /const shouldUseLiveOnly = hasSpeechRecognition && !hasMediaRecording/);
+  assert.match(panel, /recorder\.start\(\);/);
+  assert.match(panel, /normalizeRecordedVoiceMimeType/);
+  assert.match(panel, /startLiveOnlyVoiceRecording\(target\)/);
 });
 
 test("transcription keeps a quality-first model with a Whisper fallback", () => {

@@ -40,6 +40,12 @@ function getKnownStructuredErrorMessage(code: string): string | null {
   if (code === "ai_gateway_guard_unavailable") {
     return "La protection économique IA est momentanément indisponible. Merci de réessayer dans quelques minutes.";
   }
+  if (
+    code === "ai_gateway_transcription_unavailable" ||
+    code === "ai_gateway_transcription_protocol_unsupported"
+  ) {
+    return "Le service vocal est momentanément indisponible. Votre saisie reste intacte ; merci de réessayer dans quelques instants.";
+  }
   return null;
 }
 
@@ -63,6 +69,8 @@ function resolveKnownErrorStatus(input: unknown, requestedStatus: number): numbe
   if (code === "ai_gateway_request_failed") return 503;
   if (code === "ai_gateway_invalid_request") return 502;
   if (code === "ai_gateway_guard_unavailable") return 503;
+  if (code === "ai_gateway_transcription_unavailable") return 503;
+  if (code === "ai_gateway_transcription_protocol_unsupported") return 503;
   if (code === "ai_operation_deadline_exceeded") return 504;
   return requestedStatus;
 }

@@ -10,6 +10,10 @@ export type ImapConfig = {
   tls?: {
     rejectUnauthorized?: boolean;
   };
+  connectionTimeoutMs?: number;
+  greetingTimeoutMs?: number;
+  socketTimeoutMs?: number;
+  operationTimeoutMs?: number;
 };
 
 type SpecialUse = "\\Sent" | "\\Drafts" | "\\Junk" | "\\Trash";
@@ -89,6 +93,22 @@ export async function withImap<T>(
   cfg: ImapConfig,
   fn: (_client: ImapFlow) => Promise<T>
 ): Promise<T> {
+  const connectionTimeout = Math.max(
+    5_000,
+    Math.min(60_000, Number(cfg.connectionTimeoutMs || 15_000)),
+  );
+  const greetingTimeout = Math.max(
+    5_000,
+    Math.min(30_000, Number(cfg.greetingTimeoutMs || 10_000)),
+  );
+  const socketTimeout = Math.max(
+    10_000,
+    Math.min(120_000, Number(cfg.socketTimeoutMs || 45_000)),
+  );
+  const operationTimeout = Math.max(
+    15_000,
+    Math.min(180_000, Number(cfg.operationTimeoutMs || 90_000)),
+  );
   const client = new ImapFlow({
     host: cfg.host,
     port: cfg.port,
@@ -96,16 +116,54 @@ export async function withImap<T>(
     auth: { user: cfg.user, pass: cfg.password },
     logger: false,
     tls: cfg.tls,
+    connectionTimeout,
+    greetingTimeout,
+    socketTimeout,
+    disableAutoIdle: true,
+    maxLiteralSize: 32 * 1024 * 1024,
   });
 
-  await client.connect();
+  let rejectClientError: ((error: Error) => void) | null = null;
+  const clientError = new Promise<never>((_resolve, reject) => {
+    rejectClientError = reject;
+  });
+  const handleClientError = (rawError: unknown) => {
+    const error = rawError instanceof Error
+      ? rawError
+      : new Error(String(rawError || "Erreur IMAP inconnue"));
+    rejectClientError?.(error);
+  };
+  client.on("error", handleClientError);
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const hardTimeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = Object.assign(
+        new Error("Le serveur de messagerie n'a pas répondu dans le délai imparti."),
+        { code: "IMAP_OPERATION_TIMEOUT" },
+      );
+      client.close();
+      reject(error);
+    }, operationTimeout);
+  });
+
   try {
-    return await fn(client);
+    await Promise.race([client.connect(), clientError, hardTimeout]);
+    return await Promise.race([fn(client), clientError, hardTimeout]);
   } finally {
+    if (timeoutId) clearTimeout(timeoutId);
     try {
-      await client.logout();
+      if (client.usable) {
+        await Promise.race([
+          client.logout(),
+          new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+        ]);
+      }
     } catch {
       // ignore
+    } finally {
+      client.close();
+      client.removeListener("error", handleClientError);
     }
   }
 }

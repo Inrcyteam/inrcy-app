@@ -803,6 +803,7 @@ const handler = async (req: Request) => {
             workspaceVideo.audioTrackFile &&
             generationDeadlineAt - Date.now() > 4_000
           ) {
+            const transcriptionStartedAt = Date.now();
             try {
               const transcriptionTimeoutMs = Math.max(
                 1_000,
@@ -826,11 +827,33 @@ const handler = async (req: Request) => {
                 signal: req.signal,
               });
               audioTranscript = cleanVideoTranscript(transcription.text);
+              console.info("[booster-generate] audio transcription timing", {
+                workspaceId: mediaWorkspaceId,
+                success: true,
+                model: transcription.model,
+                durationMs: Date.now() - transcriptionStartedAt,
+              });
             } catch (transcriptionError) {
-              console.warn(
+              const transcriptionCode = String(
+                transcriptionError &&
+                  typeof transcriptionError === "object" &&
+                  "code" in transcriptionError
+                  ? (transcriptionError as { code?: unknown }).code || ""
+                  : "",
+              );
+              const expectedUnavailable = [
+                "ai_gateway_transcription_protocol_unsupported",
+                "ai_operation_deadline_exceeded",
+              ].includes(transcriptionCode);
+              const logTranscription = expectedUnavailable
+                ? console.info
+                : console.warn;
+              logTranscription(
                 "[booster-generate] workspace audio transcription unavailable",
                 {
                   workspaceId: mediaWorkspaceId,
+                  code: transcriptionCode || "transcription_unavailable",
+                  durationMs: Date.now() - transcriptionStartedAt,
                   message:
                     transcriptionError instanceof Error
                       ? transcriptionError.message
@@ -902,7 +925,10 @@ const handler = async (req: Request) => {
           workspaceError instanceof MediaWorkspaceConsumptionError
             ? workspaceError.code
             : "workspace_read_failed";
-        console.warn("[booster-generate] workspace media fallback", {
+        const logWorkspaceFallback = timingContext.mediaWorkspaceFallbackCode === "workspace_media_not_ready"
+          ? console.info
+          : console.warn;
+        logWorkspaceFallback("[booster-generate] workspace media fallback", {
           workspaceId: mediaWorkspaceId,
           code: timingContext.mediaWorkspaceFallbackCode,
           message:
@@ -1032,7 +1058,7 @@ const handler = async (req: Request) => {
       throw new Error("La génération IA n'a pas pu retourner de résultat.");
     }
 
-    const { versions, recoveredChannels, aiFallback } = generationResult;
+    const { versions, recoveredChannels, aiFallback, performance } = generationResult;
 
     if (mediaWorkspaceId) {
       const generatedAt = new Date().toISOString();
@@ -1100,6 +1126,7 @@ const handler = async (req: Request) => {
       generationMs,
       totalMs: Date.now() - routeStartedAt,
       recoveredChannels: recoveredChannels.length,
+      generationPerformance: performance,
       aiFallbackStage: aiFallback?.stage,
       aiFallbackModel: aiFallback?.finalModel,
       success: true,

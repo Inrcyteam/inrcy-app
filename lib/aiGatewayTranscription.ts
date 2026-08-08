@@ -18,6 +18,33 @@ import { fetchWithRetry } from "@/lib/observability/fetch";
 
 const DEFAULT_TRANSCRIBE_MODEL = "openai/gpt-4o-transcribe";
 const DEFAULT_TRANSCRIBE_FALLBACK_MODEL = "openai/whisper-1";
+const AI_GATEWAY_PROTOCOL_VERSION = "0.0.1";
+const AI_GATEWAY_TRANSCRIPTION_SPECIFICATION_VERSION = "4";
+
+function transcriptionProtocolError() {
+  return Object.assign(
+    new Error("Le service de transcription audio utilise un protocole incompatible."),
+    { code: "ai_gateway_transcription_protocol_unsupported" },
+  );
+}
+
+function transcriptionUnavailableError(details: string[]) {
+  return Object.assign(
+    new Error("Le service de transcription audio est momentanément indisponible."),
+    {
+      code: "ai_gateway_transcription_unavailable",
+      details: details.filter(Boolean).slice(0, 4),
+    },
+  );
+}
+
+function errorCode(error: unknown) {
+  return String(
+    error && typeof error === "object" && "code" in error
+      ? (error as { code?: unknown }).code || ""
+      : "",
+  );
+}
 
 type AiGatewayTranscriptionResponse = {
   text?: string;
@@ -72,6 +99,9 @@ export async function aiTranscribeMedia(args: {
 }): Promise<AiGatewayTranscriptionResult> {
   const credential = getAiGatewayCredential();
   if (!credential) throw new Error("Configuration AI Gateway manquante.");
+  const gatewayAuthMethod = cleanAiGatewayEnv(process.env.AI_GATEWAY_API_KEY)
+    ? "api-key"
+    : "oidc";
 
   const requestedTimeoutMs = Math.max(
     1_000,
@@ -99,6 +129,7 @@ export async function aiTranscribeMedia(args: {
   const url = getAiGatewayTranscriptionUrl();
   const models = getConfiguredModels();
   const errors: string[] = [];
+  let terminalError: Error | null = null;
   for (const model of models) {
     if (args.signal?.aborted || hardDeadlineAt - Date.now() <= 250) break;
     assertAllowedAiGatewayTranscriptionModel(
@@ -106,13 +137,17 @@ export async function aiTranscribeMedia(args: {
       process.env.AI_GATEWAY_ALLOWED_TRANSCRIPTION_MODELS,
     );
 
+    let successfulReservation: AiGatewayAccountAttemptReservation | null = null;
     try {
       const attemptReservations = new Map<number, AiGatewayAccountAttemptReservation | null>();
-      let successfulReservation: AiGatewayAccountAttemptReservation | null = null;
       const response = await fetchWithRetry(url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${credential}`,
+          "ai-gateway-protocol-version": AI_GATEWAY_PROTOCOL_VERSION,
+          "ai-gateway-auth-method": gatewayAuthMethod,
+          "ai-transcription-model-specification-version":
+            AI_GATEWAY_TRANSCRIPTION_SPECIFICATION_VERSION,
           "ai-model-id": model,
           "Content-Type": "application/json",
         },
@@ -150,6 +185,12 @@ export async function aiTranscribeMedia(args: {
           model,
           status: response.status,
         }).catch(() => undefined);
+        if (
+          response.status === 400 &&
+          /unsupported gateway protocol version/i.test(errorText)
+        ) {
+          throw transcriptionProtocolError();
+        }
         errors.push(`${model}: ${response.status} ${errorText || response.statusText}`.trim());
         if (response.status === 401 || response.status === 403) break;
         continue;
@@ -158,6 +199,10 @@ export async function aiTranscribeMedia(args: {
       const result = (await response.json().catch(() => ({}))) as AiGatewayTranscriptionResponse;
       const text = cleanTranscript(result.text);
       if (!text) {
+        await rollbackAiGatewayAccountAttempt(successfulReservation).catch(
+          () => undefined,
+        );
+        successfulReservation = null;
         errors.push(`${model}: transcription vide`);
         continue;
       }
@@ -191,11 +236,18 @@ export async function aiTranscribeMedia(args: {
         warnings: Array.isArray(result.warnings) ? result.warnings : [],
       };
     } catch (error) {
+      await rollbackAiGatewayAccountAttempt(successfulReservation).catch(
+        () => undefined,
+      );
       errors.push(`${model}: ${error instanceof Error ? error.message : "échec de transcription"}`);
+      if (errorCode(error) === "ai_gateway_transcription_protocol_unsupported") {
+        terminalError = error instanceof Error ? error : transcriptionProtocolError();
+        break;
+      }
     }
   }
 
-  throw new Error(
-    `AI Gateway transcription indisponible : ${errors.filter(Boolean).join(" | ") || "aucun résultat"}`,
-  );
+  if (terminalError) throw terminalError;
+
+  throw transcriptionUnavailableError(errors);
 }

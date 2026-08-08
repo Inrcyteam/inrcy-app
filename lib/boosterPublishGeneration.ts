@@ -357,6 +357,17 @@ export type GenerateSharedBoosterPostsResult = {
   versions: Partial<Record<BoosterChannels, ChannelPost>>;
   recoveredChannels: BoosterChannels[];
   aiFallback?: AiGenerationFallbackInfo;
+  performance?: {
+    mediaPrepMs: number;
+    primaryGenerationMs: number;
+    repairMs: number;
+    totalMs: number;
+    selectedChannels: number;
+    primaryCompliantChannels: number;
+    repairRequestedChannels: number;
+    recoveredChannels: number;
+    qualityIssueCounts: Record<string, number>;
+  };
 };
 
 function cleanHashtags(channel: BoosterChannels, input: unknown) {
@@ -1572,6 +1583,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     engine: generationProfile.preferences.engine,
     selectedChannels: channels.length,
     repairRequestedChannels: repairChannels.length,
+    primaryCompliantChannels: channels.length - repairChannels.length,
     recoveredChannels: recoveredChannels.size,
     mediaType: baseGenerationProfile.request.media.type,
     mediaCount: baseGenerationProfile.request.media.count,
@@ -1579,6 +1591,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     primaryGenerationMs: timing.primaryGenerationMs,
     repairMs: timing.repairMs,
     totalMs: totalDurationMs,
+    qualityIssueCounts,
     primarySucceeded: !initialGenerationError,
     aiFallbackStage: aiFallback?.stage,
     aiFallbackModel: aiFallback?.finalModel,
@@ -1605,5 +1618,16 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     versions: safeVersions,
     recoveredChannels: Array.from(recoveredChannels),
     ...(aiFallback ? { aiFallback } : {}),
+    performance: {
+      mediaPrepMs: timing.mediaPrepMs,
+      primaryGenerationMs: timing.primaryGenerationMs,
+      repairMs: timing.repairMs,
+      totalMs: totalDurationMs,
+      selectedChannels: channels.length,
+      primaryCompliantChannels: channels.length - repairChannels.length,
+      repairRequestedChannels: repairChannels.length,
+      recoveredChannels: recoveredChannels.size,
+      qualityIssueCounts,
+    },
   };
 }

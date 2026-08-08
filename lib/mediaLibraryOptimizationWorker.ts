@@ -647,17 +647,50 @@ async function markFailed(job: OptimizationJob, rawError: unknown) {
 }
 
 async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSummary> {
+  const startedAt = Date.now();
+  const timing = {
+    loadMediaMs: 0,
+    existingLookupMs: 0,
+    downloadMs: 0,
+    transformMs: 0,
+    uploadRegisterMs: 0,
+    finalizeMs: 0,
+  };
+  let mediaType = mediaTypeForJob(String(job.payload?.jobType || ""));
+  let operation = "unknown";
+  let sourceSizeBytes = 0;
+  let outputSizeBytes = 0;
   let workDir = "";
   try {
+    const loadStartedAt = Date.now();
     const media = await loadMedia(job);
+    timing.loadMediaMs = Date.now() - loadStartedAt;
+    mediaType = media.media_type as MediaLibraryOptimizationMediaType;
+    sourceSizeBytes = Number(media.size_bytes || 0);
     validateMedia(job, media);
+    operation = optimizationRequirementsForMedia(job, media).operation;
 
+    const existingLookupStartedAt = Date.now();
     const existing = await findExistingOutput(job);
+    timing.existingLookupMs = Date.now() - existingLookupStartedAt;
     if (existing) {
+      const finalizeStartedAt = Date.now();
       await markSucceeded({
         job,
         outputMedia: existing,
-        sourceSizeBytes: Number(media.size_bytes || 0),
+        sourceSizeBytes,
+      });
+      timing.finalizeMs = Date.now() - finalizeStartedAt;
+      outputSizeBytes = Number(existing.size_bytes || 0);
+      console.info("[media-library-optimization] timing", {
+        jobId: job.id,
+        status: "reused",
+        mediaType,
+        operation,
+        sourceSizeBytes,
+        outputSizeBytes,
+        ...timing,
+        totalMs: Date.now() - startedAt,
       });
       return {
         jobId: job.id,
@@ -689,12 +722,15 @@ async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSumm
     };
 
     queueProgress(2, "Préparation du média");
+    const downloadStartedAt = Date.now();
     const downloaded = await downloadSource({ job, media, onProgress: queueProgress });
+    timing.downloadMs = Date.now() - downloadStartedAt;
     workDir = downloaded.workDir;
     queueProgress(16, "Analyse du média");
 
     let outputPath = "";
     let output: Parameters<typeof uploadAndRegisterOutput>[0]["output"];
+    const transformStartedAt = Date.now();
     if (media.media_type === "video") {
       outputPath = path.join(workDir, `${job.id}.mp4`);
       const compressed = await compressMediaLibraryVideo({
@@ -750,10 +786,13 @@ async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSumm
         },
       };
     }
+    timing.transformMs = Date.now() - transformStartedAt;
+    outputSizeBytes = Number(output.sizeBytes || 0);
 
     await progressChain;
     if (progressError) throw progressError;
     await updateJobProgress(job, 94, "Vérification du fichier optimisé");
+    const uploadStartedAt = Date.now();
     const outputMedia = await uploadAndRegisterOutput({
       job,
       media,
@@ -761,11 +800,28 @@ async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSumm
       output,
       sourceSha256: downloaded.sha256,
     });
+    timing.uploadRegisterMs = Date.now() - uploadStartedAt;
+    const finalizeStartedAt = Date.now();
     await updateJobProgress(job, 98, "Enregistrement dans la Médiathèque");
     await markSucceeded({
       job,
       outputMedia,
       sourceSizeBytes: downloaded.sizeBytes,
+    });
+    timing.finalizeMs = Date.now() - finalizeStartedAt;
+    console.info("[media-library-optimization] timing", {
+      jobId: job.id,
+      status: "succeeded",
+      mediaType,
+      operation,
+      sourceSizeBytes: downloaded.sizeBytes,
+      outputSizeBytes,
+      compressionRatio:
+        downloaded.sizeBytes > 0
+          ? Number((outputSizeBytes / downloaded.sizeBytes).toFixed(4))
+          : null,
+      ...timing,
+      totalMs: Date.now() - startedAt,
     });
     return {
       jobId: job.id,
@@ -777,6 +833,12 @@ async function processClaimedJob(job: OptimizationJob): Promise<OptimizationSumm
     console.error("[media-library-optimization] job failed", {
       jobId: job.id,
       mediaId: job.media_id,
+      mediaType,
+      operation,
+      sourceSizeBytes,
+      outputSizeBytes,
+      ...timing,
+      totalMs: Date.now() - startedAt,
       error: compactMessage(error),
     });
     return markFailed(job, error);

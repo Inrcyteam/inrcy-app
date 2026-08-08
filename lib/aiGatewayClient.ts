@@ -115,7 +115,7 @@ function warnIfFallbackGuardPricing(model: string) {
   const resolution = resolveAiGatewayGuardPricing(model);
   if (resolution.source !== "conservative_fallback" || warnedFallbackPricingModels.has(model)) return;
   warnedFallbackPricingModels.add(model);
-  console.warn("[ai-gateway] conservative guard pricing active", {
+  console.info("[ai-gateway] conservative guard pricing active", {
     model,
     pricingSource: resolution.source,
     message: "AI_GATEWAY_MODEL_PRICING_JSON absent/incomplet pour ce modèle ; iNrCy conserve un garde-fou monétaire conservateur.",
