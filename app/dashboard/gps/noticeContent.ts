@@ -32,22 +32,22 @@ export const GPS_SECTIONS: GpsSection[] = [
       {
         id: "demarrer-express",
         title: "Préparer iNrCy correctement",
-        keywords: ["démarrer", "première fois", "mon activité", "mon profil", "configuration ia", "panier moyen", "taux de transformation"],
+        keywords: ["démarrer", "première fois", "mon activité", "mon profil", "configuration ia", "réglages du générateur", "panier moyen", "taux de transformation"],
         duration: "5 min",
         goal: "IA utile",
         intro:
           "Avant de publier ou d’envoyer des campagnes, iNrCy doit connaître l’entreprise. Sans Mon activité, Mon profil et Configuration IA, l’IA reste trop générale.",
         steps: [
           "Remplir **Mon activité** : métier, prestations, spécialités, zones d’intervention, clients ciblés et points forts.",
-          "Compléter **Mon profil** : coordonnées, téléphone, adresse, site, horaires et informations visibles par les clients.",
+          "Compléter **Mon profil** : identité, coordonnées, nom de l’entreprise, ville et logo si vous en avez un.",
           "Personnaliser **Configuration IA** : ton, style, façon de parler, offres à mettre en avant et éléments à éviter.",
-          "Renseigner le **panier moyen** et le **taux de transformation** pour calculer un potentiel plus réaliste.",
+          "Ajuster, si nécessaire, le **panier moyen** et le **taux de transformation** depuis les Réglages du générateur. iNrCy propose déjà des repères adaptés au secteur.",
         ],
         checks: [
           "Mon activité est précise et à jour.",
-          "Mon profil contient les bonnes coordonnées.",
+          "Mon profil contient les bonnes coordonnées et la bonne implantation.",
           "Configuration IA reflète bien le style de l’entreprise.",
-          "Panier moyen et taux de transformation sont cohérents.",
+          "Les Réglages du générateur correspondent à la réalité de l’entreprise.",
         ],
         pitfalls: [
           "Donner les bonnes informations à l’IA avant de lui demander de vendre, publier ou fidéliser.",
@@ -57,6 +57,35 @@ export const GPS_SECTIONS: GpsSection[] = [
           { label: "Ouvrir Mon activité", href: "/dashboard?panel=activite&panelSource=gps" },
           { label: "Ouvrir Mon profil", href: "/dashboard?panel=profil&panelSource=gps" },
           { label: "Configuration IA", href: "/dashboard?panel=ia&panelSource=gps" },
+        ],
+      },
+      {
+        id: "demarrer-rangement",
+        title: "Savoir où ranger chaque information",
+        keywords: ["profil", "activité", "juridique", "siret", "tva", "capital", "panier moyen", "transformation", "horaires"],
+        duration: "2 min",
+        goal: "Réglages clairs",
+        intro:
+          "Chaque donnée a un seul emplacement : les coordonnées dans Mon profil, le métier dans Mon activité, les paramètres commerciaux dans le Générateur et les mentions administratives dans Encaisser.",
+        steps: [
+          "Utiliser **Mon profil** pour l’identité, les coordonnées, l’entreprise, la ville et le logo.",
+          "Utiliser **Mon activité** pour le métier, les prestations, zones, forces, clientèle et horaires publics.",
+          "Ouvrir **Réglages du générateur** pour le panier moyen et le taux de transformation.",
+          "Ouvrir **Encaisser > Réglages** pour la raison sociale, le SIREN/SIRET, le RCS, la TVA, le capital et l’adresse légale.",
+        ],
+        checks: [
+          "Les informations déjà enregistrées sont conservées lors de cette nouvelle organisation.",
+          "Les horaires publics de Mon activité décrivent l’entreprise ; les créneaux iNrCalendar règlent uniquement la prise de rendez-vous.",
+          "Les informations juridiques ne bloquent pas les outils de communication.",
+        ],
+        pitfalls: [
+          "Ne saisir une donnée qu’à son emplacement de référence évite les incohérences dans l’application.",
+          "Les valeurs proposées par secteur restent modifiables et ne remplacent jamais silencieusement vos réglages.",
+        ],
+        links: [
+          { label: "Mon profil", href: "/dashboard?panel=profil&panelSource=gps" },
+          { label: "Mon activité", href: "/dashboard?panel=activite&panelSource=gps" },
+          { label: "Réglages Encaisser", href: "/dashboard?panel=documents&panelSource=gps" },
         ],
       },
     ],
@@ -154,7 +183,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Suivre les **Unités d’Inertie** : elles représentent la puissance des actions de communication du pro et peuvent servir dans la Boutique.",
         ],
         checks: [
-          "Mon activité, panier moyen et taux de transformation sont renseignés.",
+          "Mon activité est renseignée et les Réglages du générateur sont cohérents.",
           "Au moins un canal important est connecté ou configuré.",
           "Les canaux de diffusion sont bien activés selon le forfait, et iNr'Agent est disponible dans le header quand l’accès est ouvert.",
           "Les données 7j / 30j ont eu le temps de remonter.",
@@ -248,6 +277,61 @@ export const GPS_SECTIONS: GpsSection[] = [
           { label: "Ouvrir Booster", href: "/dashboard?action=publish" },
           { label: "Configuration IA", href: "/dashboard?panel=ia&panelSource=gps" },
           { label: "Ouvrir les canaux", href: "/dashboard" },
+        ],
+      },
+      {
+        id: "booster-medias",
+        title: "Optimiser une image ou une vidéo",
+        keywords: ["média", "optimiser", "compression", "conversion", "mp4", "h264", "aac", "webm", "mkv", "avi", "300 mo", "75 mo", "50 mo"],
+        duration: "2 min",
+        goal: "Média compatible",
+        intro:
+          "Dès l’ajout, iNrCy détecte si le format ou le poids peut bloquer l’outil. L’optimisation prépare une copie compatible sans modifier l’original.",
+        steps: [
+          "Ajouter jusqu’à **5 images** ou **1 vidéo de 300 Mo maximum**.",
+          "Si la pastille **À optimiser** apparaît, ouvrir l’outil : iNrCy choisit automatiquement la cible adaptée à l’usage.",
+          "Lancer l’optimisation : conversion en MP4 H.264/AAC si nécessaire et compression uniquement si le poids le demande.",
+          "Laisser iNrCy réinsérer la copie optimisée, puis poursuivre la génération ou la publication normalement.",
+        ],
+        checks: [
+          "Booster vise 50 Mo maximum par image et 75 Mo pour la vidéo après optimisation.",
+          "Les formats déjà compatibles et assez légers ne déclenchent pas d’étape inutile.",
+          "La préparation des médias avant envoi reste une dernière sécurité par canal.",
+          "Un fichier source supérieur à 300 Mo doit être réduit avant son ajout.",
+        ],
+        pitfalls: [
+          "Optimiser avant de générer évite d’allonger les deux étapes principales.",
+          "Un conteneur MP4 ne suffit pas toujours : iNrCy vérifie aussi les codecs vidéo et audio.",
+        ],
+        links: [{ label: "Ouvrir Booster", href: "/dashboard?action=publish" }],
+      },
+      {
+        id: "booster-bilan",
+        title: "Lire le bilan de publication",
+        keywords: ["bilan", "publié", "traitement", "échec", "canal", "inrsend", "programmation", "durée vidéo", "pinterest", "youtube"],
+        duration: "1 min",
+        goal: "Résultat compris",
+        intro:
+          "Le bilan sépare les canaux publiés, encore en traitement et en échec. Un canal refusé n’annule pas ceux qui ont réussi.",
+        steps: [
+          "Lire le compteur vert des **réussites**, puis les éventuels compteurs orange et rouge.",
+          "Utiliser **Voir** pour ouvrir le canal quand son lien public est disponible.",
+          "Cliquer sur le bouton d’information d’un échec pour lire la règle ou l’erreur technique exacte.",
+          "Ouvrir **iNrSend** pour suivre les traitements, actualiser le statut et retrouver le contenu envoyé.",
+        ],
+        checks: [
+          "Les canaux non sélectionnés ne figurent pas dans le bilan.",
+          "Les limites de durée sont signalées avant l’envoi lorsqu’elles sont connues.",
+          "Un statut orange signifie que la plateforme traite encore le média, pas que la publication a échoué.",
+          "En cas de coupure réseau après acceptation, iNrCy tente de récupérer le résultat côté serveur.",
+        ],
+        pitfalls: [
+          "Toujours lire le détail du canal concerné avant de relancer toute la publication.",
+          "Une erreur de format détectée seulement par la plateforme reste visible dans le bilan technique.",
+        ],
+        links: [
+          { label: "Ouvrir Booster", href: "/dashboard?action=publish" },
+          { label: "Ouvrir iNr’Send", href: "/dashboard/mails" },
         ],
       },
     ],
@@ -480,6 +564,32 @@ export const GPS_SECTIONS: GpsSection[] = [
           { label: "Réglages", href: "/dashboard?panel=documents&panelSource=gps" },
         ],
       },
+      {
+        id: "documents-legal",
+        title: "Renseigner les informations juridiques",
+        keywords: ["raison sociale", "forme juridique", "adresse", "siret", "siren", "rcs", "capital", "tva", "iban", "encaisser"],
+        duration: "3 min",
+        goal: "Documents conformes",
+        intro:
+          "Les informations juridiques sont regroupées dans les réglages Encaisser car elles servent principalement aux devis et factures.",
+        steps: [
+          "Ouvrir **Encaisser**, puis la roue **Réglages**.",
+          "Compléter la première rubrique : raison sociale, forme, adresse, pays, SIREN/SIRET, RCS, capital et TVA.",
+          "Vérifier ensuite les réglages de paiement, TVA, acompte et échéance.",
+          "Créer un document test et contrôler l’en-tête avant de l’envoyer à un client.",
+        ],
+        checks: [
+          "Les anciennes valeurs du profil sont reprises automatiquement.",
+          "Ces champs ne sont obligatoires que lorsque votre situation et le document l’exigent.",
+          "L’IBAN et les conditions de règlement sont contrôlés séparément.",
+          "Les données légales ne sont pas utilisées pour personnaliser les textes de l’IA.",
+        ],
+        pitfalls: [
+          "Vérifier les mentions auprès de votre comptable ou conseil selon votre forme juridique.",
+          "Une facture officielle doit rester cohérente avec vos informations d’immatriculation à jour.",
+        ],
+        links: [{ label: "Réglages Encaisser", href: "/dashboard?panel=documents&panelSource=gps" }],
+      },
     ],
   },
   {
@@ -549,6 +659,57 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Ne pas forcer dix fois la même action : corriger la cause puis relancer proprement.",
           "Un message d’erreur clair dans iNr’Send vaut mieux qu’une supposition.",
         ],
+      },
+      {
+        id: "problemes-mobile-reseau",
+        title: "Réseau instable sur téléphone",
+        keywords: ["téléphone", "pixel", "android", "iphone", "safari", "chrome", "wifi", "4g", "5g", "réseau", "économiseur", "connexion serveur"],
+        duration: "2 min",
+        goal: "Retrouver le résultat",
+        intro:
+          "Sur mobile, une bascule Wi-Fi/4G, l’économiseur d’énergie ou la mise en veille peut couper la réponse alors que le serveur a déjà terminé l’action.",
+        steps: [
+          "Garder iNrCy au premier plan pendant une génération, un envoi ou une publication.",
+          "En cas d’erreur, attendre quelques secondes : iNrCy tente de retrouver le résultat déjà créé côté serveur.",
+          "Actualiser une seule fois puis vérifier iNrSend avant de relancer l’action.",
+          "Si le problème revient, tester sans économie d’énergie puis comparer Wi-Fi et réseau mobile.",
+        ],
+        checks: [
+          "Utiliser un navigateur récent : Chrome, Safari, Edge ou Firefox à jour.",
+          "Vérifier que le téléphone n’a pas bloqué les données en arrière-plan.",
+          "Contrôler iNrSend pour éviter un doublon après une réponse réseau perdue.",
+          "Contacter iNrCy avec l’heure exacte et une capture si l’erreur persiste.",
+        ],
+        pitfalls: [
+          "Une erreur de connexion affichée sur le téléphone ne signifie pas toujours que le serveur a échoué.",
+          "Ne relancez pas immédiatement plusieurs fois une publication déjà acceptée.",
+        ],
+        links: [{ label: "Ouvrir iNr’Send", href: "/dashboard/mails" }],
+      },
+      {
+        id: "problemes-vocal",
+        title: "Utiliser la dictée vocale",
+        keywords: ["vocal", "micro", "enregistrement", "dictée", "audio", "stop", "autorisation", "mobile", "iphone", "android"],
+        duration: "1 min",
+        goal: "Idée transformée en texte",
+        intro:
+          "Le micro de Booster enregistre votre idée puis la transforme en consigne exploitable, quel que soit le format audio produit par le navigateur compatible.",
+        steps: [
+          "Autoriser l’accès au micro lorsque le navigateur le demande.",
+          "Parler clairement, puis toucher **Stop** une seule fois.",
+          "Attendre la transcription avant de modifier ou compléter le texte.",
+          "Si rien ne remonte, vérifier l’autorisation micro du navigateur et refaire un enregistrement court.",
+        ],
+        checks: [
+          "Le navigateur et le système autorisent bien le micro pour app.inrcy.com.",
+          "Un enregistrement court permet de distinguer un souci d’autorisation d’un souci réseau.",
+          "Le texte obtenu reste modifiable avant génération.",
+        ],
+        pitfalls: [
+          "Éviter de verrouiller l’écran pendant l’enregistrement ou l’envoi du fichier audio.",
+          "Sur un réseau faible, patienter après Stop au lieu de recommencer immédiatement.",
+        ],
+        links: [{ label: "Ouvrir Booster", href: "/dashboard?action=publish" }],
       },
     ],
   },

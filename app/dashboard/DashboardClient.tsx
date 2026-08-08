@@ -7,6 +7,7 @@ import SettingsDrawer from "./SettingsDrawer";
 import HelpButton from "./_components/HelpButton";
 import DashboardHelpModals from "./_components/DashboardHelpModals";
 import DashboardHero from "./_components/DashboardHero";
+import GeneratorSettingsModal from "./_components/GeneratorSettingsModal";
 import DashboardTopbar from "./_components/DashboardTopbar";
 import { useDashboardUnsavedNavigation } from "./_components/DashboardUnsavedNavigationProvider";
 import DashboardChannelsSection from "./_components/DashboardChannelsSection";
@@ -125,6 +126,7 @@ export default function DashboardClient({
   initialOnboardingState,
 }: DashboardClientProps) {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
+  const [generatorSettingsOpen, setGeneratorSettingsOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
   const [helpSiteInrcyOpen, setHelpSiteInrcyOpen] = useState(false);
   const [helpSiteWebOpen, setHelpSiteWebOpen] = useState(false);
@@ -3727,6 +3729,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         remainingGeneratorPowerSteps={remainingGeneratorPowerSteps}
         nextGeneratorPowerStep={nextGeneratorPowerStep}
         onOpenGeneratorHelp={() => setHelpGeneratorOpen(true)}
+        onOpenGeneratorSettings={() => setGeneratorSettingsOpen(true)}
         onRefreshGenerator={() => {
           void handleSharedGeneratorRefresh();
         }}
@@ -3740,6 +3743,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         leadsWeek={leadsWeek}
         leadsMonth={leadsMonth}
       />
+
+      {generatorSettingsOpen ? (
+        <GeneratorSettingsModal
+          opportunities={oppTotal}
+          onClose={() => setGeneratorSettingsOpen(false)}
+          onSaved={handleSharedGeneratorRefresh}
+        />
+      ) : null}
 
       <DashboardChannelsSection
         fluxBubbleItems={fluxBubbleItems}

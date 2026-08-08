@@ -31,7 +31,7 @@ export default function LegalPageShell(props: {
           <div style={{ marginTop: 14 }}>{props.children}</div>
 
           <p className={styles.small} style={{ marginTop: 18 }}>
-            Dernière mise à jour : 30/06/2026
+            Version juridique synchronisée le 08/08/2026
           </p>
 
         </div>

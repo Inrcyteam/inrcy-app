@@ -139,6 +139,7 @@ export default function DashboardSettingsDrawerContent({
       {panel === "profil" && (
         <ProfilContent
           mode="drawer"
+          onboarding={guidedOnboardingStep === "profile"}
           onProfileSaved={guidedOnboardingStep === "profile" ? undefined : checkProfile}
           onProfileReset={checkProfile}
           onCloseDrawer={guidedOnboardingStep === "profile" ? onAdvanceOnboardingProfile : onCloseDrawer}
@@ -150,6 +151,7 @@ export default function DashboardSettingsDrawerContent({
       {panel === "activite" && (
         <ActivityContent
           mode="drawer"
+          onboarding={guidedOnboardingStep === "activity"}
           onActivitySaved={guidedOnboardingStep === "activity" ? undefined : checkActivity}
           onActivityReset={checkActivity}
           onCloseDrawer={guidedOnboardingStep === "activity" ? onAdvanceOnboardingActivity : onCloseDrawer}

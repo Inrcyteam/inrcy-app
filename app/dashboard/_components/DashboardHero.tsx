@@ -36,6 +36,7 @@ type DashboardHeroProps = {
   remainingGeneratorPowerSteps: number;
   nextGeneratorPowerStep: GeneratorPowerStep | null;
   onOpenGeneratorHelp: () => void;
+  onOpenGeneratorSettings: () => void;
   onRefreshGenerator: () => void;
   kpisLoading: boolean;
   generatorIsActive: boolean;
@@ -54,6 +55,7 @@ export default function DashboardHero({
   remainingGeneratorPowerSteps,
   nextGeneratorPowerStep,
   onOpenGeneratorHelp,
+  onOpenGeneratorSettings,
   onRefreshGenerator,
   kpisLoading,
   generatorIsActive,
@@ -212,6 +214,16 @@ export default function DashboardHero({
           </div>
 
           <div className={styles.generatorHeaderRight}>
+            <button
+              type="button"
+              className={styles.generatorRefreshBtn}
+              onClick={onOpenGeneratorSettings}
+              aria-label="Ouvrir les réglages du générateur"
+              title="Réglages du générateur"
+              style={{ color: "rgba(255,255,255,0.88)", fontSize: 16 }}
+            >
+              <span aria-hidden="true">⚙</span>
+            </button>
             <button
               type="button"
               className={styles.generatorRefreshBtn}

@@ -1,288 +1,197 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
-
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { createClient } from "@/lib/supabaseClient";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   extractLogoPathFromUrl,
   getProfileLogoDisplayUrl,
+  LOGO_BUCKET,
   resolveProfileLogoUrl,
   revokeBlobUrl,
-  LOGO_BUCKET,
   validateProfileLogoFile,
 } from "@/lib/profileLogo";
 import { refreshPublicProfileDependents } from "@/lib/publicProfileRefreshClient";
+import { createClient } from "@/lib/supabaseClient";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
-import { confirmInrcy } from "@/lib/inrcyDialog";
 
 type Props = {
   mode?: "page" | "drawer";
+  onboarding?: boolean;
   onProfileSaved?: () => void;
   onProfileReset?: () => void;
   onCloseDrawer?: () => void;
   onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
 };
 
-// Petit helper pour éviter les crashs sur JSON invalide
-function safeJsonParse<T>(value: string | null): T | null {
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return null;
-  }
-}
-
-type ProfilForm = {
-  // Compte
+type ProfileForm = {
   contactEmail: string;
   firstName: string;
   lastName: string;
   phone: string;
-
-  // Logo
+  companyName: string;
+  hqZip: string;
+  hqCity: string;
   logoPreview: string;
   logoFile: File | null;
   logoPath: string;
-
-  // Légal
-  companyLegalName: string; // raison sociale
-  legalForm: "EI" | "EURL" | "SARL" | "SAS" | "SASU" | "AUTRE";
-  legalFormOther: string;
-
-  hqAddress: string;
-  hqZip: string;
-  hqCity: string;
-  hqCountry: string;
-
-  siren: string;
-  rcsCity: string;
-
-  capitalSocial: string; // string pour laisser vide
-  capitalDispenseEI: boolean;
-
-  vatNumber: string;
-  vatDispense: boolean;
-
-  // Business
-  avgBasket: number;
-  leadConversionRate: number;
 };
 
-const STORAGE_KEY = "inrcy_profile_preview_v1";
-
-function profileSnapshot(form: ProfilForm) {
-  return JSON.stringify({ ...form, logoFile: form.logoFile ? `${form.logoFile.name}:${form.logoFile.size}:${form.logoFile.lastModified}` : null });
+function profileSnapshot(form: ProfileForm) {
+  return JSON.stringify({
+    ...form,
+    logoFile: form.logoFile
+      ? `${form.logoFile.name}:${form.logoFile.size}:${form.logoFile.lastModified}`
+      : null,
+  });
 }
 
 export default function ProfilContent({
   mode = "page",
+  onboarding = false,
   onProfileSaved,
   onProfileReset,
   onCloseDrawer,
   onUnsavedChange,
 }: Props) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const initial: ProfilForm = useMemo(
+  const initial = useMemo<ProfileForm>(
     () => ({
       contactEmail: "",
       firstName: "",
       lastName: "",
       phone: "",
+      companyName: "",
+      hqZip: "",
+      hqCity: "",
       logoPreview: "",
       logoFile: null,
       logoPath: "",
-
-      companyLegalName: "",
-      legalForm: "EI",
-      legalFormOther: "",
-
-      hqAddress: "",
-      hqZip: "",
-      hqCity: "",
-      hqCountry: "France",
-
-      siren: "",
-      rcsCity: "",
-
-      capitalSocial: "",
-      capitalDispenseEI: true, // EI par défaut
-
-      vatNumber: "",
-      vatDispense: true, // EI/franchise par défaut
-
-      avgBasket: 250, // ✅ défaut demandé
-      leadConversionRate: 20, // ✅ défaut demandé
     }),
-    []
+    [],
   );
-
-  const [form, setForm] = useState<ProfilForm>(initial);
-  const [profileLoaded, setProfileLoaded] = useState(false);
-  const profileBaselineRef = useRef("");
-  const [saved, setSaved] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const baselineRef = useRef("");
+  const [form, setForm] = useState<ProfileForm>(initial);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
+  const [saved, setSaved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [globalError, setGlobalError] = useState<string>("");
-  const [logoError, setLogoError] = useState<string>("");
+  const [globalError, setGlobalError] = useState("");
+  const [logoError, setLogoError] = useState("");
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
       try {
         const supabase = createClient();
-
-        const { data: authData, error: authErr } = await supabase.auth.getUser();
-        if (authErr) throw new Error(getSimpleFrenchErrorMessage(authErr));
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError) throw authError;
         const user = authData?.user;
-        if (!user) return;
+        if (!user || !active) return;
 
         const authenticatedEmail = user.email?.trim() || "";
-
         const { data, error } = await supabase
           .from("profiles")
-          .select("*")
+          .select("contact_email,first_name,last_name,phone,company_legal_name,hq_zip,hq_city,logo_path,logo_url")
           .eq("user_id", resolveActiveBrowserUserId(user.id))
           .maybeSingle();
+        if (error) throw error;
 
-        if (error) throw new Error(getSimpleFrenchErrorMessage(error));
-        if (!data) {
-          setForm((prev) => ({
-            ...prev,
-            contactEmail: authenticatedEmail || prev.contactEmail,
-          }));
-          return;
-        }
+        const resolvedLogo = data
+          ? await resolveProfileLogoUrl(supabase, {
+              logo_path: data.logo_path ?? null,
+              logo_url: data.logo_url ?? null,
+            })
+          : { logoUrl: "", logoPath: "" };
+        if (!active) return;
 
-        const resolvedLogo = await resolveProfileLogoUrl(supabase, {
-          logo_path: data.logo_path ?? null,
-          logo_url: data.logo_url ?? null,
-        });
-
-        setForm((prev) => ({
-          ...prev,
-          contactEmail: data.contact_email?.trim() || authenticatedEmail || "",
-          firstName: data.first_name ?? "",
-          lastName: data.last_name ?? "",
-          phone: data.phone ?? "",
-
+        const next: ProfileForm = {
+          contactEmail: data?.contact_email?.trim() || authenticatedEmail,
+          firstName: data?.first_name ?? "",
+          lastName: data?.last_name ?? "",
+          phone: data?.phone ?? "",
+          companyName: data?.company_legal_name ?? "",
+          hqZip: data?.hq_zip ?? "",
+          hqCity: data?.hq_city ?? "",
           logoPreview: resolvedLogo.logoUrl,
           logoFile: null,
           logoPath: resolvedLogo.logoPath,
-
-          companyLegalName: data.company_legal_name ?? "",
-          legalForm: (data.legal_form ?? "EI") as ProfilForm["legalForm"],
-          legalFormOther: data.legal_form_other ?? "",
-
-          hqAddress: data.hq_address ?? "",
-          hqZip: data.hq_zip ?? "",
-          hqCity: data.hq_city ?? "",
-          hqCountry: data.hq_country ?? "France",
-
-          siren: data.siren ?? "",
-          rcsCity: data.rcs_city ?? "",
-
-          capitalSocial: data.capital_social ?? "",
-          capitalDispenseEI: !!data.capital_dispense_ei,
-
-          vatNumber: data.vat_number ?? "",
-          vatDispense: !!data.vat_dispense,
-
-          avgBasket: data.avg_basket ?? 250,
-          leadConversionRate: data.lead_conversion_rate ?? 20,
-        }));
-      } catch (e) {
-        console.error(e);
+        };
+        setForm(next);
+        baselineRef.current = profileSnapshot(next);
+      } catch (error) {
+        console.error(error);
+        if (active) {
+          setGlobalError(
+            getSimpleFrenchErrorMessage(error, "Impossible de charger le profil."),
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
       }
     };
-
-    void load().finally(() => setProfileLoaded(true));
+    void load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (!profileLoaded) return;
-    const snapshot = profileSnapshot(form);
-    if (!profileBaselineRef.current) profileBaselineRef.current = snapshot;
-    onUnsavedChange?.(snapshot !== profileBaselineRef.current);
-  }, [form, onUnsavedChange, profileLoaded]);
+    if (loading || !baselineRef.current) return;
+    onUnsavedChange?.(profileSnapshot(form) !== baselineRef.current);
+  }, [form, loading, onUnsavedChange]);
 
-  // Auto règles EI / TVA
-  useEffect(() => {
-    const isEI = form.legalForm === "EI";
-    if (isEI) {
-      // EI => capital dispensé + TVA dispensée par défaut
-      if (!form.capitalDispenseEI) setForm((p) => ({ ...p, capitalDispenseEI: true }));
-      if (!form.vatDispense) setForm((p) => ({ ...p, vatDispense: true }));
-    }
-  }, [form.legalForm]);
-
-  const isEI = form.legalForm === "EI";
-  const showOtherLegalForm = form.legalForm === "AUTRE";
+  const update = <K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) => {
+    setSaved(false);
+    setGlobalError("");
+    if (String(key).startsWith("logo")) setLogoError("");
+    setErrors((current) => {
+      if (!current[String(key)]) return current;
+      const next = { ...current };
+      delete next[String(key)];
+      return next;
+    });
+    setForm((current) => ({ ...current, [key]: value }));
+  };
 
   const validate = () => {
-    const e: Record<string, string> = {};
-    const contactEmail = form.contactEmail.trim();
-
-    // Les champs vides sont autorisés afin de pouvoir enregistrer le profil
-    // progressivement. On bloque uniquement les valeurs renseignées mais incohérentes.
-    if (contactEmail && !/^\S+@\S+\.\S+$/.test(contactEmail)) {
-      e.contactEmail = "Email invalide.";
+    const next: Record<string, string> = {};
+    const email = form.contactEmail.trim();
+    if (!email) {
+      next.contactEmail = "L’email professionnel est obligatoire.";
+    } else if (!/^\S+@\S+\.\S+$/.test(email)) {
+      next.contactEmail = "Email invalide.";
     }
-
-    if (form.avgBasket < 0) {
-      e.avgBasket = "Le panier moyen ne peut pas être négatif.";
+    if (!form.firstName.trim()) next.firstName = "Le prénom est obligatoire.";
+    if (!form.lastName.trim()) next.lastName = "Le nom est obligatoire.";
+    if (!form.phone.trim()) next.phone = "Le téléphone est obligatoire.";
+    if (!form.companyName.trim()) {
+      next.companyName = "Le nom de l’entreprise est obligatoire.";
     }
-
-    if (form.leadConversionRate < 0 || form.leadConversionRate > 100) {
-      e.leadConversionRate = "Le taux de conversion doit être compris entre 0 et 100.";
-    }
-
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    if (!form.hqZip.trim()) next.hqZip = "Le code postal est obligatoire.";
+    if (!form.hqCity.trim()) next.hqCity = "La ville est obligatoire.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const isProfileComplete = () => {
-    const requiredValues = [
+    const required = [
       form.firstName,
       form.lastName,
       form.phone,
       form.contactEmail,
-      form.companyLegalName,
-      form.hqAddress,
+      form.companyName,
       form.hqZip,
       form.hqCity,
-      form.hqCountry,
-      form.siren,
-      form.rcsCity,
     ];
-
     return (
-      requiredValues.every((value) => value.trim().length > 0) &&
+      required.every((value) => value.trim().length > 0) &&
       /^\S+@\S+\.\S+$/.test(form.contactEmail.trim())
     );
   };
 
-  const onChange = <K extends keyof ProfilForm>(key: K, value: ProfilForm[K]) => {
-    setSaved(false);
-    setGlobalError("");
-    if (String(key).startsWith("logo")) setLogoError("");
-
-    // efface l'erreur du champ en cours si elle existait
-    setErrors((prev) => {
-      if (!prev[String(key)]) return prev;
-      const next = { ...prev };
-      delete next[String(key)];
-      return next;
-    });
-
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  async function uploadLogoDirect(file: File) {
+  async function uploadLogo(file: File) {
     const prepareResponse = await fetch("/api/profile/logo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -292,16 +201,17 @@ export default function ProfilContent({
         fileSize: file.size,
       }),
     });
-
-    let prepared: { ok?: boolean; path?: string; token?: string; mimeType?: string; error?: string } = {};
-    try {
-      prepared = await prepareResponse.json();
-    } catch {
-      // Keep the generic message below for malformed server responses.
-    }
-
-    if (!prepareResponse.ok || !prepared.ok || !prepared.path || !prepared.token || !prepared.mimeType) {
-      throw new Error(prepared.error || "Impossible d’enregistrer le logo pour le moment.");
+    const prepared = await prepareResponse.json().catch(() => ({}));
+    if (
+      !prepareResponse.ok ||
+      !prepared?.ok ||
+      !prepared?.path ||
+      !prepared?.token ||
+      !prepared?.mimeType
+    ) {
+      throw new Error(
+        prepared?.error || "Impossible d’enregistrer le logo pour le moment.",
+      );
     }
 
     const supabase = createClient();
@@ -311,99 +221,67 @@ export default function ProfilContent({
         cacheControl: "3600",
         contentType: prepared.mimeType,
       });
-
     if (uploadError) {
-      throw new Error("Le logo n’a pas pu être envoyé. Vérifie le fichier puis réessaie.");
+      throw new Error("Le logo n’a pas pu être envoyé. Vérifiez le fichier puis réessayez.");
     }
 
-    const completeResponse = await fetch(`/api/profile/logo?path=${encodeURIComponent(prepared.path)}`);
-    let completed: { ok?: boolean; path?: string; displayUrl?: string; error?: string } = {};
-    try {
-      completed = await completeResponse.json();
-    } catch {
-      // Keep the generic message below for malformed server responses.
+    const completeResponse = await fetch(
+      `/api/profile/logo?path=${encodeURIComponent(prepared.path)}`,
+    );
+    const completed = await completeResponse.json().catch(() => ({}));
+    if (!completeResponse.ok || !completed?.ok || !completed?.path || !completed?.displayUrl) {
+      throw new Error(completed?.error || "Impossible de préparer l’aperçu du logo.");
     }
-
-    if (!completeResponse.ok || !completed.ok || !completed.path || !completed.displayUrl) {
-      throw new Error(completed.error || "Impossible de préparer l’aperçu du logo.");
-    }
-
-    return { path: completed.path, signedUrl: completed.displayUrl };
+    return { path: String(completed.path), signedUrl: String(completed.displayUrl) };
   }
 
   const handleSave = async () => {
     if (saving) return;
-
     setGlobalError("");
-    const ok = validate();
-    if (!ok) {
-      setSaved(false);
-      setGlobalError("Certaines informations renseignées sont invalides. Vérifie les champs signalés.");
+    setSaved(false);
+    if (!validate()) {
+      setGlobalError("Certaines informations sont invalides. Vérifiez les champs signalés.");
       return;
     }
 
     setSaving(true);
     try {
       const supabase = createClient();
-
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr) throw new Error(getSimpleFrenchErrorMessage(authErr));
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
       const user = authData?.user;
       if (!user) throw new Error("Utilisateur non connecté.");
 
-      // 1) Upload du logo si un fichier est sélectionné
       let logoUrl = form.logoPreview || "";
       let logoPath = form.logoPath || extractLogoPathFromUrl(form.logoPreview) || "";
-
       if (form.logoFile) {
         const previousPreview = form.logoPreview;
-        const uploaded = await uploadLogoDirect(form.logoFile);
+        const uploaded = await uploadLogo(form.logoFile);
         revokeBlobUrl(previousPreview);
         logoUrl = uploaded.signedUrl;
         logoPath = uploaded.path;
-
-        // on remplace l'aperçu local par l'URL signée
-        onChange("logoPreview", logoUrl);
-        onChange("logoPath", logoPath);
-        onChange("logoFile", null);
       }
 
-      // 2) Upsert dans la table profiles
-      const payload = {
-        user_id: resolveActiveBrowserUserId(user.id),
-
-        contact_email: form.contactEmail.trim(),
-        first_name: form.firstName.trim(),
-        last_name: form.lastName.trim(),
-        phone: form.phone.trim(),
-
-        company_legal_name: form.companyLegalName.trim(),
-        legal_form: form.legalForm,
-        legal_form_other: form.legalForm === "AUTRE" ? form.legalFormOther.trim() : "",
-
-        hq_address: form.hqAddress.trim(),
-        hq_zip: form.hqZip.trim(),
-        hq_city: form.hqCity.trim(),
-        hq_country: form.hqCountry.trim(),
-
-        siren: form.siren.trim(),
-        rcs_city: form.rcsCity.trim(),
-
-        capital_dispense_ei: form.capitalDispenseEI,
-        capital_social: form.capitalDispenseEI ? "" : form.capitalSocial.trim(),
-
-        vat_dispense: form.vatDispense,
-        vat_number: form.vatDispense ? "" : form.vatNumber.trim(),
-
-        avg_basket: form.avgBasket,
-        lead_conversion_rate: form.leadConversionRate,
-
-        logo_path: logoPath || null,
-        logo_url: logoPath ? (logoUrl || getProfileLogoDisplayUrl(logoPath)) : (logoUrl || null),
-      };
-
-      const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
-      if (error) throw new Error(getSimpleFrenchErrorMessage(error));
+      const { error } = await supabase.from("profiles").upsert(
+        {
+          user_id: resolveActiveBrowserUserId(user.id),
+          contact_email: form.contactEmail.trim(),
+          first_name: form.firstName.trim(),
+          last_name: form.lastName.trim(),
+          phone: form.phone.trim(),
+          // Le nom public reste sur la colonne historique afin que tous les
+          // outils et les comptes existants continuent de fonctionner.
+          company_legal_name: form.companyName.trim(),
+          hq_zip: form.hqZip.trim(),
+          hq_city: form.hqCity.trim(),
+          logo_path: logoPath || null,
+          logo_url: logoPath
+            ? logoUrl || getProfileLogoDisplayUrl(logoPath)
+            : logoUrl || null,
+        },
+        { onConflict: "user_id" },
+      );
+      if (error) throw error;
 
       const [publicProfileRefreshed] = await Promise.all([
         refreshPublicProfileDependents("profile"),
@@ -413,8 +291,6 @@ export default function ProfilContent({
         console.warn("[profile] iNrBadge/iNrSearch refresh deferred");
       }
 
-      // Récompense uniquement lorsque les mêmes informations que celles
-      // contrôlées par le triangle d'avertissement sont réellement complètes.
       if (isProfileComplete()) {
         try {
           await fetch("/api/loyalty/award", {
@@ -429,606 +305,518 @@ export default function ProfilContent({
             }),
           });
         } catch {
-          // ignore
+          // La récompense ne doit jamais bloquer l’enregistrement.
         }
       }
 
-      const savedForm = form.logoFile
-        ? { ...form, logoPreview: logoUrl, logoPath, logoFile: null }
-        : form;
-      if (form.logoFile) setForm(savedForm);
-      profileBaselineRef.current = profileSnapshot(savedForm);
+      const savedForm: ProfileForm = {
+        ...form,
+        logoPreview: logoUrl,
+        logoPath,
+        logoFile: null,
+      };
+      setForm(savedForm);
+      baselineRef.current = profileSnapshot(savedForm);
       onUnsavedChange?.(false);
       setSaved(true);
       onProfileSaved?.();
       if (mode === "drawer") {
-        window.setTimeout(() => onCloseDrawer?.(), 700);
+        window.setTimeout(() => onCloseDrawer?.(), 450);
       } else {
         window.setTimeout(() => setSaved(false), 2500);
       }
-    } catch (err: any) {
-      console.error(err);
-      setSaved(false);
-      setGlobalError(getSimpleFrenchErrorMessage(err, "Impossible d’enregistrer le profil."));
+    } catch (error) {
+      console.error(error);
+      setGlobalError(
+        getSimpleFrenchErrorMessage(error, "Impossible d’enregistrer le profil."),
+      );
     } finally {
       setSaving(false);
     }
   };
 
   const handleReset = async () => {
-    const ok = await confirmInrcy({
+    const confirmed = await confirmInrcy({
       title: "Réinitialiser le profil ?",
-      message: "Cela efface les champs et remet Panier moyen = 250€ et Conversion = 20%.",
+      message: "Les informations visibles dans ce formulaire seront effacées.",
       confirmLabel: "Réinitialiser",
       variant: "danger",
     });
-    if (!ok) return;
-
-    // reset juste en UI pour l’instant (on fera un delete en DB plus tard si tu veux)
+    if (!confirmed) return;
+    revokeBlobUrl(form.logoPreview);
+    setForm(initial);
     setErrors({});
     setGlobalError("");
     setLogoError("");
-    setForm(initial);
-    profileBaselineRef.current = profileSnapshot(initial);
-    onUnsavedChange?.(false);
     setSaved(false);
+    baselineRef.current = profileSnapshot(initial);
+    onUnsavedChange?.(false);
     onProfileReset?.();
   };
 
-  const fieldStyle = (key: keyof ProfilForm): React.CSSProperties => ({
+  const fieldStyle = (key: keyof ProfileForm): React.CSSProperties => ({
     ...inputStyle,
-    border: errors[String(key)] ? "1px solid rgba(255,120,120,0.85)" : inputStyle.border,
+    border: errors[String(key)]
+      ? "1px solid rgba(248,113,113,0.85)"
+      : inputStyle.border,
   });
-
-  // ✅ petites touches iNrCy (discrètes)
-  const titleAccent: React.CSSProperties = {
-    margin: 0,
-    fontSize: 16,
-    paddingLeft: 10,
-    borderLeft: "3px solid transparent",
-    borderImage: "linear-gradient(180deg, rgba(255,77,166,0.95), rgba(97,87,255,0.85), rgba(0,200,255,0.75)) 1",
-  };
 
   return (
     <div
       style={{
         display: "grid",
         gap: 12,
-        color: "rgba(255,255,255,0.92)",
+        color: "rgba(255,255,255,0.94)",
         paddingBottom: "max(24px, env(safe-area-inset-bottom, 0px))",
       }}
     >
-      {/* CARTE 1 — Compte */}
-      <div style={cardStyle}>
-        <h2 style={titleAccent}>Cordonnées</h2>
-
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-          <label style={labelStyle}>
-            <span style={labelTextStyle}>Email professionnel *</span>
-            <input
-              type="email"
-              value={form.contactEmail}
-              onChange={(e) => onChange("contactEmail", e.target.value)}
-              placeholder="Ex : contact@entreprise.fr"
-              style={fieldStyle("contactEmail")}
-            />
-            {errors.contactEmail ? <div style={errorTextStyle}>{errors.contactEmail}</div> : null}
-          </label>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Prénom *</span>
-              <input
-                value={form.firstName}
-                onChange={(e) => onChange("firstName", e.target.value)}
-                placeholder="Ex : Paul"
-                style={fieldStyle("firstName")}
-              />
-              {errors.firstName ? <div style={errorTextStyle}>{errors.firstName}</div> : null}
-            </label>
-
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Nom *</span>
-              <input
-                value={form.lastName}
-                onChange={(e) => onChange("lastName", e.target.value)}
-                placeholder="Ex : Martin"
-                style={fieldStyle("lastName")}
-              />
-              {errors.lastName ? <div style={errorTextStyle}>{errors.lastName}</div> : null}
-            </label>
+      {onboarding ? (
+        <section style={onboardingHeroStyle}>
+          <span style={onboardingIconStyle}>👋</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 19, fontWeight: 950 }}>Faisons connaissance</div>
+            <div style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", lineHeight: 1.4 }}>
+              Quelques informations essentielles suffisent pour personnaliser iNrCy.
+            </div>
           </div>
+        </section>
+      ) : (
+        <section style={introStyle}>
+          <strong>Votre identité professionnelle</strong>
+          <span>Ces informations alimentent votre signature et vos pages publiques.</span>
+        </section>
+      )}
 
-          <label style={labelStyle}>
-            <span style={labelTextStyle}>Téléphone *</span>
-            <input
-              value={form.phone}
-              onChange={(e) => onChange("phone", e.target.value)}
-              placeholder="Ex : 06 12 34 56 78"
-              style={fieldStyle("phone")}
-            />
-            {errors.phone ? <div style={errorTextStyle}>{errors.phone}</div> : null}
-          </label>
-        </div>
-      </div>
-
-      <div style={{ ...labelStyle, marginTop: 6 }}>
-        <span style={labelTextStyle}>Logo de l’entreprise</span>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            marginTop: 6,
-            minWidth: 0,
-          }}
-        >
-          {/* Input file caché */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-
-              const validationError = validateProfileLogoFile(file);
-              if (validationError) {
-                setLogoError(validationError);
-                e.currentTarget.value = "";
-                return;
-              }
-
-              setLogoError("");
-
-              revokeBlobUrl(form.logoPreview);
-
-              const url = URL.createObjectURL(file);
-              onChange("logoFile", file);
-              onChange("logoPreview", url);
-            }}
-          />
-
-          {/* Zone cliquable Logo */}
-          <div
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              fileInputRef.current?.click();
-            }}
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 8,
-              cursor: "pointer",
-              flex: "0 0 auto",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(255,255,255,0.04)",
-              border: form.logoPreview
-                ? "1px solid rgba(255,255,255,0.12)"
-                : "1px dashed rgba(255,255,255,0.25)",
-            }}
-            title="Cliquer pour choisir un logo"
-          >
-            {form.logoPreview ? (
-              <img
-                src={form.logoPreview}
-                alt="Logo"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  borderRadius: 8,
-                }}
-              />
-            ) : (
-              <span style={{ fontSize: 12, opacity: 0.6 }}>Logo</span>
-            )}
-          </div>
-
-          {/* Infos fichier */}
-          <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                width: "fit-content",
-                border: "1px solid rgba(125,211,252,0.35)",
-                background: "rgba(56,189,248,0.10)",
-                color: "white",
-                borderRadius: 10,
-                padding: "7px 10px",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              Ajouter un logo
-            </button>
-            <span style={{ fontSize: 11, opacity: 0.62 }}>PNG, JPG/JPEG, WebP ou SVG · 20 Mo maximum</span>
-
-            {form.logoFile ? (
-              <div
-                style={{
-                  fontSize: 12,
-                  opacity: 0.75,
-                  maxWidth: "100%",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={form.logoFile.name}
-              >
-                {form.logoFile.name}
+      <section style={cardStyle}>
+        {loading ? (
+          <div style={{ color: "rgba(255,255,255,0.68)" }}>Chargement…</div>
+        ) : (
+          <div style={{ display: "grid", gap: 13 }}>
+            <div style={sectionTitleStyle}>
+              <span style={sectionBubbleStyle}>1</span>
+              <div>
+                <div style={{ fontWeight: 950 }}>Vous contacter</div>
+                <div style={hintStyle}>Utilisé dans les signatures et les échanges clients.</div>
               </div>
-            ) : (
-              <div style={{ fontSize: 12, opacity: 0.6 }}>Aucun fichier sélectionné</div>
-            )}
-          </div>
+            </div>
 
-        </div>
-
-        {logoError ? <div style={errorTextStyle}>{logoError}</div> : null}
-
-        {/* Bouton supprimer */}
-        <div style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-
-              revokeBlobUrl(form.logoPreview);
-
-              onChange("logoFile", null);
-              onChange("logoPreview", "");
-
-              if (fileInputRef.current) {
-                fileInputRef.current.value = "";
-              }
-            }}
-            disabled={!form.logoPreview}
-            style={{
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "transparent",
-              color: "white",
-              borderRadius: 12,
-              padding: "8px 10px",
-              cursor: form.logoPreview ? "pointer" : "not-allowed",
-              opacity: form.logoPreview ? 0.95 : 0.5,
-              fontSize: 13,
-            }}
-          >
-            Supprimer le logo
-          </button>
-        </div>
-      </div>
-
-      {/* CARTE 2 — Informations légales */}
-      <div style={cardStyle}>
-        <h2 style={titleAccent}>Informations légales de l'entreprise</h2>
-
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-          <label style={labelStyle}>
-            <span style={labelTextStyle}>Raison sociale *</span>
-            <input
-              value={form.companyLegalName}
-              onChange={(e) => onChange("companyLegalName", e.target.value)}
-              placeholder="Ex : DUPONT RÉNOVATION"
-              style={fieldStyle("companyLegalName")}
-            />
-            {errors.companyLegalName ? <div style={errorTextStyle}>{errors.companyLegalName}</div> : null}
-          </label>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <label style={labelStyle}>
-              <span style={labelTextStyle}>Forme juridique *</span>
-              <select
-                value={form.legalForm}
-                onChange={(e) => onChange("legalForm", e.target.value as ProfilForm["legalForm"])}
-                style={{
-                  ...fieldStyle("legalForm"),
-                  whiteSpace: "normal",
-                  color: "white",
-                  background: "rgba(255,255,255,0.04)",
-                }}
-              >
-                <option value="EI" style={{ background: "#111", color: "white" }}>
-                  EI
-                </option>
-                <option value="EURL" style={{ background: "#111", color: "white" }}>
-                  EURL
-                </option>
-                <option value="SARL" style={{ background: "#111", color: "white" }}>
-                  SARL
-                </option>
-                <option value="SAS" style={{ background: "#111", color: "white" }}>
-                  SAS
-                </option>
-                <option value="SASU" style={{ background: "#111", color: "white" }}>
-                  SASU
-                </option>
-                <option value="AUTRE" style={{ background: "#111", color: "white" }}>
-                  Autre
-                </option>
-              </select>
+              <span style={labelTextStyle}>Email professionnel *</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={form.contactEmail}
+                onChange={(event) => update("contactEmail", event.target.value)}
+                placeholder="contact@entreprise.fr"
+                style={fieldStyle("contactEmail")}
+              />
+              {errors.contactEmail ? <span style={errorStyle}>{errors.contactEmail}</span> : null}
             </label>
 
-            {showOtherLegalForm ? (
+            <div data-profile-grid="two" style={gridTwoStyle}>
               <label style={labelStyle}>
-                <span style={labelTextStyle}>Préciser *</span>
+                <span style={labelTextStyle}>Prénom *</span>
                 <input
-                  value={form.legalFormOther}
-                  onChange={(e) => onChange("legalFormOther", e.target.value)}
-                  placeholder="Ex : Association"
-                  style={fieldStyle("legalFormOther")}
+                  autoComplete="given-name"
+                  value={form.firstName}
+                  onChange={(event) => update("firstName", event.target.value)}
+                  placeholder="Paul"
+                  style={fieldStyle("firstName")}
                 />
-                {errors.legalFormOther ? <div style={errorTextStyle}>{errors.legalFormOther}</div> : null}
+                {errors.firstName ? <span style={errorStyle}>{errors.firstName}</span> : null}
               </label>
-            ) : (
-              <div />
-            )}
-          </div>
-
-          <label style={labelStyle}>
-            <span style={labelTextStyle}>Adresse du siège social *</span>
-            <input
-              value={form.hqAddress}
-              onChange={(e) => onChange("hqAddress", e.target.value)}
-              placeholder="Ex : 10 rue de la Paix"
-              style={fieldStyle("hqAddress")}
-            />
-            {errors.hqAddress ? <div style={errorTextStyle}>{errors.hqAddress}</div> : null}
-          </label>
-
-          {/* CP + Ville (même ligne) */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "110px minmax(0, 1fr)",
-              gap: 10,
-            }}
-          >
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Code postal *</span>
-              <input
-                value={form.hqZip}
-                onChange={(e) => onChange("hqZip", e.target.value.replace(/\D/g, "").slice(0, 5))}
-                placeholder="75000"
-                inputMode="numeric"
-                maxLength={5}
-                style={fieldStyle("hqZip")}
-              />
-              {errors.hqZip ? <div style={errorTextStyle}>{errors.hqZip}</div> : null}
-            </label>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>Nom *</span>
+                <input
+                  autoComplete="family-name"
+                  value={form.lastName}
+                  onChange={(event) => update("lastName", event.target.value)}
+                  placeholder="Martin"
+                  style={fieldStyle("lastName")}
+                />
+                {errors.lastName ? <span style={errorStyle}>{errors.lastName}</span> : null}
+              </label>
+            </div>
 
             <label style={labelStyle}>
-              <span style={labelTextStyle}>Ville *</span>
+              <span style={labelTextStyle}>Téléphone *</span>
               <input
-                value={form.hqCity}
-                onChange={(e) => onChange("hqCity", e.target.value)}
-                placeholder="Paris"
-                style={fieldStyle("hqCity")}
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
+                value={form.phone}
+                onChange={(event) => update("phone", event.target.value)}
+                placeholder="06 12 34 56 78"
+                style={fieldStyle("phone")}
               />
-              {errors.hqCity ? <div style={errorTextStyle}>{errors.hqCity}</div> : null}
+              {errors.phone ? <span style={errorStyle}>{errors.phone}</span> : null}
             </label>
           </div>
+        )}
+      </section>
 
-          {/* Pays (ligne seule) */}
-          <label style={labelStyle}>
-            <span style={labelTextStyle}>Pays *</span>
-            <input
-              value={form.hqCountry}
-              onChange={(e) => onChange("hqCountry", e.target.value)}
-              style={fieldStyle("hqCountry")}
-            />
-            {errors.hqCountry ? <div style={errorTextStyle}>{errors.hqCountry}</div> : null}
-          </label>
+      {!loading ? (
+        <section style={cardStyle}>
+          <div style={{ display: "grid", gap: 13 }}>
+            <div style={sectionTitleStyle}>
+              <span style={sectionBubbleStyle}>2</span>
+              <div>
+                <div style={{ fontWeight: 950 }}>Votre entreprise</div>
+                <div style={hintStyle}>Le nom affiché et votre implantation principale.</div>
+              </div>
+            </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <label style={labelStyle}>
-              <span style={labelTextStyle}>SIREN (9 chiffres) *</span>
+              <span style={labelTextStyle}>Nom de l’entreprise *</span>
               <input
-                value={form.siren}
-                onChange={(e) => onChange("siren", e.target.value)}
-                placeholder="123456789"
-                style={fieldStyle("siren")}
+                autoComplete="organization"
+                value={form.companyName}
+                onChange={(event) => update("companyName", event.target.value)}
+                placeholder="Votre entreprise"
+                style={fieldStyle("companyName")}
               />
-              {errors.siren ? <div style={errorTextStyle}>{errors.siren}</div> : null}
+              {errors.companyName ? <span style={errorStyle}>{errors.companyName}</span> : null}
             </label>
 
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>RCS (ville) *</span>
-              <input
-                value={form.rcsCity}
-                onChange={(e) => onChange("rcsCity", e.target.value)}
-                placeholder="Ex : Paris"
-                style={fieldStyle("rcsCity")}
-              />
-              {errors.rcsCity ? <div style={errorTextStyle}>{errors.rcsCity}</div> : null}
-            </label>
-          </div>
+            <div data-profile-grid="location" style={locationGridStyle}>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>Code postal *</span>
+                <input
+                  inputMode="text"
+                  autoComplete="postal-code"
+                  value={form.hqZip}
+                  onChange={(event) => update("hqZip", event.target.value.slice(0, 12))}
+                  placeholder="62000"
+                  style={fieldStyle("hqZip")}
+                />
+                {errors.hqZip ? <span style={errorStyle}>{errors.hqZip}</span> : null}
+              </label>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>Ville *</span>
+                <input
+                  autoComplete="address-level2"
+                  value={form.hqCity}
+                  onChange={(event) => update("hqCity", event.target.value)}
+                  placeholder="Arras"
+                  style={fieldStyle("hqCity")}
+                />
+                {errors.hqCity ? <span style={errorStyle}>{errors.hqCity}</span> : null}
+              </label>
+            </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Capital social (€) {form.capitalDispenseEI ? "" : "*"}</span>
+            <div style={{ display: "grid", gap: 8 }}>
+              <span style={labelTextStyle}>Logo de l’entreprise <em style={optionalStyle}>optionnel</em></span>
               <input
-                value={form.capitalSocial}
-                onChange={(e) => onChange("capitalSocial", e.target.value)}
-                placeholder={isEI ? "Dispensé" : "Ex : 1000"}
-                disabled={form.capitalDispenseEI}
-                style={{
-                  ...fieldStyle("capitalSocial"),
-                  opacity: form.capitalDispenseEI ? 0.55 : 1,
+                ref={fileInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  const validationError = validateProfileLogoFile(file);
+                  if (validationError) {
+                    setLogoError(validationError);
+                    event.currentTarget.value = "";
+                    return;
+                  }
+                  setLogoError("");
+                  revokeBlobUrl(form.logoPreview);
+                  update("logoFile", file);
+                  update("logoPreview", URL.createObjectURL(file));
                 }}
               />
-              {!form.capitalDispenseEI && errors.capitalSocial ? <div style={errorTextStyle}>{errors.capitalSocial}</div> : null}
-            </label>
 
-            <label style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 6, opacity: 0.9 }}>
-              <input
-                type="checkbox"
-                checked={form.capitalDispenseEI}
-                onChange={(e) => onChange("capitalDispenseEI", e.target.checked)}
-              />
-              <span style={{ fontSize: 13 }}>Dispensé (EI)</span>
-            </label>
+              <div style={logoRowStyle}>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={logoPreviewStyle}
+                  aria-label="Choisir le logo de l’entreprise"
+                >
+                  {form.logoPreview ? (
+                    <img src={form.logoPreview} alt="Logo" style={logoImageStyle} />
+                  ) : (
+                    <span style={{ fontSize: 22 }}>🏢</span>
+                  )}
+                </button>
+                <div style={{ display: "grid", gap: 7, minWidth: 0 }}>
+                  <button type="button" onClick={() => fileInputRef.current?.click()} style={secondaryButtonStyle}>
+                    {form.logoPreview ? "Remplacer le logo" : "Ajouter un logo"}
+                  </button>
+                  <span style={hintStyle}>PNG, JPG/JPEG, WebP ou SVG · 20 Mo maximum</span>
+                  {form.logoPreview ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        revokeBlobUrl(form.logoPreview);
+                        update("logoFile", null);
+                        update("logoPreview", "");
+                        update("logoPath", "");
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      style={removeButtonStyle}
+                    >
+                      Supprimer
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {logoError ? <span style={errorStyle}>{logoError}</span> : null}
+            </div>
           </div>
+        </section>
+      ) : null}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>TVA intracommunautaire {form.vatDispense ? "" : "*"}</span>
-              <input
-                value={form.vatNumber}
-                onChange={(e) => onChange("vatNumber", e.target.value)}
-                placeholder={form.vatDispense ? "Dispensé" : "Ex : FR12345678901"}
-                disabled={form.vatDispense}
-                style={{
-                  ...fieldStyle("vatNumber"),
-                  opacity: form.vatDispense ? 0.55 : 1,
-                }}
-              />
-              {!form.vatDispense && errors.vatNumber ? <div style={errorTextStyle}>{errors.vatNumber}</div> : null}
-            </label>
-
-            <label style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 6, opacity: 0.9 }}>
-              <input type="checkbox" checked={form.vatDispense} onChange={(e) => onChange("vatDispense", e.target.checked)} />
-              <span style={{ fontSize: 13 }}>Dispensé TVA</span>
-            </label>
-          </div>
+      {!loading ? (
+        <div style={informationNoticeStyle}>
+          <span aria-hidden="true">🧾</span>
+          <span>
+            Les informations juridiques sont désormais dans <strong>Encaisser → Réglages</strong>,
+            uniquement là où elles sont utiles aux devis et factures.
+          </span>
         </div>
-      </div>
+      ) : null}
 
-      {/* CARTE 3 — Business */}
-      <div style={cardStyle}>
-        <h2 style={titleAccent}>Indicateurs de performance</h2>
+      {globalError ? <div style={errorBannerStyle}>{globalError}</div> : null}
+      {saved ? <div style={successBannerStyle}>✓ Profil enregistré</div> : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-          <label style={labelStyle}>
-            <span style={labelTextStyle}>Panier moyen (€) *</span>
-            <input
-              type="number"
-              min={1}
-              value={form.avgBasket}
-              onChange={(e) => onChange("avgBasket", Number(e.target.value))}
-              onFocus={(e) => {
-                if (form.avgBasket === 0) e.currentTarget.select();
-              }}
-              onClick={(e) => {
-                if (form.avgBasket === 0) e.currentTarget.select();
-              }}
-              style={fieldStyle("avgBasket")}
-            />
-            {errors.avgBasket ? <div style={errorTextStyle}>{errors.avgBasket}</div> : null}
-          </label>
-
-          <label style={labelStyle}>
-            <span style={labelTextStyle}>Taux de conversion (%) *</span>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={form.leadConversionRate}
-              onChange={(e) => onChange("leadConversionRate", Number(e.target.value))}
-              onFocus={(e) => {
-                if (form.leadConversionRate === 0) e.currentTarget.select();
-              }}
-              onClick={(e) => {
-                if (form.leadConversionRate === 0) e.currentTarget.select();
-              }}
-              style={fieldStyle("leadConversionRate")}
-            />
-            {errors.leadConversionRate ? <div style={errorTextStyle}>{errors.leadConversionRate}</div> : null}
-          </label>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          {globalError ? (
-            <div style={{ fontSize: 13, color: "rgba(255,120,120,0.95)" }}>{globalError}</div>
-          ) : saved ? (
-            <span style={{ fontSize: 13, opacity: 0.85 }}>✅ Profil enregistré</span>
-          ) : null}
-        </div>
-
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={saving}
-            style={{
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "transparent",
-              color: "white",
-              borderRadius: 12,
-              padding: "10px 12px",
-              cursor: saving ? "not-allowed" : "pointer",
-              opacity: saving ? 0.55 : 0.95,
-            }}
-          >
+      {!loading ? (
+        <div data-profile-actions style={actionsStyle}>
+          <button type="button" onClick={handleReset} disabled={saving} style={resetButtonStyle}>
             Réinitialiser
           </button>
-
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={saving}
             aria-busy={saving}
-            style={{
-              border: "1px solid rgba(255,255,255,0.14)",
-              background:
-                "linear-gradient(135deg, rgba(255,77,166,0.28), rgba(97,87,255,0.22), rgba(0,200,255,0.18))",
-              color: "white",
-              borderRadius: 12,
-              padding: "10px 12px",
-              cursor: saving ? "wait" : "pointer",
-              opacity: saving ? 0.72 : 1,
-              fontWeight: 800,
-              minWidth: 118,
-            }}
+            style={{ ...primaryButtonStyle, opacity: saving ? 0.7 : 1 }}
           >
-            {saving ? "Enregistrement…" : "Enregistrer"}
+            {saving
+              ? "Enregistrement…"
+              : onboarding
+                ? "Enregistrer et continuer →"
+                : "Enregistrer"}
           </button>
         </div>
-      </div>
+      ) : null}
+
+      <style jsx>{`
+        @media (max-width: 620px) {
+          div[data-profile-grid="two"],
+          div[data-profile-grid="location"] {
+            grid-template-columns: 1fr !important;
+          }
+          div[data-profile-actions] {
+            grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr) !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: 10,
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.04)",
-  color: "white",
-  outline: "none",
   width: "100%",
   minWidth: 0,
   boxSizing: "border-box",
+  padding: "11px 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.13)",
+  background: "rgba(3,9,23,0.38)",
+  color: "white",
+  outline: "none",
 };
 
 const cardStyle: React.CSSProperties = {
   padding: 16,
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.08)",
-  // 🎨 glow ultra léger (optionnel mais classe)
+  borderRadius: 18,
+  border: "1px solid rgba(125,211,252,0.15)",
   background:
-    "linear-gradient(135deg, rgba(255,77,166,0.045), rgba(97,87,255,0.03) 55%, rgba(0,200,255,0.02))",
+    "linear-gradient(145deg, rgba(14,31,58,0.72), rgba(35,25,64,0.58))",
+  boxShadow: "0 16px 44px rgba(0,0,0,0.20)",
+};
+
+const introStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 4,
+  padding: 14,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  color: "rgba(255,255,255,0.72)",
+};
+
+const onboardingHeroStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  padding: 16,
+  borderRadius: 20,
+  border: "1px solid rgba(56,189,248,0.24)",
+  background:
+    "linear-gradient(135deg, rgba(56,189,248,0.16), rgba(139,92,246,0.16), rgba(244,114,182,0.12))",
+};
+
+const onboardingIconStyle: React.CSSProperties = {
+  width: 48,
+  height: 48,
+  display: "grid",
+  placeItems: "center",
+  flex: "0 0 auto",
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "rgba(4,10,24,0.38)",
+  fontSize: 26,
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const sectionBubbleStyle: React.CSSProperties = {
+  width: 30,
+  height: 30,
+  display: "grid",
+  placeItems: "center",
+  flex: "0 0 auto",
+  borderRadius: 999,
+  border: "1px solid rgba(56,189,248,0.34)",
+  background: "rgba(56,189,248,0.13)",
+  color: "#bae6fd",
+  fontWeight: 950,
 };
 
 const labelStyle: React.CSSProperties = { display: "grid", gap: 6 };
-
-const labelTextStyle: React.CSSProperties = { fontSize: 13, opacity: 0.85 };
-
-const errorTextStyle: React.CSSProperties = { fontSize: 12, color: "rgba(255,120,120,0.95)" };
+const labelTextStyle: React.CSSProperties = { fontSize: 13, fontWeight: 800 };
+const hintStyle: React.CSSProperties = {
+  color: "rgba(255,255,255,0.60)",
+  fontSize: 12,
+  lineHeight: 1.4,
+};
+const errorStyle: React.CSSProperties = { color: "#fca5a5", fontSize: 12 };
+const optionalStyle: React.CSSProperties = {
+  marginLeft: 5,
+  color: "rgba(255,255,255,0.50)",
+  fontSize: 11,
+  fontStyle: "normal",
+  fontWeight: 650,
+};
+const gridTwoStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 10,
+};
+const locationGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "130px minmax(0, 1fr)",
+  gap: 10,
+};
+const logoRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minWidth: 0,
+};
+const logoPreviewStyle: React.CSSProperties = {
+  width: 68,
+  height: 68,
+  padding: 4,
+  display: "grid",
+  placeItems: "center",
+  flex: "0 0 auto",
+  borderRadius: 17,
+  border: "1px solid rgba(125,211,252,0.28)",
+  background: "rgba(255,255,255,0.06)",
+  color: "white",
+  cursor: "pointer",
+  overflow: "hidden",
+};
+const logoImageStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+  borderRadius: 13,
+};
+const secondaryButtonStyle: React.CSSProperties = {
+  justifySelf: "start",
+  borderRadius: 11,
+  border: "1px solid rgba(125,211,252,0.34)",
+  background: "rgba(56,189,248,0.10)",
+  color: "white",
+  padding: "8px 10px",
+  cursor: "pointer",
+  fontWeight: 850,
+};
+const removeButtonStyle: React.CSSProperties = {
+  justifySelf: "start",
+  padding: 0,
+  border: 0,
+  background: "transparent",
+  color: "#fda4af",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 800,
+};
+const informationNoticeStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 9,
+  padding: "11px 13px",
+  borderRadius: 14,
+  border: "1px solid rgba(167,139,250,0.20)",
+  background: "rgba(139,92,246,0.08)",
+  color: "rgba(255,255,255,0.70)",
+  fontSize: 12.5,
+  lineHeight: 1.45,
+};
+const errorBannerStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(248,113,113,0.30)",
+  background: "rgba(127,29,29,0.18)",
+  color: "#fecaca",
+  fontSize: 13,
+  fontWeight: 750,
+};
+const successBannerStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(52,211,153,0.30)",
+  background: "rgba(6,78,59,0.20)",
+  color: "#a7f3d0",
+  fontSize: 13,
+  fontWeight: 850,
+};
+const actionsStyle: React.CSSProperties = {
+  position: "sticky",
+  bottom: 0,
+  zIndex: 8,
+  display: "grid",
+  gridTemplateColumns: "auto minmax(180px, 1fr)",
+  gap: 10,
+  padding: "11px 0 max(2px, env(safe-area-inset-bottom, 0px))",
+  background: "linear-gradient(180deg, rgba(6,16,31,0), rgba(6,16,31,0.96) 28%)",
+};
+const resetButtonStyle: React.CSSProperties = {
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.13)",
+  background: "rgba(255,255,255,0.05)",
+  color: "white",
+  padding: "10px 12px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+const primaryButtonStyle: React.CSSProperties = {
+  borderRadius: 13,
+  border: "1px solid rgba(125,211,252,0.34)",
+  background: "linear-gradient(100deg, #0ea5e9, #7c3aed 55%, #ec4899)",
+  color: "white",
+  padding: "11px 14px",
+  cursor: "pointer",
+  fontWeight: 950,
+  boxShadow: "0 12px 30px rgba(124,58,237,0.22)",
+};

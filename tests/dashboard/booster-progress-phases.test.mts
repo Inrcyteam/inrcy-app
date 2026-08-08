@@ -60,7 +60,7 @@ test("the UI exposes ten chronological publication stages", () => {
       "Publication sur les canaux",
       "Confirmation des plateformes",
       "Enregistrement dans iNr’Send",
-      "Encore quelques secondes…",
+      "Un peu de patience…",
       "Publication terminée",
     ],
   );

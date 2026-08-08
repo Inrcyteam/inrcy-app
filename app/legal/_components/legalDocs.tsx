@@ -20,19 +20,19 @@ export const legalDocs: Record<
   confidentialite: {
     key: "confidentialite",
     title: "Politique de confidentialité",
-    subtitle: "Dernière mise à jour : 30/06/2026",
+    subtitle: "Dernière mise à jour : 08/08/2026",
     Content: ConfidentialiteContent,
   },
   "mentions-legales": {
     key: "mentions-legales",
     title: "Mentions légales",
-    subtitle: "Éditeur, hébergement, responsabilité, propriété intellectuelle.",
+    subtitle: "Dernière mise à jour : 08/08/2026",
     Content: MentionsLegalesContent,
   },
   cga: {
     key: "cga",
     title: "CGA — Conditions Générales d’Abonnement et Conditions d’Utilisation iNrCy",
-    subtitle: "Version du 30/06/2026",
+    subtitle: "Version du 08/08/2026",
     Content: CgaContent,
   },
 };

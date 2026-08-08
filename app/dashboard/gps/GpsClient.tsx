@@ -50,6 +50,7 @@ type SearchHit = {
 export default function GpsClient() {
   const [query, setQuery] = useState("");
   const [activeSection, setActiveSection] = useState<string>(GPS_SECTIONS[0]?.id ?? "");
+  const [activeArticleId, setActiveArticleId] = useState<string>(GPS_SECTIONS[0]?.articles[0]?.id ?? "");
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const sectionPickerRef = useRef<HTMLDivElement | null>(null);
   const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
@@ -59,7 +60,8 @@ export default function GpsClient() {
     [activeSection]
   );
 
-  const selectedArticle = selectedSection?.articles[0];
+  const selectedArticle =
+    selectedSection?.articles.find((article) => article.id === activeArticleId) ?? selectedSection?.articles[0];
   const focusItems = selectedArticle
     ? [
         selectedArticle.goal ? `Objectif : **${selectedArticle.goal}**.` : "",
@@ -139,8 +141,10 @@ export default function GpsClient() {
     return results.sort((a, b) => b.score - a.score).slice(0, 10);
   }, [query]);
 
-  const openSection = (sectionId: string) => {
+  const openSection = (sectionId: string, articleId?: string) => {
+    const section = GPS_SECTIONS.find((item) => item.id === sectionId);
     setActiveSection(sectionId);
+    setActiveArticleId(articleId ?? section?.articles[0]?.id ?? "");
     setQuery("");
     setSectionMenuOpen(false);
   };
@@ -180,7 +184,7 @@ export default function GpsClient() {
                     key={`${hit.sectionId}:${hit.article.id}`}
                     type="button"
                     className={styles.searchResult}
-                    onClick={() => openSection(hit.sectionId)}
+                    onClick={() => openSection(hit.sectionId, hit.article.id)}
                   >
                     <span className={styles.searchResultTitle}>{hit.sectionEmoji} {hit.sectionTitle}</span>
                     <span className={styles.searchResultMeta}>{hit.article.title}</span>
@@ -271,16 +275,38 @@ export default function GpsClient() {
         <section className={styles.content} aria-live="polite">
           {selectedSection && selectedArticle && (
             <div className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div className={styles.panelIcon} aria-hidden="true">
-                  {selectedSection.emoji}
+              <div className={styles.panelTop}>
+                <div className={styles.panelHeader}>
+                  <div className={styles.panelIcon} aria-hidden="true">
+                    {selectedSection.emoji}
+                  </div>
+                  <div className={styles.panelTitleWrap}>
+                    <span className={styles.panelKicker}>Rubrique active</span>
+                    <h2 className={styles.panelTitle}>{selectedSection.title}</h2>
+                    <p className={styles.panelDesc}>{selectedSection.description}</p>
+                  </div>
+                  {selectedArticle.duration && <span className={styles.timeBadge}>⏱ {selectedArticle.duration}</span>}
                 </div>
-                <div className={styles.panelTitleWrap}>
-                  <span className={styles.panelKicker}>Rubrique active</span>
-                  <h2 className={styles.panelTitle}>{selectedSection.title}</h2>
-                  <p className={styles.panelDesc}>{selectedSection.description}</p>
-                </div>
-                {selectedArticle.duration && <span className={styles.timeBadge}>⏱ {selectedArticle.duration}</span>}
+
+                {selectedSection.articles.length > 1 && (
+                  <div className={styles.articleTabs} role="tablist" aria-label={`Guides ${selectedSection.title}`}>
+                    {selectedSection.articles.map((article) => {
+                      const isActive = article.id === selectedArticle.id;
+                      return (
+                        <button
+                          key={article.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          className={`${styles.articleTab} ${isActive ? styles.articleTabActive : ""}`}
+                          onClick={() => setActiveArticleId(article.id)}
+                        >
+                          {article.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className={styles.grid}>

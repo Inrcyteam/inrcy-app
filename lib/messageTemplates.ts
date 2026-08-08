@@ -258,31 +258,6 @@ const BASE_TEMPLATES: TemplateDef[] = [
     ctaLabel: "Laisser un avis",
   },
 
-  
-  {
-    key: "booster_avis_trustpilot",
-    module: "booster",
-    action: "avis",
-    category: "trustpilot",
-    title: "Demande d’avis (Trustpilot)",
-    subject: "Votre avis compte (Trustpilot) — {{nom_entreprise}}",
-    body:
-      "Bonjour,\n\n" +
-      "Chez {{nom_entreprise}}, nous privilégions des échanges simples, utiles et adaptés à chaque client.\n\n" +
-      "Merci encore pour votre confiance. Votre retour nous aide énormément à améliorer notre service et à rassurer de nouveaux clients.\n\n" +
-      "🧩 Rappel de notre activité\n" +
-      "• Métier : {{secteur}}\n" +
-      "• Prestations : {{services}}\n" +
-      "• Zone d’intervention : {{zones}}\n\n" +
-      "👉 Laisser un avis Trustpilot (1 minute) :\n{{avis_url}}\n\n" +
-      "" +
-      "{{prenom}} {{nom}}\n" +
-      "{{nom_entreprise}}\n" +
-      "Tél : {{telephone}}\n" +
-      "Site : {{site_url}}",
-    ctaLabel: "Laisser un avis",
-  },
-
   {
     key: "booster_avis_pages_jaunes",
     module: "booster",

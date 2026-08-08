@@ -7,12 +7,8 @@ export const DASHBOARD_PROFILE_COMPLETION_FIELDS = [
   "phone",
   "contact_email",
   "company_legal_name",
-  "hq_address",
   "hq_zip",
   "hq_city",
-  "hq_country",
-  "siren",
-  "rcs_city",
 ] as const;
 
 export const DASHBOARD_ACTIVITY_COMPLETION_FIELDS = [

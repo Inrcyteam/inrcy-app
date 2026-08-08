@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import BusinessLegalSettingsCard from "./BusinessLegalSettingsCard";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   DEFAULT_INRDOCUMENTS_SETTINGS,
@@ -172,17 +173,23 @@ export default function DocumentsSettingsContent({ onUnsavedChange }: Props) {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [documentsDirty, setDocumentsDirty] = React.useState(false);
+  const [legalDirty, setLegalDirty] = React.useState(false);
   const savedSettingsSignatureRef = React.useRef("");
 
   React.useEffect(() => {
     if (loading) {
-      onUnsavedChange?.(false);
+      setDocumentsDirty(false);
       return;
     }
-    onUnsavedChange?.(
+    setDocumentsDirty(
       savedSettingsSignatureRef.current !== "" && savedSettingsSignatureRef.current !== JSON.stringify(settings),
     );
-  }, [loading, onUnsavedChange, settings]);
+  }, [loading, settings]);
+
+  React.useEffect(() => {
+    onUnsavedChange?.(documentsDirty || legalDirty);
+  }, [documentsDirty, legalDirty, onUnsavedChange]);
 
   const loadSettings = React.useCallback(async () => {
     try {
@@ -228,7 +235,7 @@ export default function DocumentsSettingsContent({ onUnsavedChange }: Props) {
       const nextSettings = normalizeInrDocumentsSettings(json?.settings);
       setSettings(nextSettings);
       savedSettingsSignatureRef.current = JSON.stringify(nextSettings);
-      onUnsavedChange?.(false);
+      setDocumentsDirty(false);
       setNotice("Réglages enregistrés.");
       dispatchUpdated();
     } catch (e: any) {
@@ -260,6 +267,8 @@ export default function DocumentsSettingsContent({ onUnsavedChange }: Props) {
           Ces valeurs remplissent automatiquement les nouveaux documents. Elles restent modifiables dans les options avancées.
         </div>
       </div>
+
+      <BusinessLegalSettingsCard onUnsavedChange={setLegalDirty} />
 
       {loading ? <Notice>Chargement des réglages…</Notice> : null}
 

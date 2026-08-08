@@ -48,7 +48,7 @@ export const PUBLICATION_PROGRESS_STAGES = [
   { index: 6, label: "Publication sur les canaux" },
   { index: 7, label: "Confirmation des plateformes" },
   { index: 8, label: "Enregistrement dans iNr’Send" },
-  { index: 9, label: "Encore quelques secondes…" },
+  { index: 9, label: "Un peu de patience…" },
   { index: 10, label: "Publication terminée" },
 ] as const;
 

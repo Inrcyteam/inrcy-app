@@ -4,7 +4,7 @@ import type React from "react";
 import styles from "../legal.module.css";
 
 function isSectionTitle(line: string) {
-  return /^(?:\d+\.\s|\d+\.\d+\s|Article\s+\d+\s+[–-])/.test(line);
+  return /^(?:\d+\.\s|\d+\.\d+\s|Article\s+\d+\s+[\u2013\u2014-])/.test(line);
 }
 
 function isListCandidate(line: string, hasPreviousListItem: boolean) {
@@ -16,9 +16,16 @@ function isListCandidate(line: string, hasPreviousListItem: boolean) {
   return false;
 }
 
-export default function LegalTextContent({ text }: { text: string }) {
+export default function LegalTextContent({
+  text,
+  headings = [],
+}: {
+  text: string;
+  headings?: readonly string[];
+}) {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const elements: React.ReactNode[] = [];
+  const headingSet = new Set(headings);
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]?.trim();
@@ -27,7 +34,7 @@ export default function LegalTextContent({ text }: { text: string }) {
       continue;
     }
 
-    if (isSectionTitle(line)) {
+    if (isSectionTitle(line) || headingSet.has(line)) {
       elements.push(
         <h2 className={styles.h2} key={`title-${index}`}>
           {line}

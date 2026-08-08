@@ -28,9 +28,11 @@ import {
   combineOpeningSchedule,
   normalizeOpeningScheduleText,
 } from "@/lib/openingSchedule";
+import EditableTags from "./EditableTags";
 
 type Props = {
   mode?: "page" | "drawer";
+  onboarding?: boolean;
   onActivitySaved?: () => void;
   onActivityReset?: () => void;
   onCloseDrawer?: () => void;
@@ -41,11 +43,10 @@ type BusinessActivityForm = {
   sectorCategory: string;
   sector: string; // métier (code)
   activityDescription: string;
-  selectedServices: string[];
-  customServices: string;
-  interventionZones: string;
+  services: string[];
+  interventionZones: string[];
   openingSchedule: string;
-  strengths: string;
+  strengths: string[];
   customerTypes: string[];
 };
 
@@ -53,6 +54,7 @@ const TABLE = "business_profiles";
 
 export default function ActivityContent({
   mode = "page",
+  onboarding = false,
   onActivitySaved,
   onActivityReset,
   onCloseDrawer,
@@ -63,11 +65,10 @@ export default function ActivityContent({
       sectorCategory: "",
       sector: "",
       activityDescription: "",
-      selectedServices: [],
-      customServices: "",
-      interventionZones: "",
+      services: [],
+      interventionZones: [],
       openingSchedule: "",
-      strengths: "",
+      strengths: [],
       customerTypes: [],
     }),
     [],
@@ -116,10 +117,7 @@ export default function ActivityContent({
     [jobSearch],
   );
 
-  const allSelectedServices = useMemo(() => {
-    const extras = normalizeLines(form.customServices);
-    return Array.from(new Set([...form.selectedServices, ...extras]));
-  }, [form.selectedServices, form.customServices]);
+  const allSelectedServices = form.services;
 
   const card: React.CSSProperties = {
     padding: 16,
@@ -243,30 +241,31 @@ export default function ActivityContent({
               normalizedProfession,
             )
           : [];
-        const selectedServices = rawServices.filter((item: string) =>
-          knownServices.includes(item),
-        );
-        const customServices = rawServices
-          .filter((item: string) => !knownServices.includes(item))
-          .join("\n");
+        // Les anciens choix et les anciennes prestations libres deviennent
+        // tous des tags. Pour un nouveau métier sans choix existant, les huit
+        // recommandations sont proposées immédiatement.
+        const services = rawServices.length > 0 ? rawServices : knownServices;
 
         setForm({
           sectorCategory: decodedSector.sectorCategory,
           sector: normalizedProfession,
           activityDescription:
             data.business_description ?? data.activity_description ?? "",
-          selectedServices,
-          customServices,
+          services,
           interventionZones: Array.isArray(data.intervention_zones)
-            ? data.intervention_zones.join(", ")
-            : (data.intervention_zones_text ?? ""),
+            ? data.intervention_zones
+                .map((item: unknown) => String(item || "").trim())
+                .filter(Boolean)
+            : normalizeCommaList(data.intervention_zones_text ?? ""),
           openingSchedule: combineOpeningSchedule(
             data.opening_days,
             data.opening_hours,
           ),
           strengths: Array.isArray(data.strengths)
-            ? data.strengths.join("\n")
-            : (data.strengths_text ?? ""),
+            ? data.strengths
+                .map((item: unknown) => String(item || "").trim())
+                .filter(Boolean)
+            : normalizeLines(data.strengths_text ?? ""),
           customerTypes: Array.isArray(data.customer_typologies)
             ? data.customer_typologies
                 .map((item: unknown) => String(item || ""))
@@ -303,7 +302,30 @@ export default function ActivityContent({
     setForm((p) => ({ ...p, [key]: value }));
   };
 
-  const handleSectorChange = (sectorCategory: string) => {
+  const confirmServiceReplacement = async () => {
+    if (!form.services.length) return true;
+    const normalizeForComparison = (values: string[]) =>
+      values.map((value) => value.trim().toLocaleLowerCase("fr")).sort();
+    const currentValues = normalizeForComparison(form.services);
+    const recommendations = normalizeForComparison(currentServiceOptions);
+    const usesOnlyRecommendations =
+      currentValues.length === recommendations.length &&
+      currentValues.every((value, index) => value === recommendations[index]);
+    if (usesOnlyRecommendations) return true;
+    return confirmInrcy({
+      eyebrow: "Mon activité",
+      title: "Adapter les prestations au nouveau métier ?",
+      message:
+        "Vos prestations actuelles seront remplacées par les recommandations du nouveau métier. Cette action évite de mélanger deux activités différentes.",
+      confirmLabel: "Adapter les prestations",
+      cancelLabel: "Conserver mon métier",
+      variant: "warning",
+    });
+  };
+
+  const handleSectorChange = async (sectorCategory: string) => {
+    if (sectorCategory === form.sectorCategory) return;
+    if (!(await confirmServiceReplacement())) return;
     setSaved(false);
     setError("");
     setJobSearch("");
@@ -311,50 +333,44 @@ export default function ActivityContent({
       ...p,
       sectorCategory,
       sector: "",
-      selectedServices: [],
-      customServices: "",
+      services: [],
     }));
   };
 
-  const handleProfessionChange = (sector: string) => {
+  const handleProfessionChange = async (
+    sector: string,
+    options?: { preserveServices?: boolean },
+  ) => {
+    if (sector === form.sector) return;
+    if (!options?.preserveServices && !(await confirmServiceReplacement())) return;
     setSaved(false);
     setError("");
     setJobSearch(getJobLabel(form.sectorCategory, sector) || sector);
     setForm((p) => ({
       ...p,
       sector,
-      selectedServices: [],
-      customServices: "",
+      services: options?.preserveServices
+        ? p.services
+        : getServicesForSectorAndJob(p.sectorCategory, sector),
     }));
   };
 
-  const handleSearchSelection = (result: ActivityJobSearchResult) => {
+  const handleSearchSelection = async (result: ActivityJobSearchResult) => {
+    const keepsCurrentSelection =
+      form.sectorCategory === result.sectorCategory && form.sector === result.job;
+    if (!keepsCurrentSelection && !(await confirmServiceReplacement())) return;
     setSaved(false);
     setError("");
     setJobSearch(result.jobLabel);
     setJobSearchOpen(false);
     setManualSelectionOpen(false);
-    setForm((p) => {
-      const keepsCurrentSelection =
-        p.sectorCategory === result.sectorCategory && p.sector === result.job;
-      return {
-        ...p,
-        sectorCategory: result.sectorCategory,
-        sector: result.job,
-        selectedServices: keepsCurrentSelection ? p.selectedServices : [],
-        customServices: keepsCurrentSelection ? p.customServices : "",
-      };
-    });
-  };
-
-  const toggleService = (service: string) => {
-    setSaved(false);
-    setError("");
     setForm((p) => ({
       ...p,
-      selectedServices: p.selectedServices.includes(service)
-        ? p.selectedServices.filter((item) => item !== service)
-        : [...p.selectedServices, service],
+      sectorCategory: result.sectorCategory,
+      sector: result.job,
+      services: keepsCurrentSelection
+        ? p.services
+        : getServicesForSectorAndJob(result.sectorCategory, result.job),
     }));
   };
 
@@ -383,6 +399,21 @@ export default function ActivityContent({
       .filter(Boolean);
 
   const save = async () => {
+    if (onboarding) {
+      const missing: string[] = [];
+      if (!form.sectorCategory.trim() || !form.sector.trim()) missing.push("le métier");
+      if (!allSelectedServices.length) missing.push("les prestations");
+      if (!form.interventionZones.length) missing.push("les zones d’intervention");
+      if (!normalizeOpeningScheduleText(form.openingSchedule).trim()) {
+        missing.push("les horaires d’ouverture");
+      }
+      if (!form.strengths.length) missing.push("les forces");
+      if (!form.customerTypes.length) missing.push("la clientèle");
+      if (missing.length) {
+        setError(`Pour continuer, complétez ${missing.join(", ")}.`);
+        return;
+      }
+    }
     setSaving(true);
     setSaved(false);
     setError("");
@@ -401,12 +432,12 @@ export default function ActivityContent({
         ),
         services: allSelectedServices,
         business_description: form.activityDescription.trim(),
-        intervention_zones: normalizeCommaList(form.interventionZones),
+        intervention_zones: form.interventionZones,
         // Compatibilité sans migration SQL : le nouveau champ unifié est stocké
         // dans opening_hours et l’ancien opening_days est vidé à la sauvegarde.
         opening_days: "",
         opening_hours: normalizeOpeningScheduleText(form.openingSchedule),
-        strengths: normalizeLines(form.strengths),
+        strengths: form.strengths,
         customer_typologies: form.customerTypes,
         updated_at: new Date().toISOString(),
       };
@@ -427,9 +458,9 @@ export default function ActivityContent({
         form.sectorCategory.trim().length > 0 &&
         form.sector.trim().length > 0 &&
         allSelectedServices.length > 0 &&
-        normalizeCommaList(form.interventionZones).length > 0 &&
+        form.interventionZones.length > 0 &&
         normalizeOpeningScheduleText(form.openingSchedule).length > 0 &&
-        normalizeLines(form.strengths).length > 0 &&
+        form.strengths.length > 0 &&
         form.customerTypes.length > 0;
 
       if (isComplete) {
@@ -503,11 +534,44 @@ export default function ActivityContent({
         paddingBottom: "max(24px, env(safe-area-inset-bottom, 0px))",
       }}
     >
-      <div style={card}>
-        <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-          Ces informations servent à générer des contenus cohérents avec votre
-          entreprise.
-        </p>
+      <div
+        style={{
+          ...card,
+          display: "flex",
+          alignItems: "center",
+          gap: 13,
+          border: onboarding
+            ? "1px solid rgba(167,139,250,0.26)"
+            : card.border,
+          background: onboarding
+            ? "linear-gradient(135deg, rgba(56,189,248,0.14), rgba(139,92,246,0.17), rgba(244,114,182,0.11))"
+            : card.background,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 46,
+            height: 46,
+            flex: "0 0 auto",
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 15,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(4,10,24,0.34)",
+            fontSize: 24,
+          }}
+        >
+          🎯
+        </span>
+        <div style={{ display: "grid", gap: 3 }}>
+          <strong style={{ fontSize: onboarding ? 18 : 15 }}>
+            {onboarding ? "Présentez votre activité" : "Votre activité professionnelle"}
+          </strong>
+          <span style={{ opacity: 0.72, lineHeight: 1.4, fontSize: 13 }}>
+            iNrCy s’appuie sur ces informations pour créer des contenus précis et cohérents.
+          </span>
+        </div>
       </div>
 
       <div style={card}>
@@ -628,7 +692,7 @@ export default function ActivityContent({
                             form.sector === result.job
                           }
                           onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => handleSearchSelection(result)}
+                          onClick={() => void handleSearchSelection(result)}
                           style={{
                             width: "100%",
                             display: "grid",
@@ -764,7 +828,7 @@ export default function ActivityContent({
                   <select
                     style={input}
                     value={form.sectorCategory}
-                    onChange={(e) => handleSectorChange(e.target.value)}
+                    onChange={(e) => void handleSectorChange(e.target.value)}
                   >
                     <option value="" style={selectOption}>
                       Choisir un secteur
@@ -791,7 +855,11 @@ export default function ActivityContent({
                     <input
                       style={input}
                       value={form.sector}
-                      onChange={(e) => handleProfessionChange(e.target.value)}
+                      onChange={(e) =>
+                        void handleProfessionChange(e.target.value, {
+                          preserveServices: true,
+                        })
+                      }
                       disabled={!form.sectorCategory}
                       placeholder="Ex : Cordiste, Coach vocal, Fabricant sur mesure…"
                     />
@@ -799,7 +867,7 @@ export default function ActivityContent({
                     <select
                       style={input}
                       value={form.sector}
-                      onChange={(e) => handleProfessionChange(e.target.value)}
+                      onChange={(e) => void handleProfessionChange(e.target.value)}
                       disabled={!form.sectorCategory}
                     >
                       <option value="" style={selectOption}>
@@ -841,70 +909,38 @@ export default function ActivityContent({
 
             <div style={label}>
               <span style={labelTitle}>Prestations principales</span>
-              {form.sector && currentServiceOptions.length > 0 ? (
-                <div style={checkboxGrid}>
-                  {currentServiceOptions.map((service) => {
-                    const checked = form.selectedServices.includes(service);
-                    return (
-                      <label
-                        key={service}
-                        style={{
-                          ...chipLabel,
-                          boxShadow: checked
-                            ? "0 0 0 1px rgba(56,189,248,0.35) inset"
-                            : undefined,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleService(service)}
-                          style={{ accentColor: "#38bdf8", flex: "0 0 auto" }}
-                        />
-                        <span style={{ minWidth: 0 }}>{service}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div style={{ ...hint, marginTop: 2 }}>
-                  {isCustomJobSector
-                    ? "Avec un métier libre, ajoutez vos prestations ci-dessous pour alimenter les templates et l’IA."
-                    : "Choisissez d’abord un métier pour afficher la liste de prestations cohérentes."}
-                </div>
-              )}
+              <EditableTags
+                values={form.services}
+                onChange={(values) => set("services", values)}
+                addLabel="Ajouter une prestation"
+                placeholder="Ex : Intervention week-end"
+                emptyText={
+                  form.sector
+                    ? "Ajoutez au moins une prestation représentative de votre activité."
+                    : "Choisissez d’abord un métier : iNrCy proposera automatiquement jusqu’à 8 prestations."
+                }
+                maxItems={20}
+              />
               <span style={hint}>
-                Ces prestations alimentent les templates et l’IA pour des
-                contenus plus cohérents.
+                iNrCy propose automatiquement les prestations liées au métier.
+                Supprimez celles qui ne conviennent pas et ajoutez les vôtres.
               </span>
             </div>
 
-            <label style={label}>
-              <span style={labelTitle}>Autres prestations (optionnel)</span>
-              <textarea
-                style={{ ...input, minHeight: 86, resize: "vertical" }}
-                value={form.customServices}
-                onChange={(e) => set("customServices", e.target.value)}
-                placeholder={`1 ligne = 1 prestation supplémentaire\nEx: Contrat entretien premium\nEx: Intervention week-end`}
-              />
-              <span style={hint}>
-                Ajoutez ici des prestations spécifiques non présentes dans la
-                liste.
-              </span>
-            </label>
-
-            <label style={label}>
+            <div style={label}>
               <span style={labelTitle}>Zones d’intervention</span>
-              <textarea
-                style={{ ...input, minHeight: 90, resize: "vertical" }}
-                value={form.interventionZones}
-                onChange={(e) => set("interventionZones", e.target.value)}
-                placeholder={`Ex: Berck, Rang-du-Fliers, Montreuil\nOu: Côte d’Opale (rayon 30km)`}
+              <EditableTags
+                values={form.interventionZones}
+                onChange={(values) => set("interventionZones", values)}
+                addLabel="Ajouter une zone"
+                placeholder="Ex : Arras"
+                emptyText="Ajoutez les villes, secteurs ou rayons réellement couverts."
+                maxItems={30}
               />
               <span style={hint}>
-                Séparées par des virgules ou retours à la ligne.
+                Une zone par tag aide l’IA à localiser précisément les contenus.
               </span>
-            </label>
+            </div>
 
             <label style={label}>
               <span style={labelTitle}>Jours et horaires d’ouverture</span>
@@ -921,16 +957,18 @@ Jeudi : 9h - 12h / 14h - 18h`}
               <span style={hint}>Une ligne par jour est recommandée.</span>
             </label>
 
-            <label style={label}>
+            <div style={label}>
               <span style={labelTitle}>Vos forces</span>
-              <textarea
-                style={{ ...input, minHeight: 110, resize: "vertical" }}
-                value={form.strengths}
-                onChange={(e) => set("strengths", e.target.value)}
-                placeholder={`1 ligne = 1 force\nEx: Intervention rapide\nEx: Devis gratuit\nEx: Garantie 10 ans`}
+              <EditableTags
+                values={form.strengths}
+                onChange={(values) => set("strengths", values)}
+                addLabel="Ajouter une force"
+                placeholder="Ex : Intervention rapide"
+                emptyText="Ajoutez 3 à 6 forces qui différencient votre entreprise."
+                maxItems={12}
               />
               <span style={hint}>3 à 6 forces suffisent. Court.</span>
-            </label>
+            </div>
 
             <div style={label}>
               <span style={labelTitle}>Typologie de clientèle</span>
@@ -980,10 +1018,17 @@ Jeudi : 9h - 12h / 14h - 18h`}
             ) : null}
 
             <div
+              data-activity-actions
               style={{
+                position: "sticky",
+                bottom: 0,
+                zIndex: 8,
                 display: "grid",
                 gap: 10,
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gridTemplateColumns: "minmax(180px, 1.35fr) minmax(130px, 0.72fr)",
+                padding: "11px 0 max(2px, env(safe-area-inset-bottom, 0px))",
+                background:
+                  "linear-gradient(180deg, rgba(6,16,31,0), rgba(6,16,31,0.96) 28%)",
               }}
             >
               <button
@@ -992,7 +1037,11 @@ Jeudi : 9h - 12h / 14h - 18h`}
                 disabled={saving}
                 onClick={save}
               >
-                {saving ? "Enregistrement…" : "Enregistrer"}
+                {saving
+                  ? "Enregistrement…"
+                  : onboarding
+                    ? "Enregistrer et continuer →"
+                    : "Enregistrer"}
               </button>
               <button
                 type="button"
@@ -1021,6 +1070,13 @@ Jeudi : 9h - 12h / 14h - 18h`}
           </div>
         )}
       </div>
+      <style jsx>{`
+        @media (max-width: 620px) {
+          div[data-activity-actions] {
+            grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.72fr) !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
