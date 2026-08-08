@@ -568,16 +568,6 @@ export default function ProfilContent({
         </section>
       ) : null}
 
-      {!loading ? (
-        <div style={informationNoticeStyle}>
-          <span aria-hidden="true">🧾</span>
-          <span>
-            Les informations juridiques sont désormais dans <strong>Encaisser → Réglages</strong>,
-            uniquement là où elles sont utiles aux devis et factures.
-          </span>
-        </div>
-      ) : null}
-
       {globalError ? <div style={errorBannerStyle}>{globalError}</div> : null}
       {saved ? <div style={successBannerStyle}>✓ Profil enregistré</div> : null}
 
@@ -760,18 +750,6 @@ const removeButtonStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 800,
-};
-const informationNoticeStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 9,
-  padding: "11px 13px",
-  borderRadius: 14,
-  border: "1px solid rgba(167,139,250,0.20)",
-  background: "rgba(139,92,246,0.08)",
-  color: "rgba(255,255,255,0.70)",
-  fontSize: 12.5,
-  lineHeight: 1.45,
 };
 const errorBannerStyle: React.CSSProperties = {
   padding: "10px 12px",

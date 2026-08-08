@@ -4370,6 +4370,46 @@
   cursor: default;
 }
 
+.generatorSettingsBtn {
+  min-height: 36px;
+  padding: 0 13px 0 10px;
+  border-radius: 13px;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(139, 92, 246, 0.18) 58%, rgba(244, 114, 182, 0.14));
+  color: rgba(255, 255, 255, 0.94);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 8px 24px rgba(56, 189, 248, 0.10);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.generatorSettingsBtn svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.generatorSettingsBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.56);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(139, 92, 246, 0.27) 58%, rgba(244, 114, 182, 0.22));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 10px 28px rgba(99, 102, 241, 0.18);
+}
+
+.generatorSettingsBtn:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 2px;
+}
+
 .refreshIcon {
   width: 18px;
   height: 18px;

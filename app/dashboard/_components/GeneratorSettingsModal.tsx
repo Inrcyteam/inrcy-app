@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 import {
@@ -42,6 +42,7 @@ export default function GeneratorSettingsModal({
   const [sector, setSector] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
 
   const recommendation = useMemo(
     () => getGeneratorRecommendation(sector),
@@ -66,6 +67,9 @@ export default function GeneratorSettingsModal({
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+      }
     };
   }, [onClose]);
 
@@ -151,9 +155,10 @@ export default function GeneratorSettingsModal({
       setConversionRate(normalized.conversionRate);
       await invalidateBoosterGenerationContextClient("professional");
       window.dispatchEvent(new CustomEvent("inrcy:generator-settings-updated"));
+      setSaving(false);
       setSaved(true);
-      await onSaved?.();
-      window.setTimeout(onClose, 650);
+      void Promise.resolve(onSaved?.()).catch(() => undefined);
+      closeTimerRef.current = window.setTimeout(onClose, 1500);
     } catch (caught) {
       setError(
         getSimpleFrenchErrorMessage(
